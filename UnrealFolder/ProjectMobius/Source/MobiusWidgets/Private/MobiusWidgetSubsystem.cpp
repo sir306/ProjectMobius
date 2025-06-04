@@ -1,0 +1,155 @@
+﻿// Fill out your copyright notice in the Description page of Project Settings.
+
+
+#include "MobiusWidgetSubsystem.h"
+
+#include "LoadingNotifyWidget.h"
+#include "MoveableErrorWidget.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/PanelWidget.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
+
+UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingNotifyWidget(nullptr)
+{
+}
+
+void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+	
+}
+
+void UMobiusWidgetSubsystem::Deinitialize()
+{
+	Super::Deinitialize();
+}
+
+void UMobiusWidgetSubsystem::AddErrorWidget(UMoveableErrorWidget* NewErrorWidget)
+{
+	// Set the error widget
+	ErrorWidget = NewErrorWidget;
+
+	// Get Error Widget Size and set the position to the center of the screen
+	UWidgetLayoutLibrary::SlotAsCanvasSlot(ErrorWidget->MoveableCanvas)->SetPosition(GetCenterPosForWidgetPanel(ErrorWidget->MoveableCanvas));
+}
+
+UMoveableErrorWidget* UMobiusWidgetSubsystem::GetErrorWidget() const
+{
+
+	return nullptr;
+}
+
+void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText Title, const FText Message)
+{
+	if(ErrorWidget == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Error Widget is null, cannot display error"));
+		return;
+	}
+	// Set the variables and make the widget visible
+	ErrorWidget->SetErrorTitle(Title);
+	ErrorWidget->SetErrorMessage(Message);
+
+	// Get Error Widget Size and set the position to the center of the screen
+	UWidgetLayoutLibrary::SlotAsCanvasSlot(ErrorWidget->MoveableCanvas)->SetPosition(GetCenterPosForWidgetPanel(ErrorWidget->MoveableCanvas));
+
+	ErrorWidget->SetVisibility(ESlateVisibility::Visible);
+}
+
+void UMobiusWidgetSubsystem::AddLoadingWidget(ULoadingNotifyWidget* NewLoadingWidget)
+{
+	// set the loading widget
+	LoadingNotifyWidget = NewLoadingWidget;
+
+	// Set the position of the loading widget to the center of the screen
+	//UWidgetLayoutLibrary::SlotAsCanvasSlot(LoadingNotifyWidget)->SetPosition(GetCenterPosForWidgetPanel(LoadingNotifyWidget->LoadingNotifyOverlay));
+
+}
+
+ULoadingNotifyWidget* UMobiusWidgetSubsystem::GetLoadingWidget() const
+{
+	return nullptr;
+}
+
+void UMobiusWidgetSubsystem::CalculateLoadPercentInt(int32 CurrentLoad, int32 TotalLoad)
+{
+	// Calculate the load percent
+	float NewLoadPercent =  float(CurrentLoad / TotalLoad);
+
+	// Update the load percent
+	LoadingNotifyWidget->UpdateLoadPercent(NewLoadPercent);
+}
+
+void UMobiusWidgetSubsystem::CalculateLoadPercentFloat(float CurrentLoad, float TotalLoad)
+{
+	// Calculate the load percent
+	float NewLoadPercent =  CurrentLoad / TotalLoad;
+	
+	// check if the loading widget is null
+	if(LoadingNotifyWidget == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
+		return;
+	}
+	
+	// Update the load percent
+	LoadingNotifyWidget->UpdateLoadPercent(NewLoadPercent);
+}
+
+void UMobiusWidgetSubsystem::UpdateLoadPercent(float NewLoadPercent)
+{
+	// check if the loading widget is null
+	if(LoadingNotifyWidget == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
+		return;
+	}
+	
+	// Update the load percent
+	LoadingNotifyWidget->UpdateLoadPercent(NewLoadPercent);
+
+	// log the new load percent
+	//UE_LOG(LogTemp, Warning, TEXT("New Load Percent: %f"), NewLoadPercent);
+}
+
+void UMobiusWidgetSubsystem::SetLoadingTextAndTitle(const FString& NewLoadingText, const FString& NewLoadingTitle) const
+{
+	// check if the loading widget is null
+	if(LoadingNotifyWidget == nullptr)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
+        return;
+    }
+	LoadingNotifyWidget->SetLoadingTextAndTitle(NewLoadingText, NewLoadingTitle);
+}
+
+FVector2D UMobiusWidgetSubsystem::GetCenterPosition(UUserWidget* Widget)
+{
+	// Get widget size
+	FVector2D WidgetSize = Widget->GetDesiredSize();
+
+	// Get Viewport Size
+	FVector2D ViewportSize = FVector2D(GEngine->GameViewport->Viewport->GetSizeXY());
+
+	// Calculate the center position for this widget
+	FVector2D WidgetPosition = FVector2D(ViewportSize.X / 2 - WidgetSize.X / 2, ViewportSize.Y / 2 - WidgetSize.Y / 2);
+
+	return WidgetPosition;
+}
+
+FVector2D UMobiusWidgetSubsystem::GetCenterPosForWidgetPanel(UPanelWidget* WidgetPanel)
+{
+	// Get widget size
+	FVector2D WidgetSize = WidgetPanel->GetDesiredSize();
+
+	// Get Viewport Size
+	FVector2D ViewportSize = FVector2D(GEngine->GameViewport->Viewport->GetSizeXY());
+
+	// Calculate the center position for this widget
+	FVector2D WidgetPosition = FVector2D(ViewportSize.X / 2 - WidgetSize.X / 2, ViewportSize.Y / 2 - WidgetSize.Y / 2);
+
+	return WidgetPosition;
+}

@@ -1,0 +1,14 @@
+-rootPath
+C:/Users/User_VR4/Desktop/WORK/QT/PlotUE_Data
+-cmake-output
+-output-file
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/.qt/qml_imports/appPlotUE_Data_conf.cmake
+-importPath
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/PlotUE_Data
+-importPath
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug
+-importPath
+C:/Qt/6.9.0/mingw_64/qml
+-qrcFiles
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/.qt/rcc/qmake_PlotUE_Data.qrc
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/.qt/rcc/appPlotUE_Data_raw_qml_0.qrc

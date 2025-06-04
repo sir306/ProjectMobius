@@ -1,0 +1,19 @@
+{
+  "name": "mobius-server",
+  "version": "1.0.0",
+  "description": "A simple local WebSocket server",
+  "main": "MobiusServer.js",
+  "bin": "MobiusServer.js",
+  "scripts": {
+    "start": "node MobiusServer.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "ws": "^8.18.2"
+  },
+  "pkg": {
+    "assets": [
+      "config.json"
+    ]
+  }
+}

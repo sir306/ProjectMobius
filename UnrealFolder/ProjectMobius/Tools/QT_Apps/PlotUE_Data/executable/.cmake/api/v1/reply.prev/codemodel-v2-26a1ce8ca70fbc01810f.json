@@ -1,0 +1,196 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Release-ec19c9fcae593e8280b9.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.16"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15
+					]
+				}
+			],
+			"name" : "Release",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "PlotUE_Data",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "all_aotstats::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-all_aotstats-Release-2232393ec12e0b2991c5.json",
+					"name" : "all_aotstats",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "all_qmllint::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-all_qmllint-Release-3abb3a8b71a47e0bf5ef.json",
+					"name" : "all_qmllint",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "all_qmllint_json::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-all_qmllint_json-Release-3271d9ca1f5f820cdbcb.json",
+					"name" : "all_qmllint_json",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "all_qmllint_module::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-all_qmllint_module-Release-e4aba62a704594b9f3dd.json",
+					"name" : "all_qmllint_module",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "all_qmltyperegistrations::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-all_qmltyperegistrations-Release-7e83f60456a8d3d0bd3f.json",
+					"name" : "all_qmltyperegistrations",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data-Release-6f4eb4723d1b2293846a.json",
+					"name" : "appPlotUE_Data",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_autogen::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_autogen-Release-425703dde17d197b9614.json",
+					"name" : "appPlotUE_Data_autogen",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_autogen_timestamp_deps::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_autogen_timestamp_deps-Release-c35fb638eba9de5a557e.json",
+					"name" : "appPlotUE_Data_autogen_timestamp_deps",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_copy_qml::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_copy_qml-Release-3eb20dc0aa72184774d2.json",
+					"name" : "appPlotUE_Data_copy_qml",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_copy_res::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_copy_res-Release-3771776021f5c44b2ce2.json",
+					"name" : "appPlotUE_Data_copy_res",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_qmlimportscan::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_qmlimportscan-Release-e7e3c5b6f60cbeafe003.json",
+					"name" : "appPlotUE_Data_qmlimportscan",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_qmllint::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_qmllint-Release-7c8ee5afed3ebcb05037.json",
+					"name" : "appPlotUE_Data_qmllint",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_qmllint_json::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_qmllint_json-Release-89735e0ab675bb3fda91.json",
+					"name" : "appPlotUE_Data_qmllint_json",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_qmllint_module::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_qmllint_module-Release-c6da5d0796cff2610b6d.json",
+					"name" : "appPlotUE_Data_qmllint_module",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "appPlotUE_Data_qmltyperegistration::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-appPlotUE_Data_qmltyperegistration-Release-493a2d0a5aec62366450.json",
+					"name" : "appPlotUE_Data_qmltyperegistration",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "module_appPlotUE_Data_aotstats_target::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-module_appPlotUE_Data_aotstats_target-Release-5fe38c183e6b28fdd9d5.json",
+					"name" : "module_appPlotUE_Data_aotstats_target",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release",
+		"source" : "C:/Users/User_VR4/Desktop/WORK/QT/PlotUE_Data"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 7
+	}
+}

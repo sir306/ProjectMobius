@@ -1,0 +1,32 @@
+{
+    "classes": [
+        {
+            "className": "MessageProcessor",
+            "lineNumber": 60,
+            "object": true,
+            "qualifiedClassName": "MessageProcessor",
+            "slots": [
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "msg",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 0,
+                    "name": "handleMessage",
+                    "returnType": "void"
+                }
+            ],
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "messageprocessor.h",
+    "outputRevision": 69
+}
