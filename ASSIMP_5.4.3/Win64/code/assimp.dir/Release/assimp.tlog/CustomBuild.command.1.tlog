@@ -1,0 +1,10 @@
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\ASSIMP_5.4.3\WIN64\CODE\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64 --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/code/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

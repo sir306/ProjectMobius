@@ -1,0 +1,1578 @@
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_A.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_a.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_a.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_B.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_b.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_b.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_C.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_c.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_c.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_D.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_d.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_d.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_E.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_e.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_e.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_F.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_f.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_f.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_VDS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/1_vds.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_vds.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\1_VDS.H5-VDS_DSET_CHUNK20X10X5-V.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/1_vds.h5-vds_dset_chunk20x10x5-v.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/1_vds.h5-vds_dset_chunk20x10x5-v.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_A.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/2_a.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_a.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_B.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/2_b.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_b.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_C.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/2_c.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_c.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_D.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/2_d.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_d.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_E.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/2_e.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_e.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_VDS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/2_vds.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_vds.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\2_VDS.H5-VDS_CHUNK3X6X9-V.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/2_vds.h5-vds_chunk3x6x9-v.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/2_vds.h5-vds_chunk3x6x9-v.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\3_1_VDS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/3_1_vds.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/3_1_vds.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\3_1_VDS.H5-VDS_CHUNK2X5X8-V.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/3_1_vds.h5-vds_chunk2x5x8-v.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/3_1_vds.h5-vds_chunk2x5x8-v.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\3_2_VDS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/3_2_vds.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/3_2_vds.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\4_0.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/4_0.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/4_0.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\4_1.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/4_1.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/4_1.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\4_2.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/4_2.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/4_2.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\4_VDS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/4_vds.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/4_vds.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\4_VDS.H5-VDS_COMPA-V.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/4_vds.h5-vds_compa-v.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/4_vds.h5-vds_compa-v.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\4_VDS.H5-VDS_CONTI-V.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/4_vds.h5-vds_conti-v.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/4_vds.h5-vds_conti-v.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\5_A.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/5_a.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/5_a.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\5_B.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/5_b.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/5_b.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\5_C.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/5_c.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/5_c.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\5_VDS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/vds/5_vds.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/5_vds.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\GS.H5REPACK_PAGED_NOPERSIST.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/GS.h5repack_paged_nopersist.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/GS.h5repack_paged_nopersist.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\S.H5REPACK_FSM_AGGR_PERSIST.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/S.h5repack_fsm_aggr_persist.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/S.h5repack_fsm_aggr_persist.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\SP.H5REPACK_FSM_AGGR_NOPERSIST.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/SP.h5repack_fsm_aggr_nopersist.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/SP.h5repack_fsm_aggr_nopersist.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\SP.H5REPACK_PAGED_PERSIST.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/SP.h5repack_paged_persist.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/SP.h5repack_paged_persist.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\SPT.H5REPACK_AGGR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/SPT.h5repack_aggr.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/SPT.h5repack_aggr.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\STG.H5REPACK_NONE.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/STG.h5repack_none.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/STG.h5repack_none.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\ATTRREGION.TATTRREG.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/attrregion.tattrreg.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/attrregion.tattrreg.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\BOUNDS_LATEST_LATEST.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/bounds_latest_latest.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/bounds_latest_latest.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\CRTORDER.TORDERGR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/crtorder.tordergr.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/crtorder.tordergr.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\DATAREGION.TDATAREG.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/dataregion.tdatareg.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/dataregion.tdatareg.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\DEFLATE_LIMIT.H5REPACK_LAYOUT.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/deflate_limit.h5repack_layout.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/deflate_limit.h5repack_layout.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5COPY_EXTLINKS_SRC-BASE.H5COPY_EXTLINKS_SRC.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5copy_extlinks_src-base.h5copy_extlinks_src.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5copy_extlinks_src-base.h5copy_extlinks_src.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5COPY_EXTLINKS_SRC-MERGE.H5COPY_EXTLINKS_SRC.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5copy_extlinks_src-merge.h5copy_extlinks_src.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5copy_extlinks_src-merge.h5copy_extlinks_src.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5COPY_EXTLINKS_SRC-MERGEPRUNE.H5COPY_EXTLINKS_SRC.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5copy_extlinks_src-mergeprune.h5copy_extlinks_src.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5copy_extlinks_src-mergeprune.h5copy_extlinks_src.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5COPY_EXTLINKS_SRC-PRUNE.H5COPY_EXTLINKS_SRC.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5copy_extlinks_src-prune.h5copy_extlinks_src.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5copy_extlinks_src-prune.h5copy_extlinks_src.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5COPY_EXTLINKS_SRC.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/h5copy_extlinks_src.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5copy_extlinks_src.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5COPY_EXTLINKS_TRG.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/h5copy_extlinks_trg.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5copy_extlinks_trg.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5DIFF_ATTR1.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5diff/testfiles/h5diff_attr1.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5diff_attr1.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK-HELP.TXT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack-help.txt C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack-help.txt
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK.INFO.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack.info C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack.info
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_CVE-2018-14460.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_CVE-2018-14460.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_CVE-2018-14460.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_CVE-2018-17432.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_CVE-2018-17432.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_CVE-2018-17432.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_AGGR.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_aggr.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_aggr.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_ATTR.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_attr.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_attr.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_ATTR_REFS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_attr_refs.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_attr_refs.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_DEFLATE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_deflate.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_deflate.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_EARLY.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_early.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_early.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_EXT.BIN.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_ext.bin C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_ext.bin
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_EXT.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_ext.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_ext.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_F32LE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_f32le.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_f32le.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_F32LE_EX-0.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_f32le_ex-0.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_f32le_ex-0.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_F32LE_EX.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_f32le_ex.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_f32le_ex.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_FILL.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_fill.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_fill.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_FILTERS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_filters.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_filters.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_FILTERS.H5-GZIP_VERBOSE_FILTERS.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_filters.h5-gzip_verbose_filters.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_filters.h5-gzip_verbose_filters.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_FLETCHER.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_fletcher.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_fletcher.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_FSM_AGGR_NOPERSIST.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_fsm_aggr_nopersist.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_fsm_aggr_nopersist.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_FSM_AGGR_PERSIST.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_fsm_aggr_persist.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_fsm_aggr_persist.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_HLINK.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_hlink.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_hlink.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_1D.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_1d.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_1d.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_1D_EX-0.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_1d_ex-0.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_1d_ex-0.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_1D_EX-1.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_1d_ex-1.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_1d_ex-1.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_1D_EX.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_1d_ex.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_1d_ex.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_2D.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_2d.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_2d.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_2D_EX-0.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_2d_ex-0.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_2d_ex-0.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_2D_EX.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_2d_ex.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_2d_ex.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_3D.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_3d.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_3d.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_3D_EX-0.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_3d_ex-0.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_3d_ex-0.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_INT32LE_3D_EX.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_int32le_3d_ex.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_int32le_3d_ex.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.UD.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_layout.UD.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.UD.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.UD.H5-PLUGIN_NONE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_layout.UD.h5-plugin_none.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.UD.h5-plugin_none.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_layout.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.H5-DSET2_CHUNK_20X10-ERRSTK.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_layout.h5-dset2_chunk_20x10-errstk.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.h5-dset2_chunk_20x10-errstk.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.H5-PLUGIN_TEST.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_layout.h5-plugin_test.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.h5-plugin_test.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.H5-PLUGIN_VERSION_TEST.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_layout.h5-plugin_version_test.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.h5-plugin_version_test.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.H5-PLUGIN_ZERO.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_layout.h5-plugin_zero.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.h5-plugin_zero.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/h5repack_layout.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT2.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_layout2.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout2.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUT3.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_layout3.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layout3.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_LAYOUTO.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_layouto.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_layouto.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_NAMED_DTYPES.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_named_dtypes.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_named_dtypes.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_NBIT.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_nbit.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_nbit.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_NESTED_8BIT_ENUM.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_nested_8bit_enum.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_nested_8bit_enum.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_NESTED_8BIT_ENUM_DEFLATED.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_nested_8bit_enum_deflated.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_nested_8bit_enum_deflated.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_NONE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_none.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_none.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_OBJS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_objs.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_objs.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_PAGED_NOPERSIST.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_paged_nopersist.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_paged_nopersist.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_PAGED_PERSIST.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_paged_persist.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_paged_persist.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_REFS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_refs.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_refs.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_SHUFFLE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_shuffle.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_shuffle.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_SOFFSET.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_soffset.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_soffset.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_SZIP.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_szip.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_szip.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_UINT8BE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_uint8be.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_uint8be.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_UINT8BE_EX-0.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_uint8be_ex-0.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_uint8be_ex-0.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_UINT8BE_EX-1.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_uint8be_ex-1.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_uint8be_ex-1.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_UINT8BE_EX-2.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_uint8be_ex-2.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_uint8be_ex-2.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_UINT8BE_EX-3.DAT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_uint8be_ex-3.dat C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_uint8be_ex-3.dat
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\H5REPACK_UINT8BE_EX.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/h5repack_uint8be_ex.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/h5repack_uint8be_ex.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\PLUGIN_NONE.H5REPACK_LAYOUT.UD.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/plugin_none.h5repack_layout.UD.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/plugin_none.h5repack_layout.UD.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\PLUGIN_TEST.H5REPACK_LAYOUT.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/plugin_test.h5repack_layout.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/plugin_test.h5repack_layout.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\PLUGIN_VERSION_TEST.H5REPACK_LAYOUT.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/plugin_version_test.h5repack_layout.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/plugin_version_test.h5repack_layout.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\PLUGIN_ZERO.H5REPACK_LAYOUT.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/plugin_zero.h5repack_layout.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/plugin_zero.h5repack_layout.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TATTRREG.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tattrreg.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tattrreg.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TDATAREG.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tdatareg.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tdatareg.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINK-BASE.TEXTLINK.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlink-base.textlink.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlink-base.textlink.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINK-MERGE.TEXTLINK.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlink-merge.textlink.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlink-merge.textlink.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINK-MERGEPRUNE.TEXTLINK.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlink-mergeprune.textlink.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlink-mergeprune.textlink.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINK-PRUNE.TEXTLINK.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlink-prune.textlink.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlink-prune.textlink.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINK.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/textlink.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlink.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKFAR-BASE.TEXTLINKFAR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinkfar-base.textlinkfar.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinkfar-base.textlinkfar.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKFAR-MERGE.TEXTLINKFAR.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinkfar-merge.textlinkfar.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinkfar-merge.textlinkfar.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKFAR-MERGEPRUNE.TEXTLINKFAR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinkfar-mergeprune.textlinkfar.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinkfar-mergeprune.textlinkfar.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKFAR-PRUNE.TEXTLINKFAR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinkfar-prune.textlinkfar.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinkfar-prune.textlinkfar.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKFAR.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/textlinkfar.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinkfar.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKSRC-BASE.TEXTLINKSRC.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinksrc-base.textlinksrc.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinksrc-base.textlinksrc.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKSRC-MERGE.TEXTLINKSRC.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinksrc-merge.textlinksrc.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinksrc-merge.textlinksrc.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKSRC-MERGEPRUNE.TEXTLINKSRC.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinksrc-mergeprune.textlinksrc.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinksrc-mergeprune.textlinksrc.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKSRC-PRUNE.TEXTLINKSRC.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinksrc-prune.textlinksrc.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinksrc-prune.textlinksrc.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKSRC.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/textlinksrc.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinksrc.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKTAR-BASE.TEXTLINKTAR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinktar-base.textlinktar.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinktar-base.textlinktar.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKTAR-MERGE.TEXTLINKTAR.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinktar-merge.textlinktar.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinktar-merge.textlinktar.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKTAR-MERGEPRUNE.TEXTLINKTAR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinktar-mergeprune.textlinktar.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinktar-mergeprune.textlinktar.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKTAR-PRUNE.TEXTLINKTAR.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/textlinktar-prune.textlinktar.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinktar-prune.textlinktar.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TEXTLINKTAR.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/textlinktar.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/textlinktar.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00000.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00000.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00000.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00001.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00001.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00001.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00002.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00002.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00002.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00003.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00003.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00003.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00004.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00004.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00004.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00005.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00005.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00005.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00006.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00006.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00006.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00007.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00007.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00007.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00008.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00008.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00008.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00009.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00009.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00009.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TFAMILY00010.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tfamily00010.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tfamily00010.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TORDERGR.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tordergr.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tordergr.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TSOFTLINKS-BASE.TSOFTLINKS.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/tsoftlinks-base.tsoftlinks.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tsoftlinks-base.tsoftlinks.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TSOFTLINKS-MERGE.TSOFTLINKS.H5.TST.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/tsoftlinks-merge.tsoftlinks.h5.tst C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tsoftlinks-merge.tsoftlinks.h5.tst
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TSOFTLINKS-MERGEPRUNE.TSOFTLINKS.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/tsoftlinks-mergeprune.tsoftlinks.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tsoftlinks-mergeprune.tsoftlinks.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TSOFTLINKS-PRUNE.TSOFTLINKS.H5.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/expected/tsoftlinks-prune.tsoftlinks.h5.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tsoftlinks-prune.tsoftlinks.h5.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TSOFTLINKS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tsoftlinks.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tsoftlinks.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TST_ONION_DSET_1D.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tst_onion_dset_1d.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tst_onion_dset_1d.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TST_ONION_DSET_1D.H5.ONION.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tst_onion_dset_1d.h5.onion C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tst_onion_dset_1d.h5.onion
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TST_ONION_DSET_EXT.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tst_onion_dset_ext.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tst_onion_dset_ext.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TST_ONION_DSET_EXT.H5.ONION.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tst_onion_dset_ext.h5.onion C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tst_onion_dset_ext.h5.onion
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TST_ONION_OBJS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tst_onion_objs.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tst_onion_objs.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\TST_ONION_OBJS.H5.ONION.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5dump/testfiles/tst_onion_objs.h5.onion C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/tst_onion_objs.h5.onion
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\379EF95E87E9CC0AB0780CDA2407EA3B\UBLOCK.BIN.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5repack/testfiles/ublock.bin C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/testfiles/ublock.bin
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\66F760DF4D7E7673299416F16E4BA7BC\H5REPACK_FILES.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\HDF5-1.14.4-2\HDF5-1.14.4-2\TOOLS\TEST\H5REPACK\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5repack/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

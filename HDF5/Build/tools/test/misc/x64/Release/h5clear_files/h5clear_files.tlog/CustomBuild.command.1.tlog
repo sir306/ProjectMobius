@@ -1,0 +1,408 @@
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_EQUAL_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_equal_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_equal_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_EQUAL_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_equal_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_equal_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_EQUAL.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_equal.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_equal.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_GREATER.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_greater.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_greater.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_LESS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_less.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_less.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_NOCLOSE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_noclose.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_noclose.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_USER_EQUAL.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_user_equal.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_user_equal.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_USER_GREATER.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_user_greater.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_user_greater.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_FSM_PERSIST_USER_LESS.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_fsm_persist_user_less.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_fsm_persist_user_less.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_GREATER_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_greater_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_greater_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_GREATER_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_greater_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_greater_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_LESS_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_less_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_less_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_LESS_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_less_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_less_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_LOG_V3.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_log_v3.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_log_v3.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_MDC_IMAGE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_mdc_image.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_mdc_image.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_MISSING_FILE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_missing_file.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_missing_file.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_NO_MDC_IMAGE.ERR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_no_mdc_image.err C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_no_mdc_image.err
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_NOCLOSE_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_noclose_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_noclose_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_NOCLOSE_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_noclose_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_noclose_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_OPEN_FAIL.ERR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_open_fail.err C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_open_fail.err
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_SEC2_V0.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_sec2_v0.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_sec2_v0.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_SEC2_V2.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_sec2_v2.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_sec2_v2.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_SEC2_V3.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_sec2_v3.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_sec2_v3.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_STATUS_NOCLOSE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_status_noclose.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_status_noclose.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_STATUS_NOCLOSE_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_status_noclose_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_status_noclose_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USAGE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_usage.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_usage.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USER_EQUAL_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_user_equal_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_user_equal_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USER_EQUAL_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_user_equal_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_user_equal_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USER_GREATER_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_user_greater_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_user_greater_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USER_GREATER_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_user_greater_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_user_greater_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USER_LESS_AFTER_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_user_less_after_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_user_less_after_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\H5CLEAR_USER_LESS_BEFORE_SIZE.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/expected/h5clear_user_less_before_size.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/h5clear_user_less_before_size.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\LATEST_H5CLEAR_LOG_V3.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/latest_h5clear_log_v3.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/latest_h5clear_log_v3.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\LATEST_H5CLEAR_SEC2_V3.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/latest_h5clear_sec2_v3.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/latest_h5clear_sec2_v3.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\MOD_H5CLEAR_MDC_IMAGE.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/mod_h5clear_mdc_image.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/mod_h5clear_mdc_image.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\MOD_H5CLEAR_MDC_IMAGE2.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/mod_h5clear_mdc_image.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/mod_h5clear_mdc_image2.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\ORIG_H5CLEAR_SEC2_V0.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_sec2_v0.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/orig_h5clear_sec2_v0.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\ORIG_H5CLEAR_SEC2_V2.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_sec2_v2.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/orig_h5clear_sec2_v2.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\C13B36346587B47278D9267000312AB5\ORIG_H5CLEAR_SEC2_V3.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/misc/testfiles/h5clear_sec2_v3.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/testfiles/orig_h5clear_sec2_v3.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\012276807E49C33BB89751B98747F17F\H5CLEAR_FILES.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\HDF5-1.14.4-2\HDF5-1.14.4-2\TOOLS\TEST\MISC\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/misc/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

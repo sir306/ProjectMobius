@@ -1,0 +1,96 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\testhdf5.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tarray.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tattr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tchecksum.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tconfig.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\th5_system.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tcoords.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tfile.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tgenprop.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\th5o.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\th5s.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tid.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\titerate.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tmeta.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tmisc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\trefer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\trefer_deprec.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\trefstr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tselect.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tskiplist.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tsohm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\ttime.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tunicode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tvltypes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\tvlstr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\testhdf5.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{D39AAA7E-F4AB-39EA-B57B-C7F30F54F25E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{47400975-B7A2-34EB-A044-EDD4D3542DB6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

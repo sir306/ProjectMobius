@@ -1,0 +1,158 @@
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_EXTLINKS_SRC.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/h5copy_extlinks_src.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_extlinks_src.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_EXTLINKS_TRG.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/h5copy_extlinks_trg.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_extlinks_trg.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_HELP1.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/h5copy_help1.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_help1.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_HELP2.DDL.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/h5copy_help2.ddl C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_help2.ddl
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_MISC1.ERR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/h5copy_misc1.err C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_misc1.err
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_MISC1.OUT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/h5copy_misc1.out C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_misc1.out
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_PLUGIN_FAIL_ERR.OUT.H5.TXT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/h5copy_plugin_fail_ERR.out.h5.txt C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_plugin_fail_ERR.out.h5.txt
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_PLUGIN_TEST.OUT.H5.TXT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/h5copy_plugin_test.out.h5.txt C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_plugin_test.out.h5.txt
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPY_REF.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/h5copy_ref.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copy_ref.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\H5COPYTST.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/h5copytst.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/h5copytst.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\TUDFILTER.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/tudfilter.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/tudfilter.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\TUDFILTER.H5.TXT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/tudfilter.h5.txt C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/tudfilter.h5.txt
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\TUDFILTER.H5_ERR.TXT.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/expected/tudfilter.h5_ERR.txt C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/tudfilter.h5_ERR.txt
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\D8ADE4C2A0BA65B8220618A88B35E879\TUDFILTER2.H5.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E copy_if_different C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/tools/test/h5copy/testfiles/tudfilter2.h5 C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/testfiles/tudfilter2.h5
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\BUILD\CMAKEFILES\4637EE10C267ACE4EAD0EB727BBFB491\H5COPY_FILES.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\USER_VR4\DESKTOP\WORK\PROJECTMOBIUS\PROJECTMOBIUS\HDF5\HDF5-1.14.4-2\HDF5-1.14.4-2\TOOLS\TEST\H5COPY\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/tools/test/h5copy/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

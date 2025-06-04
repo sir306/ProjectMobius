@@ -1,0 +1,296 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\help-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\help-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\help-3.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\nosuchfile.err.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\nosuchfile.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tall-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tall-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tall.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tarray1.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tarray1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tattr2.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tattr2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tattrreg.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tattrreg_be.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tattrreg_le.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tcomp-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tcompound.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdatareg.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdataregbe.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdataregle.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdset-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdset.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdset_idx.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tdset_idx.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tempty.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tempty.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlink-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlink.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-1-old.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-2-old.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-3-old.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-3.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-4.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-5.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-6-old.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-6.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-7-old.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-7.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-nodangle-1.err.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-nodangle-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc-nodangle-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinksrc.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\textlinktar.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tfloat16.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tfloat16.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tfloat16_be.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tfloat16_be.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tfloat16_be_nosupport.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tfloat16_nosupport.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgroup-1.err.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgroup-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgroup-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgroup-3.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgroup.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgroup.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgrp_comments.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgrp_comments.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgrpnullspace.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tgrpnullspace.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\thlink-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\thlink.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\thlinks-nodangle-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tloop-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tloop.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tmultifile.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tnestcomp-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tnestcomp-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tnestcomp-3.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tnestcomp-4.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tnestedcomp.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsaf.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsaf.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tslink-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tslink.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks-2.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks-3.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks-4.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks-5.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks-nodangle-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tsoftlinks.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tstr-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tstr.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tudfilter.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tudfilter.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tudlink-1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tudlink.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tvldtypes1.h5.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tvldtypes1.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tvldtypes2be.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\700bac37db63d5871ff5e8286e0f64e2\tvldtypes2le.ls.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\94a8c99fbe0e67b9ea84b07581177fe9\h5ls_files.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\tools\test\h5ls\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5ls\CMakeFiles\h5ls_files" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{DF249E32-BE3C-33F5-B523-D8087CA4B13C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

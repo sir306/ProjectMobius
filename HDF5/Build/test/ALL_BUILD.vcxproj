@@ -1,0 +1,642 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ResolveNugetPackages>false</ResolveNugetPackages>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{99AA12AC-7426-33DA-BF33-5FBDF45FD425}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>ALL_BUILD</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/test/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/test/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\H5srcdir_str.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\ShellTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_swmr.pwsh.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_vds_swmr.pwsh.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/test/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/test/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\H5srcdir_str.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\ShellTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_swmr.pwsh.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_vds_swmr.pwsh.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/test/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/test/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\H5srcdir_str.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\ShellTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_swmr.pwsh.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_vds_swmr.pwsh.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/test/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/test/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\H5srcdir_str.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\ShellTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_swmr.pwsh.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\test\test_vds_swmr.pwsh.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\ZERO_CHECK.vcxproj">
+      <Project>{13FEE089-349D-3DAC-B923-C88E9CE28C90}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\HDF5_TEST_LIB_files.vcxproj">
+      <Project>{6A98EFF6-793F-3D47-A6D3-D676DF2722C8}</Project>
+      <Name>HDF5_TEST_LIB_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\accum.vcxproj">
+      <Project>{16BA7DFC-F8F9-3CC4-ABAF-12D2A74C55E4}</Project>
+      <Name>accum</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\accum_swmr_reader.vcxproj">
+      <Project>{071F4FE7-6B35-38DA-936E-18A5DE5B2EE0}</Project>
+      <Name>accum_swmr_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\app_ref.vcxproj">
+      <Project>{206CC647-3859-3BE8-B636-F93C2D396C80}</Project>
+      <Name>app_ref</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\atomic_reader.vcxproj">
+      <Project>{BE0A6F92-EE57-3E82-938E-C37C9C6D3C4C}</Project>
+      <Name>atomic_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\atomic_writer.vcxproj">
+      <Project>{4D4C9836-DBB8-3626-950E-D44E260A1A51}</Project>
+      <Name>atomic_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\big.vcxproj">
+      <Project>{1D4E2099-3370-374D-93E2-F3B665D76FD7}</Project>
+      <Name>big</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\bittests.vcxproj">
+      <Project>{5C0CFFA3-238E-3488-A513-B9138F8425A3}</Project>
+      <Name>bittests</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\btree2.vcxproj">
+      <Project>{456D215A-FDC4-39DC-84D5-FCF71FCD9869}</Project>
+      <Name>btree2</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache.vcxproj">
+      <Project>{0C7947EE-3CEF-31A7-95F9-888CE7945236}</Project>
+      <Name>cache</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_api.vcxproj">
+      <Project>{1673463C-C326-31A5-BACE-163483710793}</Project>
+      <Name>cache_api</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_image.vcxproj">
+      <Project>{62FC5DDA-FD4A-3501-B73B-819721034B92}</Project>
+      <Name>cache_image</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_logging.vcxproj">
+      <Project>{41CE7A9A-3449-3898-893D-037268D43CE7}</Project>
+      <Name>cache_logging</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_tagging.vcxproj">
+      <Project>{9BDDFB7A-D4F9-32E3-8D7B-8360D419A512}</Project>
+      <Name>cache_tagging</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\chunk_info.vcxproj">
+      <Project>{FBFF79F9-D3F3-385D-91A7-4E2E38B59823}</Project>
+      <Name>chunk_info</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cmpd_dset.vcxproj">
+      <Project>{55587F28-2A51-3FA3-86FB-A2FC718AA08E}</Project>
+      <Name>cmpd_dset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cmpd_dtransform.vcxproj">
+      <Project>{00103B41-2213-398E-935B-030E7215363E}</Project>
+      <Name>cmpd_dtransform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cork.vcxproj">
+      <Project>{E63B468F-8449-303F-9904-4338BF905C5B}</Project>
+      <Name>cork</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cross_read.vcxproj">
+      <Project>{5357982E-9752-35F1-ABF2-EF0FFA34E6AA}</Project>
+      <Name>cross_read</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dangle.vcxproj">
+      <Project>{F058CA62-682D-34BE-8C2F-BC91E387E254}</Project>
+      <Name>dangle</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\del_many_dense_attrs.vcxproj">
+      <Project>{6B4A9CBF-C5AB-3DB5-8041-30F707D8B316}</Project>
+      <Name>del_many_dense_attrs</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\direct_chunk.vcxproj">
+      <Project>{2A5F769F-903F-31AB-89C0-98470C033ACD}</Project>
+      <Name>direct_chunk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dsets.vcxproj">
+      <Project>{B04A3A4A-C74B-3085-876C-A46D0FEE4206}</Project>
+      <Name>dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dt_arith.vcxproj">
+      <Project>{BBB8220A-713B-3554-87C5-66137C39E3CC}</Project>
+      <Name>dt_arith</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dtransform.vcxproj">
+      <Project>{A3A02943-6054-3132-8DC1-40E6118A7723}</Project>
+      <Name>dtransform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dtypes.vcxproj">
+      <Project>{74B786AE-F040-3160-9BEC-F7645EDDC857}</Project>
+      <Name>dtypes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\earray.vcxproj">
+      <Project>{5C10E22B-3BEC-3221-AFFD-466C4E652A4F}</Project>
+      <Name>earray</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\efc.vcxproj">
+      <Project>{3A44B6A3-4462-3A21-A698-8ECDCDDCE491}</Project>
+      <Name>efc</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\enc_dec_plist.vcxproj">
+      <Project>{D7EA611C-ED2A-307A-8677-3C8BA7061346}</Project>
+      <Name>enc_dec_plist</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\enc_dec_plist_cross_platform.vcxproj">
+      <Project>{B4DF5C8E-510F-3643-AA1A-E95D499626F1}</Project>
+      <Name>enc_dec_plist_cross_platform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\enum.vcxproj">
+      <Project>{D18B7B43-73E4-311F-A102-A09D4C045892}</Project>
+      <Name>enum</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\err_compat.vcxproj">
+      <Project>{F69F9A28-9FBD-31AC-BDD7-6C05A62EACD7}</Project>
+      <Name>err_compat</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\error_test.vcxproj">
+      <Project>{A012B940-4179-3A4B-B8AB-0EA864ABBD13}</Project>
+      <Name>error_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\event_set.vcxproj">
+      <Project>{AEB6AF64-A818-3623-A5C3-96956910E7E9}</Project>
+      <Name>event_set</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\evict_on_close.vcxproj">
+      <Project>{1C41BFD8-3CA9-3AAF-A27B-F0935C3A258A}</Project>
+      <Name>evict_on_close</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\extend.vcxproj">
+      <Project>{186E2151-67E7-379B-A32B-A5C6CC6CFAEB}</Project>
+      <Name>extend</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\external.vcxproj">
+      <Project>{58B57A26-5E3C-3D98-BD89-669078A4C178}</Project>
+      <Name>external</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\external_env.vcxproj">
+      <Project>{7F8252C8-7E00-3030-837B-6605476D0E3A}</Project>
+      <Name>external_env</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\farray.vcxproj">
+      <Project>{03A73723-89A7-36B2-B78B-DB7111ED03B3}</Project>
+      <Name>farray</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\fheap.vcxproj">
+      <Project>{F5914C20-883E-3A0A-A38E-BA31DEF87D7F}</Project>
+      <Name>fheap</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\file_image.vcxproj">
+      <Project>{0C7A5C8B-44C5-3EAB-AC39-5F3F8773A458}</Project>
+      <Name>file_image</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filenotclosed.vcxproj">
+      <Project>{17FF0EC3-43F9-3364-B6A4-4B90DC36D8DA}</Project>
+      <Name>filenotclosed</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\fillval.vcxproj">
+      <Project>{58EC51CF-0834-3191-B426-287B879F90CA}</Project>
+      <Name>fillval</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_fail.vcxproj">
+      <Project>{5E6C4570-3DCC-3E42-8636-8B880D36253E}</Project>
+      <Name>filter_fail</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin.vcxproj">
+      <Project>{67E3C13F-9FC8-3C89-AF46-A4B8F580169A}</Project>
+      <Name>filter_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin1_dsets.vcxproj">
+      <Project>{9E11AF32-877A-303D-B774-C57C18145E8D}</Project>
+      <Name>filter_plugin1_dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin2_dsets.vcxproj">
+      <Project>{E4FE68AE-B62D-3C8C-B226-C4D6E7350268}</Project>
+      <Name>filter_plugin2_dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin3_dsets.vcxproj">
+      <Project>{8EA2000A-19F3-3BB6-BDD8-A1D2557834BC}</Project>
+      <Name>filter_plugin3_dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin4_groups.vcxproj">
+      <Project>{6437A70A-EBB8-3734-8E9B-02F7AABB91DC}</Project>
+      <Name>filter_plugin4_groups</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\flush1.vcxproj">
+      <Project>{362CACC0-0A22-3FC6-83EE-4B2EED1C9BE3}</Project>
+      <Name>flush1</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\flush2.vcxproj">
+      <Project>{06ABB664-B2EB-3678-8BEB-2EC25DD7733C}</Project>
+      <Name>flush2</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\flushrefresh.vcxproj">
+      <Project>{0C5E0594-9E6A-3215-A044-ED6122E8E7D6}</Project>
+      <Name>flushrefresh</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\freespace.vcxproj">
+      <Project>{904BF71E-81E6-3479-B822-EDD6E7B3A43B}</Project>
+      <Name>freespace</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\getname.vcxproj">
+      <Project>{3431EACA-AA67-3EFA-8640-99CCDBC1ED45}</Project>
+      <Name>getname</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\gheap.vcxproj">
+      <Project>{5E5FFB90-CF61-3715-B014-E98DDD880D15}</Project>
+      <Name>gheap</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hdf5_test-shared.vcxproj">
+      <Project>{5D9812BA-304E-38CB-842D-077EE1630844}</Project>
+      <Name>hdf5_test-shared</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hdf5_test-static.vcxproj">
+      <Project>{317267FF-82C1-30B5-986A-E1224FB0E590}</Project>
+      <Name>hdf5_test-static</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hdfs.vcxproj">
+      <Project>{EF4229AB-2723-3751-84BC-FD65A3C921DE}</Project>
+      <Name>hdfs</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hyperslab.vcxproj">
+      <Project>{3564AD88-4D7B-3E83-8C27-92BCCBCD64E8}</Project>
+      <Name>hyperslab</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\istore.vcxproj">
+      <Project>{BDEADEBB-2D70-3B80-9B9E-9883D7A0CC47}</Project>
+      <Name>istore</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\lheap.vcxproj">
+      <Project>{B72D8FE6-3C12-3C11-910E-E6F84E042FB7}</Project>
+      <Name>lheap</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\links.vcxproj">
+      <Project>{0DD76A11-12BC-3515-8311-953DCAB744FB}</Project>
+      <Name>links</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\links_env.vcxproj">
+      <Project>{57B8098E-3818-3F95-804E-E33D320FC592}</Project>
+      <Name>links_env</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mdset.vcxproj">
+      <Project>{01A4EF46-B85B-3DDA-BB07-F18AA5084260}</Project>
+      <Name>mdset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mf.vcxproj">
+      <Project>{3331FD31-6ECF-3F49-9ABA-82851D2DADAB}</Project>
+      <Name>mf</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mirror_vfd.vcxproj">
+      <Project>{8185A0B9-9FEC-3EA0-A1A1-647B19BB3AC6}</Project>
+      <Name>mirror_vfd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mount.vcxproj">
+      <Project>{30E4DA0F-0EBF-38BB-8859-91B2F9DD8916}</Project>
+      <Name>mount</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mtime.vcxproj">
+      <Project>{C849A2DB-F600-3682-B9FA-FDDFDAC5A5D1}</Project>
+      <Name>mtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ntypes.vcxproj">
+      <Project>{FAB8379D-B578-39A2-979C-E0AF0A3FA8DD}</Project>
+      <Name>ntypes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\null_vfd_plugin.vcxproj">
+      <Project>{6326D94C-15DE-3519-BA9F-D2A42B81E73C}</Project>
+      <Name>null_vfd_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\null_vol_connector.vcxproj">
+      <Project>{750BEDB1-FE16-3E62-962D-CDE6AF7965F5}</Project>
+      <Name>null_vol_connector</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\objcopy.vcxproj">
+      <Project>{2C726015-41D3-3E18-A09F-7808D7A94AA7}</Project>
+      <Name>objcopy</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\objcopy_ref.vcxproj">
+      <Project>{207AAF48-E242-329C-AF45-D92448323716}</Project>
+      <Name>objcopy_ref</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ohdr.vcxproj">
+      <Project>{A04E5683-2444-3885-A5E2-ED8CAB850494}</Project>
+      <Name>ohdr</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\onion.vcxproj">
+      <Project>{4230782A-2BCF-336C-884A-3BDA61755FC7}</Project>
+      <Name>onion</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\page_buffer.vcxproj">
+      <Project>{769E2A90-43F5-3970-A4DE-A66137FE9366}</Project>
+      <Name>page_buffer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ros3.vcxproj">
+      <Project>{CD64D39D-A131-34EC-8734-DA4BDE0BB3E6}</Project>
+      <Name>ros3</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\s3comms.vcxproj">
+      <Project>{4895A3A5-A6CA-3E96-9F57-D84DD10313E1}</Project>
+      <Name>s3comms</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\select_io_dset.vcxproj">
+      <Project>{1CFA007D-7397-39A7-8CD6-0B29C994ED4A}</Project>
+      <Name>select_io_dset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\set_extent.vcxproj">
+      <Project>{6D97A558-9BCE-35C8-8625-5C9ADA51F2B9}</Project>
+      <Name>set_extent</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\stab.vcxproj">
+      <Project>{F58A5993-C68A-30ED-9DDC-462797B0A485}</Project>
+      <Name>stab</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr.vcxproj">
+      <Project>{B3AB3C63-88ED-3157-BBCA-FEC2B663C185}</Project>
+      <Name>swmr</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_addrem_writer.vcxproj">
+      <Project>{D027533F-A517-3944-AB5F-1015C91481AA}</Project>
+      <Name>swmr_addrem_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\utils\test\swmr_check_compat_vfd.vcxproj">
+      <Project>{63021FAB-C8F5-3153-941E-CA4D557B8D94}</Project>
+      <Name>swmr_check_compat_vfd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_generator.vcxproj">
+      <Project>{59497582-157A-332D-9460-23848FCEF92B}</Project>
+      <Name>swmr_generator</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_reader.vcxproj">
+      <Project>{B7C0B307-23DA-30D8-AA37-39B41CE85B4F}</Project>
+      <Name>swmr_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_remove_reader.vcxproj">
+      <Project>{9E278D49-4282-378A-A6DE-4F4983E46BF0}</Project>
+      <Name>swmr_remove_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_remove_writer.vcxproj">
+      <Project>{B523F838-A3BA-334E-86E6-79640F6F09B7}</Project>
+      <Name>swmr_remove_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_sparse_reader.vcxproj">
+      <Project>{9CF7EC17-0B4D-3FBB-952A-4C210F5825A4}</Project>
+      <Name>swmr_sparse_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_sparse_writer.vcxproj">
+      <Project>{8E7125A6-7428-3F62-B1B1-630826EFF211}</Project>
+      <Name>swmr_sparse_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_start_write.vcxproj">
+      <Project>{CABFEF6B-813A-390E-BDF7-30AB90330027}</Project>
+      <Name>swmr_start_write</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_writer.vcxproj">
+      <Project>{4234F769-8545-3052-9D3B-1201623AF3CB}</Project>
+      <Name>swmr_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\tcheck_version.vcxproj">
+      <Project>{C1B3780D-85F5-3643-927B-40E92E781B6F}</Project>
+      <Name>tcheck_version</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\testhdf5.vcxproj">
+      <Project>{77A317EF-06E9-3C3B-9BDC-047DA2C19164}</Project>
+      <Name>testhdf5</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\testmeta.vcxproj">
+      <Project>{5BDFCF33-F74E-3839-8BA8-086BC23B3086}</Project>
+      <Name>testmeta</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\thread_id.vcxproj">
+      <Project>{6767B615-869A-3671-B655-7DB64010CEF6}</Project>
+      <Name>thread_id</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\timer.vcxproj">
+      <Project>{5E8CC33C-8C82-3A58-A47A-226A6D400B6C}</Project>
+      <Name>timer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ttsafe.vcxproj">
+      <Project>{38B24146-74EF-38DC-972B-DC1E38BC0E76}</Project>
+      <Name>ttsafe</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\twriteorder.vcxproj">
+      <Project>{76047A8A-E5A9-30FF-96E9-BA0926606AB4}</Project>
+      <Name>twriteorder</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\unlink.vcxproj">
+      <Project>{1F73860B-AB51-31F5-8702-051FC838072E}</Project>
+      <Name>unlink</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\unregister.vcxproj">
+      <Project>{C34DAD83-1450-388B-AF2F-13A1F8811A18}</Project>
+      <Name>unregister</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_append_chunk.vcxproj">
+      <Project>{9C54E0E8-BBA8-34D4-8002-FA3511AE0A30}</Project>
+      <Name>use_append_chunk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_append_chunk_mirror.vcxproj">
+      <Project>{3B49CED4-C86E-3FE6-8378-7860EDB9C1A7}</Project>
+      <Name>use_append_chunk_mirror</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_append_mchunks.vcxproj">
+      <Project>{401447E9-AA30-3F6D-AB57-F60D93F4A897}</Project>
+      <Name>use_append_mchunks</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_disable_mdc_flushes.vcxproj">
+      <Project>{E235FC3A-D716-3864-BA79-0C53F1A4189B}</Project>
+      <Name>use_disable_mdc_flushes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds.vcxproj">
+      <Project>{066102C4-49DA-32C5-9A2E-9B08444B3187}</Project>
+      <Name>vds</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_env.vcxproj">
+      <Project>{B8A5C50A-184D-3DD2-BBDB-F95C7C20A2A9}</Project>
+      <Name>vds_env</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_swmr_gen.vcxproj">
+      <Project>{565CED05-B145-3B69-90B3-BE4796D4A274}</Project>
+      <Name>vds_swmr_gen</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_swmr_reader.vcxproj">
+      <Project>{17E6D9FD-BD24-3450-A46F-A87C88AB6BE1}</Project>
+      <Name>vds_swmr_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_swmr_writer.vcxproj">
+      <Project>{71A0945C-E432-3EB9-B327-A9C5B99A5CB4}</Project>
+      <Name>vds_swmr_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vfd.vcxproj">
+      <Project>{CE5043B4-A678-39A3-B33C-8D4F15461CFB}</Project>
+      <Name>vfd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vfd_plugin.vcxproj">
+      <Project>{70D23948-2C27-37B8-B36A-DB473B02CD1A}</Project>
+      <Name>vfd_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vol.vcxproj">
+      <Project>{FE98D6E0-C374-323C-B606-0FE4AB18C425}</Project>
+      <Name>vol</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vol_plugin.vcxproj">
+      <Project>{EDCED08D-1CD5-397F-8384-8FDD6595D713}</Project>
+      <Name>vol_plugin</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

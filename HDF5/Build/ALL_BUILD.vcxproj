@@ -1,0 +1,1296 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ResolveNugetPackages>false</ResolveNugetPackages>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{99AA12AC-7426-33DA-BF33-5FBDF45FD425}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>ALL_BUILD</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Program Files\CMake\share\cmake-3.30\Modules\BasicConfigVersion-SameMinorVersion.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakePackageConfigHelpers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPack.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPackComponent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTest.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestTargets.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestUseLaunchers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckFunctionExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckStructHasMember.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSymbolExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckTypeSize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckVariableExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-3.30\Modules\DartConfiguration.tcl.in;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindCygwin.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindMsys.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPerl.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\InstallRequiredSystemLibraries.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\TestBigEndian.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\WriteBasicConfigVersionFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Templates\CPackConfig.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeRCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeSystem.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeFilters.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeInstallation.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakePlugins.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeVOL.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\COPYING;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CTestConfig.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\UserMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\CTestCustom.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\ConfigureChecks.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\H5pubconf.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5ExampleCache.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5Macros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5PluginMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFCompilerFlags.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFLibMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\README.md.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\hdf5-config.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\libhdf5.settings.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\patch.xml.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Program Files\CMake\share\cmake-3.30\Modules\BasicConfigVersion-SameMinorVersion.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakePackageConfigHelpers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPack.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPackComponent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTest.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestTargets.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestUseLaunchers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckFunctionExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckStructHasMember.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSymbolExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckTypeSize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckVariableExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-3.30\Modules\DartConfiguration.tcl.in;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindCygwin.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindMsys.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPerl.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\InstallRequiredSystemLibraries.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\TestBigEndian.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\WriteBasicConfigVersionFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Templates\CPackConfig.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeRCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeSystem.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeFilters.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeInstallation.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakePlugins.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeVOL.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\COPYING;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CTestConfig.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\UserMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\CTestCustom.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\ConfigureChecks.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\H5pubconf.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5ExampleCache.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5Macros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5PluginMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFCompilerFlags.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFLibMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\README.md.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\hdf5-config.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\libhdf5.settings.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\patch.xml.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Program Files\CMake\share\cmake-3.30\Modules\BasicConfigVersion-SameMinorVersion.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakePackageConfigHelpers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPack.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPackComponent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTest.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestTargets.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestUseLaunchers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckFunctionExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckStructHasMember.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSymbolExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckTypeSize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckVariableExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-3.30\Modules\DartConfiguration.tcl.in;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindCygwin.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindMsys.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPerl.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\InstallRequiredSystemLibraries.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\TestBigEndian.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\WriteBasicConfigVersionFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Templates\CPackConfig.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeRCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeSystem.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeFilters.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeInstallation.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakePlugins.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeVOL.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\COPYING;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CTestConfig.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\UserMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\CTestCustom.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\ConfigureChecks.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\H5pubconf.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5ExampleCache.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5Macros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5PluginMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFCompilerFlags.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFLibMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\README.md.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\hdf5-config.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\libhdf5.settings.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\patch.xml.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/hdf5-1.14.4-2/hdf5-1.14.4-2 -BC:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build --check-stamp-file C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/HDF5/Build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Program Files\CMake\share\cmake-3.30\Modules\BasicConfigVersion-SameMinorVersion.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakePackageConfigHelpers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPack.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CPackComponent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTest.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestTargets.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CTestUseLaunchers.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckCXXSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckFunctionExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFileCXX.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckIncludeFiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckStructHasMember.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckSymbolExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckTypeSize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CheckVariableExists.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-3.30\Modules\DartConfiguration.tcl.in;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindCygwin.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindMsys.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\FindPerl.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\InstallRequiredSystemLibraries.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\Platform\WindowsPaths.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\TestBigEndian.cmake;C:\Program Files\CMake\share\cmake-3.30\Modules\WriteBasicConfigVersionFile.cmake;C:\Program Files\CMake\share\cmake-3.30\Templates\CPackConfig.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeRCCompiler.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\3.30.0\CMakeSystem.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeFilters.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeInstallation.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakePlugins.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeTests.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CMakeVOL.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\COPYING;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\CTestConfig.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\UserMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\CTestCustom.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\ConfigureChecks.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\H5pubconf.h.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5ExampleCache.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5Macros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDF5PluginMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFCompilerFlags.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFLibMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\HDFMacros.cmake;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\README.md.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\hdf5-config.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\libhdf5.settings.cmake.in;C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\hdf5-1.14.4-2\hdf5-1.14.4-2\config\cmake\patch.xml.in;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\ZERO_CHECK.vcxproj">
+      <Project>{13FEE089-349D-3DAC-B923-C88E9CE28C90}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\tools\h5watch\H5WATCH_files.vcxproj">
+      <Project>{2DACBCE8-B29C-35A6-B755-F785CAF5C1A4}</Project>
+      <Name>H5WATCH_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_alloc.vcxproj">
+      <Project>{DF11C17F-64BD-3B63-B261-3FEEC90B79B9}</Project>
+      <Name>H5_h5ex_d_alloc</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_checksum.vcxproj">
+      <Project>{D4CD4AAB-98F4-3656-A191-E42E868FB452}</Project>
+      <Name>H5_h5ex_d_checksum</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_chunk.vcxproj">
+      <Project>{7E672E2A-49FF-3C58-9336-95519C63483F}</Project>
+      <Name>H5_h5ex_d_chunk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_compact.vcxproj">
+      <Project>{30467A88-FB68-3B65-AE7B-0F833FA4F313}</Project>
+      <Name>H5_h5ex_d_compact</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_extern.vcxproj">
+      <Project>{FBEDF5F4-B360-33F5-AD88-B274AC7CF442}</Project>
+      <Name>H5_h5ex_d_extern</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_fillval.vcxproj">
+      <Project>{C3D0CBED-E531-3C4E-B60B-AEAA14ACA97B}</Project>
+      <Name>H5_h5ex_d_fillval</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_hyper.vcxproj">
+      <Project>{C2B04051-AE48-3121-94EA-477D1904832A}</Project>
+      <Name>H5_h5ex_d_hyper</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_nbit.vcxproj">
+      <Project>{7D0F656A-25D7-38AB-A049-F354B3938768}</Project>
+      <Name>H5_h5ex_d_nbit</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_rdwr.vcxproj">
+      <Project>{E58E1498-278B-3D9D-B34F-03CBAD650762}</Project>
+      <Name>H5_h5ex_d_rdwr</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_sofloat.vcxproj">
+      <Project>{9D8CE6E8-B3DE-36C7-A713-7729B8E211B3}</Project>
+      <Name>H5_h5ex_d_sofloat</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_soint.vcxproj">
+      <Project>{70DA7CCF-D6E1-37AA-BBD7-0586177DE1F9}</Project>
+      <Name>H5_h5ex_d_soint</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_transform.vcxproj">
+      <Project>{7378FC64-2917-363B-B81C-41F883FE6592}</Project>
+      <Name>H5_h5ex_d_transform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_unlimadd.vcxproj">
+      <Project>{15586D84-244A-3326-AB93-E9CAD1B8FBE5}</Project>
+      <Name>H5_h5ex_d_unlimadd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5D\H5_h5ex_d_unlimmod.vcxproj">
+      <Project>{541DC1BB-6111-3633-A746-38CC202F53E8}</Project>
+      <Name>H5_h5ex_d_unlimmod</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_compact.vcxproj">
+      <Project>{D3B321D2-76CB-3AA8-80CB-5F0B9FFFEA95}</Project>
+      <Name>H5_h5ex_g_compact</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_corder.vcxproj">
+      <Project>{CED26BDC-DB36-3F2B-B48F-B4733C552454}</Project>
+      <Name>H5_h5ex_g_corder</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_create.vcxproj">
+      <Project>{B1A18FAE-F75C-34E4-84D5-39737040062A}</Project>
+      <Name>H5_h5ex_g_create</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_intermediate.vcxproj">
+      <Project>{F2942C49-4ED8-3383-ABFD-0A4F65C357D0}</Project>
+      <Name>H5_h5ex_g_intermediate</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_iterate.vcxproj">
+      <Project>{E1A4D818-ED5F-36BB-9931-6B722E08F864}</Project>
+      <Name>H5_h5ex_g_iterate</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_phase.vcxproj">
+      <Project>{57C7D235-D3BD-3141-AD20-F810CADCE849}</Project>
+      <Name>H5_h5ex_g_phase</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_traverse.vcxproj">
+      <Project>{C691682B-A50E-3CA2-BDE2-A396F774A009}</Project>
+      <Name>H5_h5ex_g_traverse</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5G\H5_h5ex_g_visit.vcxproj">
+      <Project>{44698C15-425A-338A-9857-1013EDB996E7}</Project>
+      <Name>H5_h5ex_g_visit</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_array.vcxproj">
+      <Project>{3AF5DF69-191C-3A7D-8482-09A0F385D463}</Project>
+      <Name>H5_h5ex_t_array</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_arrayatt.vcxproj">
+      <Project>{C0439D3C-6AFC-3FBC-9C86-C4809EAB72FE}</Project>
+      <Name>H5_h5ex_t_arrayatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_bit.vcxproj">
+      <Project>{4CD57D4A-9ABE-3BC8-9C40-3D603B8A95AC}</Project>
+      <Name>H5_h5ex_t_bit</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_bitatt.vcxproj">
+      <Project>{EE8A0527-F737-3547-94D5-70A0933E7F1B}</Project>
+      <Name>H5_h5ex_t_bitatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_cmpd.vcxproj">
+      <Project>{1E2A8570-6AF5-34A5-B242-CD3B1D1699F7}</Project>
+      <Name>H5_h5ex_t_cmpd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_cmpdatt.vcxproj">
+      <Project>{0F1310A7-A2F6-32B3-B72C-AAF925E2A460}</Project>
+      <Name>H5_h5ex_t_cmpdatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_commit.vcxproj">
+      <Project>{B69EDEA1-C35A-370C-A9C0-AF14926D21AE}</Project>
+      <Name>H5_h5ex_t_commit</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_convert.vcxproj">
+      <Project>{B32186B6-15F2-3810-A4C0-D75AEC78DAA8}</Project>
+      <Name>H5_h5ex_t_convert</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_cpxcmpd.vcxproj">
+      <Project>{8688ED1B-F5B0-3B67-8CA5-A58582DD829D}</Project>
+      <Name>H5_h5ex_t_cpxcmpd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_cpxcmpdatt.vcxproj">
+      <Project>{B2E42727-F1F4-3C07-9440-A139E1BE9267}</Project>
+      <Name>H5_h5ex_t_cpxcmpdatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_enum.vcxproj">
+      <Project>{4A32C66B-E229-3490-B8F7-60E8D0B5AD9F}</Project>
+      <Name>H5_h5ex_t_enum</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_enumatt.vcxproj">
+      <Project>{454493B2-6E63-3FBC-A74F-D41357FA15ED}</Project>
+      <Name>H5_h5ex_t_enumatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_float.vcxproj">
+      <Project>{07FD2FF8-0824-3C95-B1F8-48D9E9024900}</Project>
+      <Name>H5_h5ex_t_float</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_floatatt.vcxproj">
+      <Project>{14E66768-C3B9-3828-9510-E80B7313D1B5}</Project>
+      <Name>H5_h5ex_t_floatatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_int.vcxproj">
+      <Project>{708B68D6-7D2F-398D-B78B-99D86E572C68}</Project>
+      <Name>H5_h5ex_t_int</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_intatt.vcxproj">
+      <Project>{BC3E54DF-CC56-33AA-91E8-03D04052B951}</Project>
+      <Name>H5_h5ex_t_intatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_objref.vcxproj">
+      <Project>{4BA31ED0-F707-3CCF-B84B-888485FA9ABD}</Project>
+      <Name>H5_h5ex_t_objref</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_objrefatt.vcxproj">
+      <Project>{CE96792A-B9AF-3E8A-BDC2-213E6C2F4E33}</Project>
+      <Name>H5_h5ex_t_objrefatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_opaque.vcxproj">
+      <Project>{277276A6-922A-333C-A59C-A963802B2D76}</Project>
+      <Name>H5_h5ex_t_opaque</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_opaqueatt.vcxproj">
+      <Project>{18457827-FE18-3B99-B55B-A412C029C020}</Project>
+      <Name>H5_h5ex_t_opaqueatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_regref.vcxproj">
+      <Project>{FECF22B7-AFBD-327B-978A-ECE7C9C8690E}</Project>
+      <Name>H5_h5ex_t_regref</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_regrefatt.vcxproj">
+      <Project>{614FE4BF-57C4-336A-B9D3-9571D77BAD86}</Project>
+      <Name>H5_h5ex_t_regrefatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_string.vcxproj">
+      <Project>{756D778D-E193-3733-B8AA-60E00D4714AD}</Project>
+      <Name>H5_h5ex_t_string</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_stringatt.vcxproj">
+      <Project>{6C20A97B-0342-3204-90AB-5D69B90CCD4B}</Project>
+      <Name>H5_h5ex_t_stringatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_vlen.vcxproj">
+      <Project>{3C67379D-FB56-3F07-995A-27C35377264B}</Project>
+      <Name>H5_h5ex_t_vlen</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_vlenatt.vcxproj">
+      <Project>{EEE830FE-C59F-3E14-94D1-F42B9DA19F02}</Project>
+      <Name>H5_h5ex_t_vlenatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_vlstring.vcxproj">
+      <Project>{3F6524B8-6C64-3B9D-A9E7-2EC7A428925B}</Project>
+      <Name>H5_h5ex_t_vlstring</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5T\H5_h5ex_t_vlstringatt.vcxproj">
+      <Project>{8F9AAEA6-94EC-3B58-A0E2-F69D0C62F5BF}</Project>
+      <Name>H5_h5ex_t_vlstringatt</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds.vcxproj">
+      <Project>{17F65E37-EA0A-3099-B79A-8535039103B6}</Project>
+      <Name>H5_h5ex_vds</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds-eiger.vcxproj">
+      <Project>{34D4D468-68A8-315A-A994-A8F67F0C20F4}</Project>
+      <Name>H5_h5ex_vds-eiger</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds-exc.vcxproj">
+      <Project>{E863F5A8-33BA-312C-8B3C-9A7B3DBC6872}</Project>
+      <Name>H5_h5ex_vds-exc</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds-percival.vcxproj">
+      <Project>{6D0056B8-B9F1-3FDB-A9CD-CE325A7757D1}</Project>
+      <Name>H5_h5ex_vds-percival</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds-percival-unlim.vcxproj">
+      <Project>{015CE39B-25DD-36FB-82E6-BB514390EC5E}</Project>
+      <Name>H5_h5ex_vds-percival-unlim</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds-percival-unlim-maxmin.vcxproj">
+      <Project>{810F27AB-4EAB-3E00-B6F5-BC9C2BE698C6}</Project>
+      <Name>H5_h5ex_vds-percival-unlim-maxmin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\HDF5Examples\C\H5VDS\H5_h5ex_vds-simpleIO.vcxproj">
+      <Project>{949F2C66-1792-31B3-97A7-45499115695B}</Project>
+      <Name>H5_h5ex_vds-simpleIO</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\HDF5_TEST_LIB_files.vcxproj">
+      <Project>{6A98EFF6-793F-3D47-A6D3-D676DF2722C8}</Project>
+      <Name>HDF5_TEST_LIB_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\accum.vcxproj">
+      <Project>{16BA7DFC-F8F9-3CC4-ABAF-12D2A74C55E4}</Project>
+      <Name>accum</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\accum_swmr_reader.vcxproj">
+      <Project>{071F4FE7-6B35-38DA-936E-18A5DE5B2EE0}</Project>
+      <Name>accum_swmr_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\app_ref.vcxproj">
+      <Project>{206CC647-3859-3BE8-B636-F93C2D396C80}</Project>
+      <Name>app_ref</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\atomic_reader.vcxproj">
+      <Project>{BE0A6F92-EE57-3E82-938E-C37C9C6D3C4C}</Project>
+      <Name>atomic_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\atomic_writer.vcxproj">
+      <Project>{4D4C9836-DBB8-3626-950E-D44E260A1A51}</Project>
+      <Name>atomic_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\big.vcxproj">
+      <Project>{1D4E2099-3370-374D-93E2-F3B665D76FD7}</Project>
+      <Name>big</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\bittests.vcxproj">
+      <Project>{5C0CFFA3-238E-3488-A513-B9138F8425A3}</Project>
+      <Name>bittests</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\btree2.vcxproj">
+      <Project>{456D215A-FDC4-39DC-84D5-FCF71FCD9869}</Project>
+      <Name>btree2</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache.vcxproj">
+      <Project>{0C7947EE-3CEF-31A7-95F9-888CE7945236}</Project>
+      <Name>cache</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_api.vcxproj">
+      <Project>{1673463C-C326-31A5-BACE-163483710793}</Project>
+      <Name>cache_api</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_image.vcxproj">
+      <Project>{62FC5DDA-FD4A-3501-B73B-819721034B92}</Project>
+      <Name>cache_image</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_logging.vcxproj">
+      <Project>{41CE7A9A-3449-3898-893D-037268D43CE7}</Project>
+      <Name>cache_logging</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cache_tagging.vcxproj">
+      <Project>{9BDDFB7A-D4F9-32E3-8D7B-8360D419A512}</Project>
+      <Name>cache_tagging</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\chunk.vcxproj">
+      <Project>{D1E51334-B8CC-38AF-A922-1FEE7161D718}</Project>
+      <Name>chunk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\chunk_cache.vcxproj">
+      <Project>{FEF43372-2847-3F8F-BA8D-EF38ED243C50}</Project>
+      <Name>chunk_cache</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\chunk_info.vcxproj">
+      <Project>{FBFF79F9-D3F3-385D-91A7-4E2E38B59823}</Project>
+      <Name>chunk_info</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\misc\clear_open_chk.vcxproj">
+      <Project>{CBB9DEE4-F49D-31FC-BF0B-543A1DDAEEA6}</Project>
+      <Name>clear_open_chk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cmpd_dset.vcxproj">
+      <Project>{55587F28-2A51-3FA3-86FB-A2FC718AA08E}</Project>
+      <Name>cmpd_dset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cmpd_dtransform.vcxproj">
+      <Project>{00103B41-2213-398E-935B-030E7215363E}</Project>
+      <Name>cmpd_dtransform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cork.vcxproj">
+      <Project>{E63B468F-8449-303F-9904-4338BF905C5B}</Project>
+      <Name>cork</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\cross_read.vcxproj">
+      <Project>{5357982E-9752-35F1-ABF2-EF0FFA34E6AA}</Project>
+      <Name>cross_read</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dangle.vcxproj">
+      <Project>{F058CA62-682D-34BE-8C2F-BC91E387E254}</Project>
+      <Name>dangle</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\del_many_dense_attrs.vcxproj">
+      <Project>{6B4A9CBF-C5AB-3DB5-8041-30F707D8B316}</Project>
+      <Name>del_many_dense_attrs</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\direct_chunk.vcxproj">
+      <Project>{2A5F769F-903F-31AB-89C0-98470C033ACD}</Project>
+      <Name>direct_chunk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dsets.vcxproj">
+      <Project>{B04A3A4A-C74B-3085-876C-A46D0FEE4206}</Project>
+      <Name>dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dt_arith.vcxproj">
+      <Project>{BBB8220A-713B-3554-87C5-66137C39E3CC}</Project>
+      <Name>dt_arith</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dtransform.vcxproj">
+      <Project>{A3A02943-6054-3132-8DC1-40E6118A7723}</Project>
+      <Name>dtransform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\dtypes.vcxproj">
+      <Project>{74B786AE-F040-3160-9BEC-F7645EDDC857}</Project>
+      <Name>dtypes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5repack\dynlibadd.vcxproj">
+      <Project>{F2DA6548-B85E-372C-AF0D-F0104B740B18}</Project>
+      <Name>dynlibadd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5copy\dynlibcopy.vcxproj">
+      <Project>{435E4ABC-F551-36E2-810F-759E61B9C00D}</Project>
+      <Name>dynlibcopy</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5diff\dynlibdiff.vcxproj">
+      <Project>{E39C509D-79B2-3BBF-98B5-92401773C157}</Project>
+      <Name>dynlibdiff</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5dump\dynlibdump.vcxproj">
+      <Project>{777E3702-646C-3EF8-8EA4-60F640E34DB1}</Project>
+      <Name>dynlibdump</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5ls\dynlibls.vcxproj">
+      <Project>{E703AF2D-C6ED-3CCC-98DC-B4D17229C813}</Project>
+      <Name>dynlibls</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5repack\dynlibvers.vcxproj">
+      <Project>{804BB29A-6CFC-3F7A-9E37-44C7E1F33344}</Project>
+      <Name>dynlibvers</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\earray.vcxproj">
+      <Project>{5C10E22B-3BEC-3221-AFFD-466C4E652A4F}</Project>
+      <Name>earray</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\efc.vcxproj">
+      <Project>{3A44B6A3-4462-3A21-A698-8ECDCDDCE491}</Project>
+      <Name>efc</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\enc_dec_plist.vcxproj">
+      <Project>{D7EA611C-ED2A-307A-8677-3C8BA7061346}</Project>
+      <Name>enc_dec_plist</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\enc_dec_plist_cross_platform.vcxproj">
+      <Project>{B4DF5C8E-510F-3643-AA1A-E95D499626F1}</Project>
+      <Name>enc_dec_plist_cross_platform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\enum.vcxproj">
+      <Project>{D18B7B43-73E4-311F-A102-A09D4C045892}</Project>
+      <Name>enum</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\err_compat.vcxproj">
+      <Project>{F69F9A28-9FBD-31AC-BDD7-6C05A62EACD7}</Project>
+      <Name>err_compat</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\error_test.vcxproj">
+      <Project>{A012B940-4179-3A4B-B8AB-0EA864ABBD13}</Project>
+      <Name>error_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\event_set.vcxproj">
+      <Project>{AEB6AF64-A818-3623-A5C3-96956910E7E9}</Project>
+      <Name>event_set</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\evict_on_close.vcxproj">
+      <Project>{1C41BFD8-3CA9-3AAF-A27B-F0935C3A258A}</Project>
+      <Name>evict_on_close</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\extend.vcxproj">
+      <Project>{186E2151-67E7-379B-A32B-A5C6CC6CFAEB}</Project>
+      <Name>extend</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\tools\h5watch\extend_dset.vcxproj">
+      <Project>{9FB4F119-7498-3C25-B701-EF12E37EBDE1}</Project>
+      <Name>extend_dset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\external.vcxproj">
+      <Project>{58B57A26-5E3C-3D98-BD89-669078A4C178}</Project>
+      <Name>external</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\external_env.vcxproj">
+      <Project>{7F8252C8-7E00-3030-837B-6605476D0E3A}</Project>
+      <Name>external_env</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\farray.vcxproj">
+      <Project>{03A73723-89A7-36B2-B78B-DB7111ED03B3}</Project>
+      <Name>farray</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\fheap.vcxproj">
+      <Project>{F5914C20-883E-3A0A-A38E-BA31DEF87D7F}</Project>
+      <Name>fheap</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\file_image.vcxproj">
+      <Project>{0C7A5C8B-44C5-3EAB-AC39-5F3F8773A458}</Project>
+      <Name>file_image</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filenotclosed.vcxproj">
+      <Project>{17FF0EC3-43F9-3364-B6A4-4B90DC36D8DA}</Project>
+      <Name>filenotclosed</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\fillval.vcxproj">
+      <Project>{58EC51CF-0834-3191-B426-287B879F90CA}</Project>
+      <Name>fillval</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_fail.vcxproj">
+      <Project>{5E6C4570-3DCC-3E42-8636-8B880D36253E}</Project>
+      <Name>filter_fail</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin.vcxproj">
+      <Project>{67E3C13F-9FC8-3C89-AF46-A4B8F580169A}</Project>
+      <Name>filter_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin1_dsets.vcxproj">
+      <Project>{9E11AF32-877A-303D-B774-C57C18145E8D}</Project>
+      <Name>filter_plugin1_dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin2_dsets.vcxproj">
+      <Project>{E4FE68AE-B62D-3C8C-B226-C4D6E7350268}</Project>
+      <Name>filter_plugin2_dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin3_dsets.vcxproj">
+      <Project>{8EA2000A-19F3-3BB6-BDD8-A1D2557834BC}</Project>
+      <Name>filter_plugin3_dsets</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\filter_plugin4_groups.vcxproj">
+      <Project>{6437A70A-EBB8-3734-8E9B-02F7AABB91DC}</Project>
+      <Name>filter_plugin4_groups</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\flush1.vcxproj">
+      <Project>{362CACC0-0A22-3FC6-83EE-4B2EED1C9BE3}</Project>
+      <Name>flush1</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\flush2.vcxproj">
+      <Project>{06ABB664-B2EB-3678-8BEB-2EC25DD7733C}</Project>
+      <Name>flush2</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\flushrefresh.vcxproj">
+      <Project>{0C5E0594-9E6A-3215-A044-ED6122E8E7D6}</Project>
+      <Name>flushrefresh</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\freespace.vcxproj">
+      <Project>{904BF71E-81E6-3479-B822-EDD6E7B3A43B}</Project>
+      <Name>freespace</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\getname.vcxproj">
+      <Project>{3431EACA-AA67-3EFA-8640-99CCDBC1ED45}</Project>
+      <Name>getname</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5jam\getub.vcxproj">
+      <Project>{A097C9A1-754C-37BB-B520-8C8B7BB55956}</Project>
+      <Name>getub</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\gheap.vcxproj">
+      <Project>{5E5FFB90-CF61-3715-B014-E98DDD880D15}</Project>
+      <Name>gheap</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\misc\h5clear.vcxproj">
+      <Project>{5B0A4C76-4116-367E-9710-61D6F6D28FDC}</Project>
+      <Name>h5clear</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\misc\h5clear_files.vcxproj">
+      <Project>{476736B9-2D4D-3E91-97E9-3BDC447D3A81}</Project>
+      <Name>h5clear_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5copy\h5copy.vcxproj">
+      <Project>{3A98C3C5-948E-3D8A-B2AC-49BE2E41CDA9}</Project>
+      <Name>h5copy</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5copy\h5copy_files.vcxproj">
+      <Project>{7ECCFCAD-A6BF-3EE6-855C-13BE9EAEB4E6}</Project>
+      <Name>h5copy_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\misc\h5debug.vcxproj">
+      <Project>{957B6611-443B-3E8C-A5C0-BB629E34DDAB}</Project>
+      <Name>h5debug</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\misc\h5delete.vcxproj">
+      <Project>{11513AA9-0930-3E9D-BAC1-62852024E203}</Project>
+      <Name>h5delete</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5diff\h5diff.vcxproj">
+      <Project>{04E75F5D-56C7-3274-800D-FC71598BC033}</Project>
+      <Name>h5diff</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5diff\h5diff_files.vcxproj">
+      <Project>{43881677-0455-3D9E-9AF1-42B9AA49D92A}</Project>
+      <Name>h5diff_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5dump\h5dump.vcxproj">
+      <Project>{FD9E5828-65FF-31FB-8366-B902FC2B5A6E}</Project>
+      <Name>h5dump</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5dump\h5dump_pbits_files.vcxproj">
+      <Project>{66137B32-B7C8-3745-8BF8-0A9980D6CAE6}</Project>
+      <Name>h5dump_pbits_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5dump\h5dump_std_files.vcxproj">
+      <Project>{F2A2C8E5-ADBA-3D63-AF33-6C1025FE59D2}</Project>
+      <Name>h5dump_std_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5dump\h5dump_vds_files.vcxproj">
+      <Project>{4C3264D8-E73D-3302-8F1A-D313D3D245F8}</Project>
+      <Name>h5dump_vds_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5dump\h5dump_xml_files.vcxproj">
+      <Project>{66BDDC56-0A17-354E-9265-7DA261DF517B}</Project>
+      <Name>h5dump_xml_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5format_convert\h5fc-files.vcxproj">
+      <Project>{47357131-9AF0-32FA-9973-EA0F6A164513}</Project>
+      <Name>h5fc-files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5format_convert\h5fc_chk_idx.vcxproj">
+      <Project>{07644660-46A6-3049-9D8D-C7345E9F6E7F}</Project>
+      <Name>h5fc_chk_idx</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5format_convert\h5fc_files.vcxproj">
+      <Project>{D7AE3725-38DD-359B-802F-A315976D1E85}</Project>
+      <Name>h5fc_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5format_convert\h5format_convert.vcxproj">
+      <Project>{85FF187F-CD2A-3D2D-B02B-B38ECC7A1688}</Project>
+      <Name>h5format_convert</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5import\h5import.vcxproj">
+      <Project>{4E153DE7-BEC0-35CF-89B5-1A8CCD7E6181}</Project>
+      <Name>h5import</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5import\h5import_files.vcxproj">
+      <Project>{436D1665-0146-327A-BCBA-A6339F6FF09F}</Project>
+      <Name>h5import_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5import\h5importtest.vcxproj">
+      <Project>{19B6D6E9-9F15-38E2-AAD7-4928CFA2E354}</Project>
+      <Name>h5importtest</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5jam\h5jam.vcxproj">
+      <Project>{E44801E6-EB87-3249-8F7E-55CB7027A772}</Project>
+      <Name>h5jam</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5jam\h5jam_files.vcxproj">
+      <Project>{785AAC55-E827-33D0-B881-D19C228C1A5F}</Project>
+      <Name>h5jam_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5ls\h5ls.vcxproj">
+      <Project>{1AD7DC58-A62C-33C4-95A9-76E6254F762D}</Project>
+      <Name>h5ls</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5ls\h5ls_files.vcxproj">
+      <Project>{5C963ACF-3431-30BD-A41C-A5D1F72EAA89}</Project>
+      <Name>h5ls_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5ls\h5ls_vds_files.vcxproj">
+      <Project>{CC46AFD8-EDDA-39A9-B7DA-4368DC4436DA}</Project>
+      <Name>h5ls_vds_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\misc\h5mkgrp.vcxproj">
+      <Project>{9CF928EE-1E21-3B11-9C3B-A1622AE7ECD1}</Project>
+      <Name>h5mkgrp</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\misc\h5mkgrp_files.vcxproj">
+      <Project>{F9EF7B76-C78B-36DF-A3C2-612C15846629}</Project>
+      <Name>h5mkgrp_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5perf\h5perf_serial.vcxproj">
+      <Project>{DAC50649-58C8-3FEC-864D-E9AA7DE88BB0}</Project>
+      <Name>h5perf_serial</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5repack\h5repack.vcxproj">
+      <Project>{73565CC3-CAE2-33DE-8C78-6625B340B8E4}</Project>
+      <Name>h5repack</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5repack\h5repack_files.vcxproj">
+      <Project>{7280E48C-9147-3930-8685-A5DACB47B483}</Project>
+      <Name>h5repack_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5repack\h5repacktest.vcxproj">
+      <Project>{712BA318-5BDB-385C-B152-5A58B2474CA7}</Project>
+      <Name>h5repacktest</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\misc\h5repart.vcxproj">
+      <Project>{54A87CE0-76CB-3B27-94C0-2286854102E9}</Project>
+      <Name>h5repart</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\misc\h5repart_files.vcxproj">
+      <Project>{991BA057-8EB2-3F33-99C3-B75C9A949663}</Project>
+      <Name>h5repart_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\misc\h5repart_test.vcxproj">
+      <Project>{38116F13-9303-31D2-9F2F-5EC2D5A479EB}</Project>
+      <Name>h5repart_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5stat\h5stat.vcxproj">
+      <Project>{4E9DC9EF-747B-35E2-9774-2D91C0D8DCD9}</Project>
+      <Name>h5stat</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5stat\h5stat_files.vcxproj">
+      <Project>{43F53AE8-DC6A-38AE-A9BE-CA3F8B904AA1}</Project>
+      <Name>h5stat_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\src\h5jam\h5unjam.vcxproj">
+      <Project>{58F9E8E4-CBC1-3997-AC90-6C050D7650BA}</Project>
+      <Name>h5unjam</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\tools\h5watch\h5watch.vcxproj">
+      <Project>{B6847310-F6BE-35F3-895C-840415007CD7}</Project>
+      <Name>h5watch</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\tools\h5watch\h5watchgentest.vcxproj">
+      <Project>{E5276772-3790-3002-BCFD-F209C4277703}</Project>
+      <Name>h5watchgentest</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\src\hdf5-shared.vcxproj">
+      <Project>{79BD25BB-8725-367D-BA3A-8F9EA5CA83C9}</Project>
+      <Name>hdf5-shared</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\src\hdf5-static.vcxproj">
+      <Project>{C2345AA0-0CCA-327D-A85D-473A521B574A}</Project>
+      <Name>hdf5-static</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\src\hdf5_hl-shared.vcxproj">
+      <Project>{EF8147C3-1B31-321F-86DE-8166331BB3F0}</Project>
+      <Name>hdf5_hl-shared</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\src\hdf5_hl-static.vcxproj">
+      <Project>{B9900801-BC1B-31B0-8306-09B51C9D099A}</Project>
+      <Name>hdf5_hl-static</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hdf5_test-shared.vcxproj">
+      <Project>{5D9812BA-304E-38CB-842D-077EE1630844}</Project>
+      <Name>hdf5_test-shared</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hdf5_test-static.vcxproj">
+      <Project>{317267FF-82C1-30B5-986A-E1224FB0E590}</Project>
+      <Name>hdf5_test-static</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\lib\hdf5_tools-shared.vcxproj">
+      <Project>{2A0D2B6A-BCB9-3F20-9009-7B827E65CA99}</Project>
+      <Name>hdf5_tools-shared</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\lib\hdf5_tools-static.vcxproj">
+      <Project>{BFBDDB0B-2A6E-3610-AF77-1018398175F4}</Project>
+      <Name>hdf5_tools-static</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hdfs.vcxproj">
+      <Project>{EF4229AB-2723-3751-84BC-FD65A3C921DE}</Project>
+      <Name>hdfs</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_ds1.vcxproj">
+      <Project>{7D0D7F6F-3C7F-3994-8251-0C63C16C7943}</Project>
+      <Name>hl_ex_ex_ds1</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_ds1_files.vcxproj">
+      <Project>{7567DF1D-426C-3A1F-BB63-690DD158218A}</Project>
+      <Name>hl_ex_ex_ds1_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_image1.vcxproj">
+      <Project>{F60D0796-DFF1-3815-846C-562EA15CD293}</Project>
+      <Name>hl_ex_ex_image1</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_image2.vcxproj">
+      <Project>{F21BA49C-9D9A-364B-87D1-E187ECE91191}</Project>
+      <Name>hl_ex_ex_image2</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_lite1.vcxproj">
+      <Project>{9AE4ABA6-10D4-368F-BA31-D15247B8E661}</Project>
+      <Name>hl_ex_ex_lite1</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_lite2.vcxproj">
+      <Project>{22C114C2-038B-3259-95DB-FFB1BDA39339}</Project>
+      <Name>hl_ex_ex_lite2</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_lite3.vcxproj">
+      <Project>{1D1751F9-2AFB-348F-BC75-A2DF87121F12}</Project>
+      <Name>hl_ex_ex_lite3</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_01.vcxproj">
+      <Project>{7EFF65BF-785E-3CAA-84B5-5CDFF19C6ABC}</Project>
+      <Name>hl_ex_ex_table_01</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_02.vcxproj">
+      <Project>{0FE097FE-1206-31C8-937B-2A7EBCAE289D}</Project>
+      <Name>hl_ex_ex_table_02</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_03.vcxproj">
+      <Project>{1B5A85CC-F065-3146-A83F-964BF0990F8A}</Project>
+      <Name>hl_ex_ex_table_03</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_04.vcxproj">
+      <Project>{EFE2BC48-3BE5-3D24-ADC8-5E20D7823AC9}</Project>
+      <Name>hl_ex_ex_table_04</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_05.vcxproj">
+      <Project>{ECF51375-4274-3139-B858-A4BAC2356F61}</Project>
+      <Name>hl_ex_ex_table_05</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_06.vcxproj">
+      <Project>{AFE1A3D8-1BE2-33E9-AB2D-24049DF4573F}</Project>
+      <Name>hl_ex_ex_table_06</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_07.vcxproj">
+      <Project>{ED578BF4-A21B-30BA-A8F1-D3B56BA2B692}</Project>
+      <Name>hl_ex_ex_table_07</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_08.vcxproj">
+      <Project>{E11C6F15-C628-3454-B552-94369DB1CAE7}</Project>
+      <Name>hl_ex_ex_table_08</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_09.vcxproj">
+      <Project>{975A214F-E44F-38A1-9723-F54AA320A1B6}</Project>
+      <Name>hl_ex_ex_table_09</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_10.vcxproj">
+      <Project>{E41BE3C0-7EC5-3BC6-BA2F-9F91B127CD03}</Project>
+      <Name>hl_ex_ex_table_10</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_11.vcxproj">
+      <Project>{593E692B-C121-3AC1-B19E-F0382C3CFB01}</Project>
+      <Name>hl_ex_ex_table_11</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ex_table_12.vcxproj">
+      <Project>{D2775BD8-DA7D-38A5-8BAE-075EACD63BE9}</Project>
+      <Name>hl_ex_ex_table_12</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\examples\hl_ex_ptExampleFL.vcxproj">
+      <Project>{3CD769B3-15D9-37A0-952A-E211244DFD6A}</Project>
+      <Name>hl_ex_ptExampleFL</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_ds.vcxproj">
+      <Project>{BAC2DC3D-738B-3F2B-8CFF-EB7A2094C974}</Project>
+      <Name>hl_test_ds</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_dset_append.vcxproj">
+      <Project>{7B899E63-AC27-3A5A-A303-5BBE54804329}</Project>
+      <Name>hl_test_dset_append</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_file_image.vcxproj">
+      <Project>{1A7161E4-D83C-33B3-B9A0-05319BD5BBC6}</Project>
+      <Name>hl_test_file_image</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_files.vcxproj">
+      <Project>{BF772AB6-FE85-30CC-ABF0-984BA66ADBA4}</Project>
+      <Name>hl_test_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_h5do_compat.vcxproj">
+      <Project>{456F5EAD-DEC3-3E9F-A4A6-C374C7DCBBE8}</Project>
+      <Name>hl_test_h5do_compat</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_image.vcxproj">
+      <Project>{6657490A-7823-3D05-92EA-C3A9088B5894}</Project>
+      <Name>hl_test_image</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_ld.vcxproj">
+      <Project>{F693E15F-F9E0-30A9-AA99-681A60BDF757}</Project>
+      <Name>hl_test_ld</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_lite.vcxproj">
+      <Project>{0B009F10-557B-34F7-9465-106834BF5EFC}</Project>
+      <Name>hl_test_lite</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_packet.vcxproj">
+      <Project>{40DFD5CB-5DD4-39D8-A6A3-13545F51E056}</Project>
+      <Name>hl_test_packet</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\hl\test\hl_test_table.vcxproj">
+      <Project>{08486122-121D-36E4-9DAB-04F58B540F49}</Project>
+      <Name>hl_test_table</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\hyperslab.vcxproj">
+      <Project>{3564AD88-4D7B-3E83-8C27-92BCCBCD64E8}</Project>
+      <Name>hyperslab</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\iopipe.vcxproj">
+      <Project>{46DC5C08-77DA-3057-A08E-85A67F0A62A4}</Project>
+      <Name>iopipe</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\istore.vcxproj">
+      <Project>{BDEADEBB-2D70-3B80-9B9E-9883D7A0CC47}</Project>
+      <Name>istore</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\lheap.vcxproj">
+      <Project>{B72D8FE6-3C12-3C11-910E-E6F84E042FB7}</Project>
+      <Name>lheap</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\links.vcxproj">
+      <Project>{0DD76A11-12BC-3515-8311-953DCAB744FB}</Project>
+      <Name>links</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\links_env.vcxproj">
+      <Project>{57B8098E-3818-3F95-804E-E33D320FC592}</Project>
+      <Name>links_env</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mdset.vcxproj">
+      <Project>{01A4EF46-B85B-3DDA-BB07-F18AA5084260}</Project>
+      <Name>mdset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mf.vcxproj">
+      <Project>{3331FD31-6ECF-3F49-9ABA-82851D2DADAB}</Project>
+      <Name>mf</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\utils\mirror_vfd\mirror_server.vcxproj">
+      <Project>{3F045ECF-0102-33BD-A095-D537A2647763}</Project>
+      <Name>mirror_server</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\utils\mirror_vfd\mirror_server_stop.vcxproj">
+      <Project>{50A06CEB-B130-310B-8D93-9B477F2151F9}</Project>
+      <Name>mirror_server_stop</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mirror_vfd.vcxproj">
+      <Project>{8185A0B9-9FEC-3EA0-A1A1-647B19BB3AC6}</Project>
+      <Name>mirror_vfd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mount.vcxproj">
+      <Project>{30E4DA0F-0EBF-38BB-8859-91B2F9DD8916}</Project>
+      <Name>mount</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\mtime.vcxproj">
+      <Project>{C849A2DB-F600-3682-B9FA-FDDFDAC5A5D1}</Project>
+      <Name>mtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ntypes.vcxproj">
+      <Project>{FAB8379D-B578-39A2-979C-E0AF0A3FA8DD}</Project>
+      <Name>ntypes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\null_vfd_plugin.vcxproj">
+      <Project>{6326D94C-15DE-3519-BA9F-D2A42B81E73C}</Project>
+      <Name>null_vfd_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\null_vol_connector.vcxproj">
+      <Project>{750BEDB1-FE16-3E62-962D-CDE6AF7965F5}</Project>
+      <Name>null_vol_connector</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\objcopy.vcxproj">
+      <Project>{2C726015-41D3-3E18-A09F-7808D7A94AA7}</Project>
+      <Name>objcopy</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\objcopy_ref.vcxproj">
+      <Project>{207AAF48-E242-329C-AF45-D92448323716}</Project>
+      <Name>objcopy_ref</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ohdr.vcxproj">
+      <Project>{A04E5683-2444-3885-A5E2-ED8CAB850494}</Project>
+      <Name>ohdr</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\onion.vcxproj">
+      <Project>{4230782A-2BCF-336C-884A-3BDA61755FC7}</Project>
+      <Name>onion</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\overhead.vcxproj">
+      <Project>{288739F9-9559-3FF4-90AA-EDA7AAAB4903}</Project>
+      <Name>overhead</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\page_buffer.vcxproj">
+      <Project>{769E2A90-43F5-3970-A4DE-A66137FE9366}</Project>
+      <Name>page_buffer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\perf_meta.vcxproj">
+      <Project>{EC588345-0DAA-395D-B460-2F3973EB5726}</Project>
+      <Name>perf_meta</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ros3.vcxproj">
+      <Project>{CD64D39D-A131-34EC-8734-DA4BDE0BB3E6}</Project>
+      <Name>ros3</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\s3comms.vcxproj">
+      <Project>{4895A3A5-A6CA-3E96-9F57-D84DD10313E1}</Project>
+      <Name>s3comms</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\select_io_dset.vcxproj">
+      <Project>{1CFA007D-7397-39A7-8CD6-0B29C994ED4A}</Project>
+      <Name>select_io_dset</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\set_extent.vcxproj">
+      <Project>{6D97A558-9BCE-35C8-8625-5C9ADA51F2B9}</Project>
+      <Name>set_extent</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\stab.vcxproj">
+      <Project>{F58A5993-C68A-30ED-9DDC-462797B0A485}</Project>
+      <Name>stab</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr.vcxproj">
+      <Project>{B3AB3C63-88ED-3157-BBCA-FEC2B663C185}</Project>
+      <Name>swmr</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_addrem_writer.vcxproj">
+      <Project>{D027533F-A517-3944-AB5F-1015C91481AA}</Project>
+      <Name>swmr_addrem_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\utils\test\swmr_check_compat_vfd.vcxproj">
+      <Project>{63021FAB-C8F5-3153-941E-CA4D557B8D94}</Project>
+      <Name>swmr_check_compat_vfd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_generator.vcxproj">
+      <Project>{59497582-157A-332D-9460-23848FCEF92B}</Project>
+      <Name>swmr_generator</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_reader.vcxproj">
+      <Project>{B7C0B307-23DA-30D8-AA37-39B41CE85B4F}</Project>
+      <Name>swmr_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_remove_reader.vcxproj">
+      <Project>{9E278D49-4282-378A-A6DE-4F4983E46BF0}</Project>
+      <Name>swmr_remove_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_remove_writer.vcxproj">
+      <Project>{B523F838-A3BA-334E-86E6-79640F6F09B7}</Project>
+      <Name>swmr_remove_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_sparse_reader.vcxproj">
+      <Project>{9CF7EC17-0B4D-3FBB-952A-4C210F5825A4}</Project>
+      <Name>swmr_sparse_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_sparse_writer.vcxproj">
+      <Project>{8E7125A6-7428-3F62-B1B1-630826EFF211}</Project>
+      <Name>swmr_sparse_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_start_write.vcxproj">
+      <Project>{CABFEF6B-813A-390E-BDF7-30AB90330027}</Project>
+      <Name>swmr_start_write</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\swmr_writer.vcxproj">
+      <Project>{4234F769-8545-3052-9D3B-1201623AF3CB}</Project>
+      <Name>swmr_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\tcheck_version.vcxproj">
+      <Project>{C1B3780D-85F5-3643-927B-40E92E781B6F}</Project>
+      <Name>tcheck_version</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5jam\tellub.vcxproj">
+      <Project>{A1EA7935-C36F-3E47-9C86-FC7E5AECEDF3}</Project>
+      <Name>tellub</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\h5repack\testh5repack_detect_szip.vcxproj">
+      <Project>{2B2CB448-94B6-35A3-89EC-BE36F9225302}</Project>
+      <Name>testh5repack_detect_szip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\testhdf5.vcxproj">
+      <Project>{77A317EF-06E9-3C3B-9BDC-047DA2C19164}</Project>
+      <Name>testhdf5</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\testmeta.vcxproj">
+      <Project>{5BDFCF33-F74E-3839-8BA8-086BC23B3086}</Project>
+      <Name>testmeta</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\thread_id.vcxproj">
+      <Project>{6767B615-869A-3671-B655-7DB64010CEF6}</Project>
+      <Name>thread_id</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\timer.vcxproj">
+      <Project>{5E8CC33C-8C82-3A58-A47A-226A6D400B6C}</Project>
+      <Name>timer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\ttsafe.vcxproj">
+      <Project>{38B24146-74EF-38DC-972B-DC1E38BC0E76}</Project>
+      <Name>ttsafe</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\twriteorder.vcxproj">
+      <Project>{76047A8A-E5A9-30FF-96E9-BA0926606AB4}</Project>
+      <Name>twriteorder</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\unlink.vcxproj">
+      <Project>{1F73860B-AB51-31F5-8702-051FC838072E}</Project>
+      <Name>unlink</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\unregister.vcxproj">
+      <Project>{C34DAD83-1450-388B-AF2F-13A1F8811A18}</Project>
+      <Name>unregister</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_append_chunk.vcxproj">
+      <Project>{9C54E0E8-BBA8-34D4-8002-FA3511AE0A30}</Project>
+      <Name>use_append_chunk</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_append_chunk_mirror.vcxproj">
+      <Project>{3B49CED4-C86E-3FE6-8378-7860EDB9C1A7}</Project>
+      <Name>use_append_chunk_mirror</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_append_mchunks.vcxproj">
+      <Project>{401447E9-AA30-3F6D-AB57-F60D93F4A897}</Project>
+      <Name>use_append_mchunks</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\use_disable_mdc_flushes.vcxproj">
+      <Project>{E235FC3A-D716-3864-BA79-0C53F1A4189B}</Project>
+      <Name>use_disable_mdc_flushes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds.vcxproj">
+      <Project>{066102C4-49DA-32C5-9A2E-9B08444B3187}</Project>
+      <Name>vds</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_env.vcxproj">
+      <Project>{B8A5C50A-184D-3DD2-BBDB-F95C7C20A2A9}</Project>
+      <Name>vds_env</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_swmr_gen.vcxproj">
+      <Project>{565CED05-B145-3B69-90B3-BE4796D4A274}</Project>
+      <Name>vds_swmr_gen</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_swmr_reader.vcxproj">
+      <Project>{17E6D9FD-BD24-3450-A46F-A87C88AB6BE1}</Project>
+      <Name>vds_swmr_reader</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vds_swmr_writer.vcxproj">
+      <Project>{71A0945C-E432-3EB9-B327-A9C5B99A5CB4}</Project>
+      <Name>vds_swmr_writer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vfd.vcxproj">
+      <Project>{CE5043B4-A678-39A3-B33C-8D4F15461CFB}</Project>
+      <Name>vfd</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vfd_plugin.vcxproj">
+      <Project>{70D23948-2C27-37B8-B36A-DB473B02CD1A}</Project>
+      <Name>vfd_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vol.vcxproj">
+      <Project>{FE98D6E0-C374-323C-B606-0FE4AB18C425}</Project>
+      <Name>vol</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\test\vol_plugin.vcxproj">
+      <Project>{EDCED08D-1CD5-397F-8384-8FDD6595D713}</Project>
+      <Name>vol_plugin</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\zip_perf.vcxproj">
+      <Project>{3AFEA1FB-41D3-349A-A8CA-95B73B582ECB}</Project>
+      <Name>zip_perf</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\User_VR4\Desktop\WORK\ProjectMobius\ProjectMobius\HDF5\Build\tools\test\perform\zip_perf_files.vcxproj">
+      <Project>{6A37AC5D-F2A2-3EFE-8835-A7CA9947BFBD}</Project>
+      <Name>zip_perf_files</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

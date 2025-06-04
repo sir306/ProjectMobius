@@ -1,0 +1,13 @@
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/CMakeFiles/uninstall.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/CMakeFiles/UpdateAssimpLibsDebugSymbolsAndDLLs.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/CMakeFiles/INSTALL.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/CMakeFiles/ALL_BUILD.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/CMakeFiles/ZERO_CHECK.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/contrib/zlib/CMakeFiles/zlibstatic.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/contrib/zlib/CMakeFiles/INSTALL.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/contrib/zlib/CMakeFiles/ALL_BUILD.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/code/CMakeFiles/assimp.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/code/CMakeFiles/INSTALL.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/test/CMakeFiles/unit.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/test/CMakeFiles/INSTALL.dir
+C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/ASSIMP_5.4.3/Win64/test/headercheck/CMakeFiles/INSTALL.dir
