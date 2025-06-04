@@ -1,0 +1,41 @@
+Mouse-scroll = zoom in/out​
+
+Mouse-scroll hold-down = Pan​ View
+
+W/A/S/D = Fwd/Left/Back/Right​
+
+Q/E = Rotate View Left/Right​
+
+Q/E + Holding Right-Mouse Button = Rotate Pivot Left/Right
+
+Right-Mouse Button hold + Mouse Move = Rotate in direction of mouse movement
+
+Left-Shift = Speed up movements/actions
+
+Left/Right Arrow (Tap/Hold) = Increment/Decrement simulation playback by a single simulation time step (holding Left-Shift does 5 time steps)
+
+​Left/Right Arrow (Tap/Hold) + Left/Right-Ctrl = Rotate the sun 
+
+Spacebar = Play/Pause Simulation
+
+Esc = Quit Application
+
+
+// AI tweaks
+
+
+**Camera Navigation**
+1. Zoom In/Out = Mouse scroll
+2. Pan View = Hold mouse scroll (middle mouse button) + move mouse
+3. Orbit View = Hold right-mouse button + move mouse
+4. Rotate View Left/Right = Q / E
+5. Rotate Pivot Around View = Hold right-mouse button + press Q / E
+6. Move Camera (Fwd/Left/Back/Right) = W / A / S / D
+7. Speed Up Movement = Hold Left Shift
+
+**Simulation Controls**
+1. Step Simulation Forward/Backward = Tap or hold Left / Right arrow keys
+2. Fast Step Simulation = Hold Left Shift + Left / Right arrow keys (steps 5 frames)
+3. Rotate Sun Left/Right = Hold Ctrl + Tap or hold Left / Right arrow keys
+4. Play / Pause Simulation = Spacebar
+5. Quit Application = Esc
