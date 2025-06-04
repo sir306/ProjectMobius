@@ -1,0 +1,81 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "MassProcessor.h"
+#include "MassAI/Actors/AgentRepresentationActorISM.h"
+#include "AgentHeatmapProcessor.generated.h"
+
+enum class EPedestrianMovementBracket : uint8;
+class UMRS_RepresentationSubsystem;
+class UTimeDilationSubSystem;
+struct FEntityInfoFragment;
+/**
+ * 
+ */
+UCLASS()
+class PROJECTMOBIUS_API UAgentHeatmapProcessor : public UMassProcessor
+{
+	GENERATED_BODY()
+	
+public:
+	UAgentHeatmapProcessor();
+
+protected:
+	virtual void ConfigureQueries() override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
+
+	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext) override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
+
+	/**
+	 * Assign the properties of this processor - will only be called till properties are assigned
+	 *
+	 * @param Context - The execution context
+	 */
+	void RegisterProperties(FMassExecutionContext& Context);
+
+private:
+	// Entity Query
+	FMassEntityQuery EntityQuery;
+
+	/** Subsystem for heatmaps -- TODO: move this to its own processor */
+	UPROPERTY()
+	class UHeatmapSubsystem* HeatmapSubsystem;
+
+	// bool to say if we have the registered the necessary properties of this processor
+	UPROPERTY()
+	bool bRegisteredProperties;
+
+	/** Current Time step, if we store a value of a current time step we can check if changed as we don't need to update renders every tick only when data changes */
+	UPROPERTY()
+	int32 CurrentTimeStep = -1; // -1 is the default this ensures when checking if the time step has changed it will always be true on the first run
+
+	/** stores the current animation pause state from the subsystem */
+	UPROPERTY()
+	bool bIsPaused = false;
+
+	/** stores the last loop pause state, this way it's not updating custom data values for every entity every loop */
+	UPROPERTY()
+	bool bLastPauseLoop = false;
+
+	/** Ptr to the time dilation subsystem */
+	UPROPERTY()
+	TObjectPtr<UTimeDilationSubSystem> TimeDilationSubSystem;
+
+	/** bool to say when heatmaps should be updated */
+	UPROPERTY()
+	bool bUpdateHeatmap = true;
+
+	// last current time value
+	UPROPERTY()
+	float LastUpdatedCurrentTime = 0.0f;
+
+	/** Stores the locations of the agents so it can be sent to the heatmap subsystem */
+	UPROPERTY()
+	TArray<FVector> HeatmapLocations;
+
+	/** Active Number of heatmaps */
+	UPROPERTY()
+	int32 ActiveHeatmapCount = 0;
+	
+};

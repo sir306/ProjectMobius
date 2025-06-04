@@ -1,0 +1,54 @@
+{
+    "classes": [
+        {
+            "className": "ChartTableModel",
+            "lineNumber": 5,
+            "methods": [
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "x",
+                            "type": "double"
+                        },
+                        {
+                            "name": "y",
+                            "type": "double"
+                        }
+                    ],
+                    "index": 0,
+                    "name": "appendPoint",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "pts",
+                            "type": "QList<QPointF>"
+                        }
+                    ],
+                    "index": 1,
+                    "name": "setPoints",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "index": 2,
+                    "name": "resetData",
+                    "returnType": "void"
+                }
+            ],
+            "object": true,
+            "qualifiedClassName": "ChartTableModel",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QAbstractTableModel"
+                }
+            ]
+        }
+    ],
+    "inputFile": "ChartTableModel.h",
+    "outputRevision": 69
+}

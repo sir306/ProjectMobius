@@ -1,0 +1,122 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "Interfaces/ProjectMobiusInterface.h"
+#include "Slate/SlateBrushAsset.h"
+#include "LoadDataParentWidget.generated.h"
+
+class UScrollBox;
+/**
+ * 
+ */
+UCLASS()
+class MOBIUSWIDGETS_API ULoadDataParentWidget : public UUserWidget, public IProjectMobiusInterface
+{
+	GENERATED_BODY()
+
+#pragma region METHODS
+public:
+#pragma region PUBLIC_METHODS
+	// Native Pre Construct
+	virtual void NativePreConstruct() override;
+
+	// Native Constructor 
+	virtual void NativeConstruct() override;
+
+	// Tick Method for in C++ for the widget
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+	/** Method to keep the design properties synchronized */
+	virtual void SynchronizeProperties() override;
+
+	/**
+	* Method to call when the SelectFileButton is clicked
+	*/
+	UFUNCTION()
+	virtual void OnSelectFileButtonClicked();
+
+	/** Setup TextBlocks */
+	UFUNCTION()
+	virtual void SetupTextBlocks();
+
+	/** Update TextBlocks with new texts */
+	UFUNCTION()
+	void UpdateFileTextBlockTexts() const;
+	
+	/** Update FileProperties with new file paths and names */
+	UFUNCTION()
+	void UpdateWidgetFileProperties(FString CompleteDataPath);
+
+	/**
+	* Get Mobius Game Instance data -- 
+	* defaults to getting the movement data, 
+	* made overridable so we can get the data we want for childs 
+	*/
+	UFUNCTION()
+	virtual void GetMobiusGameInstanceData();
+
+	/**
+	* Update Mobius Game Instance data -- 
+	* defaults to updating the movement data, 
+	* made overridable so we can update the data we want from childs
+	*/
+	UFUNCTION()
+	virtual void UpdateMobiusGameInstanceData();
+
+	/**
+	 * When the data file text changes, the scroll box should update by scrolling to the end
+	 */
+	UFUNCTION()
+	void UpdateScrollBarPosition() const;
+
+	/**
+	 * Handle the dialog closed event
+	 * @param[const FString&] AgentFilePath The path to the file selected
+	 * @param[const FString&] MeshFilePath The path to the mesh file selected
+	 * @param[bool] bAgentSuccess Whether the agent file was successfully selected
+	 * @param[bool] bMeshSuccess Whether the mesh file was successfully selected
+	 * 
+	 */
+	
+	virtual void DialogClosed(const FString& AgentFilePath, const FString& MeshFilePath, bool bAgentSuccess, bool bMeshSuccess);
+
+#pragma endregion PUBLIC_METHODS
+
+#pragma endregion METHODS
+
+#pragma region PROPERTIES_AND_CLASS_COMPONENTS
+public:
+
+protected:
+	/** The string holding the filename and path to data */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Data|File", meta = (AllowPrivateAccess = "true"))
+	FString DataFile;
+
+private:
+	/** Text block to show current selected Data file */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
+	class UTextBlock* DataFileTextBlock;
+
+	/** Button for executing find file */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
+	TObjectPtr<class UButtonWithText> SelectFileButton;
+
+	/** Scrollbox - stores the text block of the text file */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
+	TObjectPtr<UScrollBox> DataFileScrollBox;
+	
+#pragma endregion PROPERTIES_AND_CLASS_COMPONENTS
+
+#pragma region GETTERS_SETTERS
+public:
+	// Getter for the CurrentDataFile TextBlock text
+	//FORCEINLINE FText* GetCurrentDataFile() const { return CurrentDataFile->GetText(); }
+
+	// Setter for the CurrentDataFile TextBlock text
+	//FORCEINLINE void SetCurrentDataFileText(FText Text) { CurrentDataFile->SetText(Text); }
+
+#pragma endregion GETTERS_SETTERS
+};

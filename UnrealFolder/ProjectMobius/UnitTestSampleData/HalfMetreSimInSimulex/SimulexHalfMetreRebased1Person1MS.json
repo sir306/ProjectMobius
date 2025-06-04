@@ -1,0 +1,2129 @@
+{
+	"entities": [
+		{
+			"id": 0,
+			"name": "NFPA-1 m/s[0]",
+			"simTimeS": "0.0",
+			"max_speed":1.0000,
+			"m_plane": "F#0",
+			"map": 0
+		}
+	]
+, 
+	"simulation": [
+		{
+			"time":0.0,
+			"samples": [
+				{
+					"entity": 0,
+					"position": {
+						"x":0.7821,
+						"y":7.1196,
+						"z":0.0000
+					},
+					"mode": "HF#0",
+					"rotation":283.6427,
+					"speed":0.0000
+				}
+			]
+		}
+	,{
+	"time":0.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7821,
+				"y":7.1196,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":283.6427,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":0.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7821,
+				"y":7.1196,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":283.6427,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":0.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7821,
+				"y":7.1196,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":283.6427,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":0.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7821,
+				"y":7.1196,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":283.6427,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":0.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7821,
+				"y":7.1196,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":283.6427,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":0.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7821,
+				"y":7.1196,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":283.6427,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":0.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7855,
+				"y":7.1102,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.1000
+		}
+	]
+},{
+	"time":0.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.7923,
+				"y":7.0914,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.2000
+		}
+	]
+},{
+	"time":0.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.8026,
+				"y":7.0632,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.3000
+		}
+	]
+},{
+	"time":1.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.8163,
+				"y":7.0256,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.4000
+		}
+	]
+},{
+	"time":1.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.8333,
+				"y":6.9786,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.5000
+		}
+	]
+},{
+	"time":1.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.8538,
+				"y":6.9222,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.6000
+		}
+	]
+},{
+	"time":1.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.8778,
+				"y":6.8564,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.7000
+		}
+	]
+},{
+	"time":1.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.9051,
+				"y":6.7813,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.8000
+		}
+	]
+},{
+	"time":1.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.9359,
+				"y":6.6967,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":0.9000
+		}
+	]
+},{
+	"time":1.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":0.9700,
+				"y":6.6027,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":1.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.0042,
+				"y":6.5087,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":1.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.0384,
+				"y":6.4147,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":1.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.0726,
+				"y":6.3208,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.1067,
+				"y":6.2268,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.1409,
+				"y":6.1328,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.1751,
+				"y":6.0388,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.2093,
+				"y":5.9448,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.2434,
+				"y":5.8509,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.2776,
+				"y":5.7569,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.3118,
+				"y":5.6629,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.3460,
+				"y":5.5689,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.3801,
+				"y":5.4749,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":2.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.4143,
+				"y":5.3810,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.4485,
+				"y":5.2870,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.4827,
+				"y":5.1930,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.5168,
+				"y":5.0990,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.5510,
+				"y":5.0050,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.5852,
+				"y":4.9111,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.6266,
+				"y":4.8200,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-65.5560,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.6607,
+				"y":4.7260,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.6949,
+				"y":4.6321,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.7291,
+				"y":4.5381,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":3.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.7633,
+				"y":4.4441,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.7974,
+				"y":4.3501,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.8388,
+				"y":4.2591,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-65.5560,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.8730,
+				"y":4.1651,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.9072,
+				"y":4.0711,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.9413,
+				"y":3.9772,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":1.9827,
+				"y":3.8861,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-65.5560,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.0241,
+				"y":3.7951,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-65.5560,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.0583,
+				"y":3.7011,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.0924,
+				"y":3.6071,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":4.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.1266,
+				"y":3.5131,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.0169,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.1680,
+				"y":3.4221,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-65.5560,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.2094,
+				"y":3.3311,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-65.5560,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.2373,
+				"y":3.2351,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.7747,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.2653,
+				"y":3.1390,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.7763,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.2932,
+				"y":3.0430,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.7865,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.3211,
+				"y":2.9470,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.7980,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.3490,
+				"y":2.8510,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.8110,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.3768,
+				"y":2.7549,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.8259,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.4209,
+				"y":2.6652,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-63.8259,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":5.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.4488,
+				"y":2.5691,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-73.8259,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":6.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.4758,
+				"y":2.4728,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-74.3264,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":6.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.5028,
+				"y":2.3765,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-74.3524,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":6.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.5461,
+				"y":2.2864,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-64.3524,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":6.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.5907,
+				"y":2.1970,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-63.4349,
+			"speed":0.9991
+		}
+	]
+},{
+	"time":6.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.6407,
+				"y":2.1138,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-59.0362,
+			"speed":0.9708
+		}
+	]
+},{
+	"time":6.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.6765,
+				"y":2.0204,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-69.0362,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":6.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.6967,
+				"y":1.9325,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-77.0372,
+			"speed":0.9024
+		}
+	]
+},{
+	"time":6.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.7332,
+				"y":1.8462,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-67.0372,
+			"speed":0.9364
+		}
+	]
+},{
+	"time":6.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.7706,
+				"y":1.7715,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-63.4349,
+			"speed":0.8352
+		}
+	]
+},{
+	"time":6.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8103,
+				"y":1.7119,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-56.3099,
+			"speed":0.7168
+		}
+	]
+},{
+	"time":7.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8432,
+				"y":1.6371,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-66.3099,
+			"speed":0.8168
+		}
+	]
+},{
+	"time":7.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8649,
+				"y":1.5480,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-76.3099,
+			"speed":0.9168
+		}
+	]
+},{
+	"time":7.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8701,
+				"y":1.5122,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-81.6571,
+			"speed":0.3618
+		}
+	]
+},{
+	"time":7.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8763,
+				"y":1.4763,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.1640,
+			"speed":0.3647
+		}
+	]
+},{
+	"time":7.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8825,
+				"y":1.4404,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.2223,
+			"speed":0.3646
+		}
+	]
+},{
+	"time":7.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8977,
+				"y":1.3965,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.8877,
+			"speed":0.4646
+		}
+	]
+},{
+	"time":7.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.8998,
+				"y":1.3840,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.8877,
+			"speed":0.1267
+		}
+	]
+},{
+	"time":7.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9019,
+				"y":1.3714,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.1740,
+			"speed":0.1277
+		}
+	]
+},{
+	"time":7.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9041,
+				"y":1.3588,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.2014,
+			"speed":0.1276
+		}
+	]
+},{
+	"time":7.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9063,
+				"y":1.3462,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.2289,
+			"speed":0.1276
+		}
+	]
+},{
+	"time":8.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9084,
+				"y":1.3336,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.2578,
+			"speed":0.1276
+		}
+	]
+},{
+	"time":8.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9106,
+				"y":1.3211,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.2881,
+			"speed":0.1275
+		}
+	]
+},{
+	"time":8.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9127,
+				"y":1.3085,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.3201,
+			"speed":0.1275
+		}
+	]
+},{
+	"time":8.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9149,
+				"y":1.2960,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.3536,
+			"speed":0.1274
+		}
+	]
+},{
+	"time":8.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9170,
+				"y":1.2834,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.3889,
+			"speed":0.1274
+		}
+	]
+},{
+	"time":8.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9191,
+				"y":1.2708,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.4261,
+			"speed":0.1273
+		}
+	]
+},{
+	"time":8.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9212,
+				"y":1.2583,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.4652,
+			"speed":0.1273
+		}
+	]
+},{
+	"time":8.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9233,
+				"y":1.2457,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.5064,
+			"speed":0.1272
+		}
+	]
+},{
+	"time":8.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9254,
+				"y":1.2332,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.5497,
+			"speed":0.1271
+		}
+	]
+},{
+	"time":8.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9275,
+				"y":1.2207,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.5953,
+			"speed":0.1271
+		}
+	]
+},{
+	"time":9.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9295,
+				"y":1.2081,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.6432,
+			"speed":0.1270
+		}
+	]
+},{
+	"time":9.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9420,
+				"y":1.1891,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.6936,
+			"speed":0.2270
+		}
+	]
+},{
+	"time":9.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9597,
+				"y":1.1617,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.6936,
+			"speed":0.3270
+		}
+	]
+},{
+	"time":9.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9759,
+				"y":1.1417,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-60.6936,
+			"speed":0.2577
+		}
+	]
+},{
+	"time":9.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":2.9952,
+				"y":1.1205,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-50.6936,
+			"speed":0.2860
+		}
+	]
+},{
+	"time":9.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0051,
+				"y":1.0832,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-40.6936,
+			"speed":0.3860
+		}
+	]
+},{
+	"time":9.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0177,
+				"y":1.0362,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-50.6936,
+			"speed":0.4860
+		}
+	]
+},{
+	"time":9.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0258,
+				"y":0.9782,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-60.6936,
+			"speed":0.5860
+		}
+	]
+},{
+	"time":9.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0292,
+				"y":0.9097,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-70.6936,
+			"speed":0.6860
+		}
+	]
+},{
+	"time":9.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0278,
+				"y":0.8311,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-80.6936,
+			"speed":0.7860
+		}
+	]
+},{
+	"time":10.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0267,
+				"y":0.8189,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.6936,
+			"speed":0.1225
+		}
+	]
+},{
+	"time":10.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0281,
+				"y":0.7967,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-96.6107,
+			"speed":0.2225
+		}
+	]
+},{
+	"time":10.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0290,
+				"y":0.7645,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-89.1374,
+			"speed":0.3225
+		}
+	]
+},{
+	"time":10.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0290,
+				"y":0.7222,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-89.6364,
+			"speed":0.4225
+		}
+	]
+},{
+	"time":10.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0278,
+				"y":0.6700,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0092,
+			"speed":0.5225
+		}
+	]
+},{
+	"time":10.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0254,
+				"y":0.6078,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.3351,
+			"speed":0.6225
+		}
+	]
+},{
+	"time":10.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0236,
+				"y":0.5723,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.6132,
+			"speed":0.3554
+		}
+	]
+},{
+	"time":10.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0244,
+				"y":0.5267,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-89.1366,
+			"speed":0.4554
+		}
+	]
+},{
+	"time":10.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0238,
+				"y":0.4712,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-89.6910,
+			"speed":0.5554
+		}
+	]
+},{
+	"time":10.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0220,
+				"y":0.4057,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.1966,
+			"speed":0.6554
+		}
+	]
+},{
+	"time":11.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0188,
+				"y":0.3302,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.6688,
+			"speed":0.7554
+		}
+	]
+},{
+	"time":11.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0147,
+				"y":0.2448,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-91.1516,
+			"speed":0.8554
+		}
+	]
+},{
+	"time":11.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0147,
+				"y":0.2448,
+				"z":0.0000
+			},
+			"mode": "HF#0",
+			"rotation":-91.7697,
+			"speed":0.0000
+		}
+	]
+},{
+	"time":11.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0163,
+				"y":0.2349,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-82.0734,
+			"speed":0.1000
+		}
+	]
+},{
+	"time":11.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0188,
+				"y":0.2151,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-83.4292,
+			"speed":0.2000
+		}
+	]
+},{
+	"time":11.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0212,
+				"y":0.1852,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":0.3000
+		}
+	]
+},{
+	"time":11.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0241,
+				"y":0.1453,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-85.8453,
+			"speed":0.4000
+		}
+	]
+},{
+	"time":11.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0244,
+				"y":0.0953,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-87.7419,
+			"speed":0.5000
+		}
+	]
+},{
+	"time":11.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0248,
+				"y":0.0353,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-89.6218,
+			"speed":0.6000
+		}
+	]
+},{
+	"time":11.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0100,
+				"y":-0.0331,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-99.6218,
+			"speed":0.7000
+		}
+	]
+},{
+	"time":12.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.1102,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":0.8000
+		}
+	]
+},{
+	"time":12.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.2002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":0.9000
+		}
+	]
+},{
+	"time":12.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.3002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.4002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.5002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.6002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.7002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.8002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-0.9002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":12.9,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.0002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.0,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.1002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.1,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.2002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.2,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.3002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.3,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.4002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.4,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.5002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.5,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.6002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.6,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.7002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.7,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.8002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.8,
+	"samples": [
+		{
+			"entity": 0,
+			"position": {
+				"x":3.0316,
+				"y":-1.9002,
+				"z":0.0000
+			},
+			"mode": "LF#0",
+			"rotation":-90.0000,
+			"speed":1.0000
+		}
+	]
+},{
+	"time":13.9,
+	"samples": []
+}]
+ , 
+	"metadata": {
+		"duration":13.9,
+		"used_planes": [
+			"F#0"
+		],
+		"distance_maps_used": [
+			{
+				"index": 0,
+				"name": "Default Distance Map",
+				"num_users": 1,
+				"use_ground": 0,
+				"ground_elevation": 0.0,
+				"people_density_catg_num": 2
+			}
+		],
+		"timestamp_geometry": 0,
+		"timestamp_people": 0,
+		"timestamp_exits_links": 0,
+		"model_GUID": "",
+		"sampling_rate":0.1,
+		"max_num_entities": 1,
+		"isSI": true,
+		"isDeg": true
+	}
+ }

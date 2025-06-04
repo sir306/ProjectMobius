@@ -1,0 +1,90 @@
+﻿// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "assimp/scene.h"
+#include "UObject/Object.h"
+#include "AsyncAssimpMeshLoader.generated.h"
+
+class FAssimpMeshLoaderRunnable;
+/** Delegate to tell when finished loading */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLoadMeshDataComplete);
+
+/**
+ * 
+ */
+UCLASS()
+class PROJECTMOBIUS_API UAsyncAssimpMeshLoader : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** Constructor */
+	UAsyncAssimpMeshLoader();
+
+	/** The runnable task */
+	FAssimpMeshLoaderRunnable* MeshLoaderRunnable = nullptr;
+	
+};
+
+class FAssimpMeshLoaderRunnable : public FRunnable
+{
+public:
+	FAssimpMeshLoaderRunnable(const FString InPathToMesh);
+	virtual ~FAssimpMeshLoaderRunnable() override;
+	
+	// The FRunnable interface functions
+	virtual uint32 Run() override;
+	virtual void Stop() override;
+	virtual void Exit() override;
+
+#pragma region MESH_PROPERTIES
+	FString PathToMesh;
+	int32 SectionCount;
+	FString ErrorMessageCode;
+	TArray<FVector> Vertices;
+	TArray<int32> Faces;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UV;
+	TArray<FVector> Tangents;
+#pragma endregion MESH_PROPERTIES
+
+	/** Delegate to broadcast when the mesh data has finished loading */
+	FOnLoadMeshDataComplete OnLoadMeshDataComplete;
+
+protected:
+	/** Pointer to a thread */
+	FRunnableThread* Thread = nullptr;
+
+	/** Bool to tell when the thread should stop */
+	bool bShouldStop = false;
+
+	/**
+	 * This function is called to rotate the mesh data to the correct orientation based on the axis data from the metadata,
+	 * It returns an FRotator to be used to rotate the mesh data to the correct orientation
+	 * @note
+	 * The Axis orientations are as follows:\n
+	 * X = 1 \n
+	 * Y = 2 \n
+	 * Z = 3 \n\n
+	 * The Axis signs are as follows: \n
+	 * Negate = -1 \n
+	 * Positive = 1 \n\n
+	 * If the data is not found it has to be assumed that the data is in the correct orientation as the data is
+	 * missing or corrupt and this is a user error not a system error
+	 *
+	 * @param[int32] AxisUpOrientation - The axis data from the metadata that tells which axis is up
+	 * @param[int32] AxisUpSign - This is the sign of the up axis
+	 * @param[int32] AxisForwardOrientation - The axis data from the metadata that tells which axis is forward
+	 * @param[int32] AxisForwardSign - This is the sign of the forward axis
+	 * @return[FRotator] - The rotation to be applied to the mesh data
+	 * 
+	 */
+	static FRotator GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign, int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);// todo see if forward is needed
+	FVector TransformNormal(const FVector& InNormal, int32 AxisUpOrientation, int32 AxisForwardOrientation,
+	                        int32 AxisForwardSign, int32 AxisUpSign);
+
+	static void TransformMeshMatrix(FVector& InVector, int32 AxisUpOrientation, int32 AxisUpSign, int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);
+};
+
