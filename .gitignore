@@ -156,6 +156,7 @@ UnrealFolder/ProjectMobius 5.5/Content/01_Dev/Data/PedestrianMeshes/ImportedUECr
 # Large test files (avoid storing heavy test data in repo)
 TestData/Technical-School_Assets/*
 TestData/Technical-School.udatasmith
+TestData/LargeTestCases/*
 UnrealFolder/ProjectMobius/UnitTestSampleData/TechSchoolTest/LargeTestCases/*
 
 # ZIP archives in NickMasters (example projects/tools backups)
