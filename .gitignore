@@ -120,3 +120,6 @@ TestData/Technical-School.udatasmith
 .Rproj.user
 
 NicksMaster/*
+
+# ignore for custom blender assets folder
+Blender/*
