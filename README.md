@@ -2,6 +2,7 @@
 
 TODO
 
+
 ProjectMobius is a collection of tools and sample data built around an Unreal Engine 5.5 project. The repository includes:
 
 - **Unreal content** under `UnrealFolder/ProjectMobius/` for real-time visualization.
@@ -21,3 +22,13 @@ This repository is intended as a reference for setting up data visualization wor
 ## Qt Licensing
 
 The Qt-based tools under `UnrealFolder/ProjectMobius/Tools/QT_Apps/` use Qt modules that are available under the GNU Lesser General Public License version 3 (LGPL-3.0). The full text of the LGPL-3.0 license is provided in `COPYING.LGPL-3.0.txt`.
+
+## Third-Party Licenses
+
+This repository bundles several open source libraries.
+Copies of their respective license texts are included in the following folders:
+
+- `Source/ProjectMobius/ThirdParty/assimp/LICENSE`
+- `Source/Visualization/ThirdParty/OpenCV/LICENSE`
+
+Additional licensing details can be found in [LICENSE.md](LICENSE.md).
