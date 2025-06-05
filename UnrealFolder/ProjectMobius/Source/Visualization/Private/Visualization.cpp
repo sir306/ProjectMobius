@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MIT License
  * Copyright (c) 2025 ProjectMobius contributors
  * Nicholas R. Harding and Peter Thompson
