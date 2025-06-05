@@ -1,0 +1,3 @@
+This directory contains the HDF5 library distribution.
+
+License: HDF5 License (see `hdf5-1.14.4-2/hdf5-1.14.4-2/COPYING` for details).
