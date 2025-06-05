@@ -188,3 +188,16 @@ Copies of their respective license texts are included in the following folders:
 - `Source/Visualization/ThirdParty/OpenCV/LICENSE`
 
 Additional licensing details can be found in [LICENSE.md](LICENSE.md).
+
+## Node.js Server
+
+The WebSocket server under `UnrealFolder/ProjectMobius/Tools/NodeJS/` requires
+**Node.js 16** or newer. It can be compiled into a standalone executable using
+[vercel/pkg](https://github.com/vercel/pkg). A typical build command is:
+
+```bash
+npx pkg MobiusServer.js
+```
+
+The resulting binary can be distributed without requiring Node.js on the target
+machine.

@@ -80,6 +80,10 @@ For more information on how to comply with Qt’s LGPL requirements, see:
 
 All JavaScript source files in this folder (e.g. `MobiusServer.js`, `package.json`, any utility `.js` modules) that you authored are licensed under the **MIT License** (see Section 5 below). Any third-party npm packages you installed (inside `node_modules/`) must be used in accordance with their own respective licenses—refer to each package’s license inside `node_modules/<package>/LICENSE` when you redistribute.
 
+If you compile the server into a standalone executable you may use the **pkg**
+tool (MIT License). Its repository is <https://github.com/vercel/pkg>. A copy of
+pkg's MIT license text is provided in `ThirdParty/LICENSE.pkg`.
+
 ---
 
 ## 4. Third-Party Libraries & Assets
