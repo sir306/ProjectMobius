@@ -11,6 +11,7 @@
   "dependencies": {
     "ws": "^8.18.2"
   },
+  "license": "MIT",
   "pkg": {
     "assets": [
       "config.json"
