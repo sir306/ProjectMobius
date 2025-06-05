@@ -11,7 +11,7 @@ Project Mobius is a comprehensive, cross-platform simulation and visualization s
 3. **Node.js WebSocket Server** for low-latency, bidirectional messaging between Unreal Engine and the Qt GUIs.  
 4. **Third-Party Libraries & Assets** (bundled under `ThirdParty/`): HDF5, Assimp, OpenCV, and Blender-exported models.
 
-This repository provides everything needed to build, run, and package the complete system on Windows. (Support for Linux and macOS to come).
+This repository provides everything needed to build, run, and package the complete system **on Windows**. Support for Linux and macOS has not been tested yet.
 
 ---
 
@@ -91,14 +91,12 @@ ProjectMobius/
 
 ### Prerequisites
 
-Before building or running any component of Project Mobius, ensure the following dependencies are installed:
+The build process has only been verified on **Windows**. Linux and macOS are not yet supported. Before building or running any component of Project Mobius, ensure the following dependencies are installed:
 
-1. **Unreal Engine 5.5**  
-   - Download/Install via Epic Games Launcher:  
-     <a href="https://www.unrealengine.com/download">https://www.unrealengine.com/download</a>  
-   - On **Windows**: Visual Studio 2022 with C++ toolchain.  
-   - On **macOS**: Xcode 13+ (command-line tools).  
-   - On **Linux**: `clang` 12+, `Make`, and required GL/Vulkan dependencies.
+1. **Unreal Engine 5.5** (Windows only)
+   - Install via the Epic Games Launcher:
+     <a href="https://www.unrealengine.com/download">https://www.unrealengine.com/download</a>
+   - Requires Visual Studio 2022 with the C++ toolchain.
 
 2. **Qt 6 (Qt Quick, QtGraphs)**  
    - Download/Install via the Qt Installer:  
@@ -109,18 +107,55 @@ Before building or running any component of Project Mobius, ensure the following
    - Download/Install from:  
      <a href="https://nodejs.org/">https://nodejs.org/</a>  
 
-4. **CMake** (≥ v3.20)  
-   - **Windows**: Use the official installer:  
-     <a href="https://cmake.org/download/">https://cmake.org/download</a>  
-   - **Linux/macOS**: Install via package manager (e.g., `apt`, `brew`) or build from source.
+4. **CMake** (≥ v3.20)
+   - Install via the official Windows installer:
+     <a href="https://cmake.org/download/">https://cmake.org/download</a>
 
-5. **Build Toolchains**  
-   - **Windows**: Visual Studio 2022 (C++17).  
-   - **Linux**: `gcc` 10+ or `clang` 12+; `make` or `ninja`.  
-   - **macOS**: Xcode 13+ (command-line tools); `clang`, `make`, or `ninja`.
+5. **Build Toolchains**
+   - Visual Studio 2022 (C++17).
 
 6. **Third-Party Libraries**
    - Bundled prebuilt binaries reside in `HDF5/` and `ASSIMP_5.4.3/`. If you prefer to rebuild from source, see [Third-Party Libraries](#third-party-libraries).
+
+### Cloning the Repository
+
+```bash
+git clone https://github.com/yourusername/ProjectMobius.git
+```
+No submodules are used, so a standard clone is sufficient.
+
+## Building & Running
+
+Follow the steps below on **Windows** to compile each component. Build the Node.js server and Qt tools first—they are required when compiling the Unreal project.
+
+### Node.js Server
+
+```bash
+cd UnrealFolder/ProjectMobius/Tools/NodeJS
+npm install
+npx pkg . --out-path dist
+```
+The packaged executable will appear in the `dist` folder.
+
+### Qt Applications
+
+For each Qt project (`OpenFileTCP` and `PlotUE_Data`):
+
+```bash
+cd UnrealFolder/ProjectMobius/Tools/QT_Apps/<ProjectName>
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Release
+cmake --install build --config Release
+```
+
+### Unreal Engine 5.5 Project
+
+After the Node and Qt executables are built, open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
+Right-click the `.uproject` file and choose **Generate Visual Studio project files**, then build the `ProjectMobius` project in Visual Studio.
+
+### Third-Party Libraries
+
+Prebuilt binaries for ASSIMP and HDF5 are included under `ASSIMP_5.4.3/` and `HDF5/`; no action is required unless you wish to rebuild them manually.
 
 ## License Details
 
