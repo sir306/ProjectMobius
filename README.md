@@ -50,7 +50,7 @@ This repository provides everything needed to build, run, and package the comple
      - Exposes a RESTful endpoint (e.g., `http://localhost:8080/selectFile`) and an optional TCP listener for remote clients to invoke native file dialogs.  
      - Returns selected file paths via JSON/TCP.  
 - **Node.js WebSocket Server**  
-  - Bridges Unreal Engine and the Qt GUIs with bidirectional JSON messaging over WebSocket (`ws://localhost:3000`).  
+  - Bridges Unreal Engine and the Qt GUIs with bidirectional JSON messaging over WebSocket (`ws://localhost:9090`).  
   - Handles reconnects, message buffering, and simple request/response semantics.  
 - **Bundled Third-Party Libraries & Assets**  
   - **HDF5** for large-scale data logging.  
