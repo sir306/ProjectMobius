@@ -59,9 +59,8 @@ This repository provides everything needed to build, run, and package the comple
   - **Blender Models** (exported `.fbx` under `ImportedOpenSourceAssets/`) for environment and agent meshes.
 
 ---
-
 ## Repository Structure
-
+```
 ProjectMobius/
 ├── ASSET_LICENSES.md
 ├── COPYING.LGPL-3.0.txt
@@ -86,6 +85,7 @@ ProjectMobius/
         │   └── QT_Apps/
         ├── UnitTestSampleData/
         └── ProjectMobius.uproject
+```
 
 ## Getting Started
 
@@ -147,6 +147,20 @@ cmake -S . -B build -G "Visual Studio 17 2022"
 cmake --build build --config Release
 cmake --install build --config Release
 ```
+
+#### Deploying the Qt Applications
+
+After building, run the Qt deployment tool from your Qt installation to gather
+all required libraries:
+
+```bash
+cd <ProjectBuildDirectory>
+C:\Qt\6.9.0\mingw_64\bin\windeployqt.exe .
+```
+
+Ensure that the Qt modules **QtCore**, **QtGui**, **QtQuick**, **QtWidgets**,
+**QtGraphs**, and **QtNetwork** are installed so `windeployqt` can copy the
+correct libraries.
 
 ### Unreal Engine 5.5 Project
 
