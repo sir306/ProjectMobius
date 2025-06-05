@@ -26,7 +26,7 @@ public class Visualization : ModuleRules
                 "SlateCore", 
                 "MobiusWidgets",
                 "OpenCVHelper",
-                "ProjectMobius",// TODO: extract out the mesh gen so we dont reference the whole project and also causes a circular dependency
+                "MobiusCore",
                 "RHI",
                 "RenderCore",
                 "DatasmithRuntime", 

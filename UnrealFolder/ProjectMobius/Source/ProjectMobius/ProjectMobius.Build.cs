@@ -22,7 +22,8 @@ public class ProjectMobius : ModuleRules
             // The following are required for our runtime procedural mesh generation
             "ProceduralMeshComponent",
             // Physics -- following modules are required for PhysicsParallelFor
-            "Chaos", "Visualization",
+            "Chaos",
+            "MobiusCore",
         });
 
         // The following modules are required for the MASS system to run with a couple of added modules for convenience
@@ -43,7 +44,8 @@ public class ProjectMobius : ModuleRules
             // Needed for creating a custom Niagara Actor
             "Niagara", 
             // External Modules needed for this project that have been made to decouple functionality
-            "HeatmapVisualization", "Visualization", "MobiusWidgets", 
+            "HeatmapVisualization",
+            "MobiusCore",
             "Slate",
             "SlateCore",
             "DatasmithRuntime", 

@@ -10,9 +10,9 @@ public class MobiusWidgets : ModuleRules
             new string[]
             {
                 "Core",
-                "UMG", 
+                "UMG",
                 "Synthesis",// Required for the synth2d component
-                "ProjectMobius", // Required for UMG
+                "MobiusCore",
             }
         );
 
@@ -22,8 +22,9 @@ public class MobiusWidgets : ModuleRules
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore", "ProjectMobius", "MassRepresentation", "HTTP", "Visualization", "Json", 
-                "JsonUtilities", 
+                "SlateCore",
+                "MassRepresentation", "HTTP", "Json", "JsonUtilities",
+                "MobiusCore",
             }
         );
     }

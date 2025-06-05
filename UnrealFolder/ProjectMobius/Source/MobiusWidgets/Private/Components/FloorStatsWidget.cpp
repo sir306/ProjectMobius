@@ -29,7 +29,7 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
-#include "ProjectMobius/Public/GameInstances/WebSocketSubsystem.h"
+#include "MobiusCore/GameInstances/WebSocketSubsystem.h"
 #include "MassAI/Subsystems/TimeDilationSubSystem.h"
 #include "Visualization/Public/HeatmapSubsystem.h"
 

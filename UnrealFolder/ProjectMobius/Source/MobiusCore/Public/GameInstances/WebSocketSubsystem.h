@@ -33,7 +33,7 @@ class IWebSocket;
  * 
  */
 UCLASS()
-class PROJECTMOBIUS_API UWebSocketSubsystem : public UGameInstanceSubsystem
+class MOBIUSCORE_API UWebSocketSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 
