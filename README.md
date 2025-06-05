@@ -32,7 +32,7 @@ This repository provides everything needed to build, run, and package the comple
    - [License Files](#license-files)  
 6. [Usage & Workflow](#usage--workflow)  
 7. [Contributing](#contributing)  
-8. [License](#license)  
+8. [License](#license-details)  
 9. [Acknowledgments](#acknowledgments)  
 10. [Contact](#contact)  
 
