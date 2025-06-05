@@ -43,20 +43,12 @@
 !ASSIMP_5.4.3/**/*.lib
 !UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.lib
 !UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/OpenCV/ThirdParty/**/*.lib
-## Static Libs manually added to project required for compiles
-!UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.lib
-!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.lib
 
 # Dynamic libraries
 *.so
 *.dylib
 *.dll
-## Dynamic libraries manually added to project required for compiles
-!ASSIMP_5.4.3/**/*.dll
-!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.dll
-!UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.dll
-!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.dll
-!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455d.dll
+
 
 # Executables and application bundles
 *.exe
@@ -196,3 +188,18 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# =====================================================
+# Specific Libs and Dlls required for compilining that have been manually added
+# =====================================================
+
+## Static Libs manually added to project required for compiles
+!UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.lib
+!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.lib
+
+## Dynamic libraries manually added to project required for compiles
+!ASSIMP_5.4.3/**/*.dll
+!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.dll
+!UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.dll
+!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.dll
+!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455d.dll
