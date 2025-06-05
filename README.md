@@ -56,51 +56,36 @@ This repository provides everything needed to build, run, and package the comple
   - **HDF5** for large-scale data logging.  
   - **Assimp** for importing Blender models into Unreal.  
   - **OpenCV** for texture processing (e.g., Gaussian blur).  
-  - **Blender Models** (exported `.fbx` under `ThirdParty/BlenderModels/`) for environment and agent meshes.
+  - **Blender Models** (exported `.fbx` under `ImportedOpenSourceAssets/`) for environment and agent meshes.
 
 ---
 
 ## Repository Structure
 
 ProjectMobius/
-├── .gitignore
+├── ASSET_LICENSES.md
+├── COPYING.LGPL-3.0.txt
+├── LICENSE
 ├── LICENSE.md
-├── CONTRIBUTING.md
 ├── README.md
-├── UnrealProject/
-│ ├── ProjectMobius.uproject
-│ ├── Source/
-│ ├── Content/
-│ ├── Plugins/
-│ └── Config/
-│
-├── QtApps/
-│ ├── PlotApp/
-│ │ ├── PlotApp.pro
-│ │ ├── src/
-│ │ └── qml/
-│ └── FileDialogServer/
-│ ├── FileDialogServer.pro
-│ ├── src/
-│ └── resources/
-│
-├── NodeServer/
-│ ├── package.json
-│ ├── server.js
-│ └── wsHandlers/
-│
-├── ThirdParty/
-│ ├── HDF5/
-│ ├── Assimp/
-│ ├── OpenCV/
-│ └── BlenderModels/
-│
-├── build_scripts/
-│ ├── build_windows.bat
-│ ├── build_linux.sh
-│ └── build_mac.sh
-└── docs/
-└── (design docs, API references)
+├── SUMMARY-OF-FOLDER-STRUCTURE-&-LICENSE.md
+├── ASSIMP_5.4.3/
+├── DemoProgressVideos/
+├── HDF5/
+├── HelpfulTextDocs/
+├── ImportedOpenSourceAssets/
+├── TestData/
+└── UnrealFolder/
+    └── ProjectMobius/
+        ├── Binaries/
+        ├── Config/
+        ├── Content/
+        ├── Source/
+        ├── Tools/
+        │   ├── NodeJS/
+        │   └── QT_Apps/
+        ├── UnitTestSampleData/
+        └── ProjectMobius.uproject
 
 ## Getting Started
 
@@ -134,8 +119,8 @@ Before building or running any component of Project Mobius, ensure the following
    - **Linux**: `gcc` 10+ or `clang` 12+; `make` or `ninja`.  
    - **macOS**: Xcode 13+ (command-line tools); `clang`, `make`, or `ninja`.
 
-6. **Third-Party Libraries**  
-   - Bundled prebuilt binaries reside in `ThirdParty/`. If you prefer to rebuild from source, see [Third-Party Libraries](#third-party-libraries).
+6. **Third-Party Libraries**
+   - Bundled prebuilt binaries reside in `HDF5/` and `ASSIMP_5.4.3/`. If you prefer to rebuild from source, see [Third-Party Libraries](#third-party-libraries).
 
 ## License Details
 
