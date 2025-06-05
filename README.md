@@ -4,7 +4,7 @@
 
 Project Mobius is a comprehensive, cross-platform simulation and visualization suite that integrates:
 
-1. **Unreal Engine 5.5 VR Environment** for real-time crowd simulation with GPU-driven heatmaps and stereo rendering.  
+1. **Unreal Engine 5.5** for real-time crowd simulation with GPU-driven heatmaps.  
 2. **Qt Applications**—two separate Qt-based tools:  
    - A **Plotting App** for real-time data visualization (using QtGraphs/QML).  
    - A **File-Dialog Server** exposing native file dialogs over REST/TCP.  
