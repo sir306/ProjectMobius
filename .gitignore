@@ -193,10 +193,6 @@ yarn-error.log*
 # Specific Libs and Dlls required for compilining that have been manually added
 # =====================================================
 
-# Include specific folders
-!UnrealFolder/ProjectMobius/Binaries/
-!UnrealFolder/ProjectMobius/Binaries/Win64/
-
 ## Static Libs manually added to project required for compiles
 !UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.lib
 !UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.lib
