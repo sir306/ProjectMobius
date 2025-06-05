@@ -1,4 +1,4 @@
-# Install script for directory: D:/1_Work/Mobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data
+# Install script for directory: D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -38,7 +38,7 @@ if(NOT DEFINED CMAKE_OBJDUMP)
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE EXECUTABLE FILES "D:/1_Work/Mobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Release/appPlotUE_Data.exe")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE EXECUTABLE FILES "D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appPlotUE_Data.exe")
   if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/appPlotUE_Data.exe" AND
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/appPlotUE_Data.exe")
     if(CMAKE_INSTALL_DO_STRIP)
@@ -62,6 +62,6 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-  file(WRITE "D:/1_Work/Mobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Release/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

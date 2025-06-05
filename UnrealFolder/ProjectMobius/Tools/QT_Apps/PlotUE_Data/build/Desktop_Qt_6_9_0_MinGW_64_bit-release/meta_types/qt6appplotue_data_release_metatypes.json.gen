@@ -9,7 +9,7 @@
                     }
                 ],
                 "className": "AxisSettings",
-                "lineNumber": 8,
+                "lineNumber": 32,
                 "object": true,
                 "properties": [
                     {
@@ -399,7 +399,7 @@
                     }
                 ],
                 "className": "ChartSettings",
-                "lineNumber": 6,
+                "lineNumber": 30,
                 "object": true,
                 "properties": [
                     {
@@ -657,7 +657,7 @@
         "classes": [
             {
                 "className": "ChartTableModel",
-                "lineNumber": 5,
+                "lineNumber": 29,
                 "methods": [
                     {
                         "access": "public",
@@ -711,7 +711,7 @@
         "classes": [
             {
                 "className": "WebSocketManager",
-                "lineNumber": 15,
+                "lineNumber": 39,
                 "object": true,
                 "properties": [
                     {
@@ -809,7 +809,7 @@
         "classes": [
             {
                 "className": "MessageProcessor",
-                "lineNumber": 60,
+                "lineNumber": 84,
                 "object": true,
                 "qualifiedClassName": "MessageProcessor",
                 "slots": [

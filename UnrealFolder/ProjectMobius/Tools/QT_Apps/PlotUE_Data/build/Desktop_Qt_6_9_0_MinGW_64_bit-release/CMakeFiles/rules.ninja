@@ -42,7 +42,7 @@ rule CUSTOM_COMMAND
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = D:\QT\Tools\CMake_64\bin\cmake.exe --regenerate-during-build -SD:\1_Work\Mobius\ProjectMobius\UnrealFolder\ProjectMobius5.5\Tools\QT_Apps\PlotUE_Data -BD:\1_Work\Mobius\ProjectMobius\UnrealFolder\ProjectMobius5.5\Tools\QT_Apps\PlotUE_Data\build\Desktop_Qt_6_9_0_MinGW_64_bit-Release
+  command = D:\QT\Tools\CMake_64\bin\cmake.exe --regenerate-during-build -SD:\1_Work\MobiusPublic\ProjectMobius\UnrealFolder\ProjectMobius\Tools\QT_Apps\PlotUE_Data -BD:\1_Work\MobiusPublic\ProjectMobius\UnrealFolder\ProjectMobius\Tools\QT_Apps\PlotUE_Data\build\Desktop_Qt_6_9_0_MinGW_64_bit-release
   description = Re-running CMake...
   generator = 1
 

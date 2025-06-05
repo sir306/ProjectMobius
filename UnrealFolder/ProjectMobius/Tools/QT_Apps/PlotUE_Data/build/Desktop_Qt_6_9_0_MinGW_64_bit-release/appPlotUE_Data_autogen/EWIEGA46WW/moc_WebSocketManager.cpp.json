@@ -2,7 +2,7 @@
     "classes": [
         {
             "className": "WebSocketManager",
-            "lineNumber": 15,
+            "lineNumber": 39,
             "object": true,
             "properties": [
                 {

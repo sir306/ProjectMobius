@@ -2,7 +2,7 @@
     "classes": [
         {
             "className": "MessageProcessor",
-            "lineNumber": 60,
+            "lineNumber": 84,
             "object": true,
             "qualifiedClassName": "MessageProcessor",
             "slots": [
