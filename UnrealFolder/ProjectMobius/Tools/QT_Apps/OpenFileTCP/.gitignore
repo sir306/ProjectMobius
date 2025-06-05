@@ -70,8 +70,7 @@ CMakeLists.txt.user*
 
 # Binaries
 # --------
-*.dll
-*.exe
+# Allow prebuilt library binaries in this tool
 
 # Directories with generated files
 .moc/
