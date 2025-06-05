@@ -40,11 +40,16 @@
 *.la
 *.a
 *.lib
+!ASSIMP_5.4.3/**/*.lib
+!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.lib
+!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/OpenCV/ThirdParty/**/*.lib
 
 # Dynamic libraries
 *.so
 *.dylib
 *.dll
+!ASSIMP_5.4.3/**/*.dll
+!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.dll
 
 # Executables and application bundles
 *.exe
