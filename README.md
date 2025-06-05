@@ -59,9 +59,8 @@ This repository provides everything needed to build, run, and package the comple
   - **Blender Models** (exported `.fbx` under `ImportedOpenSourceAssets/`) for environment and agent meshes.
 
 ---
-
 ## Repository Structure
-
+```
 ProjectMobius/
 ├── ASSET_LICENSES.md
 ├── COPYING.LGPL-3.0.txt
@@ -86,6 +85,7 @@ ProjectMobius/
         │   └── QT_Apps/
         ├── UnitTestSampleData/
         └── ProjectMobius.uproject
+```
 
 ## Getting Started
 
