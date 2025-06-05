@@ -7,6 +7,10 @@ This repository includes four main components, each governed by its own licensin
 3. **Node.js Server**  
 4. **Third-Party Libraries & Assets** (included under `Source/`)
 
+### Licensing Overview
+
+ProjectMobius's own source code (the Node.js server, Qt application sources, and all custom Unreal Engine modules and assets) is released under the MIT License. Unreal Engine, Qt runtime libraries, and other bundled third-party libraries or imported assets remain under their respective licenses as detailed below.
+
 ---
 
 ## 1. Unreal Engine 5.5 Project
