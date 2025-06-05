@@ -148,6 +148,20 @@ cmake --build build --config Release
 cmake --install build --config Release
 ```
 
+#### Deploying the Qt Applications
+
+After building, run the Qt deployment tool from your Qt installation to gather
+all required libraries:
+
+```bash
+cd <ProjectBuildDirectory>
+C:\Qt\6.9.0\mingw_64\bin\windeployqt.exe .
+```
+
+Ensure that the Qt modules **QtCore**, **QtGui**, **QtQuick**, **QtWidgets**,
+**QtGraphs**, and **QtNetwork** are installed so `windeployqt` can copy the
+correct libraries.
+
 ### Unreal Engine 5.5 Project
 
 After the Node and Qt executables are built, open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
