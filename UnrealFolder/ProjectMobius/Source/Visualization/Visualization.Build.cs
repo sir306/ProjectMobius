@@ -10,7 +10,6 @@ public class Visualization : ModuleRules
             new string[]
             {
                 "Core", 
-                //"MassEntity",
                 "OpenCV",
                 "UMG",
                 "OpenCVHelper",
@@ -24,13 +23,8 @@ public class Visualization : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore", 
-                "MobiusWidgets",
-                "ProjectMobius",// TODO: extract out the mesh gen so we dont reference the whole project and also causes a circular dependency
                 "RHI",
                 "RenderCore",
-                
-                //"MobiusCore" // -> as we look for the runtimesh comp it requires the assimp loader in this module this is a circular dependency
-                // if we move the pixel generator out this module should drop the dependency on MobiusCore
             }
         );
         
