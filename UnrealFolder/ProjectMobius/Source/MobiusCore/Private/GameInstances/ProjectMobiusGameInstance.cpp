@@ -24,7 +24,7 @@
 
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Engine/DataTable.h"
-#include "GameInstances/WebSocketSubsystem.h"
+#include "Subsystems/WebSocketSubsystem.h"
 
 UProjectMobiusGameInstance::UProjectMobiusGameInstance():
 	Super(),

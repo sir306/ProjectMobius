@@ -59,7 +59,7 @@ class UUnitConversionAndScaling : public UInterface
 /**
  * 
  */
-class PROJECTMOBIUS_API IUnitConversionAndScaling
+class MOBIUSCORE_API IUnitConversionAndScaling
 {
 	GENERATED_BODY()
 

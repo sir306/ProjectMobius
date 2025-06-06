@@ -38,7 +38,7 @@ class UProjectMobiusInterface : public UInterface
 /**
  * 
  */
-class PROJECTMOBIUS_API IProjectMobiusInterface
+class MOBIUSCORE_API IProjectMobiusInterface
 {
 	GENERATED_BODY()
 
