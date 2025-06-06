@@ -35,7 +35,7 @@
 // Other Subsystems we want to use
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 // GameInstance
-#include "MobiusWidgetSubsystem.h"
+#include "MobiusWidgetSubsystem.h"// TODO: Marked for alteration, our cause for circular dependency
 #include "SkeletalMeshAttributes.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Async/Async.h"
