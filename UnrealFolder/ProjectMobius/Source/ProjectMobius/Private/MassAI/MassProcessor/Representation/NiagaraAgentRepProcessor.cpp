@@ -38,7 +38,7 @@
 #include "NiagaraComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
-#include "MassAI/SubSystems/TimeDilationSubSystem.h"
+#include "SubSystems/TimeDilationSubSystem.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"

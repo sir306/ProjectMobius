@@ -28,7 +28,7 @@
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
-#include "MassAI/SubSystems/TimeDilationSubSystem.h"
+#include "SubSystems/TimeDilationSubSystem.h"
 
 AMobiusController::AMobiusController()
 {

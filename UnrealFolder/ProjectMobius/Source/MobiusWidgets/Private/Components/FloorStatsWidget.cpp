@@ -30,7 +30,7 @@
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/WebSocketSubsystem.h"
-#include "MassAI/Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 #include "Subsystems//HeatmapSubsystem.h"
 
 

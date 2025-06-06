@@ -41,7 +41,7 @@
 #include "Async/Async.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
-#include "MassAI/Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 // Niagara
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"

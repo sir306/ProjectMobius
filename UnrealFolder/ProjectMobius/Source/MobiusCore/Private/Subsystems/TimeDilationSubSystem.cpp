@@ -22,7 +22,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "MassAI/SubSystems/TimeDilationSubSystem.h"
+#include "SubSystems/TimeDilationSubSystem.h"
 #include "MassEntitySubsystem.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"

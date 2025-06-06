@@ -46,7 +46,7 @@
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
-#include "MassAI/Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraDataInterface.h"

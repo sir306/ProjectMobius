@@ -42,7 +42,7 @@
 // multithreading and async
 #include "Subsystems/HeatmapSubsystem.h"
 #include "Async/ParallelFor.h"
-#include "MassAI/Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 
 UAgentRepProcessor::UAgentRepProcessor():
 	HeatmapSubsystem(nullptr), bRegisteredProperties(false)

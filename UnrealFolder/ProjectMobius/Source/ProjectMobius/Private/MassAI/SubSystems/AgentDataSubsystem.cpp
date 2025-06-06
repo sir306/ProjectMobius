@@ -37,7 +37,7 @@
 #include "HeatmapVisualization.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Interfaces/ProjectMobiusInterface.h"
-#include "MassAI/SubSystems/TimeDilationSubSystem.h"
+#include "SubSystems/TimeDilationSubSystem.h"
 #include "HeatmapVisualization/Public/QuadTree.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 
