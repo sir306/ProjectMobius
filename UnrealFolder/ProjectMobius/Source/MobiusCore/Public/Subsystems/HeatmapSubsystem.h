@@ -25,7 +25,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "VisualizationInterface.h"
 #include "MassEntitySubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "HeatmapSubsystem.generated.h"
@@ -59,7 +58,7 @@ struct TMassExternalSubsystemTraits<UHeatmapSubsystem> final
  * 
  */
 UCLASS()
-class VISUALIZATION_API UHeatmapSubsystem : public UWorldSubsystem, public IVisualizationInterface
+class MOBIUSCORE_API UHeatmapSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 	

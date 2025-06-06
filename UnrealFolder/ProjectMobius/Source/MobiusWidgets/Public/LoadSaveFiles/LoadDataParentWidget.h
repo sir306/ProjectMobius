@@ -96,8 +96,8 @@ public:
 
 	/**
 	 * Handle the dialog closed event
-	 * @param[const FString&] AgentFilePath The path to the file selected
-	 * @param[const FString&] MeshFilePath The path to the mesh file selected
+	 * @param[FString] AgentFilePath The path to the file selected
+	 * @param[FString] MeshFilePath The path to the mesh file selected
 	 * @param[bool] bAgentSuccess Whether the agent file was successfully selected
 	 * @param[bool] bMeshSuccess Whether the mesh file was successfully selected
 	 * 

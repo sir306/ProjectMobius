@@ -43,7 +43,7 @@ enum EHeatmapType : uint8
 };
 
 UCLASS()
-class VISUALIZATION_API AHeatmapPixelTextureVisualizer : public AActor
+class MOBIUSCORE_API AHeatmapPixelTextureVisualizer : public AActor
 {
 	GENERATED_BODY()
 

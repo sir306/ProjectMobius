@@ -22,15 +22,14 @@
  * IN THE SOFTWARE.
  */
 
-#include "HeatmapPixelTextureVisualizer.h"
+#include "Actors/HeatmapPixelTextureVisualizer.h"
 
 #include "DynamicPixelRenderingTexture.h"
-#include "HeatmapSubsystem.h"
 #include "ProceduralMeshComponent.h"
 #include "KismetProceduralMeshLibrary.h" // has helper functions for procedural meshes
 #include "GeomTools.h"// has helper functions for geometry
 #include "Kismet/GameplayStatics.h"
-#include "RuntimeMeshGeneration/RuntimeMeshBuilder.h"
+#include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "DatasmithRuntime.h"
 #include "StaticMeshResources.h" // used for accessing vertex buffers on static meshes
 #include "Rendering/PositionVertexBuffer.h" 
@@ -221,19 +220,6 @@ void AHeatmapPixelTextureVisualizer::InitializeHeatmap(int32 InHeatmapType, bool
 	// Create a new dynamic texture and configure it
 	DynamicTexture = NewObject<UDynamicPixelRenderingTexture>(this, UDynamicPixelRenderingTexture::StaticClass(), FName(*(ActorName + "DynamicTexture")));
 	SetupDynamicTexture();
-
-	
-
-	// check subsystem not null
-	if(UHeatmapSubsystem* SubSystem = GetWorld()->GetSubsystem<UHeatmapSubsystem>())
-	{
-		// add this actor to the subsystem
-		SubSystem->AddHeatmapActor(this);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to add the Heatmap Actor to the Heatmap Subsystem"));
-	}
 
 	// Update the mesh bounds
 	UpdateHeatmapMeshBounds();

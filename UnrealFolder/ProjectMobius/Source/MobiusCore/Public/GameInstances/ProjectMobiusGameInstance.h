@@ -47,7 +47,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDataLoading, bool, bIsDataBeingLoad
  * from multiple classes will be stored.
  */
 UCLASS()
-class PROJECTMOBIUS_API UProjectMobiusGameInstance : public UGameInstance
+class MOBIUSCORE_API UProjectMobiusGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
 	

@@ -10,10 +10,9 @@ public class Visualization : ModuleRules
             new string[]
             {
                 "Core", 
-                "MassEntity",
                 "OpenCV",
-                "ProceduralMeshComponent",
                 "UMG",
+                "OpenCVHelper",
             }
         );
 
@@ -24,13 +23,8 @@ public class Visualization : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore", 
-                "MobiusWidgets",
-                "OpenCVHelper",
-                "ProjectMobius",// TODO: extract out the mesh gen so we dont reference the whole project and also causes a circular dependency
                 "RHI",
                 "RenderCore",
-                "DatasmithRuntime", 
-                "DatasmithCore",
             }
         );
         

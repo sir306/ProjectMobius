@@ -24,7 +24,7 @@
 
 #include "HeatmapVisualizer.h"
 #include "CanvasTypes.h"
-#include "HeatmapSubsystem.h"
+//#include "Subsystems/HeatmapSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -105,18 +105,7 @@ void AHeatmapVisualizer::PostInitializeComponents()
 	UE_LOG(LogTemp, Warning, TEXT("PostInitializeComponents before super"));
 	Super::PostInitializeComponents();
 	UE_LOG(LogTemp, Warning, TEXT("PostInitializeComponents after super"));
-	// add this actor to the subsystem
-	UHeatmapSubsystem* SubSystem = GetWorld()->GetSubsystem<UHeatmapSubsystem>();
-
-	// check subsystem not null
-	if(SubSystem)
-	{
-		SubSystem->AddHeatmapActor(this);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to add the Heatmap Actor to the Heatmap Subsystem"));
-	}
+	
 }
 
 // Called when the game starts or when spawned

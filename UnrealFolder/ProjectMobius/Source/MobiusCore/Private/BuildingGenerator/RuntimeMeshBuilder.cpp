@@ -22,11 +22,11 @@
  * IN THE SOFTWARE.
  */
 
-#include "RuntimeMeshGeneration/RuntimeMeshBuilder.h"
+#include "BuildingGenerator//RuntimeMeshBuilder.h"
 #include "ProceduralMeshComponent.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "ProjectMobius/AsyncAssimpMeshLoader.h"
+#include "AsyncAssimpMeshLoader.h"
 #include "DatasmithRuntime.h"
 #include "DatasmithRuntimeBlueprintLibrary.h"
 #include "DatasmithSceneFactory.h"

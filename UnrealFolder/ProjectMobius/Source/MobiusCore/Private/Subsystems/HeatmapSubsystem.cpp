@@ -22,10 +22,10 @@
  * IN THE SOFTWARE.
  */
 
-#include "HeatmapSubsystem.h"
+#include "Subsystems/HeatmapSubsystem.h"
 
-#include "MobiusWidgetSubsystem.h"
-#include "HeatmapPixelTextureVisualizer.h"
+//#include "MobiusWidgetSubsystem.h"
+#include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Kismet/GameplayStatics.h"
 
 UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
@@ -130,6 +130,9 @@ void UHeatmapSubsystem::CreateHeatmap(const FVector& Location, int32 HeatmapInde
 
 			// Initialize the heatmap actor
 			HeatmapActor->InitializeHeatmap(2, true, HeatmapBoundingSize, 0.0f, true);
+
+			// Add the heatmap actor to the subsystem
+			AddHeatmapActor(HeatmapActor);
 		}
 		else
 		{
@@ -174,11 +177,12 @@ void UHeatmapSubsystem::AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapA
 	}
 	else
 	{
-		UMobiusWidgetSubsystem* ErrorSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>();
-		if(ErrorSubsystem)
-		{
-			ErrorSubsystem->DisplayErrorWidget(FText::FromString("Heatmap Subsystem Error"), FText::FromString("Heatmap Actor is invalid, Failed to add it to the Heatmap Subsystem"));
-		}
+		// TODO: this is the only part of this subsystem that relies on the widget subsystem and causes this module to have a circular dependency 
+		// UMobiusWidgetSubsystem* ErrorSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>();
+		// if(ErrorSubsystem)
+		// {
+		// 	ErrorSubsystem->DisplayErrorWidget(FText::FromString("Heatmap Subsystem Error"), FText::FromString("Heatmap Actor is invalid, Failed to add it to the Heatmap Subsystem"));
+		// }
 	}
 }
 
