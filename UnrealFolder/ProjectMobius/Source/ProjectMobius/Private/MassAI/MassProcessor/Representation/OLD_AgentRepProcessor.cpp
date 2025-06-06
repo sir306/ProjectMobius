@@ -40,7 +40,7 @@
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
 #include "Components/InstancedStaticMeshComponent.h"
 // multithreading and async
-#include "HeatmapSubsystem.h"
+#include "Subsystems/HeatmapSubsystem.h"
 #include "Async/ParallelFor.h"
 #include "MassAI/Subsystems/TimeDilationSubSystem.h"
 

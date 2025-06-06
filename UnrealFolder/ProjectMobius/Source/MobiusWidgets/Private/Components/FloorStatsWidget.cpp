@@ -29,9 +29,9 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
-#include "ProjectMobius/Public/GameInstances/WebSocketSubsystem.h"
+#include "Subsystems/WebSocketSubsystem.h"
 #include "MassAI/Subsystems/TimeDilationSubSystem.h"
-#include "Visualization/Public/HeatmapSubsystem.h"
+#include "Subsystems//HeatmapSubsystem.h"
 
 
 void UFloorStatsWidget::NativePreConstruct()

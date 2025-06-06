@@ -59,7 +59,7 @@ struct TMassExternalSubsystemTraits<UHeatmapSubsystem> final
  * 
  */
 UCLASS()
-class VISUALIZATION_API UHeatmapSubsystem : public UWorldSubsystem, public IVisualizationInterface
+class MOBIUSCORE_API UHeatmapSubsystem : public UWorldSubsystem, public IVisualizationInterface
 {
 	GENERATED_BODY()
 	

@@ -39,7 +39,7 @@ class UAssimpInterface : public UInterface
 /**
  * 
  */
-class PROJECTMOBIUS_API IAssimpInterface
+class MOBIUSCORE_API IAssimpInterface
 {
 	GENERATED_BODY()
 

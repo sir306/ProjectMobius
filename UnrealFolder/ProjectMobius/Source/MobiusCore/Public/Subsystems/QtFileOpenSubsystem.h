@@ -37,7 +37,7 @@ DECLARE_DYNAMIC_DELEGATE_FourParams(FOnFileSelectedDelegate, const FString&, Age
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UQtFileOpenSubsystem : public UWorldSubsystem
+class MOBIUSCORE_API UQtFileOpenSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
