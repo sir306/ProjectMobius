@@ -22,7 +22,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "GameInstances/WebSocketSubsystem.h"
+#include "Subsystems//WebSocketSubsystem.h"
 
 #include "IWebSocket.h"
 #include "WebSocketsModule.h"

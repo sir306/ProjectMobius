@@ -26,7 +26,7 @@
 #include "ProceduralMeshComponent.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "ProjectMobius/AsyncAssimpMeshLoader.h"
+#include "AsyncAssimpMeshLoader.h"
 #include "DatasmithRuntime.h"
 #include "DatasmithRuntimeBlueprintLibrary.h"
 #include "DatasmithSceneFactory.h"

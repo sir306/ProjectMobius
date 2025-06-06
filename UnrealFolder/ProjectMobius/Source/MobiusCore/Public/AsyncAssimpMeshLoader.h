@@ -37,7 +37,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLoadMeshDataComplete);
  * 
  */
 UCLASS()
-class PROJECTMOBIUS_API UAsyncAssimpMeshLoader : public UObject
+class MOBIUSCORE_API UAsyncAssimpMeshLoader : public UObject
 {
 	GENERATED_BODY()
 
@@ -50,7 +50,7 @@ public:
 	
 };
 
-class FAssimpMeshLoaderRunnable : public FRunnable
+class MOBIUSCORE_API FAssimpMeshLoaderRunnable final : public FRunnable
 {
 public:
 	FAssimpMeshLoaderRunnable(const FString InPathToMesh);

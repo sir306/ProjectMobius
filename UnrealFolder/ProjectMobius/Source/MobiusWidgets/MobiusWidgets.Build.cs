@@ -12,7 +12,6 @@ public class MobiusWidgets : ModuleRules
                 "Core",
                 "UMG", 
                 "Synthesis",// Required for the synth2d component
-                "ProjectMobius", // Required for UMG
             }
         );
 
@@ -23,7 +22,8 @@ public class MobiusWidgets : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore", "ProjectMobius", "MassRepresentation", "HTTP", "Visualization", "Json", 
-                "JsonUtilities", 
+                "JsonUtilities",
+                "MobiusCore",
             }
         );
     }

@@ -36,7 +36,7 @@
 #include "MassAI/Subsystems/TimeDilationSubSystem.h"
 #include <MassAI/Tags/MassAITags.h>
 // multithreading and async
-#include "HeatmapSubsystem.h"
+#include "Subsystems/HeatmapSubsystem.h"
 #include "MassEntityView.h"
 #include "Async/ParallelFor.h"
 #include "HAL/CriticalSection.h"

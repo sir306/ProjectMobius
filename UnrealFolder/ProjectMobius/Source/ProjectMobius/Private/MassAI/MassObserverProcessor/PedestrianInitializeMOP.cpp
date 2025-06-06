@@ -40,7 +40,7 @@
 // Other includes
 #include <Kismet/KismetMathLibrary.h>
 
-#include "HeatmapSubsystem.h"
+#include "Subsystems/HeatmapSubsystem.h"
 
 UPedestrianInitializeMOP::UPedestrianInitializeMOP()
 {
