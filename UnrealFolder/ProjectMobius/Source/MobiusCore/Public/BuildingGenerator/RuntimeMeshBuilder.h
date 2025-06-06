@@ -47,7 +47,7 @@ struct FDatasmithMaterials
 };
 
 UCLASS()
-class PROJECTMOBIUS_API ARuntimeMeshBuilder : public AActor, public IAssimpInterface, public IProjectMobiusInterface
+class MOBIUSCORE_API ARuntimeMeshBuilder : public AActor, public IAssimpInterface, public IProjectMobiusInterface
 {
 	GENERATED_BODY()
 	

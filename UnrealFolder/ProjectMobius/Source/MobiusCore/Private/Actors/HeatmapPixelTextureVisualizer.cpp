@@ -29,7 +29,7 @@
 #include "KismetProceduralMeshLibrary.h" // has helper functions for procedural meshes
 #include "GeomTools.h"// has helper functions for geometry
 #include "Kismet/GameplayStatics.h"
-#include "RuntimeMeshGeneration/RuntimeMeshBuilder.h"
+#include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "DatasmithRuntime.h"
 #include "StaticMeshResources.h" // used for accessing vertex buffers on static meshes
 #include "Rendering/PositionVertexBuffer.h" 

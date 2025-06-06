@@ -27,12 +27,11 @@ public class MobiusCore : ModuleRules
                 "HTTP",  
                 "Json", 
                 "JsonUtilities",
-                "Visualization", // need to break the dependency on the Visualization module
                 "MobiusWidgets", // need to break the dependency on the MobiusWidgets module
                 "WebSockets",
                 "DatasmithRuntime", 
                 "DatasmithCore",
-                "ProjectMobius", // needed for mesh gen class will remove once we can
+                "Visualization",
             }
         );
         
