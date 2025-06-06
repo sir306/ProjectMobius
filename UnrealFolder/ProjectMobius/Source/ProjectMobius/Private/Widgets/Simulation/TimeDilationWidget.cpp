@@ -26,7 +26,7 @@
 #include "Components/TextBlock.h" // UTextBlock component
 //#include "Components/RichTextBlock.h" // URichTextBlock component TODO
 #include "Kismet/GameplayStatics.h"
-#include <MassAI/SubSystems/TimeDilationSubSystem.h>
+#include <SubSystems/TimeDilationSubSystem.h>
 
 
 void UTimeDilationWidget::NativeConstruct()

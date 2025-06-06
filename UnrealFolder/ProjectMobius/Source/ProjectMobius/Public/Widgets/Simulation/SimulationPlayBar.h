@@ -26,7 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "MassAI/SubSystems/TimeDilationSubSystem.h"
+#include "SubSystems/TimeDilationSubSystem.h"
 #include "SimulationPlayBar.generated.h"
 
 class USlateBrushAsset;

@@ -34,7 +34,7 @@
 #include "Kismet/GameplayStatics.h" // to get realtime seconds
 // tags we need
 #include "MassAI/Tags/MassAITags.h"
-#include <MassAI/SubSystems/TimeDilationSubSystem.h>
+#include <SubSystems/TimeDilationSubSystem.h>
 
 UTimeDilationProcessor::UTimeDilationProcessor()
 {

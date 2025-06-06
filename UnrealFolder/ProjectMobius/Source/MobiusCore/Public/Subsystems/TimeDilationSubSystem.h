@@ -63,7 +63,7 @@ struct TMassExternalSubsystemTraits<UTimeDilationSubSystem> final
  * by all our classes
  */
 UCLASS()
-class PROJECTMOBIUS_API UTimeDilationSubSystem : public UTickableWorldSubsystem, public IProjectMobiusInterface
+class MOBIUSCORE_API UTimeDilationSubSystem : public UTickableWorldSubsystem, public IProjectMobiusInterface
 {
 	GENERATED_BODY()
 	
