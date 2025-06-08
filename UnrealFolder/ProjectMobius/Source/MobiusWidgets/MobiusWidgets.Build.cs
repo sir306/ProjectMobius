@@ -26,7 +26,6 @@ public class MobiusWidgets : ModuleRules
                 // The problematic file is the floor stats widget, which is a UMG widget that displays the stats of the floor
                 /* TODO:
                  * It depends on three MassAI components:
-                 * TimeDilationSubsystem
                  * MassEntitySpawnSubsystem
                  * AgentDataSubsystem
                  * This is too many subsystems to not point to, to resolve this we will need to move lots of components around,

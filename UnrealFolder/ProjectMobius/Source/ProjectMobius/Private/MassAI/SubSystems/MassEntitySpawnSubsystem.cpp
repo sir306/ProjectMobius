@@ -34,8 +34,8 @@
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
 // Other Subsystems we want to use
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
+#include "Subsystems/LoadingSubsystem.h"
 // GameInstance
-#include "MobiusWidgetSubsystem.h"// TODO: Marked for alteration, our cause for circular dependency
 #include "SkeletalMeshAttributes.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Async/Async.h"
@@ -226,7 +226,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	}
 
 	// get the mobius widget subsystem
-	auto WidgetSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>();
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
 	
 	if (AgentDataSubsystem->JsonDataRunnable != nullptr && AgentDataSubsystem->JsonDataRunnable->bIsRunning)
 	{
@@ -236,10 +236,10 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
 		// check if the widget subsystem is valid
-		if (WidgetSubsystem)
+		if (LoadingSubsystem)
 		{
 			// unbind current load percent
-			AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(WidgetSubsystem, &UMobiusWidgetSubsystem::UpdateLoadPercent);
+			AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
 		}
 		AgentDataSubsystem->JsonDataRunnable->Exit();
 	}
@@ -254,10 +254,10 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	
 
 	// check if the widget subsystem is valid
-	if (WidgetSubsystem)
+	if (LoadingSubsystem)
 	{
 		// bind current load percent
-		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.AddDynamic(WidgetSubsystem, &UMobiusWidgetSubsystem::UpdateLoadPercent);
+		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.AddDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
 
 		// get file name from the json data file
 		FString FileName = FPaths::GetCleanFilename(JSONDataFile);
@@ -265,7 +265,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		FString LoadingText = FString::Printf(TEXT("File: %s"), *FileName);
 		
 		// Set the loading text and title
-		WidgetSubsystem->SetLoadingTextAndTitle("Loading Pedestrian Vectors", LoadingText);
+		LoadingSubsystem->SetLoadingTextAndTitle("Loading Pedestrian Vectors", LoadingText);
 	}
 
 	
@@ -297,10 +297,10 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
 	// check if the widget subsystem is valid
-	if (auto WidgetSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>())
+	if (auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>())
 	{
 		// unbind current load percent
-		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(WidgetSubsystem, &UMobiusWidgetSubsystem::UpdateLoadPercent);
+		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
 	}
 
 	// Have the thread destroy

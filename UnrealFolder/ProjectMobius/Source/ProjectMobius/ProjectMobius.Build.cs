@@ -42,7 +42,7 @@ public class ProjectMobius : ModuleRules
             "Niagara", 
             // External Modules needed for this project that have been made to decouple functionality
             "HeatmapVisualization", 
-            "MobiusWidgets", 
+            //"MobiusWidgets", 
             "Slate",
             "SlateCore",
             "RenderCore",

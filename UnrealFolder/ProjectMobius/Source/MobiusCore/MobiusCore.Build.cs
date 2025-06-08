@@ -27,7 +27,6 @@ public class MobiusCore : ModuleRules
                 "HTTP",  
                 "Json", 
                 "JsonUtilities",
-                //"MobiusWidgets", // need to break the dependency on the MobiusWidgets module
                 "WebSockets",
                 "DatasmithRuntime", 
                 "DatasmithCore",
