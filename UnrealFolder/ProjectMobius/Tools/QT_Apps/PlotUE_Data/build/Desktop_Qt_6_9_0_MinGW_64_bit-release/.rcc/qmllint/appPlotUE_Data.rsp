@@ -1,11 +1,11 @@
 --bare
 -I
-D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release
+E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release
 -I
-D:/QT/6.9.0/mingw_64/qml
+C:/Qt/6.9.0/mingw_64/qml
 --resource
-D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/qmake_PlotUE_Data.qrc
+E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/qmake_PlotUE_Data.qrc
 --resource
-D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/appPlotUE_Data_raw_qml_0.qrc
-D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AppWindow.qml
-D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ScatterSeriesHoverItem.qml
+E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/appPlotUE_Data_raw_qml_0.qrc
+E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AppWindow.qml
+E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ScatterSeriesHoverItem.qml

@@ -1,9 +1,9 @@
 <RCC>
   <qresource prefix="/qt/qml/PlotUE_Data/">
-    <file alias="AppWindow.qml">D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AppWindow.qml</file>
-    <file alias="ScatterSeriesHoverItem.qml">D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ScatterSeriesHoverItem.qml</file>
-    <file alias="shaders/PlaybarShaderEffect.frag">D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/shaders/PlaybarShaderEffect.frag</file>
-    <file alias="shaders/PlaybarShaderEffect.frag.qsb">D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/shaders/PlaybarShaderEffect.frag.qsb</file>
+    <file alias="AppWindow.qml">E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AppWindow.qml</file>
+    <file alias="ScatterSeriesHoverItem.qml">E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ScatterSeriesHoverItem.qml</file>
+    <file alias="shaders/PlaybarShaderEffect.frag">E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/shaders/PlaybarShaderEffect.frag</file>
+    <file alias="shaders/PlaybarShaderEffect.frag.qsb">E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/shaders/PlaybarShaderEffect.frag.qsb</file>
   </qresource>
 </RCC>
 

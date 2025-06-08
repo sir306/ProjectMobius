@@ -1,6 +1,6 @@
 <RCC>
   <qresource prefix="/qt/qml/PlotUE_Data">
-    <file alias="qmldir">D:/1_Work/MobiusPublic/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/PlotUE_Data/qmldir</file>
+    <file alias="qmldir">E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/PlotUE_Data/qmldir</file>
   </qresource>
 </RCC>
 
