@@ -2,3 +2,15 @@
 
 
 #include "Subsystems/StatisticSubsystem.h"
+
+UStatisticSubsystem::UStatisticSubsystem()
+{
+}
+
+void UStatisticSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	// add any subsystem dependencies here
+
+	
+	Super::Initialize(Collection);
+}

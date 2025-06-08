@@ -32,6 +32,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Subsystems/LoadingSubsystem.h"
 
 UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingNotifyWidget(nullptr)
 {
@@ -39,12 +40,38 @@ UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingN
 
 void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	// add the loading subsystem dependency to the collection and then bind our methods to its delegates
+	if (ULoadingSubsystem* LoadingSubsystem = Collection.InitializeDependency<ULoadingSubsystem>())
+	{
+		// ensure that it is not already bound to the delegates
+		// OnLoadingPercentChanged
+		LoadingSubsystem->OnLoadingPercentChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadPercent);
+		// OnLoadingTextChanged
+		LoadingSubsystem->OnLoadingTextChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::SetLoadingTextAndTitle);
+		
+		
+		// bind the loading percent changed delegate
+		LoadingSubsystem->OnLoadingPercentChanged.AddDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadPercent);
+		// bind the loading text changed delegate
+		LoadingSubsystem->OnLoadingTextChanged.AddDynamic(this, &UMobiusWidgetSubsystem::SetLoadingTextAndTitle);
+	}
+	
 	Super::Initialize(Collection);
 	
 }
 
 void UMobiusWidgetSubsystem::Deinitialize()
 {
+	// Unbind all bound delegates from the loading subsystem
+	if (ULoadingSubsystem* LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>())
+	{
+		// OnLoadingPercentChanged
+		LoadingSubsystem->OnLoadingPercentChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadPercent);
+
+		// OnLoadingTextChanged
+		LoadingSubsystem->OnLoadingTextChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::SetLoadingTextAndTitle);
+	}
+	
 	Super::Deinitialize();
 }
 
@@ -95,31 +122,6 @@ ULoadingNotifyWidget* UMobiusWidgetSubsystem::GetLoadingWidget() const
 	return nullptr;
 }
 
-void UMobiusWidgetSubsystem::CalculateLoadPercentInt(int32 CurrentLoad, int32 TotalLoad)
-{
-	// Calculate the load percent
-	float NewLoadPercent =  float(CurrentLoad / TotalLoad);
-
-	// Update the load percent
-	LoadingNotifyWidget->UpdateLoadPercent(NewLoadPercent);
-}
-
-void UMobiusWidgetSubsystem::CalculateLoadPercentFloat(float CurrentLoad, float TotalLoad)
-{
-	// Calculate the load percent
-	float NewLoadPercent =  CurrentLoad / TotalLoad;
-	
-	// check if the loading widget is null
-	if(LoadingNotifyWidget == nullptr)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
-		return;
-	}
-	
-	// Update the load percent
-	LoadingNotifyWidget->UpdateLoadPercent(NewLoadPercent);
-}
-
 void UMobiusWidgetSubsystem::UpdateLoadPercent(float NewLoadPercent)
 {
 	// check if the loading widget is null
@@ -136,7 +138,7 @@ void UMobiusWidgetSubsystem::UpdateLoadPercent(float NewLoadPercent)
 	//UE_LOG(LogTemp, Warning, TEXT("New Load Percent: %f"), NewLoadPercent);
 }
 
-void UMobiusWidgetSubsystem::SetLoadingTextAndTitle(const FString& NewLoadingText, const FString& NewLoadingTitle) const
+void UMobiusWidgetSubsystem::SetLoadingTextAndTitle(FString NewLoadingText, FString NewLoadingTitle) 
 {
 	// check if the loading widget is null
 	if(LoadingNotifyWidget == nullptr)

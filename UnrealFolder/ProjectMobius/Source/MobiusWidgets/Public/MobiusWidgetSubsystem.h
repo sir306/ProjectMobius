@@ -85,27 +85,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget")
 	ULoadingNotifyWidget* GetLoadingWidget() const;
-
-	/**
-	 * Calculate the Load Percent - int32 input
-	 * - after the calculation is complete it will update the percent value and check if the load is complete
-	 *
-	 * @param CurrentLoad - Current Load Value
-	 * @param TotalLoad - Total Load Value
-	 */
-	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
-	void CalculateLoadPercentInt(int32 CurrentLoad, int32 TotalLoad);
-
-	/**
-	 * Calculate the Load Percent - float input
-	 * - after the calculation is complete it will update the percent value and check if the load is complete
-	 *
-	 * @param CurrentLoad - Current Load Value
-	 * @param TotalLoad - Total Load Value
-	 */
-	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
-	void CalculateLoadPercentFloat(float CurrentLoad, float TotalLoad);
-
+	
 	/**
 	 * Update Load percent value used for binding with external delegates
 	 *
@@ -121,7 +101,7 @@ public:
 	 * @param[FString] NewLoadingTitle - New Loading Title
 	 */
 	UFUNCTION()
-	void SetLoadingTextAndTitle(const FString& NewLoadingText, const FString& NewLoadingTitle) const;
+	void SetLoadingTextAndTitle(FString NewLoadingText, FString NewLoadingTitle);
 
 private:
 	
