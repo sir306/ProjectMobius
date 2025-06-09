@@ -31,13 +31,17 @@ const { randomUUID } = require('crypto');
 
 // 1) Load port from config.json or fallback to env/8080
 let port;
+console.log("Looking for config at:", path.resolve(process.cwd(), 'config.json'));
+
 try {
-  const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'config.json'), 'utf8'));
+  const cfg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'config.json'), 'utf8'));
+  
+
   port = cfg.port;
   console.log(`Loaded port ${port} from config.json`);
 } catch {
   console.warn('Could not read config.json; falling back to env or default');
-  port = process.env.PORT || 8080;
+  port = process.env.PORT || 9090;
 }
 
 // registry now tracks unreal socket, qt socket, and currentTime
