@@ -208,4 +208,4 @@ yarn-error.log*
 
 # till i workout how to incorporate GeosJSON correctly ignore it
 GeosJSON/
-UnrealFolder/ProjectMobius/source/ProjectMobius/ThirdParty/GeosJSON/*
+UnrealFolder/ProjectMobius/source/MobiusCore/ThirdParty/GeosJSON/*
