@@ -207,5 +207,5 @@ yarn-error.log*
 !UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.dll
 
 # till i workout how to incorporate GeosJSON correctly ignore it
-GeosJSON/*
+GeosJSON/
 UnrealFolder/ProjectMobius/source/ProjectMobius/ThirdParty/GeosJSON/*
