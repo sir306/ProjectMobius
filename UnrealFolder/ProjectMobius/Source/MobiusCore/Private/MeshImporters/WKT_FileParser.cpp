@@ -203,3 +203,8 @@ bool UWKT_FileParser::ParseGeometryCollectionWkt(const FString& WKTString, TArra
 	return true;
 }
 
+FString UWKT_FileParser::ConvertPolygonToObjFormat(const TArray<FVector2D>& ParsedPoints) const
+{
+	return FString();
+}
+
