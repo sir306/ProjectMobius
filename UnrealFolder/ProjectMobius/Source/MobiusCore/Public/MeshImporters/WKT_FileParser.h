@@ -60,4 +60,15 @@ public:
 	TArray<FVector2D> ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage);
 	
 	bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
+
+	/**
+	 * To use our assimp importer, we need to convert the parsed WKT data into a format that can be used by the importer.
+	 * This will convert the 2D vectors into 3D vectors, and create an Obj mesh
+	 *
+	 * @param[TArray<FVector2D>] ParsedPoints The array of 2D vectors representing the parsed WKT data.
+	 * @return[FString] The string representation of the WKT data in a format that can be used by the importer.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "WKT_File_Parser")
+	FString ConvertPolygonToObjFormat(const TArray<FVector2D>& ParsedPoints) const;
+	
 };

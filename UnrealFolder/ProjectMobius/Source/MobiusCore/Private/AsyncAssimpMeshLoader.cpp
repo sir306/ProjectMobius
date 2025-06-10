@@ -36,18 +36,79 @@ UAsyncAssimpMeshLoader::UAsyncAssimpMeshLoader()
 {
 }
 
-FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh)
+TArray<FIntVector> UAsyncAssimpMeshLoader::TriangulateWktPolygon(const TArray<FVector2D>& Polygon,
+	TArray<FVector>& OutVertices)
+{
+	TArray<FIntVector> Triangles;
+
+	if (Polygon.Num() < 3)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Polygon must have at least 3 points."));
+		return Triangles;
+	}
+
+	// Generate OBJ data string
+	FString OBJ = TEXT("o WKTPolygon\n");
+	for (const FVector2D& P : Polygon)
+	{
+		OBJ += FString::Printf(TEXT("v %f %f 0.0\n"), P.X, P.Y);
+	}
+	OBJ += TEXT("f");
+	for (int32 i = 1; i <= Polygon.Num(); ++i)
+	{
+		OBJ += FString::Printf(TEXT(" %d"), i);
+	}
+	OBJ += TEXT("\n");
+
+	std::string OBJData = TCHAR_TO_UTF8(*OBJ);
+	Assimp::Importer Importer;
+	const aiScene* Scene = Importer.ReadFileFromMemory(
+		OBJData.c_str(), OBJData.size(),
+		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices,
+		"obj");
+
+	if (!Scene || !Scene->HasMeshes())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
+		return Triangles;
+	}
+
+	const aiMesh* Mesh = Scene->mMeshes[0];
+	OutVertices.Empty();
+	for (unsigned int i = 0; i < Mesh->mNumVertices; ++i)
+	{
+		const aiVector3D& V = Mesh->mVertices[i];
+		OutVertices.Add(FVector(V.x, V.y, V.z));
+	}
+
+	for (unsigned int i = 0; i < Mesh->mNumFaces; ++i)
+	{
+		const aiFace& Face = Mesh->mFaces[i];
+		if (Face.mNumIndices == 3)
+		{
+			Triangles.Add(FIntVector(Face.mIndices[0], Face.mIndices[1], Face.mIndices[2]));
+		}
+	}
+
+	return Triangles;
+}
+
+FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh, bool bInStringIsObjString)
 {
 	if(InPathToMesh.IsEmpty())
 	{
 		
 		return;
 	}
-	else if(!FPaths::FileExists(InPathToMesh))
+	else if(!FPaths::FileExists(InPathToMesh) && !bInStringIsObjString)
 	{
+		// if the path to the mesh is not a valid file path and the string is not an obj string then return
+		UE_LOG(LogTemp, Warning, TEXT("The path to the mesh is not a valid file path: %s"), *InPathToMesh);
 		return;
 	}
+	
 	PathToMesh = InPathToMesh;
+	bIsObjString = bInStringIsObjString;
 
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
 	Thread = FRunnableThread::Create(this, TEXT("FAssimpMeshLoaderRunnable"), 0, TPri_Normal);
@@ -64,6 +125,39 @@ FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 }
 
 uint32 FAssimpMeshLoaderRunnable::Run()
+{
+	if (bIsObjString)
+	{
+		ProcessMeshFromString();
+	}
+	else
+	{
+		ProcessMeshFromFile();
+	}
+
+	// sleep the thread for 0.5 seconds
+	FPlatformProcess::Sleep(0.5f);
+
+	AsyncTask(ENamedThreads::GameThread, [this]()
+	{
+		// Broadcast complete
+		OnLoadMeshDataComplete.Broadcast();
+	});
+	
+	return 0;
+}
+
+void FAssimpMeshLoaderRunnable::Stop()
+{
+	bShouldStop = true;
+}
+
+void FAssimpMeshLoaderRunnable::Exit()
+{
+	FRunnable::Exit();
+}
+
+void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 {
 	// Broadcast the current percentage of the data loaded
 	AsyncTask(ENamedThreads::GameThread, [this]()
@@ -283,27 +377,42 @@ uint32 FAssimpMeshLoaderRunnable::Run()
 		}
 		break;// break the loop as we only need to load the mesh data once - but this will change in the future
 	}
+}
 
-	// sleep the thread for 0.5 seconds
-	FPlatformProcess::Sleep(0.5f);
+void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
+{
 
-	AsyncTask(ENamedThreads::GameThread, [this]()
+	std::string OBJData = TCHAR_TO_UTF8(*PathToMesh);
+	Assimp::Importer Importer;
+	const aiScene* Scene = Importer.ReadFileFromMemory(
+		OBJData.c_str(), OBJData.size(),
+		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices,
+		"obj");
+
+	if (!Scene || !Scene->HasMeshes())
 	{
-		// Broadcast complete
-		OnLoadMeshDataComplete.Broadcast();
-	});
-	
-	return 0;
-}
+		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
+		return;
+	}
 
-void FAssimpMeshLoaderRunnable::Stop()
-{
-	bShouldStop = true;
-}
+	const aiMesh* Mesh = Scene->mMeshes[0];
+	Vertices.Empty();
+	for (unsigned int i = 0; i < Mesh->mNumVertices; ++i)
+	{
+		const aiVector3D& V = Mesh->mVertices[i];
+		Vertices.Add(FVector(V.x, V.y, V.z));
+	}
 
-void FAssimpMeshLoaderRunnable::Exit()
-{
-	FRunnable::Exit();
+	for (unsigned int i = 0; i < Mesh->mNumFaces; ++i)
+	{
+		const aiFace& Face = Mesh->mFaces[i];
+		if (Face.mNumIndices == 3)
+		{
+			Faces.Add(Face.mIndices[0]);
+			Faces.Add(Face.mIndices[1]);
+			Faces.Add(Face.mIndices[2]);
+		}
+	}
 }
 
 FRotator FAssimpMeshLoaderRunnable::GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign,

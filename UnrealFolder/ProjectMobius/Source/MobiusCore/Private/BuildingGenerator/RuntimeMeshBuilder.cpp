@@ -317,7 +317,7 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 	FString FilePath = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\TechnicalSchool1000People\\Technical-School-For-Lab-3D.fbx";
 	AsyncAssimpLoader = NewObject<UAsyncAssimpMeshLoader>();
 	// Create the runnable
-	AsyncAssimpLoader->MeshLoaderRunnable = new FAssimpMeshLoaderRunnable(PathToMesh);
+	AsyncAssimpLoader->MeshLoaderRunnable = new FAssimpMeshLoaderRunnable(PathToMesh, false);
 	AsyncAssimpLoader->MeshLoaderRunnable->OnLoadMeshDataComplete.AddDynamic(this, &ARuntimeMeshBuilder::GetTheAsyncMeshData);
 }
 

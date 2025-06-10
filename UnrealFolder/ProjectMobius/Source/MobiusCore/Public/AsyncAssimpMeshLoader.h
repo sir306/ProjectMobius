@@ -47,13 +47,23 @@ public:
 
 	/** The runnable task */
 	FAssimpMeshLoaderRunnable* MeshLoaderRunnable = nullptr;
+
+	/**
+	 * Convert a WKT Polygon to a triangulated mesh. Using the assimp library to triangulate the polygon.
+	 * 
+	 * @param InPolygonData WKT Polygon data as an array of FVector2D points.
+	 * @param OutVertices The output of the triangulated vertices.
+	 * @return returns an array of FIntVector indices representing the triangulated polygon triangles.
+	 */
+	UFUNCTION(BlueprintCallable)
+	static TArray<FIntVector> TriangulateWktPolygon(const TArray<FVector2D>& InPolygonData, TArray<FVector>& OutVertices);
 	
 };
 
 class MOBIUSCORE_API FAssimpMeshLoaderRunnable final : public FRunnable
 {
 public:
-	FAssimpMeshLoaderRunnable(const FString InPathToMesh);
+	FAssimpMeshLoaderRunnable(const FString InPathToMesh, bool bInStringIsObjString = false);
 	virtual ~FAssimpMeshLoaderRunnable() override;
 	
 	// The FRunnable interface functions
@@ -71,6 +81,9 @@ public:
 	TArray<FVector2D> UV;
 	TArray<FVector> Tangents;
 #pragma endregion MESH_PROPERTIES
+	/** is the file path actually an obj string */
+	bool bIsObjString = false;
+	TArray<FVector2D> Polygon = TArray<FVector2D>();
 
 	/** Delegate to broadcast when the mesh data has finished loading */
 	FOnLoadMeshDataComplete OnLoadMeshDataComplete;
@@ -81,6 +94,16 @@ protected:
 
 	/** Bool to tell when the thread should stop */
 	bool bShouldStop = false;
+
+	/**
+	 * method to process an actual mesh from a directory
+	 */
+	void ProcessMeshFromFile();
+
+	/**
+	 * Process a mesh from an obj string
+	 */
+	void ProcessMeshFromString();
 
 	/**
 	 * This function is called to rotate the mesh data to the correct orientation based on the axis data from the metadata,
