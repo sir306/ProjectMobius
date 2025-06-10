@@ -32,20 +32,20 @@
  * Enum for the different types of units that can be converted
  */
 UENUM()
-enum EUnitType
+enum EDistanceUnitType
 {
 	// Metric Units
-	Eut_Millimeters		UMETA(DisplayName = "Millimeters"),
-	Eut_Centimeters		UMETA(DisplayName = "Centimeters"),
-	Eut_Meters			UMETA(DisplayName = "Meters"),
-	Eut_Kilometers		UMETA(DisplayName = "Kilometers"),
+	Edut_Millimeters		UMETA(DisplayName = "Millimeters"),
+	Edut_Centimeters		UMETA(DisplayName = "Centimeters"),
+	Edut_Meters			UMETA(DisplayName = "Meters"),
+	Edut_Kilometers		UMETA(DisplayName = "Kilometers"),
 
 	// Imperial Units
-	Eut_Inches			UMETA(DisplayName = "Inches"),
-	Eut_Feet			UMETA(DisplayName = "Feet"),
-	Eut_Yards			UMETA(DisplayName = "Yards"),
+	Edut_Inches			UMETA(DisplayName = "Inches"),
+	Edut_Feet			UMETA(DisplayName = "Feet"),
+	Edut_Yards			UMETA(DisplayName = "Yards"),
 
-	Eut_MAX				UMETA(DisplayName = "MAX")
+	Edut_MAX				UMETA(DisplayName = "MAX")
 	
 };
 
@@ -72,7 +72,7 @@ public:
 	 * @param InUnitType - The unit type of the input value
 	 * @param OutUnitType - The unit type to convert the input value to
 	 */
-	void ConvertFloatUnitValueToNewUnitType(float& InValue, EUnitType InUnitType, EUnitType OutUnitType);
+	void ConvertFloatUnitValueToNewUnitType(float& InValue, EDistanceUnitType InUnitType, EDistanceUnitType OutUnitType);
 
 	/*
 	 * Convert the int32 input value from the input unit type to the output unit type
@@ -81,7 +81,7 @@ public:
 	 * @param InUnitType - The unit type of the input value
 	 * @param OutUnitType - The unit type to convert the input value to
 	 */
-	void ConvertIntUnitValueToNewUnitType(int32& InValue, EUnitType InUnitType, EUnitType OutUnitType);
+	void ConvertIntUnitValueToNewUnitType(int32& InValue, EDistanceUnitType InUnitType, EDistanceUnitType OutUnitType);
 
 	/*
 	 * Get the conversion factor from the input unit type to the output unit type
@@ -91,5 +91,5 @@ public:
 	 *
 	 * @return float - The conversion factor
 	 */
-	float GetConversionFactor(EUnitType InUnitType, EUnitType OutUnitType);
+	float GetConversionFactor(EDistanceUnitType InUnitType, EDistanceUnitType OutUnitType);
 };

@@ -26,24 +26,24 @@
 
 
 // Add default functionality here for any IUnitConversionAndScaling functions that are not pure virtual.
-void IUnitConversionAndScaling::ConvertFloatUnitValueToNewUnitType(float& InValue, EUnitType InUnitType,
-	EUnitType OutUnitType)
+void IUnitConversionAndScaling::ConvertFloatUnitValueToNewUnitType(float& InValue, EDistanceUnitType InUnitType,
+	EDistanceUnitType OutUnitType)
 {
 	// Scale the input value by the conversion factor
 	InValue *= GetConversionFactor(InUnitType, OutUnitType);
 }
 
-void IUnitConversionAndScaling::ConvertIntUnitValueToNewUnitType(int32& InValue, EUnitType InUnitType,
-	EUnitType OutUnitType)
+void IUnitConversionAndScaling::ConvertIntUnitValueToNewUnitType(int32& InValue, EDistanceUnitType InUnitType,
+	EDistanceUnitType OutUnitType)
 {
 	// Scale the input value by the conversion factor
 	InValue *= GetConversionFactor(InUnitType, OutUnitType);
 }
 
-float IUnitConversionAndScaling::GetConversionFactor(EUnitType InUnitType, EUnitType OutUnitType)
+float IUnitConversionAndScaling::GetConversionFactor(EDistanceUnitType InUnitType, EDistanceUnitType OutUnitType)
 {
 	// 2D array with all conversion factors between the different unit types
-	static const float ConversionTable[Eut_MAX][Eut_MAX] = 
+	static const float ConversionTable[Edut_MAX][Edut_MAX] = 
 	{
 		// Eut_Millimeters
 		{1.0f, 0.1f, 0.001f, 0.000001f, 0.0393701f, 0.00328084f, 0.00109361f}, 
