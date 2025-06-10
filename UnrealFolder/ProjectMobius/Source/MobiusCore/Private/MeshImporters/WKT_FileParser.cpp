@@ -146,3 +146,60 @@ TArray<FVector2D> UWKT_FileParser::ParseWKTData(const FString& InWKTDataString, 
 
 	return ParsedPoints;
 }
+
+bool UWKT_FileParser::ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries,
+	FString& OutErrorMessage)
+{
+	FString CleanWKT = WKTString;
+	CleanWKT.TrimStartAndEndInline();
+	CleanWKT = CleanWKT.Replace(TEXT("\r"), TEXT("")).Replace(TEXT("\n"), TEXT(""));
+
+	if (!CleanWKT.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase))
+	{
+		OutErrorMessage = TEXT("WKT does not begin with GEOMETRYCOLLECTION");
+		return false;
+	}
+
+	// Extract the content inside the GEOMETRYCOLLECTION (...)
+	int32 OpenParen = CleanWKT.Find(TEXT("("));
+	int32 CloseParen = INDEX_NONE;
+	if (OpenParen == INDEX_NONE || !CleanWKT.FindLastChar(')', CloseParen) || CloseParen <= OpenParen)
+	{
+		OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION WKT.");
+		return false;
+	}
+
+	FString Inner = CleanWKT.Mid(OpenParen + 1, CloseParen - OpenParen - 1).TrimStartAndEnd();
+
+	// Look for each POLYGON block
+	int32 Pos = 0;
+	while (true)
+	{
+		int32 PolygonStart = Inner.Find(TEXT("POLYGON"), ESearchCase::IgnoreCase, ESearchDir::FromStart, Pos);
+		if (PolygonStart == INDEX_NONE) break;
+
+		int32 FirstParen = Inner.Find(TEXT("(("), ESearchCase::IgnoreCase, ESearchDir::FromStart, PolygonStart);
+		int32 EndParen = Inner.Find(TEXT("))"), ESearchCase::IgnoreCase, ESearchDir::FromStart, FirstParen + 2);
+		if (FirstParen == INDEX_NONE || EndParen == INDEX_NONE) break;
+
+		FString PolygonBlock = Inner.Mid(FirstParen + 2, EndParen - FirstParen - 2);
+
+		FString DummyError;
+		TArray<FVector2D> PolygonPoints = ParseWKTData(TEXT("LINESTRING(") + PolygonBlock + TEXT(")"), DummyError);
+		if (!PolygonPoints.IsEmpty())
+		{
+			OutGeometries.Add(PolygonPoints);
+		}
+
+		Pos = EndParen + 2;
+	}
+
+	if (OutGeometries.Num() == 0)
+	{
+		OutErrorMessage = TEXT("No valid POLYGON found in GEOMETRYCOLLECTION.");
+		return false;
+	}
+
+	return true;
+}
+

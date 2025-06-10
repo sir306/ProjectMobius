@@ -58,4 +58,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "WKT_File_Parser")
 	TArray<FVector2D> ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage);
+	
+	bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
 };
