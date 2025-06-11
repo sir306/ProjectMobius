@@ -141,9 +141,12 @@ protected:
 	 * 
 	 */
 	static FRotator GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign, int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);// todo see if forward is needed
-	FVector TransformNormal(const FVector& InNormal, int32 AxisUpOrientation, int32 AxisForwardOrientation,
-	                        int32 AxisForwardSign, int32 AxisUpSign);
+       FVector TransformNormal(const FVector& InNormal, int32 AxisUpOrientation, int32 AxisForwardOrientation,
+                               int32 AxisForwardSign, int32 AxisUpSign);
 
-	static void TransformMeshMatrix(FVector& InVector, int32 AxisUpOrientation, int32 AxisUpSign, int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);
+       static FMatrix BuildTransformMatrix(int32 AxisUpOrientation, int32 AxisUpSign,
+                                           int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);
+
+       static void TransformMeshMatrix(FVector& InVector, const FMatrix& TransformMatrix);
 };
 
