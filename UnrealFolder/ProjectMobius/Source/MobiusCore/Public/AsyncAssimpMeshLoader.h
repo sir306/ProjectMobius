@@ -89,8 +89,8 @@ public:
 	FOnLoadMeshDataComplete OnLoadMeshDataComplete;
 
 protected:
-	/** Pointer to a thread */
-	FRunnableThread* Thread = nullptr;
+       /** Pointer to a thread */
+       TUniquePtr<FRunnableThread> Thread;
 
 	/** Bool to tell when the thread should stop */
 	bool bShouldStop = false;
