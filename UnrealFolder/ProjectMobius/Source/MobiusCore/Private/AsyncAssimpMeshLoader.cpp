@@ -93,14 +93,14 @@ TArray<FIntVector> UAsyncAssimpMeshLoader::TriangulateWktPolygon(const TArray<FV
 	return Triangles;
 }
 
-FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh, bool bInStringIsObjString)
+FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh)
 {
 	if(InPathToMesh.IsEmpty())
 	{
 		
 		return;
 	}
-	else if(!FPaths::FileExists(InPathToMesh) && !bInStringIsObjString)
+	else if(!FPaths::FileExists(InPathToMesh))
 	{
 		// if the path to the mesh is not a valid file path and the string is not an obj string then return
 		UE_LOG(LogTemp, Warning, TEXT("The path to the mesh is not a valid file path: %s"), *InPathToMesh);
@@ -108,7 +108,9 @@ FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh,
 	}
 	
 	PathToMesh = InPathToMesh;
-	bIsObjString = bInStringIsObjString;
+	// if file has .wkt extension then it is a WKT file
+	bIsWktExtension = PathToMesh.EndsWith(TEXT(".wkt"), ESearchCase::IgnoreCase);
+	
 
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
 	Thread = FRunnableThread::Create(this, TEXT("FAssimpMeshLoaderRunnable"), 0, TPri_Normal);
@@ -126,7 +128,7 @@ FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 
 uint32 FAssimpMeshLoaderRunnable::Run()
 {
-	if (bIsObjString)
+	if (bIsWktExtension)
 	{
 		ProcessMeshFromString();
 	}
@@ -381,8 +383,8 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 
 void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 {
-
-	std::string OBJData = TCHAR_TO_UTF8(*PathToMesh);
+	LoadWKTDataToObjString();
+	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
 	Assimp::Importer Importer;
 	const aiScene* Scene = Importer.ReadFileFromMemory(
 		OBJData.c_str(), OBJData.size(),
@@ -413,6 +415,241 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 			Faces.Add(Face.mIndices[2]);
 		}
 	}
+}
+
+void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
+{
+	// now we can use the WKTParser to parse WKT data from a string
+	FString OutFileData;
+	
+
+	if (LoadWKTFile(PathToMesh, OutFileData, ErrorMessage))
+	{
+		// if the outfiledata contains geometry collections use correct parser
+		TArray<TArray<FVector2D>> Geometries;
+		if (ParseGeometryCollectionWkt(OutFileData, Geometries, ErrorMessage))
+		{
+			for (const TArray<FVector2D>& Geometry : Geometries)
+			{
+				for (const FVector2D& P : Geometry)
+				{
+					UE_LOG(LogTemp, Log, TEXT("Parsed Geometry Point: X=%f, Y=%f"), P.X, P.Y);
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to parse geometry collection: %s"), *ErrorMessage);
+		}
+
+		// loop through the parsed WKT data
+		for (TArray<FVector2D>& Geometry : Geometries)
+		{
+			TArray<FVector> WorldPoints;
+			for (const FVector2D& P : Geometry)
+			{
+				WorldPoints.Add(FVector(P.X, P.Y, 10.f)); // raise above first file data
+			}
+			
+			// Test the assimp triangulation method
+			TArray<FVector> TriVerts;
+			TArray<FIntVector> Triangles = UAsyncAssimpMeshLoader::TriangulateWktPolygon(Geometry, TriVerts);
+
+
+			// Generate OBJ with double-sided wall extrusion (1 meter = 100 units)
+			WktDataString = TEXT("o WKTPolygonWithWalls\n");
+
+			int32 NumPoints = Geometry.Num();
+			TArray<FVector2D> Scaled = Geometry;
+			for (FVector2D& P : Scaled)
+				P *= 100.0f;
+
+			// Step 1: Add base (Z=0) and top (Z=100) vertices
+			for (const FVector2D& P : Scaled)
+			{
+				WktDataString += FString::Printf(TEXT("v %f %f 0.0\n"), P.X, P.Y);       // base ring
+			}
+			for (const FVector2D& P : Scaled)
+			{
+				WktDataString += FString::Printf(TEXT("v %f %f 100.0\n"), P.X, P.Y);     // top ring
+			}
+
+			// Step 2: Add bottom face (original polygon winding)
+			WktDataString += TEXT("f");
+			for (int32 i = 1; i <= NumPoints; ++i)
+			{
+				WktDataString += FString::Printf(TEXT(" %d"), i);
+			}
+			WktDataString += TEXT("\n");
+
+			// Step 3: Add top face (reverse winding for top)
+			WktDataString += TEXT("f");
+			for (int32 i = NumPoints; i > 0; --i)
+			{
+				WktDataString += FString::Printf(TEXT(" %d"), i + NumPoints);
+			}
+			WktDataString += TEXT("\n");
+
+			// Step 4: Add side wall faces (double-sided)
+			for (int32 i = 0; i < NumPoints; ++i)
+			{
+				int32 A = i + 1;
+				int32 B = ((i + 1) % NumPoints) + 1;
+				int32 ATop = A + NumPoints;
+				int32 BTop = B + NumPoints;
+
+				// Outer face (clockwise)
+				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, B, BTop);
+				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, BTop, ATop);
+
+				// Inner face (reversed winding)
+				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop, B, A);
+				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop, BTop, A);
+			}
+		}
+	}
+}
+
+bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& OutWKTData, FString& OutErrorMessage)
+{
+	// Check if the file exists
+	if (!FPaths::FileExists(FilePath))
+	{
+		OutErrorMessage = FString::Printf(TEXT("File not found: %s"), *FilePath);
+		return false;
+	}
+
+	// Load the file content
+	if (FFileHelper::LoadFileToString(OutWKTData, *FilePath))
+	{
+		// Successfully loaded the file
+		return true;
+	}
+
+	// failed to load the file and parse as string
+	OutErrorMessage = FString::Printf(TEXT("Failed to load WKT file: %s"), *FilePath);
+
+	// failed to load the file
+	return false;
+}
+
+TArray<FVector2D> FAssimpMeshLoaderRunnable::ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage)
+{
+	FString CleanWKT = InWKTDataString;
+	CleanWKT.TrimStartAndEndInline();
+	CleanWKT = CleanWKT.Replace(TEXT("\r"), TEXT("")).Replace(TEXT("\n"), TEXT(""));
+
+	FString Prefix;
+	FString CoordBlock;
+
+	// Extract prefix and inner coordinates
+	int32 OpenParenIndex;
+	if (CleanWKT.FindChar('(', OpenParenIndex))
+	{
+		Prefix = CleanWKT.Left(OpenParenIndex).ToUpper().TrimStartAndEnd();
+		CoordBlock = CleanWKT.Mid(OpenParenIndex);
+		CoordBlock = CoordBlock.Replace(TEXT("("), TEXT("")).Replace(TEXT(")"), TEXT(""));
+	}
+
+	TArray<FVector2D> ParsedPoints;
+
+	if (Prefix == TEXT("POINT"))
+	{
+		TArray<FString> XY;
+		CoordBlock.ParseIntoArray(XY, TEXT(" "), true);
+		if (XY.Num() == 2)
+		{
+			ParsedPoints.Add(FVector2D(FCString::Atof(*XY[0]), FCString::Atof(*XY[1])));
+		}
+	}
+	else if (Prefix == TEXT("LINESTRING") || Prefix == TEXT("POLYGON"))
+	{
+		if (Prefix == TEXT("POLYGON"))
+		{
+			// POLYGON can have nested parentheses
+			int32 InnerStart = CleanWKT.Find(TEXT("(("));
+			int32 InnerEnd = CleanWKT.Find(TEXT("))"));
+			if (InnerStart != INDEX_NONE && InnerEnd != INDEX_NONE)
+			{
+				CoordBlock = CleanWKT.Mid(InnerStart + 2, InnerEnd - InnerStart - 2);
+			}
+		}
+
+		TArray<FString> Pairs;
+		CoordBlock.ParseIntoArray(Pairs, TEXT(","), true);
+		for (const FString& Pair : Pairs)
+		{
+			TArray<FString> XY;
+			Pair.TrimStartAndEnd().ParseIntoArray(XY, TEXT(" "), true);
+			if (XY.Num() == 2)
+			{
+				ParsedPoints.Add(FVector2D(FCString::Atof(*XY[0]), FCString::Atof(*XY[1])));
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Unsupported WKT type: %s"), *Prefix);
+		OutErrorMessage = FString::Printf(TEXT("Unsupported WKT type: %s"), *Prefix);
+	}
+
+	return ParsedPoints;
+}
+
+bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(const FString& WKTString,
+	TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage)
+{
+	FString CleanWKT = WKTString;
+	CleanWKT.TrimStartAndEndInline();
+	CleanWKT = CleanWKT.Replace(TEXT("\r"), TEXT("")).Replace(TEXT("\n"), TEXT(""));
+
+	if (!CleanWKT.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase))
+	{
+		OutErrorMessage = TEXT("WKT does not begin with GEOMETRYCOLLECTION");
+		return false;
+	}
+
+	// Extract the content inside the GEOMETRYCOLLECTION (...)
+	int32 OpenParen = CleanWKT.Find(TEXT("("));
+	int32 CloseParen = INDEX_NONE;
+	if (OpenParen == INDEX_NONE || !CleanWKT.FindLastChar(')', CloseParen) || CloseParen <= OpenParen)
+	{
+		OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION WKT.");
+		return false;
+	}
+
+	FString Inner = CleanWKT.Mid(OpenParen + 1, CloseParen - OpenParen - 1).TrimStartAndEnd();
+
+	// Look for each POLYGON block
+	int32 Pos = 0;
+	while (true)
+	{
+		int32 PolygonStart = Inner.Find(TEXT("POLYGON"), ESearchCase::IgnoreCase, ESearchDir::FromStart, Pos);
+		if (PolygonStart == INDEX_NONE) break;
+
+		int32 FirstParen = Inner.Find(TEXT("(("), ESearchCase::IgnoreCase, ESearchDir::FromStart, PolygonStart);
+		int32 EndParen = Inner.Find(TEXT("))"), ESearchCase::IgnoreCase, ESearchDir::FromStart, FirstParen + 2);
+		if (FirstParen == INDEX_NONE || EndParen == INDEX_NONE) break;
+
+		FString PolygonBlock = Inner.Mid(FirstParen + 2, EndParen - FirstParen - 2);
+
+		FString DummyError;
+		TArray<FVector2D> PolygonPoints = ParseWKTData(TEXT("LINESTRING(") + PolygonBlock + TEXT(")"), DummyError);
+		if (!PolygonPoints.IsEmpty())
+		{
+			OutGeometries.Add(PolygonPoints);
+		}
+
+		Pos = EndParen + 2;
+	}
+
+	if (OutGeometries.Num() == 0)
+	{
+		OutErrorMessage = TEXT("No valid POLYGON found in GEOMETRYCOLLECTION.");
+		return false;
+	}
+
+	return true;
 }
 
 FRotator FAssimpMeshLoaderRunnable::GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign,
