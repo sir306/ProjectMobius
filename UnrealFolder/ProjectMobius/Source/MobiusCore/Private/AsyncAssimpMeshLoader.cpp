@@ -161,262 +161,48 @@ void FAssimpMeshLoaderRunnable::Exit()
 
 void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 {
-	// Broadcast the current percentage of the data loaded
-	AsyncTask(ENamedThreads::GameThread, [this]()
-	{
-		// Broadcast the current percentage of the data loaded as 0 this way the ui will show
-		
-	});
-	
-	// ensure the tread is not stopped
-	bShouldStop = false;
-	
-	// Create a new importer
-	Assimp::Importer Importer;
+        // Broadcast the current percentage of the data loaded as 0 this way the ui will show
 
-	// Create the filename for assimp
-	const std::string Filename(TCHAR_TO_UTF8(*PathToMesh));
+        Assimp::Importer Importer;
+        const std::string Filename(TCHAR_TO_UTF8(*PathToMesh));
+        const aiScene* Scene = Importer.ReadFile(Filename, aiProcess_MakeLeftHanded | aiProcess_FlipUVs |
+                                                 aiProcess_PreTransformVertices | aiProcess_Triangulate |
+                                                 aiProcess_GenNormals | aiProcess_CalcTangentSpace);
 
-	// Read the file
-	const aiScene* Scene = Importer.ReadFile(Filename,aiProcess_MakeLeftHanded |aiProcess_FlipUVs |
-	                                         aiProcess_PreTransformVertices | aiProcess_Triangulate |
-	                                         aiProcess_GenNormals | aiProcess_CalcTangentSpace);
-	while (!bShouldStop)
-	{
-		// is the scene valid
-		if (!Scene)
-		{
-			ErrorMessageCode = Importer.GetErrorString();
-			bShouldStop = true;
-		}
-		// Check to see if the scene has any meshes
-		if (!Scene->HasMeshes())
-		{
-			ErrorMessageCode = "The scene does not have any meshes";
-			bShouldStop = true;
-		}
+        if (!Scene)
+        {
+                ErrorMessageCode = Importer.GetErrorString();
+                return;
+        }
 
-		// Get the fbx scale unit factor
-		float ScaleFactor(0.0);
-		Scene->mMetaData->Get("UnitScaleFactor", ScaleFactor);
+        if (!Scene->HasMeshes())
+        {
+                ErrorMessageCode = "The scene does not have any meshes";
+                return;
+        }
 
-		// log scale factor
-		UE_LOG(LogTemp, Warning, TEXT("Scale Factor: %f"), ScaleFactor);
-
-		int numProps = Scene->mMetaData->mNumProperties;
-
-		FString bGreaterThanZero = ScaleFactor > 0.0 ? FString("True") : FString("False");
-
-		// log the scale factor and if it is greater than 0
-		UE_LOG(LogTemp, Warning, TEXT("Scale Factor: %f, Greater Than Zero: %s"), ScaleFactor, *bGreaterThanZero);
-
-		
-		// if a scale factor is 0 then set it to 1
-		if (ScaleFactor == 0.0)
-		{
-			ScaleFactor = 1.0;
-		}
-	
-		// Get the number of meshes in the scene
-		int32 MeshIndex = Scene->mNumMeshes;
-		UE_LOG(LogTemp, Warning, TEXT("Mesh Index: %d"), MeshIndex);
-		
-		int32 FaceIndex = 0;
-
-		// Warning      LogTemp                   Key: UpAxis
-		// Warning      LogTemp                   Key: UpAxisSign
-		// Warning      LogTemp                   Key: FrontAxis
-		/* TODO: Need to work out the rotation for the forward based on the found up, currently only up is being used */
-			
-		int32 AxisUpOrientation = 0;
-		int32 AxisUpSign = 0;
-		int32 AxisForwardOrientation = 0;
-		int32 AxisForwardSign = 0;
-
-		// get the up axis orientation
-		Scene->mMetaData->Get("UpAxis", AxisUpOrientation);
-		// get the up axis sign
-		Scene->mMetaData->Get("UpAxisSign", AxisUpSign);
-		// get the forward axis orientation
-		Scene->mMetaData->Get("FrontAxis", AxisForwardOrientation);
-		// get the forward axis sign
-		Scene->mMetaData->Get("FrontAxisSign", AxisForwardSign);
-		
-		FRotator Rotation = GetMeshRotation(AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-
-		
-		
-		// to avoid constant if rotations the Rotation variable is checked first and the corresponding loop is run
-		if(Rotation == FRotator::ZeroRotator)
-		{
-			// No rotation is needed
-			for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
-			{
-				for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
-				     ++)
-				{
-					Vertices.Add(FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,
-					                     Scene->mMeshes[MIndex]->mVertices[NumVertices].y * ScaleFactor,
-					                     Scene->mMeshes[MIndex]->mVertices[NumVertices].z * ScaleFactor));
-
-					// add face index for the runtime mesh builder
-					Faces.Add(FaceIndex);
-
-					//Scene->mMeshes[MIndex]->mTangents
-					//Scene->mMeshes[MIndex]->mTextureCoords
-					//Scene->mMeshes[MIndex]->mNumUVComponents
-					
-
-					// get the normals for this face
-					if(Scene->mMeshes[MIndex]->HasNormals())
-					{
-						Normals.Add(FVector(Scene->mMeshes[MIndex]->mNormals[NumVertices].x,
-						                    Scene->mMeshes[MIndex]->mNormals[NumVertices].y,
-						                    Scene->mMeshes[MIndex]->mNormals[NumVertices].z));
-					}
-					else
-					{
-						// add a zero vector
-						Normals.Add(FVector::ZeroVector);
-					}
-					
-					FaceIndex++;
-				}
-			}
-		}
-		else
-		{
-			// Rotation is needed
-			for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
-			{
-				for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
-				     ++)
-				{
-					FVector MeshVertice = FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,
-															   Scene->mMeshes[MIndex]->mVertices[NumVertices].y * ScaleFactor,
-															   Scene->mMeshes[MIndex]->mVertices[NumVertices].z * ScaleFactor);
-					TransformMeshMatrix(MeshVertice, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-					Vertices.Add(MeshVertice);
-					
-					// add face index for the runtime mesh builder
-					Faces.Add(FaceIndex);
-
-					// get the normals for this face
-					if(Scene->mMeshes[MIndex]->HasNormals())
-					{
-						// we have to transform the normals as well as the vertices
-						FVector MeshNormal = FVector(Scene->mMeshes[MIndex]->mNormals[NumVertices].x * ScaleFactor,
-														Scene->mMeshes[MIndex]->mNormals[NumVertices].y * ScaleFactor,
-														Scene->mMeshes[MIndex]->mNormals[NumVertices].z * ScaleFactor);
-						
-						TransformMeshMatrix(MeshNormal, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-
-						Normals.Add(MeshNormal);
-					}
-					else
-					{
-						// add a zero vector
-						Normals.Add(FVector::ZeroVector);
-					}
-					
-					FaceIndex++;
-				}
-			}
-		}
-
-		
-
-		
-	
-		// Check to see if the scene has any materials
-		if (!Scene->HasMaterials())
-		{
-			ErrorMessageCode = "The scene does not have any materials";
-			UE_LOG(LogTemp, Warning, TEXT("The scene does not have any materials"));
-		}
-		else
-		{
-			//Materials = Scene->mMaterials;
-			UE_LOG(LogTemp, Warning, TEXT("The scene has materials, Number of Materials: %d"), Scene->mNumMaterials);
-		}
-
-		
-
-		// log the number of properties
-		UE_LOG(LogTemp, Warning, TEXT("Number of Properties: %d"), numProps);
-		
-
-		// Debugging the metadata see what we can get
-		for (int i = 0; i < numProps; i++)
-		{
-			const aiString* Key;
-			const aiMetadataEntry* Entry;
-			bool result = Scene->mMetaData->Get(size_t(i), Key, Entry);
-			//UE_LOG(LogTemp, Warning, TEXT("Key: %s"), Key.C_Str());
-			if(result)
-			{
-				FString KeyString = FString(Key->C_Str());
-				UE_LOG(LogTemp, Warning, TEXT("Key: %s"), *KeyString);
-
-				// get the type of the entry
-				aiMetadataType Type = Entry->mType;
-
-				if(Type == AI_AISTRING) UE_LOG(LogTemp, Warning, TEXT("Type: AI_AISTRING"));
-				if(Type == AI_AIVECTOR3D) UE_LOG(LogTemp, Warning, TEXT("Type: AI_AIVECTOR3D"));
-				if(Type == AI_AIMETADATA) UE_LOG(LogTemp, Warning, TEXT("Type: AI_AIMETADATA"));
-				if(Type == AI_INT32)
-				{
-					// get the int32 value
-					int32 Value;
-					Scene->mMetaData->Get(*Key, Value);
-					UE_LOG(LogTemp, Warning, TEXT("Type: AI_INT32, Value: %d"), Value);
-					
-				}
-
-				// log the type
-				UE_LOG(LogTemp, Warning, TEXT("Type: %d"), Type);
-			}
-		}
-		break;// break the loop as we only need to load the mesh data once - but this will change in the future
-	}
+        FillDataFromScene(Scene);
 }
 
 void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 {
-	LoadWKTDataToObjString();
-	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
-	Assimp::Importer Importer;
-	const aiScene* Scene = Importer.ReadFileFromMemory(
-		OBJData.c_str(), OBJData.size(),
-		aiProcess_MakeLeftHanded |aiProcess_FlipUVs |
-		aiProcess_PreTransformVertices | aiProcess_Triangulate |
-		aiProcess_GenNormals | aiProcess_CalcTangentSpace,
-		"obj");
+        LoadWKTDataToObjString();
+        std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
+        Assimp::Importer Importer;
+        const aiScene* Scene = Importer.ReadFileFromMemory(
+                OBJData.c_str(), OBJData.size(),
+                aiProcess_MakeLeftHanded |aiProcess_FlipUVs |
+                aiProcess_PreTransformVertices | aiProcess_Triangulate |
+                aiProcess_GenNormals | aiProcess_CalcTangentSpace,
+                "obj");
 
-	if (!Scene || !Scene->HasMeshes())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
-		return;
-	}
+        if (!Scene || !Scene->HasMeshes())
+        {
+                UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
+                return;
+        }
 
-	const aiMesh* Mesh = Scene->mMeshes[0];
-	Vertices.Empty();
-	for (unsigned int i = 0; i < Mesh->mNumVertices; ++i)
-	{
-		const aiVector3D& V = Mesh->mVertices[i];
-		Vertices.Add(FVector(V.x, V.y, V.z));
-	}
-
-	for (unsigned int i = 0; i < Mesh->mNumFaces; ++i)
-	{
-		const aiFace& Face = Mesh->mFaces[i];
-		if (Face.mNumIndices == 3)
-		{
-			Faces.Add(Face.mIndices[0]);
-			Faces.Add(Face.mIndices[1]);
-			Faces.Add(Face.mIndices[2]);
-		}
-	}
+        FillDataFromScene(Scene);
 }
 
 void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
@@ -922,7 +708,89 @@ void FAssimpMeshLoaderRunnable::TransformMeshMatrix(FVector& InVector, int32 Axi
 	}
 
 	// multiple the in X and Z by the input sign
-	InVector.X *= AxisForwardSign;
-	InVector.Z *= AxisUpSign;
-	
+        InVector.X *= AxisForwardSign;
+        InVector.Z *= AxisUpSign;
+
+}
+
+void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
+{
+    if (!Scene || !Scene->HasMeshes())
+    {
+        return;
+    }
+
+    float ScaleFactor = 1.0f;
+    if (Scene->mMetaData)
+    {
+        Scene->mMetaData->Get("UnitScaleFactor", ScaleFactor);
+        if (ScaleFactor == 0.0f)
+        {
+            ScaleFactor = 1.0f;
+        }
+    }
+
+    int32 AxisUpOrientation = 0;
+    int32 AxisUpSign = 0;
+    int32 AxisForwardOrientation = 0;
+    int32 AxisForwardSign = 0;
+
+    if (Scene->mMetaData)
+    {
+        Scene->mMetaData->Get("UpAxis", AxisUpOrientation);
+        Scene->mMetaData->Get("UpAxisSign", AxisUpSign);
+        Scene->mMetaData->Get("FrontAxis", AxisForwardOrientation);
+        Scene->mMetaData->Get("FrontAxisSign", AxisForwardSign);
+    }
+
+    FRotator Rotation = GetMeshRotation(AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
+
+    Vertices.Empty();
+    Faces.Empty();
+    Normals.Empty();
+
+    for (uint32 MIndex = 0; MIndex < Scene->mNumMeshes; ++MIndex)
+    {
+        const aiMesh* Mesh = Scene->mMeshes[MIndex];
+        int32 VertexBase = Vertices.Num();
+
+        for (uint32 NumVertices = 0; NumVertices < Mesh->mNumVertices; ++NumVertices)
+        {
+            FVector Vertex = FVector(Mesh->mVertices[NumVertices].x * ScaleFactor,
+                                    Mesh->mVertices[NumVertices].y * ScaleFactor,
+                                    Mesh->mVertices[NumVertices].z * ScaleFactor);
+            if (Rotation != FRotator::ZeroRotator)
+            {
+                TransformMeshMatrix(Vertex, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
+            }
+            Vertices.Add(Vertex);
+
+            if (Mesh->HasNormals())
+            {
+                FVector Normal = FVector(Mesh->mNormals[NumVertices].x * ScaleFactor,
+                                         Mesh->mNormals[NumVertices].y * ScaleFactor,
+                                         Mesh->mNormals[NumVertices].z * ScaleFactor);
+                if (Rotation != FRotator::ZeroRotator)
+                {
+                    TransformMeshMatrix(Normal, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
+                }
+                Normals.Add(Normal);
+            }
+            else
+            {
+                Normals.Add(FVector::ZeroVector);
+            }
+        }
+
+        for (uint32 FaceIndex = 0; FaceIndex < Mesh->mNumFaces; ++FaceIndex)
+        {
+            const aiFace& Face = Mesh->mFaces[FaceIndex];
+            if (Face.mNumIndices == 3)
+            {
+                Faces.Add(VertexBase + Face.mIndices[0]);
+                Faces.Add(VertexBase + Face.mIndices[1]);
+                Faces.Add(VertexBase + Face.mIndices[2]);
+            }
+        }
+    }
 }

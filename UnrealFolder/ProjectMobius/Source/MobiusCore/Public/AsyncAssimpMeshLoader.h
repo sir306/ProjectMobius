@@ -117,7 +117,14 @@ protected:
 
 	TArray<FVector2D> ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage);
 	
-	bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
+        bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
+
+       /**
+        * Fill Vertices, Faces and Normals arrays using data from an aiScene.
+        * Scaling and orientation are handled using the scene meta data when
+        * available. If no meta data exists sensible defaults are used.
+        */
+       void FillDataFromScene(const aiScene* Scene);
 
 	/**
 	 * This function is called to rotate the mesh data to the correct orientation based on the axis data from the metadata,
