@@ -242,87 +242,41 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 		// get the forward axis sign
 		Scene->mMetaData->Get("FrontAxisSign", AxisForwardSign);
 		
-		FRotator Rotation = GetMeshRotation(AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
+                FMatrix TransformMatrix = BuildTransformMatrix(AxisUpOrientation, AxisUpSign,
+                                                               AxisForwardOrientation, AxisForwardSign);
 
-		
-		
-		// to avoid constant if rotations the Rotation variable is checked first and the corresponding loop is run
-		if(Rotation == FRotator::ZeroRotator)
-		{
-			// No rotation is needed
-			for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
-			{
-				for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
-				     ++)
-				{
-					Vertices.Add(FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,
-					                     Scene->mMeshes[MIndex]->mVertices[NumVertices].y * ScaleFactor,
-					                     Scene->mMeshes[MIndex]->mVertices[NumVertices].z * ScaleFactor));
+                for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
+                {
+                        for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
+                             ++)
+                        {
+                                FVector MeshVertice = FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,
+                                                             Scene->mMeshes[MIndex]->mVertices[NumVertices].y * ScaleFactor,
+                                                             Scene->mMeshes[MIndex]->mVertices[NumVertices].z * ScaleFactor);
+                                TransformMeshMatrix(MeshVertice, TransformMatrix);
+                                Vertices.Add(MeshVertice);
 
-					// add face index for the runtime mesh builder
-					Faces.Add(FaceIndex);
+                                // add face index for the runtime mesh builder
+                                Faces.Add(FaceIndex);
 
-					//Scene->mMeshes[MIndex]->mTangents
-					//Scene->mMeshes[MIndex]->mTextureCoords
-					//Scene->mMeshes[MIndex]->mNumUVComponents
-					
+                                // get the normals for this face
+                                if(Scene->mMeshes[MIndex]->HasNormals())
+                                {
+                                        FVector MeshNormal = FVector(Scene->mMeshes[MIndex]->mNormals[NumVertices].x * ScaleFactor,
+                                                                     Scene->mMeshes[MIndex]->mNormals[NumVertices].y * ScaleFactor,
+                                                                     Scene->mMeshes[MIndex]->mNormals[NumVertices].z * ScaleFactor);
+                                        TransformMeshMatrix(MeshNormal, TransformMatrix);
+                                        Normals.Add(MeshNormal);
+                                }
+                                else
+                                {
+                                        // add a zero vector
+                                        Normals.Add(FVector::ZeroVector);
+                                }
 
-					// get the normals for this face
-					if(Scene->mMeshes[MIndex]->HasNormals())
-					{
-						Normals.Add(FVector(Scene->mMeshes[MIndex]->mNormals[NumVertices].x,
-						                    Scene->mMeshes[MIndex]->mNormals[NumVertices].y,
-						                    Scene->mMeshes[MIndex]->mNormals[NumVertices].z));
-					}
-					else
-					{
-						// add a zero vector
-						Normals.Add(FVector::ZeroVector);
-					}
-					
-					FaceIndex++;
-				}
-			}
-		}
-		else
-		{
-			// Rotation is needed
-			for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
-			{
-				for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
-				     ++)
-				{
-					FVector MeshVertice = FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,
-															   Scene->mMeshes[MIndex]->mVertices[NumVertices].y * ScaleFactor,
-															   Scene->mMeshes[MIndex]->mVertices[NumVertices].z * ScaleFactor);
-					TransformMeshMatrix(MeshVertice, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-					Vertices.Add(MeshVertice);
-					
-					// add face index for the runtime mesh builder
-					Faces.Add(FaceIndex);
-
-					// get the normals for this face
-					if(Scene->mMeshes[MIndex]->HasNormals())
-					{
-						// we have to transform the normals as well as the vertices
-						FVector MeshNormal = FVector(Scene->mMeshes[MIndex]->mNormals[NumVertices].x * ScaleFactor,
-														Scene->mMeshes[MIndex]->mNormals[NumVertices].y * ScaleFactor,
-														Scene->mMeshes[MIndex]->mNormals[NumVertices].z * ScaleFactor);
-						
-						TransformMeshMatrix(MeshNormal, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-
-						Normals.Add(MeshNormal);
-					}
-					else
-					{
-						// add a zero vector
-						Normals.Add(FVector::ZeroVector);
-					}
-					
-					FaceIndex++;
-				}
-			}
-		}
+                                FaceIndex++;
+                        }
+                }
 
 		
 
@@ -399,13 +353,16 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 		return;
 	}
 
-	const aiMesh* Mesh = Scene->mMeshes[0];
-	Vertices.Empty();
-	for (unsigned int i = 0; i < Mesh->mNumVertices; ++i)
-	{
-		const aiVector3D& V = Mesh->mVertices[i];
-		Vertices.Add(FVector(V.x, V.y, V.z));
-	}
+        const aiMesh* Mesh = Scene->mMeshes[0];
+        FMatrix TransformMatrix = BuildTransformMatrix(3, 1, 1, 1);
+        Vertices.Empty();
+        for (unsigned int i = 0; i < Mesh->mNumVertices; ++i)
+        {
+                const aiVector3D& V = Mesh->mVertices[i];
+                FVector Vertex = FVector(V.x, V.y, V.z);
+                TransformMeshMatrix(Vertex, TransformMatrix);
+                Vertices.Add(Vertex);
+        }
 
 	for (unsigned int i = 0; i < Mesh->mNumFaces; ++i)
 	{
@@ -840,89 +797,51 @@ FVector FAssimpMeshLoaderRunnable::TransformNormal(const FVector& InNormal, int3
     // Normalize to maintain proper orientation
     return TransformedNormal.GetSafeNormal();
 }
-//TODO: this method needs to be refactored to use matrix transformations as it doesn't work when it comes to normals and this is where the issue is for translucent materials
-void FAssimpMeshLoaderRunnable::TransformMeshMatrix(FVector& InVector, int32 AxisUpOrientation, int32 AxisUpSign,
-                                                       int32 AxisForwardOrientation, int32 AxisForwardSign)
+
+FMatrix FAssimpMeshLoaderRunnable::BuildTransformMatrix(int32 AxisUpOrientation, int32 AxisUpSign,
+                                                         int32 AxisForwardOrientation, int32 AxisForwardSign)
 {
-	
+        // if forward is not provided or matches up, choose a sensible default
+        if(AxisForwardOrientation == 0 || AxisForwardOrientation == AxisUpOrientation)
+        {
+                AxisForwardOrientation = AxisUpOrientation == 1 ? 3 : 1;
+        }
 
-	// manipulate the vector based on the up axis and the forward axis
-	switch (AxisUpOrientation)
-	{
-	case 1: // X up
-		switch (AxisForwardOrientation)
-		{
-		case 1: // X
-			// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-			InVector = FVector(InVector.Z, InVector.Y, InVector.X);
-			break;
-		case 2: // Y
-			InVector = FVector(InVector.Y, InVector.Z, InVector.X);
-			break;
-		case 3: // Z
-			InVector = FVector(InVector.Z, InVector.Y, InVector.X);
-			break;
-		default: // the forward axis is unknown so use the up axis
-			InVector = FVector(InVector.Z, InVector.Y, InVector.X);
-			break;
-		}
-		break;
+        // determine the remaining axis index
+        int32 OtherAxis = 6 - AxisUpOrientation - AxisForwardOrientation;
 
-	case 2: // Y up
-		{
-			switch (AxisForwardOrientation)
-			{
-			case 1: // X
-				InVector = FVector(InVector.X, InVector.Z, InVector.Y);
-				break;
-			case 2: // Y
-				// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-				InVector = FVector(InVector.X, InVector.Z, InVector.Y);
-				break;
-			case 3: // Z
-				InVector = FVector(InVector.Z, InVector.X, InVector.Y);
-				break;
-			default: // the forward axis is unknown so use the up axis
-				InVector = FVector(InVector.X, InVector.Z, InVector.Y);
-				break;
-			}
-			break;
-		}
-	case 3: // Z up
-		{
-			switch (AxisForwardOrientation)
-			{
-			case 1: // X
-				InVector = FVector(InVector.X, InVector.Y, InVector.Z);
-				break;
-				
-			case 2: // Y
-					
-				InVector = FVector(InVector.Y, InVector.X, InVector.Z);
-				break;
+        auto MakeRow = [](int32 AxisIndex) -> FVector
+        {
+                switch (AxisIndex)
+                {
+                case 1: return FVector(1,0,0);
+                case 2: return FVector(0,1,0);
+                case 3: return FVector(0,0,1);
+                default: return FVector::ZeroVector;
+                }
+        };
 
-			case 3: // Z
-				// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-				InVector = FVector(InVector.X, InVector.Y, InVector.Z);
-				break;
-			default:
-				InVector = FVector(InVector.Y, InVector.X, InVector.Z);
-				break;
-			}
-			break;
-		}
-	default:
-		break;
-	}
+        FVector RowX = MakeRow(AxisForwardOrientation);
+        FVector RowY = MakeRow(OtherAxis);
+        FVector RowZ = MakeRow(AxisUpOrientation);
 
-	// // if the forward axis is negative then we need to rotate the vector by 180 degrees
-	if(AxisForwardSign == -1)
-	{
-		InVector = FRotator(0.0f, 180.0f, 0.0f).RotateVector(InVector);
-	}
+        FMatrix TransformMatrix(
+                FPlane(RowX.X, RowX.Y, RowX.Z, 0.f),
+                FPlane(RowY.X, RowY.Y, RowY.Z, 0.f),
+                FPlane(RowZ.X, RowZ.Y, RowZ.Z, 0.f),
+                FPlane(0.f, 0.f, 0.f, 1.f));
 
-	// multiple the in X and Z by the input sign
-	InVector.X *= AxisForwardSign;
-	InVector.Z *= AxisUpSign;
-	
+        if(AxisForwardSign == -1)
+        {
+                TransformMatrix = FRotationMatrix(FRotator(0.0f, 180.0f, 0.0f)) * TransformMatrix;
+        }
+
+        TransformMatrix = FScaleMatrix(FVector(AxisForwardSign, 1.f, AxisUpSign)) * TransformMatrix;
+
+        return TransformMatrix;
+}
+
+void FAssimpMeshLoaderRunnable::TransformMeshMatrix(FVector& InVector, const FMatrix& TransformMatrix)
+{
+        InVector = TransformMatrix.TransformVector(InVector);
 }
