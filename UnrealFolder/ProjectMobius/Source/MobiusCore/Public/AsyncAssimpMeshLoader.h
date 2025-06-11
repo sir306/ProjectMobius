@@ -63,7 +63,7 @@ public:
 class MOBIUSCORE_API FAssimpMeshLoaderRunnable final : public FRunnable
 {
 public:
-	FAssimpMeshLoaderRunnable(const FString InPathToMesh, bool bInStringIsObjString = false);
+	FAssimpMeshLoaderRunnable(const FString InPathToMesh);
 	virtual ~FAssimpMeshLoaderRunnable() override;
 	
 	// The FRunnable interface functions
@@ -82,7 +82,7 @@ public:
 	TArray<FVector> Tangents;
 #pragma endregion MESH_PROPERTIES
 	/** is the file path actually an obj string */
-	bool bIsObjString = false;
+	bool bIsWktExtension = false;
 	TArray<FVector2D> Polygon = TArray<FVector2D>();
 
 	/** Delegate to broadcast when the mesh data has finished loading */
@@ -95,6 +95,9 @@ protected:
 	/** Bool to tell when the thread should stop */
 	bool bShouldStop = false;
 
+	FString ErrorMessage = FString();
+	FString WktDataString = FString();
+
 	/**
 	 * method to process an actual mesh from a directory
 	 */
@@ -104,6 +107,17 @@ protected:
 	 * Process a mesh from an obj string
 	 */
 	void ProcessMeshFromString();
+
+	/**
+	 * Load and convert WKT data into obj string format.
+	 */
+	void LoadWKTDataToObjString();
+
+	bool LoadWKTFile(const FString& FilePath, FString& OutWKTData, FString& OutErrorMessage);
+
+	TArray<FVector2D> ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage);
+	
+	bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
 
 	/**
 	 * This function is called to rotate the mesh data to the correct orientation based on the axis data from the metadata,
