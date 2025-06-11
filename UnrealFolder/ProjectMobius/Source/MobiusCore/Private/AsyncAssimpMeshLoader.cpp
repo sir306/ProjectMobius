@@ -388,7 +388,9 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 	Assimp::Importer Importer;
 	const aiScene* Scene = Importer.ReadFileFromMemory(
 		OBJData.c_str(), OBJData.size(),
-		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices,
+		aiProcess_MakeLeftHanded |aiProcess_FlipUVs |
+		aiProcess_PreTransformVertices | aiProcess_Triangulate |
+		aiProcess_GenNormals | aiProcess_CalcTangentSpace,
 		"obj");
 
 	if (!Scene || !Scene->HasMeshes())
@@ -445,15 +447,9 @@ void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 		// loop through the parsed WKT data
 		for (TArray<FVector2D>& Geometry : Geometries)
 		{
-			TArray<FVector> WorldPoints;
-			for (const FVector2D& P : Geometry)
-			{
-				WorldPoints.Add(FVector(P.X, P.Y, 10.f)); // raise above first file data
-			}
-			
 			// Test the assimp triangulation method
 			TArray<FVector> TriVerts;
-			TArray<FIntVector> Triangles = UAsyncAssimpMeshLoader::TriangulateWktPolygon(Geometry, TriVerts);
+			//TArray<FIntVector> Triangles = UAsyncAssimpMeshLoader::TriangulateWktPolygon(Geometry, TriVerts);
 
 
 			// Generate OBJ with double-sided wall extrusion (1 meter = 100 units)
@@ -482,13 +478,13 @@ void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 			}
 			WktDataString += TEXT("\n");
 
-			// Step 3: Add top face (reverse winding for top)
-			WktDataString += TEXT("f");
-			for (int32 i = NumPoints; i > 0; --i)
-			{
-				WktDataString += FString::Printf(TEXT(" %d"), i + NumPoints);
-			}
-			WktDataString += TEXT("\n");
+			// // Step 3: Add top face (reverse winding for top)
+			// WktDataString += TEXT("f");
+			// for (int32 i = NumPoints; i > 0; --i)
+			// {
+			// 	WktDataString += FString::Printf(TEXT(" %d"), i + NumPoints);
+			// }
+			// WktDataString += TEXT("\n");
 
 			// Step 4: Add side wall faces (double-sided)
 			for (int32 i = 0; i < NumPoints; ++i)
