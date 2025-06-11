@@ -112,27 +112,23 @@ FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh)
 	bIsWktExtension = PathToMesh.EndsWith(TEXT(".wkt"), ESearchCase::IgnoreCase);
 	
 
-       // Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
-       Thread.Reset(FRunnableThread::Create(this, TEXT("FAssimpMeshLoaderRunnable"), 0, TPri_Normal));
+	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
+	Thread = FRunnableThread::Create(this, TEXT("FAssimpMeshLoaderRunnable"), 0, TPri_Normal);
 }
 
 FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 {
-       // if the thread is still running, stop it
-       if (Thread.IsValid())
-       {
-               Thread->Kill(true);
-               Thread.Reset();
-       }
+	// if the thread is still running, stop it
+	if (Thread != nullptr)
+	{
+		Thread->Kill(true);
+		delete Thread;
+	}
 }
 
 uint32 FAssimpMeshLoaderRunnable::Run()
 {
-       if (!Thread.IsValid())
-       {
-               return 0;
-       }
-       if (bIsWktExtension)
+	if (bIsWktExtension)
 	{
 		ProcessMeshFromString();
 	}

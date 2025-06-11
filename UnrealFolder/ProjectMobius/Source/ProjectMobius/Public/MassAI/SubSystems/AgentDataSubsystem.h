@@ -263,8 +263,8 @@ public:
 	bool bIsRunning = false; // Flag to indicate if the thread is running
 	
 protected:
-       /** Pointer to a thread */
-       TUniquePtr<FRunnableThread> Thread;
+	/** Pointer to a thread */
+	FRunnableThread* Thread = nullptr;
 
 	FString JsonFilePath = FString();
 
