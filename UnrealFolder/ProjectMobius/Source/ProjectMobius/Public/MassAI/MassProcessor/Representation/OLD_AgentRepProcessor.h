@@ -168,7 +168,7 @@ public:
 	FRunnableRepresentationProcessorOLD(FEntityInfoFragment* InEntityInfo, class AAgentRepresentationActorISM* InAgentRepresentationActor);
 	virtual ~FRunnableRepresentationProcessorOLD() override;
 
-	FRunnableThread* Thread;
+       TUniquePtr<FRunnableThread> Thread;
 	FEntityInfoFragment* EntityInfo;
 	class AAgentRepresentationActorISM* AgentRepresentationActor;
 	virtual bool Init() override;
