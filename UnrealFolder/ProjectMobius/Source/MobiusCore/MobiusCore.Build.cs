@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnrealBuildTool;
 using System.IO;
 
