@@ -37,7 +37,7 @@ UAsyncAssimpMeshLoader::UAsyncAssimpMeshLoader()
 }
 
 TArray<FIntVector> UAsyncAssimpMeshLoader::TriangulateWktPolygon(const TArray<FVector2D>& Polygon,
-	TArray<FVector>& OutVertices)
+                                                                 TArray<FVector>& OutVertices)
 {
 	TArray<FIntVector> Triangles;
 
@@ -161,136 +161,126 @@ void FAssimpMeshLoaderRunnable::Exit()
 
 void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 {
-        // Broadcast the current percentage of the data loaded as 0 this way the ui will show
+	// Broadcast the current percentage of the data loaded as 0 this way the ui will show
 
-        Assimp::Importer Importer;
-        const std::string Filename(TCHAR_TO_UTF8(*PathToMesh));
-        const aiScene* Scene = Importer.ReadFile(Filename, aiProcess_MakeLeftHanded | aiProcess_FlipUVs |
-                                                 aiProcess_PreTransformVertices | aiProcess_Triangulate |
-                                                 aiProcess_GenNormals | aiProcess_CalcTangentSpace);
+	Assimp::Importer Importer;
+	const std::string Filename(TCHAR_TO_UTF8(*PathToMesh));
+	const aiScene* Scene = Importer.ReadFile(Filename, aiProcess_MakeLeftHanded | aiProcess_FlipUVs |
+	                                         aiProcess_PreTransformVertices | aiProcess_Triangulate |
+	                                         aiProcess_GenNormals | aiProcess_CalcTangentSpace);
 
-        if (!Scene)
-        {
-                ErrorMessageCode = Importer.GetErrorString();
-                return;
-        }
+	if (!Scene)
+	{
+		ErrorMessageCode = Importer.GetErrorString();
+		return;
+	}
 
-        if (!Scene->HasMeshes())
-        {
-                ErrorMessageCode = "The scene does not have any meshes";
-                return;
-        }
+	if (!Scene->HasMeshes())
+	{
+		ErrorMessageCode = "The scene does not have any meshes";
+		return;
+	}
 
-        FillDataFromScene(Scene);
+	FillDataFromScene(Scene);
 }
 
 void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 {
-        LoadWKTDataToObjString();
-        std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
-        Assimp::Importer Importer;
-        const aiScene* Scene = Importer.ReadFileFromMemory(
-                OBJData.c_str(), OBJData.size(),
-                aiProcess_MakeLeftHanded |aiProcess_FlipUVs |
-                aiProcess_PreTransformVertices | aiProcess_Triangulate |
-                aiProcess_GenNormals | aiProcess_CalcTangentSpace,
-                "obj");
+	LoadWKTDataToObjString();
+	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
+	Assimp::Importer Importer;
+	const aiScene* Scene = Importer.ReadFileFromMemory(
+		OBJData.c_str(), OBJData.size(),
+		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals | aiProcess_CalcTangentSpace,
+		//TODO: Need to workout a way to handle normals for WKT data -> filters just don't work for this
+		"obj");
 
-        if (!Scene || !Scene->HasMeshes())
-        {
-                UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
-                return;
-        }
+	if (!Scene || !Scene->HasMeshes())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
+		return;
+	}
 
-        FillDataFromScene(Scene);
+	FillDataFromScene(Scene);
 }
 
 void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 {
-	// now we can use the WKTParser to parse WKT data from a string
-	FString OutFileData;
-	
-
-	if (LoadWKTFile(PathToMesh, OutFileData, ErrorMessage))
+	// 1) Load the raw WKT (JSON-wrapped) from disk
+	FString RawWkt;
+	if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
 	{
-		// if the outfiledata contains geometry collections use correct parser
-		TArray<TArray<FVector2D>> Geometries;
-		if (ParseGeometryCollectionWkt(OutFileData, Geometries, ErrorMessage))
+		UE_LOG(LogTemp, Error, TEXT("Failed to load WKT file: %s"), *ErrorMessage);
+		return;
+	}
+
+	// 2) Parse into one or more polygons
+	TArray<TArray<FVector2D>> Geometries;
+	if (!ParseGeometryCollectionWkt(RawWkt, Geometries, ErrorMessage))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to parse geometry: %s"), *ErrorMessage);
+		return;
+	}
+
+	// 3) Begin building the OBJ string
+	WktDataString.Empty();
+	int32 VertexOffset = 0;  // keep track of 1-based OBJ indexing
+
+	for (const TArray<FVector2D>& Geometry : Geometries)
+	{
+		const int32 NumPts = Geometry.Num();
+		if (NumPts < 3) continue;
+
+		// keep track of where our base vertices start in the global OBJ index
+		const int32 BaseStart = VertexOffset;
+
+		// 1) emit the base ring (Z = 0)
+		for (const FVector2D& P : Geometry)
 		{
-			for (const TArray<FVector2D>& Geometry : Geometries)
-			{
-				for (const FVector2D& P : Geometry)
-				{
-					UE_LOG(LogTemp, Log, TEXT("Parsed Geometry Point: X=%f, Y=%f"), P.X, P.Y);
-				}
-			}
+			// assuming input is in meters, scale to centimeters for OBJ (multiply by 100)
+			FVector V(P.X * 100.0f, P.Y * 100.0f, 0.0f);
+			WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
 		}
-		else
+
+		// 2) cap *that* ring immediately (so it can only ever seal the floor)
+		WktDataString += TEXT("f");
+		for (int32 i = 0; i < NumPts; ++i)
 		{
-			UE_LOG(LogTemp, Error, TEXT("Failed to parse geometry collection: %s"), *ErrorMessage);
+			// OBJ is 1-based: BaseStart+1 … BaseStart+NumPts
+			WktDataString += FString::Printf(TEXT(" %d"), BaseStart + i + 1);
 		}
+		WktDataString += TEXT("\n");
 
-		// loop through the parsed WKT data
-		for (TArray<FVector2D>& Geometry : Geometries)
+		// 3) emit the top ring (Z = 100)
+		const int32 TopStart = BaseStart + NumPts;
+		for (const FVector2D& P : Geometry)
 		{
-			// Test the assimp triangulation method
-			TArray<FVector> TriVerts;
-			//TArray<FIntVector> Triangles = UAsyncAssimpMeshLoader::TriangulateWktPolygon(Geometry, TriVerts);
-
-
-			// Generate OBJ with double-sided wall extrusion (1 meter = 100 units)
-			WktDataString = TEXT("o WKTPolygonWithWalls\n");
-
-			int32 NumPoints = Geometry.Num();
-			TArray<FVector2D> Scaled = Geometry;
-			for (FVector2D& P : Scaled)
-				P *= 100.0f;
-
-			// Step 1: Add base (Z=0) and top (Z=100) vertices
-			for (const FVector2D& P : Scaled)
-			{
-				WktDataString += FString::Printf(TEXT("v %f %f 0.0\n"), P.X, P.Y);       // base ring
-			}
-			for (const FVector2D& P : Scaled)
-			{
-				WktDataString += FString::Printf(TEXT("v %f %f 100.0\n"), P.X, P.Y);     // top ring
-			}
-
-			// Step 2: Add bottom face (original polygon winding)
-			WktDataString += TEXT("f");
-			for (int32 i = 1; i <= NumPoints; ++i)
-			{
-				WktDataString += FString::Printf(TEXT(" %d"), i);
-			}
-			WktDataString += TEXT("\n");
-
-			// // Step 3: Add top face (reverse winding for top)
-			// WktDataString += TEXT("f");
-			// for (int32 i = NumPoints; i > 0; --i)
-			// {
-			// 	WktDataString += FString::Printf(TEXT(" %d"), i + NumPoints);
-			// }
-			// WktDataString += TEXT("\n");
-
-			// Step 4: Add side wall faces (double-sided)
-			for (int32 i = 0; i < NumPoints; ++i)
-			{
-				int32 A = i + 1;
-				int32 B = ((i + 1) % NumPoints) + 1;
-				int32 ATop = A + NumPoints;
-				int32 BTop = B + NumPoints;
-
-				// Outer face (clockwise)
-				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, B, BTop);
-				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, BTop, ATop);
-
-				// Inner face (reversed winding)
-				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop, B, A);
-				WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop, BTop, A);
-			}
+			FVector V(P.X * 100.0f, P.Y * 100.0f, 100.0f);
+			WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
 		}
+
+		// 4) now build double-sided walls
+		for (int32 i = 0; i < NumPts; ++i)
+		{
+			const int32 A    = BaseStart + i + 1;
+			const int32 B    = BaseStart + ((i + 1) % NumPts) + 1;
+			const int32 ATop = TopStart  + i + 1;
+			const int32 BTop = TopStart  + ((i + 1) % NumPts) + 1;
+
+			// outer
+			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A,    B,    BTop);
+			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A,    BTop, ATop);
+
+			// inner (reversed)
+			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop, B,    A);
+			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop, BTop, A);
+		}
+
+		// advance for next polygon
+		VertexOffset += NumPts * 2;
 	}
 }
+
 
 bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& OutWKTData, FString& OutErrorMessage)
 {
@@ -379,7 +369,7 @@ TArray<FVector2D> FAssimpMeshLoaderRunnable::ParseWKTData(const FString& InWKTDa
 }
 
 bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(const FString& WKTString,
-	TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage)
+                                                           TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage)
 {
 	FString CleanWKT = WKTString;
 	CleanWKT.TrimStartAndEndInline();
@@ -563,72 +553,72 @@ FRotator FAssimpMeshLoaderRunnable::GetMeshRotation(int32 AxisUpOrientation, int
 
 FVector FAssimpMeshLoaderRunnable::TransformNormal(const FVector& InNormal, int32 AxisUpOrientation, int32 AxisForwardOrientation, int32 AxisForwardSign, int32 AxisUpSign)
 {
-    FMatrix TransformMatrix = FMatrix::Identity;
+	FMatrix TransformMatrix = FMatrix::Identity;
 
-    // Define transformation matrix based on up and forward axes
-    switch (AxisUpOrientation)
-    {
-    case 1: // X up
-        switch (AxisForwardOrientation)
-        {
-        case 2: // Y forward
-            TransformMatrix = FMatrix(FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1), FVector::ZeroVector);
-            break;
-        case 3: // Z forward
-            TransformMatrix = FMatrix(FVector(1, 0, 0), FVector(0, 0, 1), FVector(0, 1, 0), FVector::ZeroVector);
-            break;
-        }
-        break;
+	// Define transformation matrix based on up and forward axes
+	switch (AxisUpOrientation)
+	{
+	case 1: // X up
+		switch (AxisForwardOrientation)
+		{
+		case 2: // Y forward
+			TransformMatrix = FMatrix(FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1), FVector::ZeroVector);
+			break;
+		case 3: // Z forward
+			TransformMatrix = FMatrix(FVector(1, 0, 0), FVector(0, 0, 1), FVector(0, 1, 0), FVector::ZeroVector);
+			break;
+		}
+		break;
 
-    case 2: // Y up
-        switch (AxisForwardOrientation)
-        {
-        case 1: // X forward
-            TransformMatrix = FMatrix(FVector(0, 1, 0), FVector(1, 0, 0), FVector(0, 0, 1), FVector::ZeroVector);
-            break;
-        case 3: // Z forward
-            TransformMatrix = FMatrix(FVector(0, 1, 0), FVector(0, 0, 1), FVector(1, 0, 0), FVector::ZeroVector);
-            break;
-        }
-        break;
+	case 2: // Y up
+		switch (AxisForwardOrientation)
+		{
+		case 1: // X forward
+			TransformMatrix = FMatrix(FVector(0, 1, 0), FVector(1, 0, 0), FVector(0, 0, 1), FVector::ZeroVector);
+			break;
+		case 3: // Z forward
+			TransformMatrix = FMatrix(FVector(0, 1, 0), FVector(0, 0, 1), FVector(1, 0, 0), FVector::ZeroVector);
+			break;
+		}
+		break;
 
-    case 3: // Z up
-        switch (AxisForwardOrientation)
-        {
-        case 1: // X forward
-            TransformMatrix = FMatrix(FVector(0, 0, 1), FVector(1, 0, 0), FVector(0, 1, 0), FVector::ZeroVector);
-            break;
-        case 2: // Y forward
-            TransformMatrix = FMatrix(FVector(0, 0, 1), FVector(0, 1, 0), FVector(1, 0, 0), FVector::ZeroVector);
-            break;
-        }
-        break;
+	case 3: // Z up
+		switch (AxisForwardOrientation)
+		{
+		case 1: // X forward
+			TransformMatrix = FMatrix(FVector(0, 0, 1), FVector(1, 0, 0), FVector(0, 1, 0), FVector::ZeroVector);
+			break;
+		case 2: // Y forward
+			TransformMatrix = FMatrix(FVector(0, 0, 1), FVector(0, 1, 0), FVector(1, 0, 0), FVector::ZeroVector);
+			break;
+		}
+		break;
 
-    default:
-        break;
-    }
+	default:
+		break;
+	}
 
-    // Invert and transpose the matrix for normal transformations
-    FMatrix NormalTransformMatrix = TransformMatrix.Inverse().GetTransposed();
+	// Invert and transpose the matrix for normal transformations
+	FMatrix NormalTransformMatrix = TransformMatrix.Inverse().GetTransposed();
 
-    // Transform the normal
-    FVector TransformedNormal = NormalTransformMatrix.TransformVector(InNormal);
+	// Transform the normal
+	FVector TransformedNormal = NormalTransformMatrix.TransformVector(InNormal);
 
-    // Flip directions based on signs
-    if (AxisForwardSign == -1)
-    {
-        TransformedNormal = FRotator(0.0f, 180.0f, 0.0f).RotateVector(TransformedNormal);
-    }
+	// Flip directions based on signs
+	if (AxisForwardSign == -1)
+	{
+		TransformedNormal = FRotator(0.0f, 180.0f, 0.0f).RotateVector(TransformedNormal);
+	}
 
-    TransformedNormal.X *= AxisForwardSign;
-    TransformedNormal.Z *= AxisUpSign;
+	TransformedNormal.X *= AxisForwardSign;
+	TransformedNormal.Z *= AxisUpSign;
 
-    // Normalize to maintain proper orientation
-    return TransformedNormal.GetSafeNormal();
+	// Normalize to maintain proper orientation
+	return TransformedNormal.GetSafeNormal();
 }
 //TODO: this method needs to be refactored to use matrix transformations as it doesn't work when it comes to normals and this is where the issue is for translucent materials
 void FAssimpMeshLoaderRunnable::TransformMeshMatrix(FVector& InVector, int32 AxisUpOrientation, int32 AxisUpSign,
-                                                       int32 AxisForwardOrientation, int32 AxisForwardSign)
+                                                    int32 AxisForwardOrientation, int32 AxisForwardSign)
 {
 	
 
@@ -708,89 +698,99 @@ void FAssimpMeshLoaderRunnable::TransformMeshMatrix(FVector& InVector, int32 Axi
 	}
 
 	// multiple the in X and Z by the input sign
-        InVector.X *= AxisForwardSign;
-        InVector.Z *= AxisUpSign;
+	InVector.X *= AxisForwardSign;
+	InVector.Z *= AxisUpSign;
 
 }
 
 void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 {
-    if (!Scene || !Scene->HasMeshes())
-    {
-        return;
-    }
+	if (!Scene || !Scene->HasMeshes())
+	{
+		return;
+	}
 
-    float ScaleFactor = 1.0f;
-    if (Scene->mMetaData)
-    {
-        Scene->mMetaData->Get("UnitScaleFactor", ScaleFactor);
-        if (ScaleFactor == 0.0f)
-        {
-            ScaleFactor = 1.0f;
-        }
-    }
+	float ScaleFactor = 1.0f;
+	if (Scene->mMetaData)
+	{
+		Scene->mMetaData->Get("UnitScaleFactor", ScaleFactor);
+		if (ScaleFactor == 0.0f)
+		{
+			ScaleFactor = 1.0f;
+		}
+	}
 
-    int32 AxisUpOrientation = 0;
-    int32 AxisUpSign = 0;
-    int32 AxisForwardOrientation = 0;
-    int32 AxisForwardSign = 0;
+	int32 AxisUpOrientation = 0;
+	int32 AxisUpSign = 0;
+	int32 AxisForwardOrientation = 0;
+	int32 AxisForwardSign = 0;
 
-    if (Scene->mMetaData)
-    {
-        Scene->mMetaData->Get("UpAxis", AxisUpOrientation);
-        Scene->mMetaData->Get("UpAxisSign", AxisUpSign);
-        Scene->mMetaData->Get("FrontAxis", AxisForwardOrientation);
-        Scene->mMetaData->Get("FrontAxisSign", AxisForwardSign);
-    }
+	if (Scene->mMetaData)
+	{
+		Scene->mMetaData->Get("UpAxis", AxisUpOrientation);
+		Scene->mMetaData->Get("UpAxisSign", AxisUpSign);
+		Scene->mMetaData->Get("FrontAxis", AxisForwardOrientation);
+		Scene->mMetaData->Get("FrontAxisSign", AxisForwardSign);
+	}
 
-    FRotator Rotation = GetMeshRotation(AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
+	FRotator Rotation = GetMeshRotation(AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
 
-    Vertices.Empty();
-    Faces.Empty();
-    Normals.Empty();
+	Vertices.Empty();
+	Faces.Empty();
+	Normals.Empty();
 
-    for (uint32 MIndex = 0; MIndex < Scene->mNumMeshes; ++MIndex)
-    {
-        const aiMesh* Mesh = Scene->mMeshes[MIndex];
-        int32 VertexBase = Vertices.Num();
+	for (uint32 MIndex = 0; MIndex < Scene->mNumMeshes; ++MIndex)
+	{
+		const aiMesh* Mesh = Scene->mMeshes[MIndex];
+		int32 VertexBase = Vertices.Num();
 
-        for (uint32 NumVertices = 0; NumVertices < Mesh->mNumVertices; ++NumVertices)
-        {
-            FVector Vertex = FVector(Mesh->mVertices[NumVertices].x * ScaleFactor,
-                                    Mesh->mVertices[NumVertices].y * ScaleFactor,
-                                    Mesh->mVertices[NumVertices].z * ScaleFactor);
-            if (Rotation != FRotator::ZeroRotator)
-            {
-                TransformMeshMatrix(Vertex, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-            }
-            Vertices.Add(Vertex);
+		for (uint32 NumVertices = 0; NumVertices < Mesh->mNumVertices; ++NumVertices)
+		{
+			FVector Vertex = FVector(Mesh->mVertices[NumVertices].x * ScaleFactor,
+			                         Mesh->mVertices[NumVertices].y * ScaleFactor,
+			                         Mesh->mVertices[NumVertices].z * ScaleFactor);
+			if (Rotation != FRotator::ZeroRotator)
+			{
+				TransformMeshMatrix(Vertex, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
+			}
+			Vertices.Add(Vertex);
 
-            if (Mesh->HasNormals())
-            {
-                FVector Normal = FVector(Mesh->mNormals[NumVertices].x * ScaleFactor,
-                                         Mesh->mNormals[NumVertices].y * ScaleFactor,
-                                         Mesh->mNormals[NumVertices].z * ScaleFactor);
-                if (Rotation != FRotator::ZeroRotator)
-                {
-                    TransformMeshMatrix(Normal, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
-                }
-                Normals.Add(Normal);
-            }
-            else
-            {
-                Normals.Add(FVector::ZeroVector);
-            }
-        }
+			if (Mesh->HasNormals())
+			{
+				FVector Normal(
+					Mesh->mNormals[NumVertices].x * ScaleFactor,
+					Mesh->mNormals[NumVertices].y * ScaleFactor,
+					Mesh->mNormals[NumVertices].z * ScaleFactor
+				);
 
-        for (uint32 FaceIndex = 0; FaceIndex < Mesh->mNumFaces; ++FaceIndex)
-        {
-            const aiFace& Face = Mesh->mFaces[FaceIndex];
-            if (Face.mNumIndices == 3)
-            {
-                Faces.Add(VertexBase + Face.mIndices[0]);
-                Faces.Add(VertexBase + Face.mIndices[1]);
-                Faces.Add(VertexBase + Face.mIndices[2]);
-            }
-        }
-    }
+				// Apply exactly the same rotation you used on vertices:
+				if (!Rotation.IsZero())
+				{
+					const FQuat Q = Rotation.Quaternion();
+					Normal = Q.RotateVector(Normal);
+				}
+				if (bIsWktExtension)
+				{
+					Normal *= -1.0f; // WKT normals are inverted
+				}
+
+				Normals.Add(Normal.GetSafeNormal());
+			}
+			else
+			{
+				Normals.Add(FVector::ZeroVector);
+			}
+		}
+
+		for (uint32 FaceIndex = 0; FaceIndex < Mesh->mNumFaces; ++FaceIndex)
+		{
+			const aiFace& Face = Mesh->mFaces[FaceIndex];
+			if (Face.mNumIndices == 3)
+			{
+				Faces.Add(VertexBase + Face.mIndices[0]);
+				Faces.Add(VertexBase + Face.mIndices[1]);
+				Faces.Add(VertexBase + Face.mIndices[2]);
+			}
+		}
+	}
 }
