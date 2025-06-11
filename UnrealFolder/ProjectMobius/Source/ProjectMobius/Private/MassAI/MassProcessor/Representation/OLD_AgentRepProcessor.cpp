@@ -438,16 +438,16 @@ void UAgentRepProcessor::UpdateCustomDataForISMComp(UInstancedStaticMeshComponen
 FRunnableRepresentationProcessorOLD::FRunnableRepresentationProcessorOLD(FEntityInfoFragment* InEntityInfo,
                                                                    AAgentRepresentationActorISM* InAgentRepresentationActor)
 {
-	Thread = FRunnableThread::Create(this, TEXT("UpdateRepresentationISM"));
+       Thread.Reset(FRunnableThread::Create(this, TEXT("UpdateRepresentationISM")));
 }
 
 FRunnableRepresentationProcessorOLD::~FRunnableRepresentationProcessorOLD()
 {
-	if (Thread)
-	{
-		Thread->Kill();
-		delete Thread;
-	}
+       if (Thread.IsValid())
+       {
+               Thread->Kill();
+               Thread.Reset();
+       }
 }
 
 bool FRunnableRepresentationProcessorOLD::Init()
@@ -457,7 +457,11 @@ bool FRunnableRepresentationProcessorOLD::Init()
 
 uint32 FRunnableRepresentationProcessorOLD::Run()
 {
-	UE_LOG(LogTemp, Display, TEXT("FRunnableRepresentationProcessor::Running")); // check not running
+       if (!Thread.IsValid())
+       {
+               return 0;
+       }
+       UE_LOG(LogTemp, Display, TEXT("FRunnableRepresentationProcessor::Running")); // check not running
 	// test log
 	// get the entities location and rotation
 	FVector Location = EntityInfo->CurrentLocation;
