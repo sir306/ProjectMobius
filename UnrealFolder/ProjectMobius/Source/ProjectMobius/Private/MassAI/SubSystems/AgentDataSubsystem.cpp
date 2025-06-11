@@ -413,23 +413,27 @@ FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile)
 
 	
 	
-	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
-	Thread = FRunnableThread::Create(this, TEXT("FJsonDataRunnable"), 0, TPri_Normal);
+       // Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
+       Thread.Reset(FRunnableThread::Create(this, TEXT("FJsonDataRunnable"), 0, TPri_Normal));
 }
 
 FJsonDataRunnable::~FJsonDataRunnable()
 {
-	// if the thread is still running, stop it
-	if (Thread != nullptr)
-	{
-		Thread->Kill(true);
-		delete Thread;
-	}
+       // if the thread is still running, stop it
+       if (Thread.IsValid())
+       {
+               Thread->Kill(true);
+               Thread.Reset();
+       }
 }
 
 uint32 FJsonDataRunnable:: Run()
 {
-	bIsRunning = true;
+       if (!Thread.IsValid())
+       {
+               return 0;
+       }
+       bIsRunning = true;
 	// Broadcast the current percentage of the data loaded
 	AsyncTask(ENamedThreads::GameThread, [this]()
 	{
