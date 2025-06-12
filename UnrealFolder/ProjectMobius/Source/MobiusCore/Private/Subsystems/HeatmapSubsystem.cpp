@@ -79,16 +79,6 @@ void UHeatmapSubsystem::UpdateSpawnHeightLocations(const TArray<float>& NewHeigh
 
 		// ensure the array is ordered from smallest to largest
 		HeightSpawnLocations.Sort();
-
-		// // loop over the spawn height locations and create a heatmap for each one
-		// for (int32 i = 0; i < HeightSpawnLocations.Num(); i++)
-		// {
-		// 	// get the height
-		// 	float Height = HeightSpawnLocations[i];
-		// 	
-		// 	// Create the heatmap
-		// 	CreateHeatmap(FVector(XYSpawnLocation.X, XYSpawnLocation.Y, Height), i);
-		// }
 		
 	}
 	// Schedule Heatmap Generation
@@ -143,24 +133,6 @@ void UHeatmapSubsystem::CreateHeatmap(const FVector& Location, int32 HeatmapInde
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("World is not valid"));
 	}
-}
-
-void UHeatmapSubsystem::AddHeatmapActor(AHeatmapVisualizer* HeatmapActor)
-{
-	// // check actor valid
-	// if(HeatmapActor)
-	// {
-	// 	// add the actor to the array
-	// 	Heatmaps.Add(HeatmapActor);
-	//
-	// 	// log the number of heatmaps
-	// 	UE_LOG(LogTemp, Warning, TEXT("Heatmap Actor Added to Heatmap Subsystem, Number of Heatmaps: %d"), Heatmaps.Num());
-	// }
-	// else
-	// {
-	// 	// log error - TODO: covert to error message
-	// 	UE_LOG(LogTemp, Warning, TEXT("Heatmap Actor is invalid, Failed to add it to the Heatmap Subsystem"));
-	// }
 }
 
 void UHeatmapSubsystem::AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor)

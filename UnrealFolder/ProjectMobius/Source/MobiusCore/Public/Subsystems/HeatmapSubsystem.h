@@ -119,7 +119,6 @@ public:
 	 * 
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem")
-	void AddHeatmapActor(AHeatmapVisualizer* HeatmapActor);
 	void AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor);
 	void RemoveHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor);
 

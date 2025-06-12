@@ -59,9 +59,10 @@ int main(int argc, char *argv[])
 
     // No Datasmith allowed in this filter to prevent users who haven't configured the project correctly for Datasmith use
     QString meshFileFilter =
-        "All Mesh Files (*.udatasmith *.fbx *.obj);;"
+        "All Mesh Files (*.fbx *.obj *.wkt);;"
         "FBX Files (*.fbx);;"
-        "OBJ Files (*.obj)";
+        "OBJ Files (*.obj);;"
+        "WKT Files (*.wkt)";
 
     // Connect signals
     QObject::connect(&dialogBox, &QFileDialog::fileSelected, [&](const QString& file) {
