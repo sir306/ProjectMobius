@@ -33,6 +33,15 @@ class FAssimpMeshLoaderRunnable;
 /** Delegate to tell when finished loading */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLoadMeshDataComplete);
 
+// WKT collection geometry can contain multiple polygons, each with its own holes.
+// this struct provides a way to remove holes from the outer polygon
+struct FPolygonWithHoles
+{
+	TArray<FVector2D> Outer;
+	TArray<TArray<FVector2D>> Holes;
+};
+
+
 /**
  * 
  */
@@ -83,7 +92,7 @@ public:
 #pragma endregion MESH_PROPERTIES
 	/** is the file path actually an obj string */
 	bool bIsWktExtension = false;
-	TArray<FVector2D> Polygon = TArray<FVector2D>();
+	
 
 	/** Delegate to broadcast when the mesh data has finished loading */
 	FOnLoadMeshDataComplete OnLoadMeshDataComplete;
@@ -117,7 +126,8 @@ protected:
 
 	TArray<FVector2D> ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage);
 	
-        bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
+        bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<FPolygonWithHoles>& OutPolygons, FString& OutErrorMessage);
+        //bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
 
        /**
         * Fill Vertices, Faces and Normals arrays using data from an aiScene.
