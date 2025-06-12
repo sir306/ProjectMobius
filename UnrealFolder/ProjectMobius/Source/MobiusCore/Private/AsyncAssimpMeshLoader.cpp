@@ -209,76 +209,123 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 // }
 void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 {
-	// 1) Load & parse
-	FString RawWkt;
-	if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to load WKT file: %s"), *ErrorMessage);
-		return;
-	}
+    // ——— 1) Load raw WKT from disk —————————————————————————————————————————————————————
+    FString RawWkt;
+    if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to load WKT file: %s"), *ErrorMessage);
+        return;
+    }
 
-	TArray<FPolygonWithHoles> Polygons;
-	if (!ParseGeometryCollectionWkt(RawWkt, Polygons, ErrorMessage) || Polygons.Num() == 0)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to parse WKT: %s"), *ErrorMessage);
-		return;
-	}
+    // ——— 2) Parse into polygons (outer + holes) ————————————————————————————————————————
+    TArray<FPolygonWithHoles> Polygons;
+    if (!ParseGeometryCollectionWkt(RawWkt, Polygons, ErrorMessage) || Polygons.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to parse WKT: %s"), *ErrorMessage);
+        return;
+    }
 
-	// 2) Merge into single outer+all holes
-	FPolygonWithHoles Combined = MoveTemp(Polygons[0]);
-	for (int32 i = 1; i < Polygons.Num(); ++i)
-	{
-		Combined.Holes.Add(MoveTemp(Polygons[i].Outer));
-		for (auto& inner : Polygons[i].Holes)
-			Combined.Holes.Add(MoveTemp(inner));
-	}
+    // Merge all into one outer ring + all hole rings
+    FPolygonWithHoles Combined = MoveTemp(Polygons[0]);
+    for (int32 i = 1; i < Polygons.Num(); ++i)
+    {
+        Combined.Holes.Add(MoveTemp(Polygons[i].Outer));
+        for (auto& inner : Polygons[i].Holes)
+            Combined.Holes.Add(MoveTemp(inner));
+    }
 
-	// 3) Build Earcut input: first ring = outer, subsequent rings = holes
-	std::vector<std::vector<Coord>> Rings;
-	Rings.emplace_back();
-	for (auto& P : Combined.Outer)
-		Rings[0].push_back({ double(P.X), double(P.Y) });
+    // ——— 3) Build rings for Earcut ————————————————————————————————————————————————
+    std::vector<std::vector<Coord>> Rings;
+    Rings.reserve(1 + Combined.Holes.Num());
 
-	for (auto& Hole : Combined.Holes)
-	{
-		Rings.emplace_back();
-		for (auto& P : Hole)
-			Rings.back().push_back({ double(P.X), double(P.Y) });
-	}
+    // outer ring
+    Rings.emplace_back();
+    for (auto& P : Combined.Outer)
+        Rings[0].push_back({ double(P.X), double(P.Y) });
 
-	// 4) Triangulate
-	std::vector<size_t> Indices = mapbox::earcut<size_t>(Rings);
+    // hole rings
+    for (auto& Hole : Combined.Holes)
+    {
+        Rings.emplace_back();
+        for (auto& P : Hole)
+            Rings.back().push_back({ double(P.X), double(P.Y) });
+    }
 
-	// 5) Emit OBJ string
-	WktDataString.Empty();
-	int32 TotalVerts = 0;
+    // ——— 4) Triangulate floor ——————————————————————————————————————————————————————
+    std::vector<size_t> Indices = mapbox::earcut<size_t>(Rings);
 
-	// (a) vertices: scale to centimeters if you like
-	for (auto& ring : Rings)
-	{
-		for (auto& c : ring)
-		{
-			WktDataString += FString::Printf(
-				TEXT("v %f %f 0.0\n"),
-				float(c[0] * 100.0), 
-				float(c[1] * 100.0));
-			++TotalVerts;
-		}
-	}
+    // ——— 5) Emit OBJ: floor + walls ——————————————————————————————————————————————
+    WktDataString.Empty();
 
-	// (b) faces: earcut returns a flat list of triangles [a,b,c, d,e,f, ...]
-	for (size_t i = 0; i + 2 < Indices.size(); i += 3)
-	{
-		// OBJ is 1-based
-		WktDataString += FString::Printf(
-			TEXT("f %d %d %d\n"),
-			int32(Indices[i +2]   + 1),
-			int32(Indices[i+1] + 1),
-			int32(Indices[i] + 1));
-	}
+    // 5a) Bottom vertices at Z = 0
+    int32 TotalBaseVerts = 0;
+    for (auto& ring : Rings)
+    {
+        for (auto& c : ring)
+        {
+            WktDataString += FString::Printf(
+                TEXT("v %f %f 0.0\n"),
+                float(c[0] * 100.0),
+                float(c[1] * 100.0)
+            );
+            ++TotalBaseVerts;
+        }
+    }
 
-	// Now ProcessMeshFromString() will hand this OBJ to Assimp (to pick up normals / tangents),
-	// and FillDataFromScene() will build your UE Vertices/Faces exactly in this order.
+    // 5b) Floor faces (double-sided)
+    for (size_t i = 0; i + 2 < Indices.size(); i += 3)
+    {
+        int32 A = int32(Indices[i]   + 1);
+        int32 B = int32(Indices[i+1] + 1);
+        int32 C = int32(Indices[i+2] + 1);
+
+        // upward-facing
+        WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, B, C);
+        // downward-facing (reverse winding)
+        WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, C, B);
+    }
+
+    // ——— 6) Extrude walls up 1 m (100 cm) ————————————————————————————————————————
+    const float Height = 100.0f;
+    int32 VertexOffsetTop = TotalBaseVerts;
+    int32 Offset = 0;
+
+    // 6a) Top vertices at Z = Height
+    for (auto& ring : Rings)
+    {
+        for (auto& c : ring)
+        {
+            WktDataString += FString::Printf(
+                TEXT("v %f %f %f\n"),
+                float(c[0] * 100.0),
+                float(c[1] * 100.0),
+                Height
+            );
+        }
+    }
+
+    // 6b) Wall faces (double-sided quads)
+    for (auto& ring : Rings)
+    {
+        int32 N = int32(ring.size());
+        for (int32 i = 0; i < N; ++i)
+        {
+            int32 A    = Offset + i;
+            int32 B    = Offset + ((i + 1) % N);
+            int32 ATop = VertexOffsetTop + Offset + i;
+            int32 BTop = VertexOffsetTop + Offset + ((i + 1) % N);
+
+            // outward‐facing
+            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A+1, B+1, BTop+1);
+            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A+1, BTop+1, ATop+1);
+            // inward‐facing
+            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop+1, B+1, A+1);
+            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop+1, BTop+1, A+1);
+        }
+        Offset += N;
+    }
+
+    // Now hand WktDataString off to ProcessMeshFromString()/Assimp…
 }
 
 // void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
