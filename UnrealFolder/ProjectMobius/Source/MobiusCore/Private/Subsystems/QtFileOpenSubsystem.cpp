@@ -193,7 +193,7 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
         FString MeshPath  = JsonObject->GetStringField(TEXT("meshFile"));
         
         bool bAgentSuccess = !AgentPath.IsEmpty() && AgentPath.EndsWith(TEXT(".json"));
-        bool bMeshSuccess = !MeshPath.IsEmpty() && (MeshPath.EndsWith(TEXT(".fbx")) || MeshPath.EndsWith(TEXT(".obj")) || MeshPath.EndsWith(TEXT(".udatasmith")));
+        bool bMeshSuccess = !MeshPath.IsEmpty() && (MeshPath.EndsWith(TEXT(".fbx")) || MeshPath.EndsWith(TEXT(".obj")) || MeshPath.EndsWith(TEXT(".udatasmith")) || MeshPath.EndsWith(TEXT(".ifc")) || MeshPath.EndsWith(TEXT(".wkt")));
 
 
         if (OnFileSelected.IsBound())
