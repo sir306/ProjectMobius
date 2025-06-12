@@ -50,8 +50,9 @@ This repository provides everything needed to build, run, and package the comple
      - Exposes a RESTful endpoint (e.g., `http://localhost:8080/selectFile`) and an optional TCP listener for remote clients to invoke native file dialogs.  
      - Returns selected file paths via JSON/TCP.  
 - **Node.js WebSocket Server**  
-  - Bridges Unreal Engine and the Qt GUIs with bidirectional JSON messaging over WebSocket (`ws://localhost:9090`).  
-  - Handles reconnects, message buffering, and simple request/response semantics.  
+  - Bridges Unreal Engine and the Qt GUIs with bidirectional JSON messaging over WebSocket (`ws://localhost:9090`) using the **ws** library.
+  - Handles reconnects, message buffering, and simple request/response semantics.
+  - Packaged into a standalone executable with **vercel/pkg**.
 - **Bundled Third-Party Libraries & Assets**  
   - **HDF5** for large-scale data logging.  
   - **Assimp** for importing Blender models into Unreal.  
@@ -201,6 +202,17 @@ Copies of their respective license texts are included in the following folders:
 
 - `Source/ProjectMobius/ThirdParty/assimp/LICENSE`
 - `Source/Visualization/ThirdParty/OpenCV/LICENSE`
+- `Source/MobiusCore/ThirdParty/earcut_hpp/LICENSE`
+- `ThirdParty/LICENSE.pkg`
+- `HDF5/LICENSE.txt`
+- `ImportedOpenSourceAssets/LICENSE.txt`
+- `TestData/LICENSE.txt`
+- `DemoProgressVideos/LICENSE.txt`
+- `HelpfulTextDocs/LICENSE.txt`
+
+See [ASSET_LICENSES.md](ASSET_LICENSES.md) for Creative Commons assets and
+[SUMMARY-OF-FOLDER-STRUCTURE-&-LICENSE.md](SUMMARY-OF-FOLDER-STRUCTURE-&-LICENSE.md)
+for a high-level overview of all folders and their licenses.
 
 Additional licensing details can be found in [LICENSE.md](LICENSE.md).
 
