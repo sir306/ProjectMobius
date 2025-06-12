@@ -35,6 +35,74 @@
 #include <earcut_hpp/earcut.hpp>
 using Coord = std::array<double,2>;
 
+enum class EAxisOrientation : int32
+{
+    Unknown = 0,
+    X = 1,
+    Y = 2,
+    Z = 3
+};
+
+enum class EAxisSign : int32
+{
+    Positive = 1,
+    Negative = -1
+};
+
+static FMatrix MakeAxisTransform(EAxisOrientation Up, EAxisSign UpSign, EAxisOrientation Forward, EAxisSign ForwardSign)
+{
+    auto BaseMatrix = [](EAxisOrientation U, EAxisOrientation F) -> FMatrix
+    {
+        switch (U)
+        {
+        case EAxisOrientation::X:
+            if (F == EAxisOrientation::Y)
+            {
+                return FMatrix(FVector(0, 1, 0), FVector(0, 0, 1), FVector(1, 0, 0), FVector::ZeroVector); // Y,Z,X
+            }
+            return FMatrix(FVector(0, 0, 1), FVector(0, 1, 0), FVector(1, 0, 0), FVector::ZeroVector); // Z,Y,X
+
+        case EAxisOrientation::Y:
+            if (F == EAxisOrientation::Z)
+            {
+                return FMatrix(FVector(0, 0, 1), FVector(1, 0, 0), FVector(0, 1, 0), FVector::ZeroVector); // Z,X,Y
+            }
+            return FMatrix(FVector(1, 0, 0), FVector(0, 0, 1), FVector(0, 1, 0), FVector::ZeroVector); // X,Z,Y
+
+        case EAxisOrientation::Z:
+            if (F == EAxisOrientation::Y || F == EAxisOrientation::Unknown)
+            {
+                return FMatrix(FVector(0, 1, 0), FVector(1, 0, 0), FVector(0, 0, 1), FVector::ZeroVector); // Y,X,Z
+            }
+            return FMatrix(FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1), FVector::ZeroVector); // X,Y,Z
+        default:
+            return FMatrix::Identity;
+        }
+    };
+
+    FMatrix M = BaseMatrix(Up, Forward);
+
+    if (ForwardSign == EAxisSign::Negative)
+    {
+        for (int32 Col = 0; Col < 4; ++Col)
+        {
+            M.M[0][Col] *= -1.f;
+            M.M[1][Col] *= -1.f;
+        }
+    }
+
+    const float FS = ForwardSign == EAxisSign::Negative ? -1.f : 1.f;
+    const float US = UpSign == EAxisSign::Negative ? -1.f : 1.f;
+
+    for (int32 Col = 0; Col < 4; ++Col)
+    {
+        M.M[0][Col] *= FS;
+        M.M[2][Col] *= US;
+    }
+
+    return M;
+}
+
 
 UAsyncAssimpMeshLoader::UAsyncAssimpMeshLoader()
 {
@@ -528,280 +596,33 @@ bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(
 FRotator FAssimpMeshLoaderRunnable::GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign,
                                                     int32 AxisForwardOrientation, int32 AxisForwardSign)
 {
+        const FMatrix Transform = MakeAxisTransform(static_cast<EAxisOrientation>(AxisUpOrientation),
+                                                   static_cast<EAxisSign>(AxisUpSign),
+                                                   static_cast<EAxisOrientation>(AxisForwardOrientation),
+                                                   static_cast<EAxisSign>(AxisForwardSign));
 
-	static const FRotator UpRotation[4][3] =
-	{
-		{// sign unknown assume zero
-			{ // sign unknown assume 
-				FRotator::ZeroRotator
-			},
-			{ // positive
-				FRotator::ZeroRotator
-			},
-			{ // negative
-				FRotator::ZeroRotator
-			}
-		},
-		{ // X is up
-			{ // sign unknown assume positive x 
-				FRotator(90.0f, 0.0f, 0.0f)
-			},
-			{ // positive
-				FRotator(90.0f, 0.0f, 0.0f)
-			},
-			{ // negative
-				FRotator(-90.0f, 0.0f, 0.0f)
-			}
-		},
-		{ // y is up
-			{ // sign unknown assume 
-				FRotator(0.0f, 0.0f, -90.0f)
-			},
-			{ // positive
-				FRotator(0.0f, 0.0f, -90.0f)
-			},
-			{ // negative
-				FRotator(0.0f, 0.0f, 90.0f)
-			}
-		},
-		{ // Z is up
-			{ // sign unknown assume positive
-				FRotator::ZeroRotator
-			},
-			{ // positive
-				FRotator::ZeroRotator
-			},
-			{ // negative
-				FRotator(180.0f, 0.0f, 0.0f)
-			}
-		}
-	};
-	
-	int32 AxisOrientationPicker = AxisUpOrientation == -1 ? 0 : AxisUpOrientation;
-	int32 AxisUpSignPicker = AxisUpSign == -1 ? 2 : AxisUpSign;
-
-	// make rotator based on the up axis orientation and sign
-	FRotator ReturnRotation = UpRotation[AxisOrientationPicker][AxisUpSignPicker];
-	
-	// modify the rotation based on the forward axis orientation and sign
-	if(AxisForwardOrientation != 0)
-	{
-		// modify the rotation based on the forward axis orientation and sign
-		FRotator ForwardRotation = FRotator::ZeroRotator;
-		switch (AxisForwardOrientation)
-		{
-		case 1:// X
-			switch (AxisUpOrientation)
-			{
-			case 1:
-				// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-				break;
-			case 2: // Y
-				if(AxisUpSign == -1)
-				{
-					ForwardRotation = FRotator(0.0f, -90.0f, 0.0f);
-				}
-				else
-				{
-					ForwardRotation = FRotator(0.0f, 90.0f, 0.0f);
-				}
-				break;
-			case 3: // Z
-				if(AxisUpSign == -1)
-				{
-					ForwardRotation = FRotator(0.0f, 0.0f, 90.0f);
-				}
-				else
-				{
-					ForwardRotation = FRotator(0.0f, 0.0f, -90.0f);
-				}
-				break;
-			default: // the up axis is unknown so use the forward axis
-				if(AxisForwardSign == -1)
-				{
-					ForwardRotation = FRotator(0.0f, 0.0f, 90.0f);
-				}
-				else
-				{
-					ForwardRotation = FRotator(0.0f, 0.0f, -90.0f);
-				}
-				break;
-			}
-			break;
-		case 2:// Y
-			ForwardRotation = FRotator(0.0f, 0.0f, -90.0f);
-			break;
-		case 3:// Z
-			ForwardRotation = FRotator::ZeroRotator;
-			break;
-		default:// unknown
-			break;
-		}
-		// modify the rotation based on the forward axis sign
-		if(AxisForwardSign == -1)
-		{
-			ReturnRotation += ForwardRotation;
-		}
-		else
-		{
-			ReturnRotation -= ForwardRotation;
-		}
-	}
-
-	
-	return ReturnRotation;
+        return FQuat(Transform).Rotator();
 }
 
 FVector FAssimpMeshLoaderRunnable::TransformNormal(const FVector& InNormal, int32 AxisUpOrientation, int32 AxisForwardOrientation, int32 AxisForwardSign, int32 AxisUpSign)
 {
-	FMatrix TransformMatrix = FMatrix::Identity;
-
-	// Define transformation matrix based on up and forward axes
-	switch (AxisUpOrientation)
-	{
-	case 1: // X up
-		switch (AxisForwardOrientation)
-		{
-		case 2: // Y forward
-			TransformMatrix = FMatrix(FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1), FVector::ZeroVector);
-			break;
-		case 3: // Z forward
-			TransformMatrix = FMatrix(FVector(1, 0, 0), FVector(0, 0, 1), FVector(0, 1, 0), FVector::ZeroVector);
-			break;
-		}
-		break;
-
-	case 2: // Y up
-		switch (AxisForwardOrientation)
-		{
-		case 1: // X forward
-			TransformMatrix = FMatrix(FVector(0, 1, 0), FVector(1, 0, 0), FVector(0, 0, 1), FVector::ZeroVector);
-			break;
-		case 3: // Z forward
-			TransformMatrix = FMatrix(FVector(0, 1, 0), FVector(0, 0, 1), FVector(1, 0, 0), FVector::ZeroVector);
-			break;
-		}
-		break;
-
-	case 3: // Z up
-		switch (AxisForwardOrientation)
-		{
-		case 1: // X forward
-			TransformMatrix = FMatrix(FVector(0, 0, 1), FVector(1, 0, 0), FVector(0, 1, 0), FVector::ZeroVector);
-			break;
-		case 2: // Y forward
-			TransformMatrix = FMatrix(FVector(0, 0, 1), FVector(0, 1, 0), FVector(1, 0, 0), FVector::ZeroVector);
-			break;
-		}
-		break;
-
-	default:
-		break;
-	}
-
-	// Invert and transpose the matrix for normal transformations
-	FMatrix NormalTransformMatrix = TransformMatrix.Inverse().GetTransposed();
-
-	// Transform the normal
-	FVector TransformedNormal = NormalTransformMatrix.TransformVector(InNormal);
-
-	// Flip directions based on signs
-	if (AxisForwardSign == -1)
-	{
-		TransformedNormal = FRotator(0.0f, 180.0f, 0.0f).RotateVector(TransformedNormal);
-	}
-
-	TransformedNormal.X *= AxisForwardSign;
-	TransformedNormal.Z *= AxisUpSign;
-
-	// Normalize to maintain proper orientation
-	return TransformedNormal.GetSafeNormal();
+        FMatrix TransformMatrix = MakeAxisTransform(static_cast<EAxisOrientation>(AxisUpOrientation),
+                                                    static_cast<EAxisSign>(AxisUpSign),
+                                                    static_cast<EAxisOrientation>(AxisForwardOrientation),
+                                                    static_cast<EAxisSign>(AxisForwardSign));
+        FMatrix NormalMatrix = TransformMatrix.InverseFast().GetTransposed();
+        return NormalMatrix.TransformVector(InNormal).GetSafeNormal();
 }
 //TODO: this method needs to be refactored to use matrix transformations as it doesn't work when it comes to normals and this is where the issue is for translucent materials
+
 void FAssimpMeshLoaderRunnable::TransformMeshMatrix(FVector& InVector, int32 AxisUpOrientation, int32 AxisUpSign,
                                                     int32 AxisForwardOrientation, int32 AxisForwardSign)
 {
-	
-
-	// manipulate the vector based on the up axis and the forward axis
-	switch (AxisUpOrientation)
-	{
-	case 1: // X up
-		switch (AxisForwardOrientation)
-		{
-		case 1: // X
-			// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-			InVector = FVector(InVector.Z, InVector.Y, InVector.X);
-			break;
-		case 2: // Y
-			InVector = FVector(InVector.Y, InVector.Z, InVector.X);
-			break;
-		case 3: // Z
-			InVector = FVector(InVector.Z, InVector.Y, InVector.X);
-			break;
-		default: // the forward axis is unknown so use the up axis
-			InVector = FVector(InVector.Z, InVector.Y, InVector.X);
-			break;
-		}
-		break;
-
-	case 2: // Y up
-		{
-			switch (AxisForwardOrientation)
-			{
-			case 1: // X
-				InVector = FVector(InVector.X, InVector.Z, InVector.Y);
-				break;
-			case 2: // Y
-				// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-				InVector = FVector(InVector.X, InVector.Z, InVector.Y);
-				break;
-			case 3: // Z
-				InVector = FVector(InVector.Z, InVector.X, InVector.Y);
-				break;
-			default: // the forward axis is unknown so use the up axis
-				InVector = FVector(InVector.X, InVector.Z, InVector.Y);
-				break;
-			}
-			break;
-		}
-	case 3: // Z up
-		{
-			switch (AxisForwardOrientation)
-			{
-			case 1: // X
-				InVector = FVector(InVector.X, InVector.Y, InVector.Z);
-				break;
-				
-			case 2: // Y
-					
-				InVector = FVector(InVector.Y, InVector.X, InVector.Z);
-				break;
-
-			case 3: // Z
-				// the up and forward axis are the same this isn't possible so assume the forward axis is unknown and use the up axis
-				InVector = FVector(InVector.X, InVector.Y, InVector.Z);
-				break;
-			default:
-				InVector = FVector(InVector.Y, InVector.X, InVector.Z);
-				break;
-			}
-			break;
-		}
-	default:
-		break;
-	}
-
-	// // if the forward axis is negative then we need to rotate the vector by 180 degrees
-	if(AxisForwardSign == -1)
-	{
-		InVector = FRotator(0.0f, 180.0f, 0.0f).RotateVector(InVector);
-	}
-
-	// multiple the in X and Z by the input sign
-	InVector.X *= AxisForwardSign;
-	InVector.Z *= AxisUpSign;
-
+        FMatrix TransformMatrix = MakeAxisTransform(static_cast<EAxisOrientation>(AxisUpOrientation),
+                                                    static_cast<EAxisSign>(AxisUpSign),
+                                                    static_cast<EAxisOrientation>(AxisForwardOrientation),
+                                                    static_cast<EAxisSign>(AxisForwardSign));
+        InVector = TransformMatrix.TransformVector(InVector);
 }
 
 void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
