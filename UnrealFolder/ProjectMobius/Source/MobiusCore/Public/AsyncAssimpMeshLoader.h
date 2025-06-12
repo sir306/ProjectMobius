@@ -29,6 +29,24 @@
 #include "UObject/Object.h"
 #include "AsyncAssimpMeshLoader.generated.h"
 
+/** Orientation for a mesh axis. */
+UENUM()
+enum class EAxisOrientation : int32
+{
+    Unknown = 0,
+    X = 1,
+    Y = 2,
+    Z = 3
+};
+
+/** Sign for a mesh axis direction. */
+UENUM()
+enum class EAxisSign : int32
+{
+    Negative = -1,
+    Positive = 1
+};
+
 class FAssimpMeshLoaderRunnable;
 /** Delegate to tell when finished loading */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLoadMeshDataComplete);
@@ -150,17 +168,23 @@ protected:
 	 * If the data is not found it has to be assumed that the data is in the correct orientation as the data is
 	 * missing or corrupt and this is a user error not a system error
 	 *
-	 * @param[int32] AxisUpOrientation - The axis data from the metadata that tells which axis is up
-	 * @param[int32] AxisUpSign - This is the sign of the up axis
-	 * @param[int32] AxisForwardOrientation - The axis data from the metadata that tells which axis is forward
-	 * @param[int32] AxisForwardSign - This is the sign of the forward axis
+        * @param AxisUpOrientation   Which axis is considered up
+        * @param AxisUpSign          The sign of the up axis
+        * @param AxisForwardOrientation Which axis is considered forward
+        * @param AxisForwardSign     The sign of the forward axis
 	 * @return[FRotator] - The rotation to be applied to the mesh data
 	 * 
 	 */
-	static FRotator GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign, int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);// todo see if forward is needed
-	FVector TransformNormal(const FVector& InNormal, int32 AxisUpOrientation, int32 AxisForwardOrientation,
-	                        int32 AxisForwardSign, int32 AxisUpSign);
+       static FRotator GetMeshRotation(EAxisOrientation AxisUpOrientation, EAxisSign AxisUpSign,
+                                       EAxisOrientation AxisForwardOrientation = EAxisOrientation::Unknown,
+                                       EAxisSign AxisForwardSign = EAxisSign::Positive);// todo see if forward is needed
+       FVector TransformNormal(const FVector& InNormal, EAxisOrientation AxisUpOrientation,
+                               EAxisOrientation AxisForwardOrientation,
+                               EAxisSign AxisForwardSign, EAxisSign AxisUpSign);
 
-	static void TransformMeshMatrix(FVector& InVector, int32 AxisUpOrientation, int32 AxisUpSign, int32 AxisForwardOrientation = 0, int32 AxisForwardSign = 0);
+       static void TransformMeshMatrix(FVector& InVector, EAxisOrientation AxisUpOrientation,
+                                       EAxisSign AxisUpSign,
+                                       EAxisOrientation AxisForwardOrientation = EAxisOrientation::Unknown,
+                                       EAxisSign AxisForwardSign = EAxisSign::Positive);
 };
 
