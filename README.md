@@ -55,7 +55,8 @@ This repository provides everything needed to build, run, and package the comple
 - **Bundled Third-Party Libraries & Assets**  
   - **HDF5** for large-scale data logging.  
   - **Assimp** for importing Blender models into Unreal.  
-  - **OpenCV** for texture processing (e.g., Gaussian blur).  
+  - **OpenCV** for texture processing (e.g., Gaussian blur).
+  - **Earcut.hpp** for polygon triangulation (header-only, ISC license).
   - **Blender Models** (exported `.fbx` under `ImportedOpenSourceAssets/`) for environment and agent meshes.
 
 ---
