@@ -19,6 +19,9 @@
     │   │       └─ OpenCV/      ← OpenCV headers and binaries (BSD 3-Clause)
     │   │       └─ Binaries/    ← Precompiled OpenCV libs (BSD 3-Clause)
     │   ├─ HIT_ThesisWork/     ← Your C++ module (MIT)
+    │   ├─ MobiusCore/     ← Your C++ module (MIT)
+    │   │   └─ ThirdParty/
+    │   │       └─ earcut_hpp/  ← Earcut polygon triangulation (ISC license)
     │   ├─ MobiusWidgets/      ← Your C++ module (MIT)
     │   │   └─ ThirdParty/
     │   │       └─ assimp/      ← ASSIMP headers/binaries (BSD 3-Clause)
