@@ -146,6 +146,14 @@ Within your Unreal project’s `Source/` directory, you have included several th
 - For “self-authored” Blender exports, you may relicense them under MIT (Section 5).  
 - For any third-party models obtained from “blender.org” or elsewhere, include their specific Creative Commons license and author credit. If you’re uncertain, do **not** relicense them under MIT—leave them under their original terms and include a `LICENSE` or `COPYING` file adjacent to each such asset.
 
+### 4.5 Earcut.hpp
+
+- **Location:** `UnrealFolder/ProjectMobius/Source/MobiusCore/ThirdParty/earcut_hpp/`
+- **License:** ISC License
+- **Full License URL:** https://github.com/mapbox/earcut.hpp/blob/master/LICENSE
+
+Earcut.hpp is a header-only polygon triangulation library.
+
 ---
 
 ## 5. MIT License (For Your Own Code and Self-Authored Assets)
