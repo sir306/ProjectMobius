@@ -188,25 +188,25 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 	FillDataFromScene(Scene);
 }
 // this version loads boundaries correctly and shows where holes are needed
-// void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
-// {
-// 	LoadWKTDataToObjString();
-// 	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
-// 	Assimp::Importer Importer;
-// 	const aiScene* Scene = Importer.ReadFileFromMemory(
-// 		OBJData.c_str(), OBJData.size(),
-// 		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals | aiProcess_CalcTangentSpace,
-// 		//TODO: Need to workout a way to handle normals for WKT data -> filters just don't work for this
-// 		"obj");
-//
-// 	if (!Scene || !Scene->HasMeshes())
-// 	{
-// 		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
-// 		return;
-// 	}
-//
-// 	FillDataFromScene(Scene);
-// }
+void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
+{
+	LoadWKTDataToObjString();
+	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
+	Assimp::Importer Importer;
+	const aiScene* Scene = Importer.ReadFileFromMemory(
+		OBJData.c_str(), OBJData.size(),
+		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals | aiProcess_CalcTangentSpace,
+		//TODO: Need to workout a way to handle normals for WKT data -> filters just don't work for this
+		"obj");
+
+	if (!Scene || !Scene->HasMeshes())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
+		return;
+	}
+
+	FillDataFromScene(Scene);
+}
 void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 {
     // ——— 1) Load raw WKT from disk —————————————————————————————————————————————————————
