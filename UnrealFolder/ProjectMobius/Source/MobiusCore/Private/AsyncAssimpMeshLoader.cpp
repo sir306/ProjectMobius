@@ -30,6 +30,10 @@
 #include "assimp/texture.h"
 #include "assimp/postprocess.h"
 #include "Kismet/KismetMathLibrary.h"
+#include <array>
+#include <vector>
+#include <earcut_hpp/earcut.hpp>
+using Coord = std::array<double,2>;
 
 
 UAsyncAssimpMeshLoader::UAsyncAssimpMeshLoader()
@@ -183,30 +187,29 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 
 	FillDataFromScene(Scene);
 }
-
-void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
-{
-	LoadWKTDataToObjString();
-	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
-	Assimp::Importer Importer;
-	const aiScene* Scene = Importer.ReadFileFromMemory(
-		OBJData.c_str(), OBJData.size(),
-		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals | aiProcess_CalcTangentSpace,
-		//TODO: Need to workout a way to handle normals for WKT data -> filters just don't work for this
-		"obj");
-
-	if (!Scene || !Scene->HasMeshes())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
-		return;
-	}
-
-	FillDataFromScene(Scene);
-}
-
+// this version loads boundaries correctly and shows where holes are needed
+// void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
+// {
+// 	LoadWKTDataToObjString();
+// 	std::string OBJData = TCHAR_TO_UTF8(*WktDataString);
+// 	Assimp::Importer Importer;
+// 	const aiScene* Scene = Importer.ReadFileFromMemory(
+// 		OBJData.c_str(), OBJData.size(),
+// 		aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals | aiProcess_CalcTangentSpace,
+// 		//TODO: Need to workout a way to handle normals for WKT data -> filters just don't work for this
+// 		"obj");
+//
+// 	if (!Scene || !Scene->HasMeshes())
+// 	{
+// 		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
+// 		return;
+// 	}
+//
+// 	FillDataFromScene(Scene);
+// }
 void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 {
-	// 1) Load the raw WKT (JSON-wrapped) from disk
+	// 1) Load & parse
 	FString RawWkt;
 	if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
 	{
@@ -214,72 +217,328 @@ void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
 		return;
 	}
 
-	// 2) Parse into one or more polygons
-	TArray<TArray<FVector2D>> Geometries;
-	if (!ParseGeometryCollectionWkt(RawWkt, Geometries, ErrorMessage))
+	TArray<FPolygonWithHoles> Polygons;
+	if (!ParseGeometryCollectionWkt(RawWkt, Polygons, ErrorMessage) || Polygons.Num() == 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to parse geometry: %s"), *ErrorMessage);
+		UE_LOG(LogTemp, Error, TEXT("Failed to parse WKT: %s"), *ErrorMessage);
 		return;
 	}
 
-	// 3) Begin building the OBJ string
-	WktDataString.Empty();
-	int32 VertexOffset = 0;  // keep track of 1-based OBJ indexing
-
-	for (const TArray<FVector2D>& Geometry : Geometries)
+	// 2) Merge into single outer+all holes
+	FPolygonWithHoles Combined = MoveTemp(Polygons[0]);
+	for (int32 i = 1; i < Polygons.Num(); ++i)
 	{
-		const int32 NumPts = Geometry.Num();
-		if (NumPts < 3) continue;
-
-		// keep track of where our base vertices start in the global OBJ index
-		const int32 BaseStart = VertexOffset;
-
-		// 1) emit the base ring (Z = 0)
-		for (const FVector2D& P : Geometry)
-		{
-			// assuming input is in meters, scale to centimeters for OBJ (multiply by 100)
-			FVector V(P.X * 100.0f, P.Y * 100.0f, 0.0f);
-			WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
-		}
-
-		// 2) cap *that* ring immediately (so it can only ever seal the floor)
-		WktDataString += TEXT("f");
-		for (int32 i = 0; i < NumPts; ++i)
-		{
-			// OBJ is 1-based: BaseStart+1 … BaseStart+NumPts
-			WktDataString += FString::Printf(TEXT(" %d"), BaseStart + i + 1);
-		}
-		WktDataString += TEXT("\n");
-
-		// 3) emit the top ring (Z = 100)
-		const int32 TopStart = BaseStart + NumPts;
-		for (const FVector2D& P : Geometry)
-		{
-			FVector V(P.X * 100.0f, P.Y * 100.0f, 100.0f);
-			WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
-		}
-
-		// 4) now build double-sided walls
-		for (int32 i = 0; i < NumPts; ++i)
-		{
-			const int32 A    = BaseStart + i + 1;
-			const int32 B    = BaseStart + ((i + 1) % NumPts) + 1;
-			const int32 ATop = TopStart  + i + 1;
-			const int32 BTop = TopStart  + ((i + 1) % NumPts) + 1;
-
-			// outer
-			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A,    B,    BTop);
-			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A,    BTop, ATop);
-
-			// inner (reversed)
-			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop, B,    A);
-			WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop, BTop, A);
-		}
-
-		// advance for next polygon
-		VertexOffset += NumPts * 2;
+		Combined.Holes.Add(MoveTemp(Polygons[i].Outer));
+		for (auto& inner : Polygons[i].Holes)
+			Combined.Holes.Add(MoveTemp(inner));
 	}
+
+	// 3) Build Earcut input: first ring = outer, subsequent rings = holes
+	std::vector<std::vector<Coord>> Rings;
+	Rings.emplace_back();
+	for (auto& P : Combined.Outer)
+		Rings[0].push_back({ double(P.X), double(P.Y) });
+
+	for (auto& Hole : Combined.Holes)
+	{
+		Rings.emplace_back();
+		for (auto& P : Hole)
+			Rings.back().push_back({ double(P.X), double(P.Y) });
+	}
+
+	// 4) Triangulate
+	std::vector<size_t> Indices = mapbox::earcut<size_t>(Rings);
+
+	// 5) Emit OBJ string
+	WktDataString.Empty();
+	int32 TotalVerts = 0;
+
+	// (a) vertices: scale to centimeters if you like
+	for (auto& ring : Rings)
+	{
+		for (auto& c : ring)
+		{
+			WktDataString += FString::Printf(
+				TEXT("v %f %f 0.0\n"),
+				float(c[0] * 100.0), 
+				float(c[1] * 100.0));
+			++TotalVerts;
+		}
+	}
+
+	// (b) faces: earcut returns a flat list of triangles [a,b,c, d,e,f, ...]
+	for (size_t i = 0; i + 2 < Indices.size(); i += 3)
+	{
+		// OBJ is 1-based
+		WktDataString += FString::Printf(
+			TEXT("f %d %d %d\n"),
+			int32(Indices[i +2]   + 1),
+			int32(Indices[i+1] + 1),
+			int32(Indices[i] + 1));
+	}
+
+	// Now ProcessMeshFromString() will hand this OBJ to Assimp (to pick up normals / tangents),
+	// and FillDataFromScene() will build your UE Vertices/Faces exactly in this order.
 }
+
+// void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
+// {
+// 	// 1) Load the raw WKT (JSON-wrapped) from disk
+// 	FString RawWkt;
+// 	if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
+// 	{
+// 		UE_LOG(LogTemp, Error, TEXT("Failed to load WKT file: %s"), *ErrorMessage);
+// 		return;
+// 	}
+//
+// 	// 2) Parse into one or more polygons
+// 	TArray<TArray<FVector2D>> Geometries;
+// 	if (!ParseGeometryCollectionWkt(RawWkt, Geometries, ErrorMessage))
+// 	{
+// 		UE_LOG(LogTemp, Error, TEXT("Failed to parse geometry: %s"), *ErrorMessage);
+// 		return;
+// 	}
+//
+// 	// 3) Begin building the OBJ string
+// 	WktDataString.Empty();
+// 	int32 VertexOffset = 0;  // keep track of 1-based OBJ indexing
+//
+// 	for (const TArray<FVector2D>& Geometry : Geometries)
+// 	{
+// 		const int32 NumPts = Geometry.Num();
+// 		if (NumPts < 3) continue;
+//
+// 		// keep track of where our base vertices start in the global OBJ index
+// 		const int32 BaseStart = VertexOffset;
+//
+// 		// 1) emit the base ring (Z = 0)
+// 		for (const FVector2D& P : Geometry)
+// 		{
+// 			// assuming input is in meters, scale to centimeters for OBJ (multiply by 100)
+// 			FVector V(P.X * 100.0f, P.Y * 100.0f, 0.0f);
+// 			WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
+// 		}
+// 		
+// 		// 2) cap *that* ring double-sided (so it can only ever seal the floor)
+// 		{
+// 			// original side
+// 			WktDataString += TEXT("f");
+// 			for (int32 i = 0; i < NumPts; ++i)
+// 			{
+// 				WktDataString += FString::Printf(TEXT(" %d"), BaseStart + i + 1);
+// 			}
+// 			WktDataString += TEXT("\n");
+//
+// 			// reversed side
+// 			WktDataString += TEXT("f");
+// 			for (int32 i = NumPts - 1; i >= 0; --i)
+// 			{
+// 				WktDataString += FString::Printf(TEXT(" %d"), BaseStart + i + 1);
+// 			}
+// 			WktDataString += TEXT("\n");
+// 		}
+//
+// 		// // 3) emit the top ring (Z = 100)
+// 		// const int32 TopStart = BaseStart + NumPts;
+// 		// for (const FVector2D& P : Geometry)
+// 		// {
+// 		// 	FVector V(P.X * 100.0f, P.Y * 100.0f, 100.0f);
+// 		// 	WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
+// 		// }
+// 		//
+// 		// // 4) now build double-sided walls
+// 		// for (int32 i = 0; i < NumPts; ++i)
+// 		// {
+// 		// 	const int32 A    = BaseStart + i + 1;
+// 		// 	const int32 B    = BaseStart + ((i + 1) % NumPts) + 1;
+// 		// 	const int32 ATop = TopStart  + i + 1;
+// 		// 	const int32 BTop = TopStart  + ((i + 1) % NumPts) + 1;
+// 		//
+// 		// 	// outer
+// 		// 	WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A,    B,    BTop);
+// 		// 	WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A,    BTop, ATop);
+// 		//
+// 		// 	// inner (reversed)
+// 		// 	WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop, B,    A);
+// 		// 	WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop, BTop, A);
+// 		// }
+//
+// 		// advance for next polygon
+// 		//VertexOffset += NumPts * 2;
+// 		VertexOffset += NumPts;
+// 	}
+// 	
+// }
+// void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
+// {
+// 	// 1) Load the raw WKT (JSON-wrapped) from disk
+//     FString RawWkt;
+//     if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
+//     {
+//         UE_LOG(LogTemp, Error, TEXT("Failed to load WKT file: %s"), *ErrorMessage);
+//         return;
+//     }
+//
+//     // 2) Parse into polygons-with-holes
+//     TArray<FPolygonWithHoles> Polygons;
+//     if (!ParseGeometryCollectionWkt(RawWkt, Polygons, ErrorMessage))
+//     {
+//         UE_LOG(LogTemp, Error, TEXT("Failed to parse geometry: %s"), *ErrorMessage);
+//         return;
+//     }
+//     if (Polygons.Num() == 0)
+//     {
+//         UE_LOG(LogTemp, Error, TEXT("No polygons found in WKT."));
+//         return;
+//     }
+//
+//     // 3) **Combine** all parsed rings into a single outer+holes
+//     FPolygonWithHoles Combined = MoveTemp(Polygons[0]);
+//     for (int32 i = 1; i < Polygons.Num(); ++i)
+//     {
+//         Combined.Holes.Add(MoveTemp(Polygons[i].Outer));
+//         for (auto& innerHole : Polygons[i].Holes)
+//         {
+//             Combined.Holes.Add(MoveTemp(innerHole));
+//         }
+//     }
+//
+//     // 4) Debug draw (keep your existing debug code)
+//     UWorld* World = nullptr;
+//     if (GEngine && GEngine->GameViewport)
+//         World = GEngine->GameViewport->GetWorld();
+//
+//     if (World)
+//     {
+//         const float Zpt      = 10.0f;
+//         const float Zline    = 10.0f;
+//         const float Duration = 30.0f;
+//         const float Width    = 2.0f;
+//         const float PointSize= 8.0f;
+//
+//         // Outer ring: green points + lines
+//         int32 N = Combined.Outer.Num();
+//         for (int32 i = 0; i < N; ++i)
+//         {
+//             FVector V(Combined.Outer[i].X * 100, Combined.Outer[i].Y * 100, Zpt);
+//             DrawDebugPoint(World, V, PointSize, FColor::Green, true, Duration);
+//             FVector A = V;
+//             FVector B(Combined.Outer[(i+1)%N].X * 100,
+//                       Combined.Outer[(i+1)%N].Y * 100,
+//                       Zline);
+//             DrawDebugLine(World, A, B, FColor::Green, true, Duration, 0, Width);
+//         }
+//
+//         // Hole rings: red points + lines
+//         for (auto& Hole : Combined.Holes)
+//         {
+//             int32 M = Hole.Num();
+//             for (int32 j = 0; j < M; ++j)
+//             {
+//                 FVector V(Hole[j].X * 100, Hole[j].Y * 100, Zpt);
+//                 DrawDebugPoint(World, V, PointSize, FColor::Red, true, Duration);
+//                 FVector A = V;
+//                 FVector B(Hole[(j+1)%M].X * 100,
+//                           Hole[(j+1)%M].Y * 100,
+//                           Zline);
+//                 DrawDebugLine(World, A, B, FColor::Red, true, Duration, 0, Width);
+//             }
+//         }
+//     }
+//
+//     // 5) Create triangulated mesh using ear clipping or similar approach
+//     // Since Assimp doesn't handle polygon-with-holes well in OBJ format,
+//     // we'll use a simpler approach: create individual triangles
+//     
+//     WktDataString.Empty();
+//     int32 VertexOffset = 0;
+//
+//     // Helper to emit vertices
+//     auto EmitRing = [&](const TArray<FVector2D>& Ring, TArray<int32>& OutIndices)
+//     {
+//         OutIndices.Reserve(Ring.Num());
+//         for (int32 i = 0; i < Ring.Num(); ++i)
+//         {
+//             FVector V(Ring[i].X * 100.0, Ring[i].Y * 100.0, 0.0f);
+//             WktDataString += FString::Printf(TEXT("v %f %f %f\n"), V.X, V.Y, V.Z);
+//             OutIndices.Add(VertexOffset + i);
+//         }
+//         VertexOffset += Ring.Num();
+//     };
+//
+//     // Emit all vertices first
+//     TArray<int32> OuterIdx;
+//     EmitRing(Combined.Outer, OuterIdx);
+//     
+//     TArray<TArray<int32>> HoleIdx;
+//     for (auto& Hole : Combined.Holes)
+//     {
+//         TArray<int32> ThisHole;
+//         EmitRing(Hole, ThisHole);
+//         HoleIdx.Add(MoveTemp(ThisHole));
+//     }
+//
+//     // 6) Use simple triangulation for outer ring (fan triangulation)
+//     // This works for convex polygons and simple cases
+//     if (Combined.Holes.Num() == 0)
+//     {
+//         // Simple case: no holes, just fan triangulate
+//         for (int32 i = 1; i < OuterIdx.Num() - 1; ++i)
+//         {
+//             WktDataString += FString::Printf(TEXT("f %d %d %d\n"), 
+//                 OuterIdx[0] + 1, OuterIdx[i] + 1, OuterIdx[i + 1] + 1);
+//         }
+//     }
+//     else
+//     {
+//         // Complex case: use your existing triangulation method
+//         // Create a temporary OBJ with just the outer ring for triangulation
+//         FString TempOBJ = TEXT("# Temp OBJ for triangulation\n");
+//         
+//         // Add vertices
+//         for (const FVector2D& P : Combined.Outer)
+//         {
+//             TempOBJ += FString::Printf(TEXT("v %f %f 0.0\n"), P.X, P.Y);
+//         }
+//         
+//         // Add face (this will be triangulated by Assimp)
+//         TempOBJ += TEXT("f");
+//         for (int32 i = 1; i <= Combined.Outer.Num(); ++i)
+//         {
+//             TempOBJ += FString::Printf(TEXT(" %d"), i);
+//         }
+//         TempOBJ += TEXT("\n");
+//         
+//         // Use Assimp to triangulate
+//         std::string TempOBJData = TCHAR_TO_UTF8(*TempOBJ);
+//         Assimp::Importer TempImporter;
+//         const aiScene* TempScene = TempImporter.ReadFileFromMemory(
+//             TempOBJData.c_str(), TempOBJData.size(),
+//             aiProcess_Triangulate | aiProcess_JoinIdenticalVertices,
+//             "obj");
+//             
+//         if (TempScene && TempScene->HasMeshes())
+//         {
+//             const aiMesh* TempMesh = TempScene->mMeshes[0];
+//             
+//             // Copy triangulated faces to our OBJ string
+//             for (unsigned int i = 0; i < TempMesh->mNumFaces; ++i)
+//             {
+//                 const aiFace& Face = TempMesh->mFaces[i];
+//                 if (Face.mNumIndices == 3)
+//                 {
+//                     WktDataString += FString::Printf(TEXT("f %d %d %d\n"),
+//                         Face.mIndices[0] + 1,
+//                         Face.mIndices[1] + 1, 
+//                         Face.mIndices[2] + 1);
+//                 }
+//             }
+//         }
+//         
+//         // TODO: Handle holes properly - this requires more complex triangulation
+//         // For now, just triangulate the outer ring
+//     }
+// }
 
 
 bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& OutWKTData, FString& OutErrorMessage)
@@ -368,61 +627,171 @@ TArray<FVector2D> FAssimpMeshLoaderRunnable::ParseWKTData(const FString& InWKTDa
 	return ParsedPoints;
 }
 
-bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(const FString& WKTString,
-                                                           TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage)
+// bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(const FString& WKTString,
+//                                                            TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage)
+// {
+// 	FString CleanWKT = WKTString;
+// 	CleanWKT.TrimStartAndEndInline();
+// 	CleanWKT = CleanWKT.Replace(TEXT("\r"), TEXT("")).Replace(TEXT("\n"), TEXT(""));
+//
+// 	if (!CleanWKT.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase))
+// 	{
+// 		OutErrorMessage = TEXT("WKT does not begin with GEOMETRYCOLLECTION");
+// 		return false;
+// 	}
+//
+// 	// Extract the content inside the GEOMETRYCOLLECTION (...)
+// 	int32 OpenParen = CleanWKT.Find(TEXT("("));
+// 	int32 CloseParen = INDEX_NONE;
+// 	if (OpenParen == INDEX_NONE || !CleanWKT.FindLastChar(')', CloseParen) || CloseParen <= OpenParen)
+// 	{
+// 		OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION WKT.");
+// 		return false;
+// 	}
+//
+// 	FString Inner = CleanWKT.Mid(OpenParen + 1, CloseParen - OpenParen - 1).TrimStartAndEnd();
+//
+// 	// Look for each POLYGON block
+// 	int32 Pos = 0;
+// 	while (true)
+// 	{
+// 		int32 PolygonStart = Inner.Find(TEXT("POLYGON"), ESearchCase::IgnoreCase, ESearchDir::FromStart, Pos);
+// 		if (PolygonStart == INDEX_NONE) break;
+//
+// 		int32 FirstParen = Inner.Find(TEXT("(("), ESearchCase::IgnoreCase, ESearchDir::FromStart, PolygonStart);
+// 		int32 EndParen = Inner.Find(TEXT("))"), ESearchCase::IgnoreCase, ESearchDir::FromStart, FirstParen + 2);
+// 		if (FirstParen == INDEX_NONE || EndParen == INDEX_NONE) break;
+//
+// 		FString PolygonBlock = Inner.Mid(FirstParen + 2, EndParen - FirstParen - 2);
+//
+// 		FString DummyError;
+// 		TArray<FVector2D> PolygonPoints = ParseWKTData(TEXT("LINESTRING(") + PolygonBlock + TEXT(")"), DummyError);
+// 		if (!PolygonPoints.IsEmpty())
+// 		{
+// 			OutGeometries.Add(PolygonPoints);
+// 		}
+//
+// 		Pos = EndParen + 2;
+// 	}
+//
+// 	if (OutGeometries.Num() == 0)
+// 	{
+// 		OutErrorMessage = TEXT("No valid POLYGON found in GEOMETRYCOLLECTION.");
+// 		return false;
+// 	}
+//
+// 	return true;
+// }
+bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(
+	const FString& WKTString,
+	TArray<FPolygonWithHoles>& OutPolygons,
+	FString& OutErrorMessage)
 {
-	FString CleanWKT = WKTString;
-	CleanWKT.TrimStartAndEndInline();
-	CleanWKT = CleanWKT.Replace(TEXT("\r"), TEXT("")).Replace(TEXT("\n"), TEXT(""));
+	// --- 1) clean up
+	FString Clean = WKTString;
+	Clean.TrimStartAndEndInline();
+	Clean.ReplaceInline(TEXT("\r"), TEXT(""));
+	Clean.ReplaceInline(TEXT("\n"), TEXT(""));
 
-	if (!CleanWKT.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase))
+	if (!Clean.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase))
 	{
 		OutErrorMessage = TEXT("WKT does not begin with GEOMETRYCOLLECTION");
 		return false;
 	}
 
-	// Extract the content inside the GEOMETRYCOLLECTION (...)
-	int32 OpenParen = CleanWKT.Find(TEXT("("));
-	int32 CloseParen = INDEX_NONE;
-	if (OpenParen == INDEX_NONE || !CleanWKT.FindLastChar(')', CloseParen) || CloseParen <= OpenParen)
+	// --- 2) strip GEOMETRYCOLLECTION(   )
+	int32 firstParen = Clean.Find(TEXT("("));
+	int32 lastParen  = INDEX_NONE;
+	Clean.FindLastChar(')', lastParen);
+	if (firstParen == INDEX_NONE || lastParen == INDEX_NONE || lastParen <= firstParen)
 	{
-		OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION WKT.");
+		OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION parentheses");
+		return false;
+	}
+	FString inner = Clean.Mid(firstParen + 1, lastParen - firstParen - 1);
+
+	// --- 3) find the first POLYGON(( ... ))
+	int32 polyStart = inner.Find(TEXT("POLYGON"), ESearchCase::IgnoreCase);
+	if (polyStart == INDEX_NONE)
+	{
+		OutErrorMessage = TEXT("No POLYGON found in GEOMETRYCOLLECTION");
+		return false;
+	}
+	// locate the “((” and its matching “))”
+	int32 ringBlockStart = inner.Find(TEXT("(("), ESearchCase::IgnoreCase, ESearchDir::FromStart, polyStart);
+	int32 ringBlockEnd   = inner.Find(TEXT("))"), ESearchCase::IgnoreCase, ESearchDir::FromStart, ringBlockStart + 2);
+	if (ringBlockStart == INDEX_NONE || ringBlockEnd == INDEX_NONE)
+	{
+		OutErrorMessage = TEXT("Malformed POLYGON(( ... )) block");
 		return false;
 	}
 
-	FString Inner = CleanWKT.Mid(OpenParen + 1, CloseParen - OpenParen - 1).TrimStartAndEnd();
+	// extract just the comma-delimited rings, WITHOUT the outer “((” and final “))”
+	FString ringBlock = inner.Mid(ringBlockStart + 2, ringBlockEnd - (ringBlockStart + 2));
+	TArray<FString> ringStrings;
+	ringBlock.ParseIntoArray(ringStrings, TEXT("),"), /*bCullEmpty=*/true);
 
-	// Look for each POLYGON block
-	int32 Pos = 0;
-	while (true)
+	if (ringStrings.Num() == 0)
 	{
-		int32 PolygonStart = Inner.Find(TEXT("POLYGON"), ESearchCase::IgnoreCase, ESearchDir::FromStart, Pos);
-		if (PolygonStart == INDEX_NONE) break;
+		OutErrorMessage = TEXT("No rings found inside POLYGON");
+		return false;
+	}
 
-		int32 FirstParen = Inner.Find(TEXT("(("), ESearchCase::IgnoreCase, ESearchDir::FromStart, PolygonStart);
-		int32 EndParen = Inner.Find(TEXT("))"), ESearchCase::IgnoreCase, ESearchDir::FromStart, FirstParen + 2);
-		if (FirstParen == INDEX_NONE || EndParen == INDEX_NONE) break;
+	// --- 4) parse each ring
+	FPolygonWithHoles poly;
+	poly.Outer.Empty();
+	poly.Holes.Empty();
 
-		FString PolygonBlock = Inner.Mid(FirstParen + 2, EndParen - FirstParen - 2);
+	for (int32 i = 0; i < ringStrings.Num(); ++i)
+	{
+		// remove any stray parens or whitespace
+		FString coords = ringStrings[i];
+		coords.ReplaceInline(TEXT("("), TEXT(""));
+		coords.ReplaceInline(TEXT(")"), TEXT(""));
+		coords.TrimStartAndEndInline();
 
-		FString DummyError;
-		TArray<FVector2D> PolygonPoints = ParseWKTData(TEXT("LINESTRING(") + PolygonBlock + TEXT(")"), DummyError);
-		if (!PolygonPoints.IsEmpty())
+		// now coords == "x1 y1, x2 y2, x3 y3, …"
+		TArray<FString> pairs;
+		coords.ParseIntoArray(pairs, TEXT(","), /*bCullEmpty=*/true);
+
+		TArray<FVector2D> pts;
+		pts.Reserve(pairs.Num());
+		for (auto& p : pairs)
 		{
-			OutGeometries.Add(PolygonPoints);
+			TArray<FString> xy;
+			p.TrimStartAndEndInline();                  // mutate p in place
+			p.ParseIntoArray(xy, TEXT(" "), /*bCullEmpty=*/true);
+			if (xy.Num() == 2)
+			{
+				double X = FCString::Atod(*xy[0]);
+				double Y = FCString::Atod(*xy[1]);
+				pts.Add(FVector2D(X, Y));
+			}
 		}
 
-		Pos = EndParen + 2;
+		if (pts.Num() >= 3)
+		{
+			if (i == 0)
+			{
+				poly.Outer = MoveTemp(pts);
+			}
+			else
+			{
+				poly.Holes.Add(MoveTemp(pts));
+			}
+		}
 	}
 
-	if (OutGeometries.Num() == 0)
+	if (poly.Outer.Num() < 3)
 	{
-		OutErrorMessage = TEXT("No valid POLYGON found in GEOMETRYCOLLECTION.");
+		OutErrorMessage = TEXT("Outer ring has fewer than 3 points");
 		return false;
 	}
 
+	OutPolygons.Add(MoveTemp(poly));
 	return true;
 }
+
 
 FRotator FAssimpMeshLoaderRunnable::GetMeshRotation(int32 AxisUpOrientation, int32 AxisUpSign,
                                                     int32 AxisForwardOrientation, int32 AxisForwardSign)
