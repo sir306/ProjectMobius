@@ -35,9 +35,9 @@ void USimulationPlayBar::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Configure the number format
-	NumberFormat->MinimumIntegralDigits = 2;
-	NumberFormat->MaximumIntegralDigits = 3;
+        // Configure the number format
+        NumberFormat.MinimumIntegralDigits = 2;
+        NumberFormat.MaximumIntegralDigits = 3;
 
 	
 

@@ -238,8 +238,8 @@ private:
 	UPROPERTY()
 	uint8 HoursNeeded : 1 = 0;
 
-	// Number Format
-	FNumberFormattingOptions* NumberFormat = new FNumberFormattingOptions();
+        // Number Format
+        FNumberFormattingOptions NumberFormat;
 	
 #pragma region STYLE_PROPERTIES
 public:
