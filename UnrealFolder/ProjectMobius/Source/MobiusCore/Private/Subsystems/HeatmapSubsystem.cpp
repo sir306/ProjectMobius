@@ -310,34 +310,41 @@ void UHeatmapSubsystem::UpdateHeatmapsWithLocations(const TArray<FVector>& Locat
 		
 
 		
-		Async(EAsyncExecution::Thread, [this, LocationArray, ValidHeatmapLocations]()
+                TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
+		Async(EAsyncExecution::Thread, [WeakSelf, LocationArray, ValidHeatmapLocations]()
 		      {
+                              if (!WeakSelf.IsValid())
+                                      return;
+                              UHeatmapSubsystem* Self = WeakSelf.Get();
 			      TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
 			      // parallel for to speed up the update calls
-			      ParallelFor(Heatmaps.Num(), [&](int32 i)
+			      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
 			      {
 				      // As this method is async we need to check if the heatmap is valid before updating
-				      if (Heatmaps[i] && !Heatmaps[i]->IsHidden())
+				      if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
 				      {
 				      	// this needs optimizing -> as heatmap is never hidden so updates when not needed in realtime
-					      Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidHeatmapLocations[i]);
+					      Self->Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidHeatmapLocations[i]);
 				      }
 				      else
 				      {
-					      Heatmaps[i]->UpdateHeatmapAgentCount(LocationArray);
+					      Self->Heatmaps[i]->UpdateHeatmapAgentCount(LocationArray);
 				      }
 			      	
 			      	
 			      	
 			      });
-		      },[this]()
+		      },[WeakSelf]()
 		      {
+                              if (!WeakSelf.IsValid())
+                                      return;
+                              UHeatmapSubsystem* Self = WeakSelf.Get();
 
 			      // TODO: we need to extract out the valid heatmap location into the subsystem so we can just use the values and update the ui if the heatmaps arent present
-			      for (int32 i = 0; i < Heatmaps.Num(); i++)
+			      for (int32 i = 0; i < Self->Heatmaps.Num(); i++)
 			      {
-				      int32 AgentCount = Heatmaps[i]->NumberOfAgentsOnHeatmap;
-				      int32 FloorID = Heatmaps[i]->FloorID;
+				      int32 AgentCount = Self->Heatmaps[i]->NumberOfAgentsOnHeatmap;
+				      int32 FloorID = Self->Heatmaps[i]->FloorID;
 				      // broadcast the heatmap floor ID and there agent count
 				      //OnUpdateFloorStatCount.Broadcast(FloorID, AgentCount);
 
@@ -347,12 +354,12 @@ void UHeatmapSubsystem::UpdateHeatmapsWithLocations(const TArray<FVector>& Locat
 			      }
 		      	
 			      // 	// parallel for to speed up the update calls
-			      ParallelFor(Heatmaps.Num(), [&](int32 i)
+			      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
 			      {
 				      // As this method is async we need to check if the heatmap is valid before updating
-				      if (Heatmaps[i])
+				      if (Self->Heatmaps[i])
 				      {
-					      Heatmaps[i]->UpdateHeatmapTextureRender();
+					      Self->Heatmaps[i]->UpdateHeatmapTextureRender();
 				      }
 			      });
 		      });
