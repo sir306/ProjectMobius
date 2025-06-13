@@ -46,7 +46,12 @@ void UHeatmapSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UHeatmapSubsystem::Deinitialize()
 {
-	Super::Deinitialize();
+    if (GetWorld())
+    {
+        GetWorld()->GetTimerManager().ClearTimer(HeatmapGenerationTimerHandle);
+    }
+
+    Super::Deinitialize();
 }
 
 void UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize(const FVector& SpawnOrigin, const FVector& BoundExtents)
