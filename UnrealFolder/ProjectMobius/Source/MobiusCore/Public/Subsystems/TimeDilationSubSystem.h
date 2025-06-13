@@ -142,7 +142,16 @@ public:
 	 *
 	 * @param[float] NewTimeBetweenData - The new time between data
 	 */
-	void UpdateTimeBetweenData(float NewTimeBetweenData);
+        void UpdateTimeBetweenData(float NewTimeBetweenData);
+
+       /**
+        * Helper to format a number of seconds into a time string.
+        *
+        * @param TotalSeconds   Simulation time in seconds
+        * @param bIncludeHours  Should the formatted text include hours
+        */
+       UFUNCTION(BlueprintCallable, Category = "Time Dilation")
+       FText FormatSimTime(float TotalSeconds, bool bIncludeHours) const;
 
 #pragma endregion CUSTOM_METHODS
 
@@ -252,12 +261,16 @@ public:
 	/**
 	 * Get the current simulation time as a string -- which will also update the simulation time
 	 */
-	FORCEINLINE FString GetCurrentSimTimeStr()
-	{
-		UE_MT_SCOPED_READ_ACCESS(AccessDetector);
-		UpdateSimulationTime(); // we only want to update the simulation time when we need it not every frame
-		return CurrentSimTimeStr;
-	}
+        FORCEINLINE FString GetCurrentSimTimeStr()
+        {
+                UE_MT_SCOPED_READ_ACCESS(AccessDetector);
+                UpdateSimulationTime(); // we only want to update the simulation time when we need it not every frame
+
+                // Update the stored string using the helper so any callers get
+                // properly formatted text
+                CurrentSimTimeStr = FormatSimTime(CurrentSimulationTime, CurrentSimHours > 0).ToString();
+                return CurrentSimTimeStr;
+        }
 
 	/** Get the current time step */
 	FORCEINLINE int32 GetCurrentTimeStep() const

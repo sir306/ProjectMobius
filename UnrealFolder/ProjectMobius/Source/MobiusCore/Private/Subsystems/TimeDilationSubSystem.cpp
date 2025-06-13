@@ -272,7 +272,7 @@ void UTimeDilationSubSystem::UpdateSimulationTime()
 	}
 }
 
-float UTimeDilationSubSystem::GetGameElapsedTime() 
+float UTimeDilationSubSystem::GetGameElapsedTime()
 {
 	// Get Elapsed Game Time in seconds
 	float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld()) * TimeDialation;
@@ -294,5 +294,34 @@ float UTimeDilationSubSystem::GetGameElapsedTime()
 		return ElapsedTime + AmountOfTimePaused;
 	}
 }
+
+FText UTimeDilationSubSystem::FormatSimTime(float TotalSeconds, bool bIncludeHours) const
+{
+       // Configure formatting so all components have at least two digits
+       FNumberFormattingOptions NumberFormat;
+       NumberFormat.MinimumIntegralDigits = 2;
+       NumberFormat.MaximumIntegralDigits = 3;
+
+       // Prepare format arguments common to both outputs
+       FFormatNamedArguments TimeFormatArgs;
+       FText Minute = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 3600.f) / 60.f), &NumberFormat);
+       FText Second = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 60.f)), &NumberFormat);
+       FText Millisecond = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 1.f) * 100.f), &NumberFormat); // rounding to two dp
+
+       TimeFormatArgs.Add(TEXT("Minute"), Minute);
+       TimeFormatArgs.Add(TEXT("Second"), Second);
+       TimeFormatArgs.Add(TEXT("Millisecond"), Millisecond);
+
+       if (bIncludeHours)
+       {
+               FText Hour = FText::AsNumber(FMath::FloorToInt32(TotalSeconds / 3600.f), &NumberFormat);
+               TimeFormatArgs.Add(TEXT("Hour"), Hour);
+
+               return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Hour}:{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       }
+
+       return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+}
+
 
 // GetAccurateRealTime may be used if greater accuracy is needed

@@ -102,51 +102,43 @@ void AMobiusController::TakeScreenshot()
 	FString SaveFilename = PedestrianVectorFileName;
 	
 	// if the time dilation subsystem is valid then get the current sim time
-	if (TimeDilationSubsystem)
-	{
-		// get the current simulation time string
-		float TotalTime = TimeDilationSubsystem->GetCurrentSimTime();
+       if (TimeDilationSubsystem)
+       {
+               // Get the current simulation time
+               float TotalTime = TimeDilationSubsystem->GetCurrentSimTime();
 
-		// log total time
-		UE_LOG(LogTemp, Warning, TEXT("Total Time: %f"), TotalTime);
+               UE_LOG(LogTemp, Warning, TEXT("Total Time: %f"), TotalTime);
 
-		// Format args for text time
-		FFormatNamedArguments TimeFormatArgs;
-		FNumberFormattingOptions NumberFormat;
-		NumberFormat.MinimumIntegralDigits = 2;
-		NumberFormat.MaximumIntegralDigits = 3;
+               const bool bIncludeHours = FMath::FloorToInt32(TotalTime / 3600) > 0;
+               const FString TimeString = TimeDilationSubsystem->FormatSimTime(TotalTime, bIncludeHours).ToString();
 
-		FText Hour = FText::AsNumber(FMath::FloorToInt32(TotalTime / 3600), &NumberFormat);
-		FText Minute = FText::AsNumber(FMath::FloorToInt32(fmod(TotalTime, 3600) / 60), &NumberFormat);
-		FText Second = FText::AsNumber(FMath::FloorToInt32(fmod(TotalTime, 60)), &NumberFormat);
-		FText Millisecond = FText::AsNumber(FMath::FloorToInt32(fmod(TotalTime, 1) * 100), &NumberFormat); // technically milliseconds is 1000 but we are rounding to 2dp
+               TArray<FString> Parts;
+               TimeString.ParseIntoArray(Parts, TEXT(":"));
 
-		// Set the key values for the TimeFormatArgs
-		TimeFormatArgs.Add("Minute", Minute);
-		TimeFormatArgs.Add("Second", Second);
-		TimeFormatArgs.Add("Millisecond", Millisecond);
+               if (bIncludeHours && Parts.Num() == 3)
+               {
+                       FString SecStr, MsStr;
+                       Parts[2].Split(TEXT("."), &SecStr, &MsStr);
+                       SaveFilename += FString::Printf(TEXT("_%sh%sm%ss%sms_"), *Parts[0], *Parts[1], *SecStr, *MsStr);
+               }
+               else if (!bIncludeHours && Parts.Num() >= 2)
+               {
+                       FString SecStr, MsStr;
+                       Parts[1].Split(TEXT("."), &SecStr, &MsStr);
+                       SaveFilename += FString::Printf(TEXT("_%sm%ss%sms_"), *Parts[0], *SecStr, *MsStr);
+               }
+               else
+               {
+                       SaveFilename += FString::Printf(TEXT("_%s_"), *TimeString.Replace(TEXT(":"), TEXT("-")));
+               }
 
-		// if hours are needed then add it to the file name
-		if(FMath::FloorToInt32(TotalTime / 3600)>0)
-		{
-			// Set the key values for the TimeFormatArgs
-			TimeFormatArgs.Add("Hour", Hour);
-			SaveFilename += FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "_{Hour}h{Minute}m{Second}s{Millisecond}ms_"), TimeFormatArgs).ToString();
-		}
-		else
-		{
-			SaveFilename += FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "_{Minute}m{Second}s{Millisecond}ms_"), TimeFormatArgs).ToString();
-		}
-		// append the sim time and date to the end of the file name
-		
-		SaveFilename += FString::Printf(TEXT("%s"), *SafeTimeString);
-	}
-	else // if an issue we should create a file name with current time and date to ensure the data is saved
-	{
-		// Create the file name for the screenshot
-		SaveFilename += FString::Printf(TEXT("_TimeDilationSystemCorrupt_%s"), *SafeTimeString);
+               SaveFilename += FString::Printf(TEXT("%s"), *SafeTimeString);
+       }
+       else // if an issue we should create a file name with current time and date to ensure the data is saved
+       {
+               SaveFilename += FString::Printf(TEXT("_TimeDilationSystemCorrupt_%s"), *SafeTimeString);
 
-	}
+       }
 	//log the file name
 	UE_LOG(LogTemp, Warning, TEXT("Pedestrian Vector File Name: %s"), *SaveFilename);
 	
