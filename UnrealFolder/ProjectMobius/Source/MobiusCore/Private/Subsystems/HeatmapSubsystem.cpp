@@ -219,161 +219,17 @@ void UHeatmapSubsystem::UpdateHeatmaps(const FVector& AgentLocation)
 
 void UHeatmapSubsystem::UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray)
 {
-	/**
-	 * TODO:
-	 * This method requires major refactoring as it is not efficient and is not using the heatmap system correctly
-	 * --> we are already checking valid locations and creating a 2D array that aligns with the heatmap and should pass directly with no check method
-	 * --> we should also refactor the calling methods to be more direct inside the visualizer class to make it easier to optimize
-	 * --> and make it easier for the heatmap subsystem to call the correct methods
-	 * Method is 132 lines long and is not efficient
-	 */
-
-	// TODO: move our logic out
 	BroadcastTotalAgentCount(LocationArray.Num());
-	
-	if(Heatmaps.Num() > 0)
-	{		
-		TArray<TArray<FVector>> ValidHeatmapLocations;
-		ValidHeatmapLocations.SetNum(Heatmaps.Num());
 
-		// to work out floors dynamically we need to know there exists more than 1 heatmap
-		if (Heatmaps.Num() > 1)
-		{
-			TArray<TArray<FVector>> BetweenValidHeatmapLocations;
-			BetweenValidHeatmapLocations.SetNum(Heatmaps.Num() - 1);
+	if (Heatmaps.Num() <= 0)
+		return;
 
-			for (int32 i = 0; i < Heatmaps.Num(); i++)
-			{
-				AHeatmapPixelTextureVisualizer* BottomHeatmap = Heatmaps[i];
+	TArray<TArray<FVector>> ValidHeatmapLocations;
+	TArray<TArray<FVector>> BetweenValidHeatmapLocations;
 
-				// add another empty floor - to avoid indexing problems
-				ValidHeatmapLocations.Add(TArray<FVector>());
-				
-				if (Heatmaps.IsValidIndex(i + 1))
-				{
-					AHeatmapPixelTextureVisualizer* TopHeatmap = Heatmaps[i + 1];
-
-					// add another empty between floor - to avoid indexing problems
-					BetweenValidHeatmapLocations.Add(TArray<FVector>());
-
-					for (FVector AgentLocation : LocationArray)
-					{
-						// on bottom of two floors
-						if (BottomHeatmap->CheckHeatmapAndLocationValid(AgentLocation))
-						{
-							ValidHeatmapLocations[i].Add(AgentLocation);
-						}
-						// Between bottom and top floor
-						else if(AgentLocation.Z > BottomHeatmap->MeshOriginLocation.Z + BottomHeatmap->MaxAddHeight && TopHeatmap->MeshOriginLocation.Z > AgentLocation.Z)
-						{
-							BetweenValidHeatmapLocations[i].Add(AgentLocation);
-						}
-					}
-				}
-				else
-				{
-					for (FVector AgentLocation : LocationArray)
-					{
-						// on bottom of two floors
-						if (BottomHeatmap->CheckHeatmapAndLocationValid(AgentLocation))
-						{
-							ValidHeatmapLocations[i].Add(AgentLocation);
-						}
-					}
-				}
-
-			}
-
-			// The agent counts should be added to 2D array in same order as floors
-
-			// TODO: refactor THIS WHOLE METHOD
-			// for now we do two seperate loops as simple to create for debugging
-			for (int32 i = 0; i < BetweenValidHeatmapLocations.Num(); i++)
-			{
-				OnUpdateBetweenFloorStatCount.Broadcast(i, BetweenValidHeatmapLocations[i].Num());
-			}
-			for (int32 i = 0; i < ValidHeatmapLocations.Num(); i++)
-			{
-				OnUpdateFloorStatCount.Broadcast(i, ValidHeatmapLocations[i].Num());
-			}
-		}
-
-		else// only one heatmap
-		{
-			for (FVector AgentLocation : LocationArray)
-			{
-				ValidHeatmapLocations.Add(TArray<FVector>());
-				// 
-				if (Heatmaps[0]->CheckHeatmapAndLocationValid(AgentLocation))
-				{
-					ValidHeatmapLocations[0].Add(AgentLocation);
-				}
-			}
-			// broadcast the count of agents on the heatmap
-			OnUpdateFloorStatCount.Broadcast(0, ValidHeatmapLocations[0].Num());
-		}
-		
-
-		
-                TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
-		Async(EAsyncExecution::Thread, [WeakSelf, LocationArray, ValidHeatmapLocations]()
-		      {
-                              if (!WeakSelf.IsValid())
-                                      return;
-                              UHeatmapSubsystem* Self = WeakSelf.Get();
-			      TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
-			      // parallel for to speed up the update calls
-			      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
-			      {
-				      // As this method is async we need to check if the heatmap is valid before updating
-				      if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
-				      {
-				      	// this needs optimizing -> as heatmap is never hidden so updates when not needed in realtime
-					      Self->Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidHeatmapLocations[i]);
-				      }
-				      else
-				      {
-					      Self->Heatmaps[i]->UpdateHeatmapAgentCount(LocationArray);
-				      }
-			      	
-			      	
-			      	
-			      });
-		      },[WeakSelf]()
-		      {
-                              if (!WeakSelf.IsValid())
-                                      return;
-                              UHeatmapSubsystem* Self = WeakSelf.Get();
-
-			      // TODO: we need to extract out the valid heatmap location into the subsystem so we can just use the values and update the ui if the heatmaps arent present
-			      for (int32 i = 0; i < Self->Heatmaps.Num(); i++)
-			      {
-				      int32 AgentCount = Self->Heatmaps[i]->NumberOfAgentsOnHeatmap;
-				      int32 FloorID = Self->Heatmaps[i]->FloorID;
-				      // broadcast the heatmap floor ID and there agent count
-				      //OnUpdateFloorStatCount.Broadcast(FloorID, AgentCount);
-
-			      	//TODO
-			      	// we want to broadcast values between floors not the floor count
-				      //OnUpdateBetweenFloorStatCount.Broadcast(FloorID, -1);
-			      }
-		      	
-			      // 	// parallel for to speed up the update calls
-			      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
-			      {
-				      // As this method is async we need to check if the heatmap is valid before updating
-				      if (Self->Heatmaps[i])
-				      {
-					      Self->Heatmaps[i]->UpdateHeatmapTextureRender();
-				      }
-			      });
-		      });
-		
-	}
-	else
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("There are no heatmaps to update"));
-	}
+	ComputeValidHeatmapLocations(LocationArray, ValidHeatmapLocations, BetweenValidHeatmapLocations);
+	BroadcastAgentCounts(ValidHeatmapLocations, BetweenValidHeatmapLocations);
+	RunAsyncHeatmapUpdate(LocationArray, ValidHeatmapLocations);
 }
 
 void UHeatmapSubsystem::UpdateHeatmapTextureRender()
@@ -499,5 +355,106 @@ void UHeatmapSubsystem::ProcessHeatmapGeneration()
 	}
 	
 	// clear the timer so future ScheduleRefresh can re-arm
-	GetWorld()->GetTimerManager().ClearTimer(HeatmapGenerationTimerHandle);
+        GetWorld()->GetTimerManager().ClearTimer(HeatmapGenerationTimerHandle);
+}
+
+void UHeatmapSubsystem::ComputeValidHeatmapLocations(const TArray<FVector>& LocationArray,
+                                                    TArray<TArray<FVector>>& OutValidLocations,
+                                                    TArray<TArray<FVector>>& OutBetweenLocations) const
+{
+        OutValidLocations.Empty();
+        OutValidLocations.SetNum(Heatmaps.Num());
+
+        OutBetweenLocations.Empty();
+        if (Heatmaps.Num() > 1)
+        {
+                OutBetweenLocations.SetNum(Heatmaps.Num() - 1);
+        }
+
+        for (int32 i = 0; i < Heatmaps.Num(); ++i)
+        {
+                AHeatmapPixelTextureVisualizer* BottomHeatmap = Heatmaps[i];
+
+                if (!BottomHeatmap)
+                        continue;
+
+                if (Heatmaps.IsValidIndex(i + 1))
+                {
+                        AHeatmapPixelTextureVisualizer* TopHeatmap = Heatmaps[i + 1];
+
+                        for (const FVector& AgentLocation : LocationArray)
+                        {
+                                if (BottomHeatmap->CheckHeatmapAndLocationValid(AgentLocation))
+                                {
+                                        OutValidLocations[i].Add(AgentLocation);
+                                }
+                                else if (AgentLocation.Z > BottomHeatmap->MeshOriginLocation.Z + BottomHeatmap->MaxAddHeight &&
+                                         TopHeatmap->MeshOriginLocation.Z > AgentLocation.Z)
+                                {
+                                        OutBetweenLocations[i].Add(AgentLocation);
+                                }
+                        }
+                }
+                else
+                {
+                        for (const FVector& AgentLocation : LocationArray)
+                        {
+                                if (BottomHeatmap->CheckHeatmapAndLocationValid(AgentLocation))
+                                {
+                                        OutValidLocations[i].Add(AgentLocation);
+                                }
+                        }
+                }
+        }
+}
+
+void UHeatmapSubsystem::BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
+                                             const TArray<TArray<FVector>>& BetweenLocations) const
+{
+        for (int32 i = 0; i < BetweenLocations.Num(); ++i)
+        {
+                OnUpdateBetweenFloorStatCount.Broadcast(i, BetweenLocations[i].Num());
+        }
+
+        for (int32 i = 0; i < ValidLocations.Num(); ++i)
+        {
+                OnUpdateFloorStatCount.Broadcast(i, ValidLocations[i].Num());
+        }
+}
+
+void UHeatmapSubsystem::RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArray,
+                                              const TArray<TArray<FVector>>& ValidLocations)
+{
+        TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
+        Async(EAsyncExecution::Thread, [WeakSelf, LocationArray, ValidLocations]()
+              {
+                      if (!WeakSelf.IsValid())
+                              return;
+                      UHeatmapSubsystem* Self = WeakSelf.Get();
+                      TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+                      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
+                      {
+                              if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
+                              {
+                                      Self->Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
+                              }
+                              else if (Self->Heatmaps[i])
+                              {
+                                      Self->Heatmaps[i]->UpdateHeatmapAgentCount(LocationArray);
+                              }
+                      });
+              },
+              [WeakSelf]()
+              {
+                      if (!WeakSelf.IsValid())
+                              return;
+                      UHeatmapSubsystem* Self = WeakSelf.Get();
+                      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
+                      {
+                              if (Self->Heatmaps[i])
+                              {
+                                      Self->Heatmaps[i]->UpdateHeatmapTextureRender();
+                              }
+                      });
+              });
 }
