@@ -348,14 +348,20 @@ void UHeatmapSubsystem::ProcessHeatmapGeneration()
 	}
 
 	// Spawn new
-	for (int32 i = 0; i < Heights.Num(); ++i)
+	ParallelFor(Heights.Num(), [this, XY, &Heights](int32 Index)
 	{
-		const FVector Pos(XY.X, XY.Y, Heights[i]);
-		CreateHeatmap(Pos, i);
-	}
+		// (1) Compute the world position off the game thread
+		const FVector Pos(XY.X, XY.Y, Heights[Index]);
+
+		// (2) Schedule the actual spawn back on the Game Thread
+		AsyncTask(ENamedThreads::GameThread, [this, Pos, Index]()
+		{
+			CreateHeatmap(Pos, Index);
+		});
+	});
 	
 	// clear the timer so future ScheduleRefresh can re-arm
-        GetWorld()->GetTimerManager().ClearTimer(HeatmapGenerationTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(HeatmapGenerationTimerHandle);
 }
 
 void UHeatmapSubsystem::ComputeValidHeatmapLocations(const TArray<FVector>& LocationArray,
