@@ -242,13 +242,17 @@ void UTimeDilationSubSystem::UpdateSimulationTime()
 	}
 	
 	// Set the new time
-	CurrentSimulationTime += NewTime;
+        CurrentSimulationTime += NewTime;
 
-	// Calculate the time in hours, mins, seconds, milliseconds -- we floor to the nearest int as we dont want to skip a time step or jump
-	CurrentSimHours = FMath::FloorToInt32(CurrentSimulationTime / 3600);
-	CurrentSimMinutes = FMath::FloorToInt32(fmod(CurrentSimulationTime, 3600) / 60);
-	CurrentSimSeconds = fmod(CurrentSimulationTime, 60);
-	CurrentSimMilliseconds = fmod(CurrentSimulationTime, 1) * 1000;
+        // Calculate the time in hours, mins, seconds, milliseconds -- we floor to the nearest int as we dont want to skip a time step or jump
+        CurrentSimHours = FMath::FloorToInt32(CurrentSimulationTime / 3600);
+        CurrentSimMinutes = FMath::FloorToInt32(fmod(CurrentSimulationTime, 3600) / 60);
+        CurrentSimSeconds = fmod(CurrentSimulationTime, 60);
+        CurrentSimMilliseconds = fmod(CurrentSimulationTime, 1) * 1000;
+
+        // Update the cached string so GetCurrentSimTimeStr() reflects the new
+        // simulation time without recalculating.
+        CurrentSimTimeStr = FormatSimTime(CurrentSimulationTime, CurrentSimHours > 0).ToString();
 
 	if(CurrentSimulationTime <= TotalTime)
 	{
