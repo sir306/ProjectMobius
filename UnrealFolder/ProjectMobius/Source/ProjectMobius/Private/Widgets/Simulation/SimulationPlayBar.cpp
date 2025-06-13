@@ -35,9 +35,9 @@ void USimulationPlayBar::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Configure the number format
-	NumberFormat->MinimumIntegralDigits = 2;
-	NumberFormat->MaximumIntegralDigits = 3;
+        // Configure the number format
+        NumberFormat.MinimumIntegralDigits = 2;
+        NumberFormat.MaximumIntegralDigits = 3;
 
 	
 
@@ -366,8 +366,8 @@ FText USimulationPlayBar::FormatTime(float TotalTime) const
     {
         return TimeDilationSubsystem->FormatSimTime(TotalTime, HoursNeeded);
     }
-
-    return FText();
+	// Return a default value if the subsystem is not valid - or if no data is available
+    return FText::FromString("--:--:--.--"); 
 }
 
 void USimulationPlayBar::SetPlayButtonEnabled(const bool bLoadingState)
