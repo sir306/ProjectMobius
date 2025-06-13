@@ -25,18 +25,12 @@
 #include "MobiusController.h"
 
 #include "ImageUtils.h"
-#include "Components/SceneCaptureComponent2D.h"
-#include "Engine/TextureRenderTarget2D.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "SubSystems/TimeDilationSubSystem.h"
 
 AMobiusController::AMobiusController()
 {
-	// Initialize the scene capture component
-	Screen2DCaptureComp = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("Screen2DCaptureComp"));
-	Screen2DCaptureComp->SetupAttachment(RootComponent);
-	Screen2DCaptureComp->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
-	Screen2DCaptureComp->bCaptureEveryFrame = true; // Capture every frame
+
 }
 
 void AMobiusController::BeginPlay()
@@ -51,15 +45,11 @@ void AMobiusController::BeginPlay()
 
 	// Set Mouse Cursor Behavior
 	bShowMouseCursor = true;
-
-	// Initialize the screen capture render target
-	ScreenCaptureRenderTarget = NewObject<UTextureRenderTarget2D>(this);
-	ScreenCaptureRenderTarget->InitAutoFormat(1920, 1080);
-	ScreenCaptureRenderTarget->UpdateResourceImmediate(true);
-
-	Screen2DCaptureComp->TextureTarget = ScreenCaptureRenderTarget;
-
+	
 	GetScreenshotRequiredSubsystemsAndData();
+
+	// Bind to the screenshot request captured delegate
+	UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &AMobiusController::OnScreenShotCaptured);
 }
 
 void AMobiusController::GetScreenshotRequiredSubsystemsAndData()
@@ -165,13 +155,6 @@ void AMobiusController::TakeScreenshot()
 
 void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 {
-	// get the camera manager
-	if (PlayerCameraManager)
-	{
-		// Set the scene capture component to the camera manager's view
-		Screen2DCaptureComp->SetWorldTransform(PlayerCameraManager->GetTransform());
-	}
-
 	// Create a unique folder for this capture
 	FString DestPath = ScreenshotFilePath + TEXT("/MobiusCaptures/");
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
@@ -181,29 +164,26 @@ void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 		PlatformFile.CreateDirectoryTree(*DestPath);  // Create the directory tree if it doesn't exist
 	}
 
-	// Force immediate scene capture to avoid delays
-	Screen2DCaptureComp->CaptureSceneDeferred();
+	// Assign the name for the screenshot file
+	ScreenShotFileName = BaseFileName;
 	
-	FlushRenderingCommands();  // Ensure the scene is captured immediately
-	Screen2DCaptureComp->GetWorld()->Scene->UpdateSceneCaptureContents(Screen2DCaptureComp);
-
-	// Save asynchronously after capture
-	AsyncTask(ENamedThreads::GameThread, [this, BaseFileName, DestPath]() {
-		CaptureAndSave(BaseFileName, DestPath);
-	});
+	FScreenshotRequest::RequestScreenshot(false);
 }
 
-void AMobiusController::CaptureAndSave(const FString& BaseFileName, const FString& DestPath)
+void AMobiusController::OnScreenShotCaptured(int Width, int Height, const TArray<FColor>& Bitmap) const
 {
-	TArray<FColor> Pixels;
-	FTextureRenderTargetResource* RenderResource = ScreenCaptureRenderTarget->GameThread_GetRenderTargetResource();
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Width, Height, Bitmap]()
+	{
+		FString DestPath = ScreenshotFilePath + TEXT("/MobiusCaptures/");
+		FString FullPath = DestPath + ScreenShotFileName + TEXT(".png");
+	
+		TArray64<uint8> PNGData;
+		FImageUtils::PNGCompressImageArray(Width, Height, Bitmap, PNGData);
 
-	RenderResource->ReadPixels(Pixels);
-
-	// Save asynchronously to avoid blocking the game thread
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Pixels, DestPath, BaseFileName]() {
-		SaveScreenshot(Pixels, DestPath + BaseFileName + TEXT(".png"), 1920, 1080);
+		// Save PNG data to file
+		FFileHelper::SaveArrayToFile(PNGData, *FullPath, &IFileManager::Get());
 	});
+
 }
 
 // TODO: see implementation in dynamic texture for saving to png -> this currently saves as a bitmap not a png

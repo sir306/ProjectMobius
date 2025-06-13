@@ -60,10 +60,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MobiusController|Methods")
 	void TakeScreenshot();
 	void TakeScreenshot(const FString& BaseFileName);
-	
-	UFUNCTION(BlueprintCallable, Category = "MobiusController|Methods")
-	void CaptureAndSave(const FString& BaseFileName, const FString& DestPath);
 
+	/** Method that is bound to builtin screenshot method, using the builtin method we remove the need for render targets */
+	UFUNCTION()
+	void OnScreenShotCaptured(int Width, int Height, const TArray<FColor>& Bitmap) const;
+	
 	UFUNCTION(BlueprintCallable, Category = "MobiusController|Methods")
 	void SaveScreenshot(const TArray<FColor>& Bitmap, const FString& FilePath, int32 Width, int32 Height);
 
@@ -96,12 +97,6 @@ public:
 	void CycleCameraSavePoints();
 
 #pragma region PROPERTIES
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")
-	UTextureRenderTarget2D* ScreenCaptureRenderTarget;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")
-	USceneCaptureComponent2D* Screen2DCaptureComp;
-
 	/** Ptr to the Time dialation subsystem to get the current simulation time */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")
 	TObjectPtr<class UTimeDilationSubSystem> TimeDilationSubsystem;
@@ -111,6 +106,10 @@ public:
 	FString ScreenshotFilePath = FPaths::ProjectDir();
 
 	FString PedestrianVectorFileName = TEXT("TestCapture");
+
+	/** The file name that is given for a screenshot */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")
+	FString ScreenShotFileName = TEXT("TestCapture");
 
 	/** filename for camera captures in their relevant directory */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties|CameraSave")
