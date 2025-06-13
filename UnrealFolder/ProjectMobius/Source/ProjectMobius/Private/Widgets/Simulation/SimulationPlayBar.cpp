@@ -362,34 +362,12 @@ void USimulationPlayBar::AssignStyleAssets() const
 
 FText USimulationPlayBar::FormatTime(float TotalTime) const
 {
-	// Format args for text time
-	FFormatNamedArguments TimeFormatArgs;
+    if (TimeDilationSubsystem)
+    {
+        return TimeDilationSubsystem->FormatSimTime(TotalTime, HoursNeeded);
+    }
 
-	// need min, sec and ms by default
-	FText Minute = FText::AsNumber(FMath::FloorToInt32(fmod(TotalTime, 3600) / 60), NumberFormat);
-	FText Second = FText::AsNumber(FMath::FloorToInt32(fmod(TotalTime, 60)), NumberFormat);
-	FText Millisecond = FText::AsNumber(FMath::FloorToInt32(fmod(TotalTime, 1) * 100), NumberFormat); // technically milliseconds is 1000 but we are rounding to 2dp
-
-	// Set the key values for the TimeFormatArgs
-	TimeFormatArgs.Add("Minute", Minute);
-	TimeFormatArgs.Add("Second", Second);
-	TimeFormatArgs.Add("Millisecond", Millisecond);
-	
-	if(HoursNeeded)
-	{
-		FText Hour = FText::AsNumber(FMath::FloorToInt32(TotalTime / 3600), NumberFormat);
-
-		// Set the key values for the TimeFormatArgs
-		TimeFormatArgs.Add("Hour", Hour);
-	
-		return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Hour}:{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
-	}
-	else
-	{
-		return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
-	}
-	
-	
+    return FText();
 }
 
 void USimulationPlayBar::SetPlayButtonEnabled(const bool bLoadingState)
