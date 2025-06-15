@@ -35,7 +35,7 @@ AMobiusController::AMobiusController()
 
 void AMobiusController::BeginPlay()
 {
-	Super::BeginPlay();
+        Super::BeginPlay();
 
 	// Setup cursor and input mode
 	FInputModeGameAndUI InputMode;
@@ -48,8 +48,24 @@ void AMobiusController::BeginPlay()
 	
 	GetScreenshotRequiredSubsystemsAndData();
 
-	// Bind to the screenshot request captured delegate
-	UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &AMobiusController::OnScreenShotCaptured);
+        // Bind to the screenshot request captured delegate
+        UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &AMobiusController::OnScreenShotCaptured);
+}
+
+void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+        // Unbind delegates bound in BeginPlay / initialization
+        UGameViewportClient::OnScreenshotCaptured().RemoveAll(this);
+
+        if (GetWorld())
+        {
+                if (UProjectMobiusGameInstance* MobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
+                {
+                        MobiusGameInstance->OnPedestrianVectorFileChanged.RemoveDynamic(this, &AMobiusController::UpdatePedestrianVectorFilePath);
+                }
+        }
+
+        Super::EndPlay(EndPlayReason);
 }
 
 void AMobiusController::GetScreenshotRequiredSubsystemsAndData()
