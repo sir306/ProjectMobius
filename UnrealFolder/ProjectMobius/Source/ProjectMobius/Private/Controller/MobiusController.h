@@ -43,10 +43,10 @@ public:
 	/**
 	 * Override the BeginPlay method to set the default behavior of the controller
 	 */
-        virtual void BeginPlay() override;
+	virtual void BeginPlay() override;
 
-        /** Override EndPlay to clean up bound delegates */
-        virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	/** Override EndPlay to clean up bound delegates */
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 	/** Get the required subsystems to create a screenshot */
 	void GetScreenshotRequiredSubsystemsAndData();

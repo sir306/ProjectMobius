@@ -29,7 +29,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const { randomUUID } = require('crypto');
 
-// 1) Load port from config.json or fallback to env/8080
+// 1) Load port from config.json or fallback to env/9090
 let port;
 console.log("Looking for config at:", path.resolve(process.cwd(), 'config.json'));
 
