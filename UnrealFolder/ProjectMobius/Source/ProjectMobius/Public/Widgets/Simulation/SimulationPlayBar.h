@@ -45,14 +45,17 @@ class PROJECTMOBIUS_API USimulationPlayBar : public UUserWidget
 #pragma region METHODS
 public:
 	
-	// Constructor 
-	virtual void NativeConstruct() override;
+       // Constructor
+       virtual void NativeConstruct() override;
 
-	// Tick Method for in C++ for the widget
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+       // Tick Method for in C++ for the widget
+       virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	// Synchronize
-	virtual void SynchronizeProperties() override;
+       // Synchronize
+       virtual void SynchronizeProperties() override;
+
+       // Destructor
+       virtual void NativeDestruct() override;
 
 protected:
 	/**

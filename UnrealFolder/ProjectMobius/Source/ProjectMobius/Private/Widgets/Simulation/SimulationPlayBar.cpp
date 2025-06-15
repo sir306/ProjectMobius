@@ -102,11 +102,43 @@ void USimulationPlayBar::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 void USimulationPlayBar::SynchronizeProperties()
 {
-	Super::SynchronizeProperties();
+        Super::SynchronizeProperties();
 
 	// Assign the style assets
-	AssignStyleAssets();
-	
+        AssignStyleAssets();
+
+}
+
+void USimulationPlayBar::NativeDestruct()
+{
+        Super::NativeDestruct();
+
+        // Unbind delegates from the time dilation subsystem
+        if (TimeDilationSubsystem)
+        {
+                TimeDilationSubsystem->OnNewCurrentTime.RemoveDynamic(this, &USimulationPlayBar::UpdateCurrentTime);
+                TimeDilationSubsystem->OnNewMaxTime.RemoveDynamic(this, &USimulationPlayBar::UpdateMaxTime);
+                TimeDilationSubsystem->OnNewTimeBetweenData.RemoveDynamic(this, &USimulationPlayBar::UpdatePlayBarStepSize);
+        }
+
+        // Unbind button delegates
+        if (PlayPauseButton)
+        {
+                PlayPauseButton->OnClicked.RemoveDynamic(this, &USimulationPlayBar::OnPlayPauseButtonClicked);
+        }
+
+        if (PlaybackSlider)
+        {
+                PlaybackSlider->OnMouseCaptureBegin.RemoveDynamic(this, &USimulationPlayBar::OnPlaybackSliderCaptureBegin);
+                PlaybackSlider->OnMouseCaptureEnd.RemoveDynamic(this, &USimulationPlayBar::OnPlaybackSliderCaptureEnd);
+        }
+
+        // Unbind game instance delegates
+        if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
+        {
+                ProjectMobiusGameInstance->OnDataLoading.RemoveDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
+                ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &USimulationPlayBar::FileChanging);
+        }
 }
 
 void USimulationPlayBar::StartSimulation()
