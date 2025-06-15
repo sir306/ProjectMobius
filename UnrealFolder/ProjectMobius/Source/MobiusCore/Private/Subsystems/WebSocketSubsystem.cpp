@@ -29,6 +29,33 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+
+/**
+ * Helper function to read the WebSocket port from Tools/NodeJS/config.json.
+ * Returns 9090 if the file can't be read or parsed.
+ */
+static int32 LoadWebSocketPort()
+{
+        const FString ConfigPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/NodeJS/config.json"));
+        FString JsonString;
+        if (FFileHelper::LoadFileToString(JsonString, *ConfigPath))
+        {
+                TSharedPtr<FJsonObject> JsonObject;
+                const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+                if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+                {
+                        int32 Port;
+                        if (JsonObject->TryGetNumberField(TEXT("port"), Port))
+                        {
+                                return Port;
+                        }
+                }
+        }
+        return 9090;
+}
 
 void UWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -52,9 +79,11 @@ void UWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		StartWebSocketServer();
 	}
 	
-	// Create and hook up your socket
-	const FString Url = TEXT("ws://127.0.0.1:9090");// TODO: We have json config file in server read it from there for port
-	Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
+        // Create and hook up your socket. The port is read from Tools/NodeJS/config.json,
+        // falling back to 9090 if the file cannot be parsed.
+        const int32 Port = LoadWebSocketPort();
+        const FString Url = FString::Printf(TEXT("ws://127.0.0.1:%d"), Port);
+        Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
 
 	Socket->OnConnected().AddLambda([this]()
 	{
