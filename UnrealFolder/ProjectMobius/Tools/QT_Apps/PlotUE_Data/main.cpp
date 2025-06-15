@@ -27,6 +27,9 @@
 #include <QQmlContext>
 #include <QCommandLineParser>
 #include <QUrlQuery>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "ChartSettings.h"
 #include "ChartTableModel.h"
 #include "AxisSettings.h"
@@ -58,9 +61,24 @@ int main(int argc, char *argv[]) {
     parser.process(app);
     const QString pairId = parser.value("pairId");
 
+    // Read websocket port from Tools/NodeJS/config.json relative to the
+    // executable location. When running from the 'executable' folder the file is
+    // located at '../../../NodeJS/config.json'.
+    int port = 9090;
+    const QString configPath =
+        QCoreApplication::applicationDirPath() +
+        QStringLiteral("/../../../NodeJS/config.json");
+    QFile configFile(configPath);
+    if (configFile.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(configFile.readAll());
+        if (doc.isObject()) {
+            const QJsonObject obj = doc.object();
+            port = obj.value(QStringLiteral("port")).toInt(port);
+        }
+    }
 
-    // URL for websocket
-    QUrl wsUrl(QStringLiteral("ws://127.0.0.1:9090"));
+    // URL for websocket using the loaded port
+    QUrl wsUrl(QStringLiteral("ws://127.0.0.1:%1").arg(port));
 
 
     WebSocketManager wsMgr(
