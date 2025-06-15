@@ -93,18 +93,7 @@ void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UAgentDataSubsystem::Deinitialize()
 {
-    if (JsonDataRunnable != nullptr)
-    {
-        if (JsonDataRunnable->bIsRunning)
-        {
-            JsonDataRunnable->Stop();
-        }
-        JsonDataRunnable->Exit();
-        delete JsonDataRunnable;
-        JsonDataRunnable = nullptr;
-    }
-
-    Super::Deinitialize();
+	Super::Deinitialize();
 }
 
 void UAgentDataSubsystem::GetJSONDataFile(FString InJsonDataFile)
