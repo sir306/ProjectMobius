@@ -241,11 +241,13 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 			// unbind current load percent
 			AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
 		}
-		AgentDataSubsystem->JsonDataRunnable->Exit();
-	}
+                AgentDataSubsystem->JsonDataRunnable->Exit();
+                delete AgentDataSubsystem->JsonDataRunnable;
+                AgentDataSubsystem->JsonDataRunnable = nullptr;
+        }
 
-	// Get the JSON Data File using the FRunnable class to get the data asynchronously
-	AgentDataSubsystem->JsonDataRunnable = new FJsonDataRunnable(JSONDataFile);
+        // Get the JSON Data File using the FRunnable class to get the data asynchronously
+        AgentDataSubsystem->JsonDataRunnable = new FJsonDataRunnable(JSONDataFile);
 	AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
@@ -303,8 +305,9 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
 	}
 
-	// Have the thread destroy
-	AgentDataSubsystem->JsonDataRunnable = nullptr;
+        // Have the thread destroy
+        delete AgentDataSubsystem->JsonDataRunnable;
+        AgentDataSubsystem->JsonDataRunnable = nullptr;
 
 	//SimulationFragment.AddMovementSample();
 
