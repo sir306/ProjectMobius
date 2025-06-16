@@ -222,7 +222,7 @@ private:
 	 * @param PixelPtr - The pointer to the pixel to set the color of
 	 * @param NewColor - The new color of the pixel
 	 */
-       FORCEINLINE static void SetPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
+	FORCEINLINE static void SetPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
 
 	/*
 	 * To Set a cumulative color we need to add the color to the existing color
@@ -231,7 +231,7 @@ private:
 	 * @param PixelPtr - The pointer to the pixel to set the color of
 	 * @param NewColor - The new color of the pixel
 	 */
-       FORCEINLINE static void AddPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
+	FORCEINLINE static void AddPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
 
 	/**
 	 * Get a pointer to the pixel at the specified location
@@ -240,8 +240,8 @@ private:
 	 * @param Y_Coordinate - The y coordinate of the pixel
 	 * @return The pointer to the pixel
 	 */
-       FORCEINLINE uint8* GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const;
-       FORCEINLINE uint8* GetPixelPtr(const TUniquePtr<uint8[]>& BufferToGetPtr, int32 X_Coordinate, int32 Y_Coordinate) const;
+	FORCEINLINE uint8* GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const;
+	FORCEINLINE uint8* GetPixelPtr(const TUniquePtr<uint8[]>& BufferToGetPtr, int32 X_Coordinate, int32 Y_Coordinate) const;
 
 	/**
 	 * Method to calculate the area of an Irregular Polygon using the polygons vertices
@@ -303,12 +303,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|CircleSize")
 	float CircleSize = 101.73591f; // this may need to be a double for more precision
 
-       UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|Blur")
-       bool bIsBlurRequired = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|Blur")
+	bool bIsBlurRequired = false;
 
-       /** Threshold for triggering blur when the red channel exceeds this value */
-       UPROPERTY(EditAnywhere, Category = "DynamicPixelRenderingTexture|Properties|Blur")
-       float BlurTriggerThreshold = 0.1419f;
+	/** Threshold for triggering blur when the red channel exceeds this value */
+	UPROPERTY(EditAnywhere, Category = "DynamicPixelRenderingTexture|Properties|Blur")
+	float BlurTriggerThreshold = 0.1419f;
 
 	/** The colour vision deficiency - by default it is set to normal */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|ColourDeficiency")
@@ -329,13 +329,19 @@ protected:
 private:
 	/** Pixel Buffer provides a unique uint8 array to store the raw pixel data of the texture */
 	TUniquePtr<uint8[]> PixelBuffer;
+
+	/** The Update Buffer copies the pixel buffer when we are ready to update the texture and
+	 * allow for us to queue GPU requests and continue pixel manipulation using the other buffer*/
 	TUniquePtr<uint8[]> UpdateBuffer;
 
-	/**TODO comments CV size used for creating CV mat and not recreating */
+	/** This is used to define the size of OpenCV's Mat and UMat in a format it is expecting */
 	cv::Size CVSize;
 
+	/** To copy our pixel buffers into the UMat and back we have to use the CPU Mat version to allow direct copying */
 	cv::Mat  SrcMat;
-	
+
+	/** Currently Gaussian Blur is a very expensive task to perform we can optimize it
+	 * by using the UMat to incorporate GPU acceleration for the calculations */
 	cv::UMat UBlurMat;
 
 
