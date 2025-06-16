@@ -526,7 +526,7 @@ FVector2D AHeatmapPixelTextureVisualizer::ActorWorldToUV(const FVector& EntityWo
 	bool bAdjustY = (HeatmapMeshSize2D.X >= HeatmapMeshSize2D.Y);
 	// Compute the ratio as the smaller mesh dimension divided by the larger.
 	float ratio = bAdjustY ? (HeatmapMeshSize2D.Y / HeatmapMeshSize2D.X) 
-						   : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
+		              : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
     
 	// Apply a center-based aspect ratio correction about the midpoint (0.5, 0.5) in normalized space.
 	if (bAdjustY)
@@ -912,7 +912,8 @@ TArray<FBox3d> AHeatmapPixelTextureVisualizer::FindAllQuads(ARuntimeMeshBuilder*
 	
 	if(MeshBuilder)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Starting Mesh Triangle Generation"));
+		// const double StartTime = FPlatformTime::Seconds();
+		// UE_LOG(LogTemp, Warning, TEXT("Starting Mesh Triangle Generation"));
 		// create size for array
 		TArray<FVector> ValidVertices;
 
@@ -978,40 +979,41 @@ TArray<FBox3d> AHeatmapPixelTextureVisualizer::FindAllQuads(ARuntimeMeshBuilder*
 			}
 		}
 		
-		// loop over the marching box dimensions with the step size
-		for(int32 x = 0; x <= MeshBounds.Max.X *2 + StepSize*2; x+=StepSize)
+		// build a simple spatial hash to avoid scanning every vertex per step
+		TMap<FIntPoint, FBox3d> QuadMap;
+		for (const FVector& Vertex : ValidVertices)
 		{
-			for(int32 y = 0; y <= MeshBounds.Max.Y*2+ StepSize*2; y+=StepSize)
+			const int32 CellX = FMath::FloorToInt((Vertex.X - StartPos.X) / StepSize);
+			const int32 CellY = FMath::FloorToInt((Vertex.Y - StartPos.Y) / StepSize);
+			const FIntPoint Key(CellX, CellY);
+			if (!QuadMap.Contains(Key))
 			{
-				// Define the marching box
-				MarchingBox = FBox3d(FVector(StartPos.X + x, StartPos.Y + y, MarchingBox.Min.Z), FVector(StartPos.X + x + StepSize, StartPos.Y + y + StepSize, MarchingBox.Max.Z));
-				//DrawDebugBox(GetWorld(), MarchingBox.GetCenter(), MarchingBox.GetExtent(), FColor::Black, false, 1000.0f, 0, 1.0f);
-				
-				// loop over the mesh vertices
-				for(FVector VertexStruct : ValidVertices)
-				{
-					if(MarchingBox.IsInsideOrOn(VertexStruct))
-					{
-						// Add the box to the array
-						Quads.Add(MarchingBox);
-						//DrawDebugBox(GetWorld(), MarchingBox.GetCenter(), MarchingBox.GetExtent(), FColor::Green, false, 1000.0f, 0, 5.0f);
-						//UE_LOG(LogTemp, Warning, TEXT("Found a vertex in the box"));
-						//FoundVerts++;
-						break;// we found one so need to keep looking
-					}
-				}
-				
+				FVector Min(StartPos.X + CellX * StepSize,
+				            StartPos.Y + CellY * StepSize,
+				            MarchingBox.Min.Z);
+				FVector Max(StartPos.X + (CellX + 1) * StepSize,
+				            StartPos.Y + (CellY + 1) * StepSize,
+				            MarchingBox.Max.Z);
+				QuadMap.Add(Key, FBox3d(Min, Max));
 			}
 		}
+
+		for (const TPair<FIntPoint, FBox3d>& Pair : QuadMap)
+		{
+			Quads.Add(Pair.Value);
+		}
+
 		// Log how many boxes found
-		UE_LOG(LogTemp, Warning, TEXT("Found Quads: %d"), Quads.Num());
+		// UE_LOG(LogTemp, Warning, TEXT("Found Quads: %d"), Quads.Num());
+		// const double EndTime = FPlatformTime::Seconds();
+		// UE_LOG(LogTemp, Warning, TEXT("FindAllQuads took %.2f ms"), (EndTime - StartTime) * 1000.0);
 	}
 
 	return Quads;
 	
 	
 	
-	// TODO: Too many loops - need to refactor
+	// Algorithm refactored to use spatial hashing
 	
 	 
 	
