@@ -211,3 +211,6 @@ GeosJSON/
 UnrealFolder/ProjectMobius/source/MobiusCore/ThirdParty/GeosJSON/*
 UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
 *.user
+**.txt.user
+*.user
+*.txt.user
