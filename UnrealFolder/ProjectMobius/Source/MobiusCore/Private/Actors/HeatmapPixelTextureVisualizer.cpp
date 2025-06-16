@@ -38,8 +38,8 @@
 // Sets default values
 AHeatmapPixelTextureVisualizer::AHeatmapPixelTextureVisualizer() :
 	RuntimeHeatmapMeshComponent(nullptr),
-	TextureWidth(2048),
-	TextureHeight(2048),
+	TextureWidth(1),
+	TextureHeight(1),
 	HeightDisplacement(0),
 	ActorName("HeatmapPixelTextureVisualizer"),
 	bLiveTrackingHeatmap(false),
