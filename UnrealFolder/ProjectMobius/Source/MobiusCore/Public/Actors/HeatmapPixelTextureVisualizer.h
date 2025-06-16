@@ -366,8 +366,12 @@ private:
 	TObjectPtr<UWorld> World;
 
 	/** Scaled Circle Size */
-	UPROPERTY()
-	int32 ScaledCircleSize; // TODO: This should be a float value for more precise locations and scale to texture and mesh size
+        UPROPERTY()
+        int32 ScaledCircleSize; // TODO: This should be a float value for more precise locations and scale to texture and mesh size
+
+        /** Number of mesh sections currently generated */
+        UPROPERTY()
+        int32 GeneratedSectionCount = 0;
 	
 #pragma endregion PRIVATE_PROPERTIES_AND_COMPONENTS
 	

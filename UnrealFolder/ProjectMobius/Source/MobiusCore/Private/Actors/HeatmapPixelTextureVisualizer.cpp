@@ -627,8 +627,12 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapMeshBounds()
 
 void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSize, bool bIsStandardHeatmap)
 {
-	// Clear mesh section
-	RuntimeHeatmapMeshComponent->ClearMeshSection(0);
+        // Clear all previously generated sections
+        for(int32 i = 0; i < GeneratedSectionCount; ++i)
+        {
+                RuntimeHeatmapMeshComponent->ClearMeshSection(i);
+        }
+        GeneratedSectionCount = 0;
 
 	FIntPoint NumTriangles = FIntPoint(2);// if the heatmap is standard we only need 2 triangles (till we get to clipping)
 
@@ -819,8 +823,12 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	// Update the mesh size
 	HeatmapMeshSize2D = MeshSize;
 	
-	// clear the previous mesh section
-	RuntimeHeatmapMeshComponent->ClearMeshSection(0);
+        // clear any previous mesh sections
+        for(int32 i = 0; i < GeneratedSectionCount; ++i)
+        {
+                RuntimeHeatmapMeshComponent->ClearMeshSection(i);
+        }
+        GeneratedSectionCount = 0;
 
 	// Number of required triangles
 	FIntPoint NumTriangles = FIntPoint(MeshSize.X / 250, MeshSize.Y / 250);
@@ -849,29 +857,70 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	}
 
 	
-	Async(EAsyncExecution::ThreadPool, [this, NumTriangles, CellSize, MeshBuilder]()
-	      {
-		      //TODO: ADD A EMPTY AND NULL CHECKS
-		
-		      // Generate the quads to restrict the triangle generation to areas needed
-		      TArray<FBox3d> Quads = FindAllQuads(MeshBuilder);
-	
-		      // Generate the vertices and UVs
-		      CreateMeshVertexsAndUVs(NumTriangles, CellSize);
-	
-		      // Generate the Triangles for this square
-		      GenerateMeshTrianglesInQuadMapping(NumTriangles, Quads);
-	
-	
-	      },
-	      [this]
-	      {
-		      AsyncTask(ENamedThreads::GameThread, [this]()
-		      {
-			      // Generate the mesh section
-			      RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
-		      });
-	      });
+        // build the mesh sections asynchronously
+        Async(EAsyncExecution::ThreadPool, [this, NumTriangles, CellSize]()
+        {
+                bool bAdjustY = HeatmapMeshSize2D.X >= HeatmapMeshSize2D.Y;
+                float AspectRatio = bAdjustY ? (HeatmapMeshSize2D.Y / HeatmapMeshSize2D.X)
+                                             : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
+
+                int32 SectionCounter = 0;
+
+                for(int32 y = 0; y < NumTriangles.Y; ++y)
+                {
+                        for(int32 x = 0; x < NumTriangles.X; ++x)
+                        {
+                                TArray<FVector> Verts;
+                                TArray<FVector2D> UVs;
+                                TArray<int32> Tris;
+
+                                Verts.Add(FVector(x * CellSize.X, y * CellSize.Y, 0.1f));
+                                Verts.Add(FVector(x * CellSize.X, (y + 1) * CellSize.Y, 0.1f));
+                                Verts.Add(FVector((x + 1) * CellSize.X, (y + 1) * CellSize.Y, 0.1f));
+                                Verts.Add(FVector((x + 1) * CellSize.X, y * CellSize.Y, 0.1f));
+
+                                float U0 = static_cast<float>(x) / NumTriangles.X;
+                                float V0 = static_cast<float>(y) / NumTriangles.Y;
+                                float U1 = static_cast<float>(x + 1) / NumTriangles.X;
+                                float V1 = static_cast<float>(y + 1) / NumTriangles.Y;
+
+                                if(bAdjustY)
+                                {
+                                        V0 = V0 * AspectRatio + (1.f - AspectRatio) * 0.5f;
+                                        V1 = V1 * AspectRatio + (1.f - AspectRatio) * 0.5f;
+                                }
+                                else
+                                {
+                                        U0 = U0 * AspectRatio + (1.f - AspectRatio) * 0.5f;
+                                        U1 = U1 * AspectRatio + (1.f - AspectRatio) * 0.5f;
+                                }
+
+                                UVs.Add(FVector2D(U0, V0));
+                                UVs.Add(FVector2D(U0, V1));
+                                UVs.Add(FVector2D(U1, V1));
+                                UVs.Add(FVector2D(U1, V0));
+
+                                Tris.Add(0);
+                                Tris.Add(1);
+                                Tris.Add(2);
+                                Tris.Add(0);
+                                Tris.Add(2);
+                                Tris.Add(3);
+
+                                int32 LocalSection = SectionCounter++;
+
+                                AsyncTask(ENamedThreads::GameThread, [this, LocalSection, Verts, UVs, Tris]()
+                                {
+                                        RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(LocalSection, Verts, Tris, TArray<FVector>(), UVs, TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
+                                });
+                        }
+                }
+
+                AsyncTask(ENamedThreads::GameThread, [this, SectionCounter]()
+                {
+                        GeneratedSectionCount = SectionCounter;
+                });
+        });
 	
 
 	
