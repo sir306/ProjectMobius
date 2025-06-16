@@ -353,133 +353,63 @@ void UDynamicPixelRenderingTexture::DrawRectangle(int32 Start_Coordinate_X, int3
 void UDynamicPixelRenderingTexture::DrawCircle(float Center_Coordinate_X, float Center_Coordinate_Y, int32 Radius,
                                                FLinearColor CircleColor)
 {
-	// Ensure the center coordinates are within bounds
-	if (Center_Coordinate_X < 0 || Center_Coordinate_X >= TextureDimensionX || Center_Coordinate_Y < 0 || Center_Coordinate_Y >= TextureDimensionY)
-	{
-		return; // Out of bounds, do nothing
-	}
+        // Ensure the center coordinates are within bounds
+        if (Center_Coordinate_X < 0 || Center_Coordinate_X >= TextureDimensionX || Center_Coordinate_Y < 0 || Center_Coordinate_Y >= TextureDimensionY)
+        {
+                return; // Out of bounds, do nothing
+        }
 
-	int32 RadiusSquared = Radius * Radius;
+        int32 X0 = FMath::RoundToInt(Center_Coordinate_X);
+        int32 Y0 = FMath::RoundToInt(Center_Coordinate_Y);
+        int32 RadiusSquared = Radius * Radius;
 
-	// // Loop over the bounding box of the circle, considering the center's offset
-	// for (int32 y = FMath::FloorToInt(-Radius + Center_Coordinate_Y); y <= FMath::CeilToInt(Radius + Center_Coordinate_Y); y++)
-	// {
-	// 	for (int32 x = FMath::FloorToInt(-Radius + Center_Coordinate_X); x <= FMath::CeilToInt(Radius + Center_Coordinate_X); x++)
-	// 	{
-	// 		// Calculate the distance squared from the center
-	// 		int32 DistanceSquared = (x - Center_Coordinate_X) * (x - Center_Coordinate_X) +
-	// 								(y - Center_Coordinate_Y) * (y - Center_Coordinate_Y);
-	//
-	// 		// If the distance squared is less than or equal to the radius squared, draw the pixel
-	// 		if (DistanceSquared <= RadiusSquared)
-	// 		{
-	// 			// Ensure that the pixel coordinates are within the texture boundaries
-	// 			if (x >= 0 && x < TextureDimensionX && y >= 0 && y < TextureDimensionY)
-	// 			{
-	// 				SetPixelColor(x, y, CircleColor);
-	// 			}
-	// 		}
-	// 	}
-	// }
+        auto PlotPixel = [&](int32 PX, int32 PY)
+        {
+                if (PX >= 0 && PX < TextureDimensionX && PY >= 0 && PY < TextureDimensionY)
+                {
+                        float DistSquared = static_cast<float>((PX - X0) * (PX - X0) + (PY - Y0) * (PY - Y0));
+                        if (DistSquared <= RadiusSquared)
+                        {
+                                float DistanceToEdge = FMath::Sqrt(DistSquared) - Radius;
+                                float Alpha = FMath::Clamp(1.0f - DistanceToEdge / 1.0f, 0.0f, 1.0f);
+                                FLinearColor FinalColor = CircleColor * Alpha;
+                                SetPixelColor(PX, PY, FinalColor);
+                        }
+                }
+        };
 
-	// // Parallel loop over the bounding box of the circle, considering the center's offset
-	// ParallelFor(FMath::CeilToInt(Radius + Center_Coordinate_Y) - FMath::FloorToInt(-Radius + Center_Coordinate_Y) + 1,
-	// 	[&](int32 Y_Index)
-	// 	{
-	// 		// Calculate actual Y coordinate
-	// 		int32 y = FMath::FloorToInt(-Radius + Center_Coordinate_Y) + Y_Index;
-	//
-	// 		// Loop over X coordinates in this Y slice
-	// 		for (int32 x = FMath::FloorToInt(-Radius + Center_Coordinate_X); x <= FMath::CeilToInt(Radius + Center_Coordinate_X); x++)
-	// 		{
-	// 			// Calculate the distance squared from the center
-	// 			int32 DistanceSquared = (x - Center_Coordinate_X) * (x - Center_Coordinate_X) +
-	// 									(y - Center_Coordinate_Y) * (y - Center_Coordinate_Y);
-	//
-	// 			// If the distance squared is less than or equal to the radius squared, draw the pixel
-	// 			if (DistanceSquared <= RadiusSquared)
-	// 			{
-	// 				// Ensure that the pixel coordinates are within the texture boundaries
-	// 				if (x >= 0 && x < TextureDimensionX && y >= 0 && y < TextureDimensionY)
-	// 				{
-	// 					SetPixelColor(x, y, CircleColor);
-	// 				}
-	// 			}
-	// 		}
-	// 	});
-	ParallelFor(FMath::CeilToInt(Radius + Center_Coordinate_Y) - FMath::FloorToInt(-Radius + Center_Coordinate_Y) + 1,
-	[&](int32 Y_Index)
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE_STR("DrawCircle ParallelFor");
+        auto DrawHorizontal = [&](int32 StartX, int32 EndX, int32 Y)
+        {
+                for (int32 PX = StartX; PX <= EndX; ++PX)
+                {
+                        PlotPixel(PX, Y);
+                }
+        };
 
-		int32 y = FMath::FloorToInt(-Radius + Center_Coordinate_Y) + Y_Index;
+        int32 X = 0;
+        int32 Y = Radius;
+        int32 D = 1 - Radius;
 
-		for (int32 x = FMath::FloorToInt(-Radius + Center_Coordinate_X); x <= FMath::CeilToInt(Radius + Center_Coordinate_X); x++)
-		{
-			// float DistanceSquared = (x - Center_Coordinate_X) * (x - Center_Coordinate_X) +
-			// 						(y - Center_Coordinate_Y) * (y - Center_Coordinate_Y);
+        while (Y >= X)
+        {
+                DrawHorizontal(X0 - X, X0 + X, Y0 + Y);
+                DrawHorizontal(X0 - X, X0 + X, Y0 - Y);
+                DrawHorizontal(X0 - Y, X0 + Y, Y0 + X);
+                DrawHorizontal(X0 - Y, X0 + Y, Y0 - X);
 
-			// SIMD optimization
-			FVector2d PixelLocation(x,y);
-			FVector2d CircleCenter(Center_Coordinate_X, Center_Coordinate_Y);
-			float DistanceSquared = FVector2d::DistSquared(PixelLocation, CircleCenter);
+                ++X;
+                if (D < 0)
+                {
+                        D += 2 * X + 1;
+                }
+                else
+                {
+                        --Y;
+                        D += 2 * (X - Y) + 1;
+                }
+        }
 
-			if (DistanceSquared <= RadiusSquared)
-			{
-				float DistanceToEdge = FMath::Sqrt(DistanceSquared) - Radius;
-				float Alpha = FMath::Clamp(1.0f - DistanceToEdge / 1.0f, 0.0f, 1.0f);
-
-				if (x >= 0 && x < TextureDimensionX && y >= 0 && y < TextureDimensionY)
-				{
-					FLinearColor FinalColor = CircleColor * Alpha;
-					SetPixelColor(x, y, FinalColor);
-				}
-			}
-		}
-	}, EParallelForFlags::PumpRenderingThread);
-	
-	// // Parallel loop over the bounding box of the circle, considering the center's offset
-	// ParallelFor(FMath::CeilToInt(Radius + Center_Coordinate_Y) - FMath::FloorToInt(-Radius + Center_Coordinate_Y) + 1,
-	//             [&](int32 Y_Index)
-	//             {
-	// 	            TRACE_CPUPROFILER_EVENT_SCOPE_STR("DrawCircle ParallelFor");
-	// 	            // Calculate actual Y coordinate
-	// 	            int32 y = FMath::FloorToInt(-Radius + Center_Coordinate_Y) + Y_Index;
-	//
-	// 	            // Loop over X coordinates in this Y slice
-	// 	            for (int32 x = FMath::FloorToInt(-Radius + Center_Coordinate_X); x <= FMath::CeilToInt(Radius + Center_Coordinate_X); x++)
-	// 	            {
-	// 		            // Calculate the distance from the center
-	// 		            float Distance = FMath::Sqrt((x - Center_Coordinate_X) * (x - Center_Coordinate_X) +
-	// 			            (y - Center_Coordinate_Y) * (y - Center_Coordinate_Y));
-	//
-	// 		            // Anti-aliasing threshold
-	// 		            float DistanceToEdge = FMath::Abs(Distance - Radius);
-	//
-	// 		            // Calculate alpha value based on how close the pixel is to the circle edge
-	// 		            float Alpha = FMath::Clamp(DistanceToEdge, 0.0f, 1.0f);
-	//
-	// 		            // If the distance is within the radius, draw the pixel
-	// 		            if (Distance <= Radius) // +1 gives a slight buffer for anti-aliasing
-	// 		            {
-	// 			            // Ensure that the pixel coordinates are within the texture boundaries
-	// 			            if (x >= 0 && x < TextureDimensionX && y >= 0 && y < TextureDimensionY)
-	// 			            {
-	// 				            // Blend the pixel color with the background based on the calculated alpha
-	// 				            FLinearColor FinalColor = CircleColor;
-	// 				            FinalColor.R *= Alpha;
-	//
-	// 				            SetPixelColor(x, y, FinalColor);
-	// 			            }
-	// 		            }
-	// 	            }
-	//             }, EParallelForFlags::PumpRenderingThread);
-	//
-
-	
-	
-	// Update the texture render
-	//UpdateTextureRender();
+        //UpdateTextureRender();
 }
 
 void UDynamicPixelRenderingTexture::DrawFromTexture(UTexture2D* SourceTexture, int32 X_Coordinate, int32 Y_Coordinate,
