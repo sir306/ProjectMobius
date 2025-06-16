@@ -327,14 +327,17 @@ private:
 	static FIntPoint CalculateNumberOfTriangles(const FVector2D& MeshSize, const FIntPoint& TextureSize);
 	void CreateMeshVertexsAndUVs(FIntPoint NumTriangles, FVector2D CellSize);
 	void GenerateMeshTrianglesInQuadMapping(FIntPoint NumTriangles, TArray<FBox3d> Quads);
-	/**
-	 * Method to generate the mesh vertices, UVs and triangles for the heatmap mesh
-	 *
-	 * @param[FVector2D&] MeshSize The size of the mesh in the X and Y direction
-	 * @param[FIntPoint&] TextureSize The size of the texture in the X and Y direction
-	 * @param[bool] bIs3DHeatmap A bool to determine if the heatmap is 3D or 2D
-	 */
-	void GenerateMeshVerticesUVsAndTriangles(const FVector2D& MeshSize, const FIntPoint& TextureSize, bool bIs3DHeatmap = false);
+       /**
+        * Method to generate the mesh vertices, UVs and triangles for the heatmap mesh.
+        * The method performs sanity checks on the input data before spawning any
+        * threaded tasks. If the inputs are invalid the function will log an error
+        * and exit early.
+        *
+        * @param[FVector2D&] MeshSize   The size of the mesh in the X and Y direction
+        * @param[FIntPoint&] TextureSize The size of the texture in the X and Y direction
+        * @param[bool]       bIs3DHeatmap A bool to determine if the heatmap is 3D or 2D
+        */
+       void GenerateMeshVerticesUVsAndTriangles(const FVector2D& MeshSize, const FIntPoint& TextureSize, bool bIs3DHeatmap = false);
 
 	/**
 	 * Helper method to find all the quads that will be valid for mesh building the heatmap
