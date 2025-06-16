@@ -222,7 +222,7 @@ private:
 	 * @param PixelPtr - The pointer to the pixel to set the color of
 	 * @param NewColor - The new color of the pixel
 	 */
-	static void SetPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
+       FORCEINLINE static void SetPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
 
 	/*
 	 * To Set a cumulative color we need to add the color to the existing color
@@ -231,7 +231,7 @@ private:
 	 * @param PixelPtr - The pointer to the pixel to set the color of
 	 * @param NewColor - The new color of the pixel
 	 */
-	static void AddPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
+       FORCEINLINE static void AddPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor);
 
 	/**
 	 * Get a pointer to the pixel at the specified location
@@ -240,8 +240,8 @@ private:
 	 * @param Y_Coordinate - The y coordinate of the pixel
 	 * @return The pointer to the pixel
 	 */
-	uint8* GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const;
-	uint8* GetPixelPtr(const TUniquePtr<uint8[]>& BufferToGetPtr, int32 X_Coordinate, int32 Y_Coordinate) const;
+       FORCEINLINE uint8* GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const;
+       FORCEINLINE uint8* GetPixelPtr(const TUniquePtr<uint8[]>& BufferToGetPtr, int32 X_Coordinate, int32 Y_Coordinate) const;
 
 	/**
 	 * Method to calculate the area of an Irregular Polygon using the polygons vertices
