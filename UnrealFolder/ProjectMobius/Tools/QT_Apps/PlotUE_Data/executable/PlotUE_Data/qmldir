@@ -2,5 +2,5 @@ module PlotUE_Data
 typeinfo appPlotUE_Data.qmltypes
 prefer :/qt/qml/PlotUE_Data/
 AppWindow 1.0 AppWindow.qml
-ScatterSeriesHoverItem 1.0 ScatterSeriesHoverItem.qml
+GraphHoverItem 1.0 GraphHoverItem.qml
 

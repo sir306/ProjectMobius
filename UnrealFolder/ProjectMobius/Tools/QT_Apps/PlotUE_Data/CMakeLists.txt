@@ -24,7 +24,7 @@ qt_add_qml_module(appPlotUE_Data
         SOURCES AxisSettings.h
         SOURCES ChartSettings.h
         SOURCES MessageProcessor.h MessageProcessor.cpp
-        QML_FILES ScatterSeriesHoverItem.qml
+        QML_FILES GraphHoverItem.qml
         RESOURCES shaders/PlaybarShaderEffect.frag
         RESOURCES shaders/PlaybarShaderEffect.frag.qsb
 )

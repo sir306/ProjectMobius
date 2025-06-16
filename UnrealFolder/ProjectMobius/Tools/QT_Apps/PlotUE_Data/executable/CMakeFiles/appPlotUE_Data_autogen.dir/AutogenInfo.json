@@ -1,17 +1,17 @@
 {
 	"AUTOGEN_COMMAND_LINE_LENGTH_MAX" : 32000,
-	"BUILD_DIR" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appPlotUE_Data_autogen",
-	"CMAKE_BINARY_DIR" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release",
-	"CMAKE_CURRENT_BINARY_DIR" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release",
-	"CMAKE_CURRENT_SOURCE_DIR" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data",
+	"BUILD_DIR" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appPlotUE_Data_autogen",
+	"CMAKE_BINARY_DIR" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable",
+	"CMAKE_CURRENT_BINARY_DIR" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable",
+	"CMAKE_CURRENT_SOURCE_DIR" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data",
 	"CMAKE_EXECUTABLE" : "C:/Qt/Tools/CMake_64/bin/cmake.exe",
 	"CMAKE_LIST_FILES" : 
 	[
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/CMakeLists.txt",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qtc/package-manager/auto-setup.cmake",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/CMakeLists.txt",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.qtc/package-manager/auto-setup.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineSystem.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeSystem.cmake.in",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/CMakeFiles/3.30.5/CMakeSystem.cmake",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/CMakeFiles/3.30.5/CMakeSystem.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeNinjaFindMake.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeSystemSpecificInitialize.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/Platform/Windows-Initialize.cmake",
@@ -65,7 +65,7 @@
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeFindBinUtils.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/Compiler/GNU-FindBinUtils.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeCXXCompiler.cmake.in",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/CMakeFiles/3.30.5/CMakeCXXCompiler.cmake",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/CMakeFiles/3.30.5/CMakeCXXCompiler.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeSystemSpecificInformation.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeGenericSystem.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeInitializeConfigs.cmake",
@@ -80,7 +80,7 @@
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/Platform/Windows-GNU.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineRCCompiler.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeRCCompiler.cmake.in",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/CMakeFiles/3.30.5/CMakeRCCompiler.cmake",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/CMakeFiles/3.30.5/CMakeRCCompiler.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeRCInformation.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/Platform/Windows-windres.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeTestRCCompiler.cmake",
@@ -97,7 +97,7 @@
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeDetermineCompilerSupport.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/Internal/FeatureTesting.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeCXXCompiler.cmake.in",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/CMakeFiles/3.30.5/CMakeCXXCompiler.cmake",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/CMakeFiles/3.30.5/CMakeCXXCompiler.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/Platform/Windows-GNU-CXX-ABI.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6/Qt6ConfigVersion.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake",
@@ -653,11 +653,6 @@
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qquickvectorimagepluginTargets.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qquickvectorimagepluginTargets-relwithdebinfo.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qquickvectorimagepluginAdditionalTargetInfo.cmake",
-		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtchartsqml2Config.cmake",
-		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeFindDependencyMacro.cmake",
-		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtchartsqml2Targets.cmake",
-		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtchartsqml2Targets-relwithdebinfo.cmake",
-		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtchartsqml2AdditionalTargetInfo.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtgraphicaleffectspluginConfig.cmake",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeFindDependencyMacro.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtgraphicaleffectspluginTargets.cmake",
@@ -999,7 +994,6 @@
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qquick3dpluginConfig.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qquicklayoutspluginConfig.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qquickvectorimagepluginConfig.cmake",
-		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtchartsqml2Config.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtgraphicaleffectspluginConfig.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtgraphicaleffectsprivateConfig.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/QmlPlugins/Qt6qtqmlcorepluginConfig.cmake",
@@ -1179,11 +1173,6 @@
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeFindDependencyMacro.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6OpenGL/Qt6OpenGLDependencies.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6/FindWrapVulkanHeaders.cmake",
-		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/FindVulkan.cmake",
-		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/FindPackageHandleStandardArgs.cmake",
-		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/FindPackageMessage.cmake",
-		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/FindPackageHandleStandardArgs.cmake",
-		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/FindPackageMessage.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6OpenGL/Qt6OpenGLTargets.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6OpenGL/Qt6OpenGLTargets-relwithdebinfo.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6OpenGL/Qt6OpenGLAdditionalTargetInfo.cmake",
@@ -1346,48 +1335,48 @@
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Core/Qt6CoreConfigureFileTemplate.in",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/GNUInstallDirs.cmake",
 		"C:/Qt/6.9.0/mingw_64/lib/cmake/Qt6Qml/Qt6qmldirTemplate.cmake.in",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/qml_imports/appPlotUE_Data_conf.cmake"
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.qt/qml_imports/appPlotUE_Data_conf.cmake"
 	],
-	"CMAKE_SOURCE_DIR" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data",
+	"CMAKE_SOURCE_DIR" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data",
 	"CROSS_CONFIG" : false,
-	"DEP_FILE" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appPlotUE_Data_autogen/deps",
+	"DEP_FILE" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appPlotUE_Data_autogen/deps",
 	"DEP_FILE_RULE_NAME" : "appPlotUE_Data_autogen/timestamp",
 	"HEADERS" : 
 	[
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AxisSettings.h",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AxisSettings.h",
 			"MU",
 			"EWIEGA46WW/moc_AxisSettings.cpp",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ChartSettings.h",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ChartSettings.h",
 			"MU",
 			"EWIEGA46WW/moc_ChartSettings.cpp",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ChartTableModel.h",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ChartTableModel.h",
 			"MU",
 			"EWIEGA46WW/moc_ChartTableModel.cpp",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/WebSocketManager.h",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/WebSocketManager.h",
 			"MU",
 			"EWIEGA46WW/moc_WebSocketManager.cpp",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/messageprocessor.h",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/messageprocessor.h",
 			"MU",
 			"EWIEGA46WW/moc_messageprocessor.cpp",
 			null
 		]
 	],
 	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
-	"INCLUDE_DIR" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appPlotUE_Data_autogen/include",
-	"MOC_COMPILATION_FILE" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appPlotUE_Data_autogen/mocs_compilation.cpp",
+	"INCLUDE_DIR" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appPlotUE_Data_autogen/include",
+	"MOC_COMPILATION_FILE" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appPlotUE_Data_autogen/mocs_compilation.cpp",
 	"MOC_DEFINITIONS" : 
 	[
 		"MINGW_HAS_SECURE_API=1",
@@ -1426,7 +1415,7 @@
 	],
 	"MOC_INCLUDES" : 
 	[
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data",
 		"C:/Qt/6.9.0/mingw_64/include/QtQml/6.9.0",
 		"C:/Qt/6.9.0/mingw_64/include/QtQml/6.9.0/QtQml",
 		"C:/Qt/6.9.0/mingw_64/include/QtCore/6.9.0",
@@ -1439,6 +1428,7 @@
 		"C:/Qt/6.9.0/mingw_64/include/QtNetwork",
 		"C:/Qt/6.9.0/mingw_64/include/QtQuick",
 		"C:/Qt/6.9.0/mingw_64/include/QtGui",
+		"C:/VulkanSDK/1.4.309.0/Include",
 		"C:/Qt/6.9.0/mingw_64/include/QtQmlMeta",
 		"C:/Qt/6.9.0/mingw_64/include/QtQmlModels",
 		"C:/Qt/6.9.0/mingw_64/include/QtQmlWorkerScript",
@@ -1477,44 +1467,44 @@
 		"-c",
 		"C:/Qt/Tools/CMake_64/share/cmake-3.30/Modules/CMakeCXXCompilerABI.cpp"
 	],
-	"MOC_PREDEFS_FILE" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appPlotUE_Data_autogen/moc_predefs.h",
+	"MOC_PREDEFS_FILE" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appPlotUE_Data_autogen/moc_predefs.h",
 	"MOC_RELAXED_MODE" : false,
 	"MOC_SKIP" : 
 	[
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/qrc_appPlotUE_Data_raw_qml_0.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/qrc_qmake_PlotUE_Data.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.rcc/qmlcache/appPlotUE_Data_AppWindow_qml.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.rcc/qmlcache/appPlotUE_Data_ScatterSeriesHoverItem_qml.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.rcc/qmlcache/appPlotUE_Data_qmlcache_loader.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appplotue_data_qmltyperegistrations.cpp"
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.qt/rcc/qrc_appPlotUE_Data_raw_qml_0.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.qt/rcc/qrc_qmake_PlotUE_Data.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.rcc/qmlcache/appPlotUE_Data_AppWindow_qml.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.rcc/qmlcache/appPlotUE_Data_GraphHoverItem_qml.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.rcc/qmlcache/appPlotUE_Data_qmlcache_loader.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appplotue_data_qmltyperegistrations.cpp"
 	],
 	"MULTI_CONFIG" : false,
-	"PARALLEL" : 12,
-	"PARSE_CACHE_FILE" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/CMakeFiles/appPlotUE_Data_autogen.dir/ParseCache.txt",
+	"PARALLEL" : 16,
+	"PARSE_CACHE_FILE" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/CMakeFiles/appPlotUE_Data_autogen.dir/ParseCache.txt",
 	"QT_MOC_EXECUTABLE" : "C:/Qt/6.9.0/mingw_64/bin/moc.exe",
 	"QT_UIC_EXECUTABLE" : "",
 	"QT_VERSION_MAJOR" : 6,
 	"QT_VERSION_MINOR" : 9,
-	"SETTINGS_FILE" : "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/CMakeFiles/appPlotUE_Data_autogen.dir/AutogenUsed.txt",
+	"SETTINGS_FILE" : "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/CMakeFiles/appPlotUE_Data_autogen.dir/AutogenUsed.txt",
 	"SOURCES" : 
 	[
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ChartTableModel.cpp",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/ChartTableModel.cpp",
 			"MU",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/MessageProcessor.cpp",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/MessageProcessor.cpp",
 			"MU",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/WebSocketManager.cpp",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/WebSocketManager.cpp",
 			"MU",
 			null
 		],
 		[
-			"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/main.cpp",
+			"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/main.cpp",
 			"MU",
 			null
 		]
@@ -1523,12 +1513,12 @@
 	"UIC_SEARCH_PATHS" : [],
 	"UIC_SKIP" : 
 	[
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/qrc_appPlotUE_Data_raw_qml_0.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.qt/rcc/qrc_qmake_PlotUE_Data.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.rcc/qmlcache/appPlotUE_Data_AppWindow_qml.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.rcc/qmlcache/appPlotUE_Data_ScatterSeriesHoverItem_qml.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/.rcc/qmlcache/appPlotUE_Data_qmlcache_loader.cpp",
-		"E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-release/appplotue_data_qmltyperegistrations.cpp"
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.qt/rcc/qrc_appPlotUE_Data_raw_qml_0.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.qt/rcc/qrc_qmake_PlotUE_Data.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.rcc/qmlcache/appPlotUE_Data_AppWindow_qml.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.rcc/qmlcache/appPlotUE_Data_GraphHoverItem_qml.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/.rcc/qmlcache/appPlotUE_Data_qmlcache_loader.cpp",
+		"C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/executable/appplotue_data_qmltyperegistrations.cpp"
 	],
 	"UIC_UI_FILES" : [],
 	"USE_BETTER_GRAPH" : true,

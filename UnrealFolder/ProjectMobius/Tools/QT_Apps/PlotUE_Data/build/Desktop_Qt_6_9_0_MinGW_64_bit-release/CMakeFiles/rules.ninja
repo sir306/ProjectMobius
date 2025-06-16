@@ -42,7 +42,7 @@ rule CUSTOM_COMMAND
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = C:\Qt\Tools\CMake_64\bin\cmake.exe --regenerate-during-build -SE:\00_Work\ProjectMobius\UnrealFolder\ProjectMobius\Tools\QT_Apps\PlotUE_Data -BE:\00_Work\ProjectMobius\UnrealFolder\ProjectMobius\Tools\QT_Apps\PlotUE_Data\build\Desktop_Qt_6_9_0_MinGW_64_bit-release
+  command = C:\Qt\Tools\CMake_64\bin\cmake.exe --regenerate-during-build -SC:\Users\User_VR4\Desktop\WORK\Mobius\ProjectMobius\UnrealFolder\ProjectMobius\Tools\QT_Apps\PlotUE_Data -BC:\Users\User_VR4\Desktop\WORK\Mobius\ProjectMobius\UnrealFolder\ProjectMobius\Tools\QT_Apps\PlotUE_Data\build\Desktop_Qt_6_9_0_MinGW_64_bit-release
   description = Re-running CMake...
   generator = 1
 
@@ -59,7 +59,7 @@ rule CLEAN_ADDITIONAL
 # Rule for cleaning all built files.
 
 rule CLEAN
-  command = C:\Qt\Tools\Ninja\ninja.exe $FILE_ARG -t clean $TARGETS
+  command = C:\ninja\ninja.exe $FILE_ARG -t clean $TARGETS
   description = Cleaning all built files...
 
 
@@ -67,6 +67,6 @@ rule CLEAN
 # Rule for printing all primary targets available.
 
 rule HELP
-  command = C:\Qt\Tools\Ninja\ninja.exe -t targets
+  command = C:\ninja\ninja.exe -t targets
   description = All primary targets available:
 

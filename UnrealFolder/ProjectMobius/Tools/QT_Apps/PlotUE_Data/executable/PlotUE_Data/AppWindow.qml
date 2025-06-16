@@ -136,7 +136,7 @@ Window {
             LineSeries    { id: lineSeries;    color: "red"   }
             ScatterSeries {
                 id: scatterSeries
-                pointDelegate: ScatterSeriesHoverItem {
+                pointDelegate: GraphHoverItem {
 
                 }
             }

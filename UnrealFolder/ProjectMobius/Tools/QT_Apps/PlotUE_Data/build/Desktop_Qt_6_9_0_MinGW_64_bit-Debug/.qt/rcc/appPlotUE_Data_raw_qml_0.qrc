@@ -1,9 +1,0 @@
-<RCC>
-  <qresource prefix="/qt/qml/PlotUE_Data/">
-    <file alias="AppWindow.qml">C:/Users/User_VR4/Desktop/WORK/QT/PlotUE_Data/AppWindow.qml</file>
-    <file alias="ScatterSeriesHoverItem.qml">C:/Users/User_VR4/Desktop/WORK/QT/PlotUE_Data/ScatterSeriesHoverItem.qml</file>
-    <file alias="Shaders/PlaybarShaderEffect.frag">C:/Users/User_VR4/Desktop/WORK/QT/PlotUE_Data/Shaders/PlaybarShaderEffect.frag</file>
-    <file alias="Shaders/PlaybarShaderEffect.frag.qsb">C:/Users/User_VR4/Desktop/WORK/QT/PlotUE_Data/Shaders/PlaybarShaderEffect.frag.qsb</file>
-  </qresource>
-</RCC>
-

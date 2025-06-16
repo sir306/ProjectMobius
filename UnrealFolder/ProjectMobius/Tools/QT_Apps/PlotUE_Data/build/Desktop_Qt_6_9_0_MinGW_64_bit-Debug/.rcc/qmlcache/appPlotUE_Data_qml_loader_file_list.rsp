@@ -1,6 +1,0 @@
---resource
-C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/.qt/rcc/qmake_PlotUE_Data.qrc
---resource
-C:/Users/User_VR4/Desktop/WORK/ProjectMobius/ProjectMobius/UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/.qt/rcc/appPlotUE_Data_raw_qml_0.qrc
-/qt/qml/PlotUE_Data/AppWindow.qml
-/qt/qml/PlotUE_Data/ScatterSeriesHoverItem.qml
