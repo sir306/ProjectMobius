@@ -523,25 +523,25 @@ void UDynamicPixelRenderingTexture::UpdateTextureRender() const
 
 void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 {
+#if WITH_EDITOR
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur work start");
+#endif
+	
 	// Check if the blur is required
 	if (bIsBlurRequired)		
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur mat creation");
+
 		// point Mat at your pixel buffer
 		cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get()).copyTo(SrcMat);
 
 		// upload and blur on the GPU
 		SrcMat.copyTo(UBlurMat);
-		
-		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur blur");
 		cv::GaussianBlur(UBlurMat, UBlurMat, cv::Size(29,29), 0, 0);
 
 		// write back into the same host memory
-		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur umat to mat");
 		UBlurMat.copyTo(SrcMat);
-		
-		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur src to buffer");
+
+		// Copy the blurred image back to the pixel buffer
 		FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
 	}
 	
