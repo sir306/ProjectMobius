@@ -94,6 +94,9 @@ void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHei
 
 	CVSize = cv::Size(TextureDimensionY, TextureDimensionX);
 
+	SrcMat.create(CVSize, CV_8UC4);
+	UBlurMat.create(CVSize, CV_8UC4);
+
 	//TODO: add extra parameters for mip settings, compression settings, and srgb settings to give more control
 	// Create a new texture
 	//DynamicTexture = UTexture2D::CreateTransient(TextureDimensionX, TextureDimensionY, PF_R8G8B8A8);
@@ -523,45 +526,23 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur work start");
 	// Check if the blur is required
 	if (bIsBlurRequired)		
-	{		
+	{
 		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur mat creation");
-		// Convert the pixel buffer to a cv::Mat
-		cv::Mat src = cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get());
+		// point Mat at your pixel buffer
+		cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get()).copyTo(SrcMat);
+
+		// upload and blur on the GPU
+		SrcMat.copyTo(UBlurMat);
 		
-		// Create a UMat object to store and create a blurred image, this is a GPU accelerated version of the Mat object
-		cv::UMat umat;
 		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur blur");
-		//GaussianBlur(src, umat, cv::Size(29, 29), 4.7, 4.7); //TODO need to test on lower spec devices to see if this method needs more work
-		GaussianBlur(src, umat, cv::Size(29, 29), 0,0); //TODO need to test on lower spec devices to see if this method needs more work
-		
+		cv::GaussianBlur(UBlurMat, UBlurMat, cv::Size(29,29), 0, 0);
+
+		// write back into the same host memory
 		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur umat to mat");
-		// get the data from the umat
-		umat.copyTo(src);
+		UBlurMat.copyTo(SrcMat);
 		
 		TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur src to buffer");
-		// Copy blurred image back to the pixel buffer
-		//FMemory::ParallelMemcpy(UpdateBuffer.Get(), src.data, TextureDimensionX * TextureDimensionY * BYTES_PER_PIXEL);
-		//FMemory::ParallelMemcpy(PixelBuffer.Get(), umat.getMat(cv::ACCESS_FAST).data, TextureDimensionX * TextureDimensionY * BYTES_PER_PIXEL);
-		FMemory::ParallelMemcpy(PixelBuffer.Get(), src.data, BufferSize);
-
-		//TODO: Quick test below shows this is slower than above could either be improved quickly?
-		// cv::UMat srcU, blurredU;
-		// {
-		// 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Mat to UMat");
-		// 	cv::Mat src = cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get());
-		// 	src.copyTo(srcU); // Upload data to UMat
-		// }
-		//
-		// {
-		// 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur blur");
-		// 	GaussianBlur(srcU, blurredU, cv::Size(29, 29), 0, 0);
-		// }
-		//
-		// {
-		// 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("UMat to buffer");
-		// 	cv::Mat blurredM = blurredU.getMat(cv::ACCESS_READ); // Access blurred result
-		// 	FMemory::ParallelMemcpy(PixelBuffer.Get(), blurredM.data, TextureDimensionX * TextureDimensionY * BYTES_PER_PIXEL);
-		// }
+		FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
 	}
 	
 }

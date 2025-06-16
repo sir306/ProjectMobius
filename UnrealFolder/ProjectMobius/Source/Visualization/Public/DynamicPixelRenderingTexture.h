@@ -334,6 +334,10 @@ private:
 	/**TODO comments CV size used for creating CV mat and not recreating */
 	cv::Size CVSize;
 
+	cv::Mat  SrcMat;
+	
+	cv::UMat UBlurMat;
+
 
 	/** Struct used to specify the texture region being updated */
 	TUniquePtr<FUpdateTextureRegion2D> UpdateTextureRegion;
