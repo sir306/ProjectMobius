@@ -303,8 +303,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|CircleSize")
 	float CircleSize = 101.73591f; // this may need to be a double for more precision
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|Blur")
-	bool bIsBlurRequired = false;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|Blur")
+       bool bIsBlurRequired = false;
+
+       /** Threshold for triggering blur when the red channel exceeds this value */
+       UPROPERTY(EditAnywhere, Category = "DynamicPixelRenderingTexture|Properties|Blur")
+       float BlurTriggerThreshold = 0.1419f;
 
 	/** The colour vision deficiency - by default it is set to normal */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|ColourDeficiency")
