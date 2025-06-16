@@ -6,7 +6,7 @@
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include "../../../../ChartTableModel.h"
+#include "../../../ChartTableModel.h"
 #include <QtCore/qmetatype.h>
 #include <QtCore/QList>
 

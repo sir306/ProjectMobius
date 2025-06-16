@@ -6,7 +6,7 @@
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include "../../../../WebSocketManager.h"
+#include "../../../WebSocketManager.h"
 #include <QtCore/qmetatype.h>
 
 #include <QtCore/qtmochelpers.h>

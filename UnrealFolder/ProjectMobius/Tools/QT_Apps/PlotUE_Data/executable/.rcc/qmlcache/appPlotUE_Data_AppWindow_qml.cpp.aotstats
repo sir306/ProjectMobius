@@ -6,7 +6,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 12,
-                        "durationMicroseconds": 9573,
+                        "durationMicroseconds": 417,
                         "errorMessage": "",
                         "functionName": "flags",
                         "line": 12
@@ -14,7 +14,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 24,
-                        "durationMicroseconds": 110,
+                        "durationMicroseconds": 74,
                         "errorMessage": "",
                         "functionName": "top",
                         "line": 19
@@ -22,7 +22,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 42,
-                        "durationMicroseconds": 61,
+                        "durationMicroseconds": 51,
                         "errorMessage": "",
                         "functionName": "left",
                         "line": 19
@@ -30,7 +30,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 62,
-                        "durationMicroseconds": 66,
+                        "durationMicroseconds": 42,
                         "errorMessage": "",
                         "functionName": "right",
                         "line": 19
@@ -38,7 +38,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 19,
-                        "durationMicroseconds": 201,
+                        "durationMicroseconds": 184,
                         "errorMessage": "Cannot access value for name wsMgr",
                         "functionName": "text",
                         "line": 25
@@ -46,7 +46,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 20,
-                        "durationMicroseconds": 181,
+                        "durationMicroseconds": 134,
                         "errorMessage": "Cannot access value for name wsMgr",
                         "functionName": "color",
                         "line": 27
@@ -54,7 +54,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 34,
-                        "durationMicroseconds": 55,
+                        "durationMicroseconds": 40,
                         "errorMessage": "",
                         "functionName": "horizontalAlignment",
                         "line": 28
@@ -62,7 +62,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 39,
-                        "durationMicroseconds": 67,
+                        "durationMicroseconds": 43,
                         "errorMessage": "",
                         "functionName": "horizontalCenter",
                         "line": 29
@@ -94,7 +94,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 39,
-                        "durationMicroseconds": 74,
+                        "durationMicroseconds": 45,
                         "errorMessage": "",
                         "functionName": "horizontalCenter",
                         "line": 53
@@ -102,7 +102,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 24,
-                        "durationMicroseconds": 163,
+                        "durationMicroseconds": 127,
                         "errorMessage": "Cannot access value for name wsMgr",
                         "functionName": "color",
                         "line": 59
@@ -110,7 +110,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 27,
-                        "durationMicroseconds": 38,
+                        "durationMicroseconds": 37,
                         "errorMessage": "",
                         "functionName": "wrapMode",
                         "line": 61
@@ -118,7 +118,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 38,
-                        "durationMicroseconds": 46,
+                        "durationMicroseconds": 28,
                         "errorMessage": "",
                         "functionName": "horizontalAlignment",
                         "line": 62
@@ -126,7 +126,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 29,
-                        "durationMicroseconds": 31,
+                        "durationMicroseconds": 29,
                         "errorMessage": "",
                         "functionName": "renderType",
                         "line": 63
@@ -134,7 +134,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 23,
-                        "durationMicroseconds": 176,
+                        "durationMicroseconds": 158,
                         "errorMessage": "Cannot access value for name chartSettings",
                         "functionName": "text",
                         "line": 73
@@ -142,7 +142,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 27,
-                        "durationMicroseconds": 46,
+                        "durationMicroseconds": 31,
                         "errorMessage": "",
                         "functionName": "wrapMode",
                         "line": 74
@@ -150,7 +150,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 29,
-                        "durationMicroseconds": 31,
+                        "durationMicroseconds": 33,
                         "errorMessage": "",
                         "functionName": "renderType",
                         "line": 75
@@ -158,7 +158,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 50,
+                        "durationMicroseconds": 51,
                         "errorMessage": "",
                         "functionName": "top",
                         "line": 104
@@ -166,7 +166,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 56,
+                        "durationMicroseconds": 45,
                         "errorMessage": "",
                         "functionName": "left",
                         "line": 105
@@ -174,7 +174,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 38,
+                        "durationMicroseconds": 40,
                         "errorMessage": "",
                         "functionName": "right",
                         "line": 106
@@ -182,7 +182,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 49,
+                        "durationMicroseconds": 38,
                         "errorMessage": "",
                         "functionName": "bottom",
                         "line": 107
@@ -190,7 +190,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 27,
-                        "durationMicroseconds": 31,
+                        "durationMicroseconds": 22,
                         "errorMessage": "",
                         "functionName": "fill",
                         "line": 115
@@ -198,7 +198,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 22,
-                        "durationMicroseconds": 84,
+                        "durationMicroseconds": 68,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "min",
                         "line": 119
@@ -206,7 +206,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 22,
-                        "durationMicroseconds": 57,
+                        "durationMicroseconds": 54,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "max",
                         "line": 120
@@ -214,7 +214,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 28,
-                        "durationMicroseconds": 52,
+                        "durationMicroseconds": 48,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "titleText",
                         "line": 123
@@ -222,7 +222,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 30,
-                        "durationMicroseconds": 58,
+                        "durationMicroseconds": 47,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "gridVisible",
                         "line": 124
@@ -230,7 +230,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 22,
-                        "durationMicroseconds": 56,
+                        "durationMicroseconds": 47,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "min",
                         "line": 128
@@ -238,7 +238,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 22,
-                        "durationMicroseconds": 61,
+                        "durationMicroseconds": 44,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "max",
                         "line": 129
@@ -246,7 +246,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 28,
-                        "durationMicroseconds": 51,
+                        "durationMicroseconds": 45,
                         "errorMessage": "Cannot access value for name axisSettings",
                         "functionName": "titleText",
                         "line": 132
@@ -262,7 +262,7 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 36,
-                        "durationMicroseconds": 41,
+                        "durationMicroseconds": 30,
                         "errorMessage": "Cannot access value for name chartModel",
                         "functionName": "model",
                         "line": 144
@@ -286,7 +286,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 56,
-                        "durationMicroseconds": 31,
+                        "durationMicroseconds": 33,
                         "errorMessage": "",
                         "functionName": "series",
                         "line": 145
@@ -294,7 +294,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 29,
+                        "durationMicroseconds": 28,
                         "errorMessage": "",
                         "functionName": "target",
                         "line": 148
@@ -310,7 +310,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 29,
+                        "durationMicroseconds": 27,
                         "errorMessage": "",
                         "functionName": "target",
                         "line": 158
@@ -334,7 +334,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 21,
-                        "durationMicroseconds": 56,
+                        "durationMicroseconds": 53,
                         "errorMessage": "",
                         "functionName": "height",
                         "line": 225
@@ -342,7 +342,7 @@
                     {
                         "codegenSuccessfull": true,
                         "column": 16,
-                        "durationMicroseconds": 150,
+                        "durationMicroseconds": 43,
                         "errorMessage": "",
                         "functionName": "y",
                         "line": 226
@@ -350,13 +350,13 @@
                     {
                         "codegenSuccessfull": false,
                         "column": 16,
-                        "durationMicroseconds": 137,
+                        "durationMicroseconds": 111,
                         "errorMessage": "Cannot access value for name chartSettings",
                         "functionName": "x",
                         "line": 228
                     }
                 ],
-                "filepath": "E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AppWindow.qml"
+                "filepath": "C:/Users/User_VR4/Desktop/WORK/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/AppWindow.qml"
             }
         ],
         "moduleId": "PlotUE_Data(appPlotUE_Data)"

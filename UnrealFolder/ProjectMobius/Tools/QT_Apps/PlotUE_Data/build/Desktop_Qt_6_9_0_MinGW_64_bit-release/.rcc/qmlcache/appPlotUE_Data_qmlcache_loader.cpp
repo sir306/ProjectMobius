@@ -12,7 +12,7 @@ namespace _qt_qml_PlotUE_Data_AppWindow_qml {
         reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
     };
 }
-namespace _qt_qml_PlotUE_Data_ScatterSeriesHoverItem_qml { 
+namespace _qt_qml_PlotUE_Data_GraphHoverItem_qml { 
     extern const unsigned char qmlData[];
     extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
     const QQmlPrivate::CachedQmlUnit unit = {
@@ -34,7 +34,7 @@ Q_GLOBAL_STATIC(Registry, unitRegistry)
 
 Registry::Registry() {
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/PlotUE_Data/AppWindow.qml"), &QmlCacheGeneratedCode::_qt_qml_PlotUE_Data_AppWindow_qml::unit);
-    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/PlotUE_Data/ScatterSeriesHoverItem.qml"), &QmlCacheGeneratedCode::_qt_qml_PlotUE_Data_ScatterSeriesHoverItem_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/PlotUE_Data/GraphHoverItem.qml"), &QmlCacheGeneratedCode::_qt_qml_PlotUE_Data_GraphHoverItem_qml::unit);
     QQmlPrivate::RegisterQmlUnitCacheHook registration;
     registration.structVersion = 0;
     registration.lookupCachedQmlUnit = &lookupCachedUnit;
