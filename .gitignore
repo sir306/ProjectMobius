@@ -210,3 +210,4 @@ yarn-error.log*
 GeosJSON/
 UnrealFolder/ProjectMobius/source/MobiusCore/ThirdParty/GeosJSON/*
 UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
+*.user
