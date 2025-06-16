@@ -74,8 +74,9 @@ FORCEINLINE static uint8 AddSaturated(uint8 A, uint8 B)
 #define LOS_F_COLOR FLinearColor(1.0f, 0.0f, 0.0f, 1.0f)
 
 UDynamicPixelRenderingTexture::UDynamicPixelRenderingTexture(const FObjectInitializer& ObjectInitializer):
+	DynamicTexture(nullptr),
 	TextureDimensionX(0),
-	TextureDimensionY(0)
+	TextureDimensionY(0), DefaultColor(), BufferSize(0)
 {
 }
 
