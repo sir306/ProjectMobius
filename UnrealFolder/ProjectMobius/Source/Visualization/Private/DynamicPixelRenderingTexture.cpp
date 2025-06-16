@@ -761,7 +761,7 @@ void UDynamicPixelRenderingTexture::SaveDynamicTextureToPNG(const FString& FileN
 	UE_LOG(LogTemp, Log, TEXT("Saved dynamic texture to %s"), *FullPath);
 }
 
-void UDynamicPixelRenderingTexture::SetPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor)
+FORCEINLINE void UDynamicPixelRenderingTexture::SetPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor)
 {
 	// Pixel Colors are stored as BGRA (Blue, Green, Red, Alpha) not RGBA
 
@@ -773,7 +773,7 @@ void UDynamicPixelRenderingTexture::SetPixelColor_Internal(uint8*& PixelPtr, FLi
 	
 }
 
-void UDynamicPixelRenderingTexture::AddPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor)
+FORCEINLINE void UDynamicPixelRenderingTexture::AddPixelColor_Internal(uint8*& PixelPtr, FLinearColor NewColor)
 {
 	// Pixel Colors are stored as BGRA (Blue, Green, Red, Alpha) not RGBA
 
@@ -784,13 +784,13 @@ void UDynamicPixelRenderingTexture::AddPixelColor_Internal(uint8*& PixelPtr, FLi
 	*(PixelPtr + 3) = FMath::Clamp(COLOR_TO_BYTE(NewColor.A), 0, 255); // alpha is not cumulative
 }
 
-uint8* UDynamicPixelRenderingTexture::GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const
+FORCEINLINE uint8* UDynamicPixelRenderingTexture::GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const
 {
 	// Calculate the ptr address
 	return (PixelBuffer.Get() + (X_Coordinate + Y_Coordinate * TextureDimensionX) * BYTES_PER_PIXEL);
 }
 
-uint8* UDynamicPixelRenderingTexture::GetPixelPtr(const TUniquePtr<uint8[]>& BufferToGetPtr, int32 X_Coordinate, int32 Y_Coordinate) const
+FORCEINLINE uint8* UDynamicPixelRenderingTexture::GetPixelPtr(const TUniquePtr<uint8[]>& BufferToGetPtr, int32 X_Coordinate, int32 Y_Coordinate) const
 {
 	// Calculate the ptr address
 	return (BufferToGetPtr.Get() + (X_Coordinate + Y_Coordinate * TextureDimensionX) * BYTES_PER_PIXEL);
