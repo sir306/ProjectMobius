@@ -217,115 +217,18 @@ void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
         return;
     }
 
-    // ——— 2) Parse into polygons (outer + holes) ————————————————————————————————————————
-    TArray<FPolygonWithHoles> Polygons;
-    if (!ParseGeometryCollectionWkt(RawWkt, Polygons, ErrorMessage) || Polygons.Num() == 0)
+    // ——— 2) Parse geometry ————————————————————————————————
+    FWktGeometry Root;
+    if (!ParseWKTData(RawWkt, Root, ErrorMessage))
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to parse WKT: %s"), *ErrorMessage);
         return;
     }
 
-    // Merge all into one outer ring + all hole rings
-    FPolygonWithHoles Combined = MoveTemp(Polygons[0]);
-    for (int32 i = 1; i < Polygons.Num(); ++i)
-    {
-        Combined.Holes.Add(MoveTemp(Polygons[i].Outer));
-        for (auto& inner : Polygons[i].Holes)
-            Combined.Holes.Add(MoveTemp(inner));
-    }
-
-    // ——— 3) Build rings for Earcut ————————————————————————————————————————————————
-    std::vector<std::vector<Coord>> Rings;
-    Rings.reserve(1 + Combined.Holes.Num());
-
-    // outer ring
-    Rings.emplace_back();
-    for (auto& P : Combined.Outer)
-        Rings[0].push_back({ double(P.X), double(P.Y) });
-
-    // hole rings
-    for (auto& Hole : Combined.Holes)
-    {
-        Rings.emplace_back();
-        for (auto& P : Hole)
-            Rings.back().push_back({ double(P.X), double(P.Y) });
-    }
-
-    // ——— 4) Triangulate floor ——————————————————————————————————————————————————————
-    std::vector<size_t> Indices = mapbox::earcut<size_t>(Rings);
-
-    // ——— 5) Emit OBJ: floor + walls ——————————————————————————————————————————————
+    // ——— 3) Generate OBJ from geometry hierarchy ——————————————————————————
     WktDataString.Empty();
-
-    // 5a) Bottom vertices at Z = 0
-    int32 TotalBaseVerts = 0;
-    for (auto& ring : Rings)
-    {
-        for (auto& c : ring)
-        {
-            WktDataString += FString::Printf(
-                TEXT("v %f %f 0.0\n"),
-                float(c[0] * 100.0),
-                float(c[1] * 100.0)
-            );
-            ++TotalBaseVerts;
-        }
-    }
-
-    // 5b) Floor faces (double-sided)
-    for (size_t i = 0; i + 2 < Indices.size(); i += 3)
-    {
-        int32 A = int32(Indices[i]   + 1);
-        int32 B = int32(Indices[i+1] + 1);
-        int32 C = int32(Indices[i+2] + 1);
-
-        // upward-facing
-        WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, B, C);
-        // downward-facing (reverse winding)
-        WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A, C, B);
-    }
-
-    // ——— 6) Extrude walls up 1 m (100 cm) ————————————————————————————————————————
-    const float Height = 100.0f;
-    int32 VertexOffsetTop = TotalBaseVerts;
-    int32 Offset = 0;
-
-    // 6a) Top vertices at Z = Height
-    for (auto& ring : Rings)
-    {
-        for (auto& c : ring)
-        {
-            WktDataString += FString::Printf(
-                TEXT("v %f %f %f\n"),
-                float(c[0] * 100.0),
-                float(c[1] * 100.0),
-                Height
-            );
-        }
-    }
-
-    // 6b) Wall faces (double-sided quads)
-    for (auto& ring : Rings)
-    {
-        int32 N = int32(ring.size());
-        for (int32 i = 0; i < N; ++i)
-        {
-            int32 A    = Offset + i;
-            int32 B    = Offset + ((i + 1) % N);
-            int32 ATop = VertexOffsetTop + Offset + i;
-            int32 BTop = VertexOffsetTop + Offset + ((i + 1) % N);
-
-            // outward‐facing
-            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A+1, B+1, BTop+1);
-            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), A+1, BTop+1, ATop+1);
-            // inward‐facing
-            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), BTop+1, B+1, A+1);
-            WktDataString += FString::Printf(TEXT("f %d %d %d\n"), ATop+1, BTop+1, A+1);
-        }
-        Offset += N;
-    }
-
-    // Now hand WktDataString off to ProcessMeshFromString()/Assimp…
+    int32 VertexOffset = 0;
+    BuildObjFromWKTGeometry(Root, WktDataString, VertexOffset);
 }
 
 bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& OutWKTData, FString& OutErrorMessage)
@@ -351,73 +254,187 @@ bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& Ou
 	return false;
 }
 
-TArray<FVector2D> FAssimpMeshLoaderRunnable::ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage)
+static void SplitAtTopLevel(const FString& Src, TArray<FString>& OutTokens)
 {
-	FString CleanWKT = InWKTDataString;
-	CleanWKT.TrimStartAndEndInline();
-	CleanWKT = CleanWKT.Replace(TEXT("\r"), TEXT("")).Replace(TEXT("\n"), TEXT(""));
+        int32 Depth = 0;
+        int32 Start = 0;
+        for (int32 i = 0; i < Src.Len(); ++i)
+        {
+                TCHAR C = Src[i];
+                if (C == '(')
+                {
+                        ++Depth;
+                }
+                else if (C == ')')
+                {
+                        --Depth;
+                }
+                else if (C == ',' && Depth == 0)
+                {
+                        OutTokens.Add(Src.Mid(Start, i - Start));
+                        Start = i + 1;
+                }
+        }
+        if (Start < Src.Len())
+        {
+                OutTokens.Add(Src.Mid(Start));
+        }
+}
 
-	FString Prefix;
-	FString CoordBlock;
+static void ParsePointList(const FString& Src, TArray<FVector2D>& OutPoints)
+{
+        TArray<FString> Pairs;
+        SplitAtTopLevel(Src, Pairs);
+        for (FString Pair : Pairs)
+        {
+                Pair.ReplaceInline(TEXT("("), TEXT(""));
+                Pair.ReplaceInline(TEXT(")"), TEXT(""));
+                Pair.TrimStartAndEndInline();
+                TArray<FString> XY;
+                Pair.ParseIntoArray(XY, TEXT(" "), true);
+                if (XY.Num() >= 2)
+                {
+                        OutPoints.Add(FVector2D(FCString::Atod(*XY[0]), FCString::Atod(*XY[1])));
+                }
+        }
+}
 
-	// Extract prefix and inner coordinates
-	int32 OpenParenIndex;
-	if (CleanWKT.FindChar('(', OpenParenIndex))
-	{
-		Prefix = CleanWKT.Left(OpenParenIndex).ToUpper().TrimStartAndEnd();
-		CoordBlock = CleanWKT.Mid(OpenParenIndex);
-		CoordBlock = CoordBlock.Replace(TEXT("("), TEXT("")).Replace(TEXT(")"), TEXT(""));
-	}
+static bool ParsePolygonString(const FString& Src, FPolygonWithHoles& OutPoly)
+{
+        FString Clean = Src;
+        Clean.TrimStartAndEndInline();
+        if (Clean.StartsWith(TEXT("(")) && Clean.EndsWith(TEXT(")")))
+        {
+                Clean = Clean.Mid(1, Clean.Len() - 2);
+        }
+        TArray<FString> Rings;
+        SplitAtTopLevel(Clean, Rings);
+        if (Rings.Num() == 0)
+        {
+                return false;
+        }
 
-	TArray<FVector2D> ParsedPoints;
+        for (int32 i = 0; i < Rings.Num(); ++i)
+        {
+                TArray<FVector2D> Points;
+                ParsePointList(Rings[i], Points);
+                if (Points.Num() < 3)
+                {
+                        continue;
+                }
+                if (i == 0)
+                {
+                        OutPoly.Outer = MoveTemp(Points);
+                }
+                else
+                {
+                        OutPoly.Holes.Add(MoveTemp(Points));
+                }
+        }
 
-	if (Prefix == TEXT("POINT"))
-	{
-		TArray<FString> XY;
-		CoordBlock.ParseIntoArray(XY, TEXT(" "), true);
-		if (XY.Num() == 2)
-		{
-			ParsedPoints.Add(FVector2D(FCString::Atof(*XY[0]), FCString::Atof(*XY[1])));
-		}
-	}
-	else if (Prefix == TEXT("LINESTRING") || Prefix == TEXT("POLYGON"))
-	{
-		if (Prefix == TEXT("POLYGON"))
-		{
-			// POLYGON can have nested parentheses
-			int32 InnerStart = CleanWKT.Find(TEXT("(("));
-			int32 InnerEnd = CleanWKT.Find(TEXT("))"));
-			if (InnerStart != INDEX_NONE && InnerEnd != INDEX_NONE)
-			{
-				CoordBlock = CleanWKT.Mid(InnerStart + 2, InnerEnd - InnerStart - 2);
-			}
-		}
+        return OutPoly.Outer.Num() >= 3;
+}
 
-		TArray<FString> Pairs;
-		CoordBlock.ParseIntoArray(Pairs, TEXT(","), true);
-		for (const FString& Pair : Pairs)
-		{
-			TArray<FString> XY;
-			Pair.TrimStartAndEnd().ParseIntoArray(XY, TEXT(" "), true);
-			if (XY.Num() == 2)
-			{
-				ParsedPoints.Add(FVector2D(FCString::Atof(*XY[0]), FCString::Atof(*XY[1])));
-			}
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Unsupported WKT type: %s"), *Prefix);
-		OutErrorMessage = FString::Printf(TEXT("Unsupported WKT type: %s"), *Prefix);
-	}
+bool FAssimpMeshLoaderRunnable::ParseWKTData(const FString& InWKTDataString, FWktGeometry& OutGeometry, FString& OutErrorMessage)
+{
+        FString CleanWKT = InWKTDataString;
+        CleanWKT.TrimStartAndEndInline();
+        CleanWKT.ReplaceInline(TEXT("\r"), TEXT(""));
+        CleanWKT.ReplaceInline(TEXT("\n"), TEXT(""));
 
-	return ParsedPoints;
+        int32 OpenParenIndex;
+        FString Prefix;
+        FString Inner;
+        if (CleanWKT.FindChar('(', OpenParenIndex))
+        {
+                Prefix = CleanWKT.Left(OpenParenIndex).ToUpper().TrimStartAndEnd();
+                Inner = CleanWKT.Mid(OpenParenIndex + 1, CleanWKT.Len() - OpenParenIndex - 2);
+        }
+        else
+        {
+                Prefix = CleanWKT.ToUpper();
+                Inner = TEXT("");
+        }
+
+        if (Prefix == TEXT("POINT"))
+        {
+                OutGeometry.Type = EWktGeometryType::Point;
+                ParsePointList(Inner, OutGeometry.Points);
+                return true;
+        }
+        else if (Prefix == TEXT("LINESTRING"))
+        {
+                OutGeometry.Type = EWktGeometryType::LineString;
+                ParsePointList(Inner, OutGeometry.Points);
+                return true;
+        }
+        else if (Prefix == TEXT("POLYGON"))
+        {
+                OutGeometry.Type = EWktGeometryType::Polygon;
+                FPolygonWithHoles Poly;
+                if (ParsePolygonString(Inner, Poly))
+                {
+                        OutGeometry.Polygons.Add(MoveTemp(Poly));
+                        return true;
+                }
+        }
+        else if (Prefix == TEXT("MULTIPOINT"))
+        {
+                OutGeometry.Type = EWktGeometryType::MultiPoint;
+                ParsePointList(Inner, OutGeometry.Points);
+                return true;
+        }
+        else if (Prefix == TEXT("MULTILINESTRING"))
+        {
+                OutGeometry.Type = EWktGeometryType::MultiLineString;
+                TArray<FString> Parts;
+                SplitAtTopLevel(Inner, Parts);
+                for (auto& Part : Parts)
+                {
+                        TArray<FVector2D> LS;
+                        ParsePointList(Part, LS);
+                        if (LS.Num() > 0)
+                                OutGeometry.LineStrings.Add(MoveTemp(LS));
+                }
+                return true;
+        }
+        else if (Prefix == TEXT("MULTIPOLYGON"))
+        {
+                OutGeometry.Type = EWktGeometryType::MultiPolygon;
+                TArray<FString> Parts;
+                SplitAtTopLevel(Inner, Parts);
+                for (auto& Part : Parts)
+                {
+                        FPolygonWithHoles Poly;
+                        if (ParsePolygonString(Part, Poly))
+                                OutGeometry.Polygons.Add(MoveTemp(Poly));
+                }
+                return OutGeometry.Polygons.Num() > 0;
+        }
+        else if (Prefix == TEXT("GEOMETRYCOLLECTION"))
+        {
+                OutGeometry.Type = EWktGeometryType::GeometryCollection;
+                TArray<FString> Parts;
+                SplitAtTopLevel(Inner, Parts);
+                for (auto& Part : Parts)
+                {
+                        FWktGeometry Child;
+                        if (ParseWKTData(Part, Child, OutErrorMessage))
+                        {
+                                OutGeometry.Children.Add(MoveTemp(Child));
+                        }
+                }
+                return OutGeometry.Children.Num() > 0;
+        }
+
+        OutErrorMessage = FString::Printf(TEXT("Unsupported WKT type: %s"), *Prefix);
+        return false;
 }
 
 bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(
-	const FString& WKTString,
-	TArray<FPolygonWithHoles>& OutPolygons,
-	FString& OutErrorMessage)
+        const FString& WKTString,
+        TArray<FPolygonWithHoles>& OutPolygons,
+        FString& OutErrorMessage)
 {
 	// --- 1) clean up
 	FString Clean = WKTString;
@@ -520,8 +537,126 @@ bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(
 		return false;
 	}
 
-	OutPolygons.Add(MoveTemp(poly));
-	return true;
+        OutPolygons.Add(MoveTemp(poly));
+        return true;
+}
+
+static void ExtrudePolygonObj(const FPolygonWithHoles& Poly, FString& OutObj, int32& VertexOffset)
+{
+        std::vector<std::vector<Coord>> Rings;
+        Rings.reserve(1 + Poly.Holes.Num());
+
+        Rings.emplace_back();
+        for (auto& P : Poly.Outer)
+                Rings[0].push_back({ double(P.X), double(P.Y) });
+
+        for (auto& Hole : Poly.Holes)
+        {
+                Rings.emplace_back();
+                for (auto& P : Hole)
+                        Rings.back().push_back({ double(P.X), double(P.Y) });
+        }
+
+        std::vector<size_t> Indices = mapbox::earcut<size_t>(Rings);
+
+        int32 BaseOffset = VertexOffset;
+        for (auto& ring : Rings)
+        {
+                for (auto& c : ring)
+                {
+                        OutObj += FString::Printf(TEXT("v %f %f 0.0\n"), float(c[0] * 100.0), float(c[1] * 100.0));
+                        ++VertexOffset;
+                }
+        }
+
+        for (size_t i = 0; i + 2 < Indices.size(); i += 3)
+        {
+                int32 A = BaseOffset + int32(Indices[i]);
+                int32 B = BaseOffset + int32(Indices[i+1]);
+                int32 C = BaseOffset + int32(Indices[i+2]);
+                OutObj += FString::Printf(TEXT("f %d %d %d\n"), A+1, B+1, C+1);
+                OutObj += FString::Printf(TEXT("f %d %d %d\n"), A+1, C+1, B+1);
+        }
+
+        int32 TopStart = VertexOffset;
+        const float Height = 100.0f;
+        for (auto& ring : Rings)
+        {
+                for (auto& c : ring)
+                {
+                        OutObj += FString::Printf(TEXT("v %f %f %f\n"), float(c[0] * 100.0), float(c[1] * 100.0), Height);
+                        ++VertexOffset;
+                }
+        }
+
+        int32 Offset = 0;
+        for (auto& ring : Rings)
+        {
+                int32 N = int32(ring.size());
+                for (int32 i = 0; i < N; ++i)
+                {
+                        int32 A    = BaseOffset + Offset + i;
+                        int32 B    = BaseOffset + Offset + ((i+1)%N);
+                        int32 ATop = TopStart + Offset + i;
+                        int32 BTop = TopStart + Offset + ((i+1)%N);
+
+                        OutObj += FString::Printf(TEXT("f %d %d %d\n"), A+1, B+1, BTop+1);
+                        OutObj += FString::Printf(TEXT("f %d %d %d\n"), A+1, BTop+1, ATop+1);
+                        OutObj += FString::Printf(TEXT("f %d %d %d\n"), BTop+1, B+1, A+1);
+                        OutObj += FString::Printf(TEXT("f %d %d %d\n"), ATop+1, BTop+1, A+1);
+                }
+                Offset += N;
+        }
+}
+
+void FAssimpMeshLoaderRunnable::BuildObjFromWKTGeometry(const FWktGeometry& Geometry, FString& OutObjString, int32& VertexOffset)
+{
+        switch (Geometry.Type)
+        {
+        case EWktGeometryType::Point:
+        case EWktGeometryType::MultiPoint:
+                for (const FVector2D& P : Geometry.Points)
+                {
+                        OutObjString += FString::Printf(TEXT("v %f %f 0.0\n"), P.X * 100.0f, P.Y * 100.0f);
+                        OutObjString += FString::Printf(TEXT("p %d\n"), VertexOffset + 1);
+                        ++VertexOffset;
+                }
+                break;
+        case EWktGeometryType::LineString:
+                if (Geometry.Points.Num() > 0)
+                {
+                        int32 Start = VertexOffset;
+                        for (auto& P : Geometry.Points)
+                        {
+                                OutObjString += FString::Printf(TEXT("v %f %f 0.0\n"), P.X*100.0f, P.Y*100.0f);
+                                ++VertexOffset;
+                        }
+                        OutObjString += TEXT("l");
+                        for (int32 i=0;i<Geometry.Points.Num();++i)
+                                OutObjString += FString::Printf(TEXT(" %d"), Start + i + 1);
+                        OutObjString += TEXT("\n");
+                }
+                break;
+        case EWktGeometryType::MultiLineString:
+                for (auto& LS : Geometry.LineStrings)
+                {
+                        FWktGeometry Tmp; Tmp.Type = EWktGeometryType::LineString; Tmp.Points = LS;
+                        BuildObjFromWKTGeometry(Tmp, OutObjString, VertexOffset);
+                }
+                break;
+        case EWktGeometryType::Polygon:
+                for (auto& P : Geometry.Polygons)
+                        ExtrudePolygonObj(P, OutObjString, VertexOffset);
+                break;
+        case EWktGeometryType::MultiPolygon:
+                for (auto& P : Geometry.Polygons)
+                        ExtrudePolygonObj(P, OutObjString, VertexOffset);
+                break;
+        case EWktGeometryType::GeometryCollection:
+                for (auto& Child : Geometry.Children)
+                        BuildObjFromWKTGeometry(Child, OutObjString, VertexOffset);
+                break;
+        }
 }
 
 

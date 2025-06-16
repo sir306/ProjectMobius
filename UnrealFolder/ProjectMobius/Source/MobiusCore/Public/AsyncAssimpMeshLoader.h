@@ -55,8 +55,30 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLoadMeshDataComplete);
 // this struct provides a way to remove holes from the outer polygon
 struct FPolygonWithHoles
 {
-	TArray<FVector2D> Outer;
-	TArray<TArray<FVector2D>> Holes;
+        TArray<FVector2D> Outer;
+        TArray<TArray<FVector2D>> Holes;
+};
+
+/** Supported geometry types when parsing WKT strings. */
+enum class EWktGeometryType : uint8
+{
+        Point,
+        LineString,
+        Polygon,
+        MultiPoint,
+        MultiLineString,
+        MultiPolygon,
+        GeometryCollection
+};
+
+/** Hierarchical representation of a parsed WKT geometry. */
+struct FWktGeometry
+{
+        EWktGeometryType Type = EWktGeometryType::Point;
+        TArray<FVector2D> Points;                       // Used by POINT/MULTIPOINT/LINESTRING
+        TArray<TArray<FVector2D>> LineStrings;          // MULTILINESTRING support
+        TArray<FPolygonWithHoles> Polygons;             // POLYGON / MULTIPOLYGON
+        TArray<FWktGeometry> Children;                  // GEOMETRYCOLLECTION
 };
 
 
@@ -142,7 +164,9 @@ protected:
 
 	bool LoadWKTFile(const FString& FilePath, FString& OutWKTData, FString& OutErrorMessage);
 
-	TArray<FVector2D> ParseWKTData(const FString& InWKTDataString, FString& OutErrorMessage);
+        bool ParseWKTData(const FString& InWKTDataString, FWktGeometry& OutGeometry, FString& OutErrorMessage);
+
+        void BuildObjFromWKTGeometry(const FWktGeometry& Geometry, FString& OutObjString, int32& VertexOffset);
 	
         bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<FPolygonWithHoles>& OutPolygons, FString& OutErrorMessage);
         //bool ParseGeometryCollectionWkt(const FString& WKTString, TArray<TArray<FVector2D>>& OutGeometries, FString& OutErrorMessage);
