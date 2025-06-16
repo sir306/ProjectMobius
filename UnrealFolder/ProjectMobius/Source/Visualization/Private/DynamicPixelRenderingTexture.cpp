@@ -156,30 +156,20 @@ void UDynamicPixelRenderingTexture::SetPixelColor(uint8*& PixelPtrToUpdate, FLin
 
 void UDynamicPixelRenderingTexture::FillTexture(FLinearColor FillColor)
 {
-	// get the pixel buffer base ptr
-	uint8* PixelPtr = PixelBuffer.Get();
+        const uint32 PackedColor =
+                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.B), 0, 255))) |
+                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.G), 0, 255)) << 8) |
+                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.R), 0, 255)) << 16) |
+                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.A), 0, 255)) << 24);
 
-	// ParallelFor(TextureDimensionY * TextureDimensionX, [&](int32 i)
-	// {
-	// 	// set the pixel color
-	// 	SetPixelColor_Internal(PixelPtr, FillColor);
-	//
-	// 	// get the next pixel ptr
-	// 	PixelPtr += BYTES_PER_PIXEL;
-	//
-	// 	i++;
-	// });
-	//
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("FILL TEXTURE - IE CLEAR");
-	// loop over all pixels
-	for (int32 i = 0; i < TextureDimensionY * TextureDimensionX; i++)
-	{
-		// set the pixel color
-		SetPixelColor_Internal(PixelPtr, FillColor);
-	
-		// get the next pixel ptr
-		PixelPtr += BYTES_PER_PIXEL;
-	}
+        TRACE_CPUPROFILER_EVENT_SCOPE_STR("FILL TEXTURE - IE CLEAR");
+
+        uint32* BufferPtr = reinterpret_cast<uint32*>(PixelBuffer.Get());
+        const int32 NumPixels = TextureDimensionY * TextureDimensionX;
+        for (int32 i = 0; i < NumPixels; ++i)
+        {
+                BufferPtr[i] = PackedColor;
+        }
 }
 
 void UDynamicPixelRenderingTexture::DrawLine(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y,
