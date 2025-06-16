@@ -833,25 +833,52 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	// Generate the square cell size
 	FVector2D CellSize = GenerateSquareCellSize(NumTriangles, MeshSize);
 
-	ARuntimeMeshBuilder* MeshBuilder = nullptr;
-	// if in world get the runtime mesh builder so we can query the mesh for the triangles
-	if(World)
-	{
-		// get actors
-		TArray<AActor*> FoundActors;
-		UGameplayStatics::GetAllActorsOfClass(World, ARuntimeMeshBuilder::StaticClass(), FoundActors);
-	 
-		if(FoundActors.Num() >0)
-		{
-			// get the first actor
-			MeshBuilder = Cast<ARuntimeMeshBuilder>(FoundActors[0]);
-		}
-	}
+        ARuntimeMeshBuilder* MeshBuilder = nullptr;
+        // if in world get the runtime mesh builder so we can query the mesh for the triangles
+        if(World)
+        {
+                // get actors
+                TArray<AActor*> FoundActors;
+                UGameplayStatics::GetAllActorsOfClass(World, ARuntimeMeshBuilder::StaticClass(), FoundActors);
+
+                if(FoundActors.Num() >0)
+                {
+                        // get the first actor
+                        MeshBuilder = Cast<ARuntimeMeshBuilder>(FoundActors[0]);
+                }
+        }
+
+        // Validate data before spawning the threaded task
+        const bool bValidMeshBuilder = MeshBuilder != nullptr;
+        const bool bValidTriangles  = NumTriangles.X > 0 && NumTriangles.Y > 0;
+
+        if(!bValidMeshBuilder)
+        {
+                UE_LOG(LogTemp, Error, TEXT("GenerateMeshVerticesUVsAndTriangles: Invalid MeshBuilder"));
+        }
+
+        if(!bValidTriangles)
+        {
+                UE_LOG(LogTemp, Error, TEXT("GenerateMeshVerticesUVsAndTriangles: Invalid NumTriangles (%d, %d)"), NumTriangles.X, NumTriangles.Y);
+        }
+
+        if(!bValidMeshBuilder || !bValidTriangles)
+        {
+                // Early exit on invalid data
+                return;
+        }
+
+        if(MeshVertices.Num() > 0 || MeshUVs.Num() > 0)
+        {
+                UE_LOG(LogTemp, Warning, TEXT("GenerateMeshVerticesUVsAndTriangles: Clearing pre-existing mesh data"));
+                MeshVertices.Empty();
+                MeshUVs.Empty();
+        }
 
 	
-	Async(EAsyncExecution::ThreadPool, [this, NumTriangles, CellSize, MeshBuilder]()
-	      {
-		      //TODO: ADD A EMPTY AND NULL CHECKS
+        Async(EAsyncExecution::ThreadPool, [this, NumTriangles, CellSize, MeshBuilder]()
+              {
+                      // Input validation performed before dispatching this task
 		
 		      // Generate the quads to restrict the triangle generation to areas needed
 		      TArray<FBox3d> Quads = FindAllQuads(MeshBuilder);
