@@ -43,6 +43,12 @@
 #define BYTES_PER_PIXEL 4 // RGBA
 #define COLOR_TO_BYTE(color) (uint8)(color * 255) // linear color uses float values from 0 to 1, we need to convert to 0 to 255
 
+FORCEINLINE static uint8 AddSaturated(uint8 A, uint8 B)
+{
+        uint16 Sum = static_cast<uint16>(A) + static_cast<uint16>(B);
+        return Sum > 255 ? 255 : static_cast<uint8>(Sum);
+}
+
 // Level of Service Bands - in 0 to 1 format
 // convert m^2/pedestrian to pedestrians/m^2 to create a density value
 // To normalize the R band values we have to take Density and divide it by the density max value of 2.1739
@@ -768,10 +774,10 @@ FORCEINLINE void UDynamicPixelRenderingTexture::AddPixelColor_Internal(uint8*& P
 	// Pixel Colors are stored as BGRA (Blue, Green, Red, Alpha) not RGBA
 
 	// add the pixel color
-	*PixelPtr = FMath::Clamp(*PixelPtr + COLOR_TO_BYTE(NewColor.B), 0, 255);
-	*(PixelPtr + 1) = FMath::Clamp(*(PixelPtr + 1) + COLOR_TO_BYTE(NewColor.G), 0, 255);
-	*(PixelPtr + 2) = FMath::Clamp(*(PixelPtr + 2) + COLOR_TO_BYTE(NewColor.R), 0, 255);
-	*(PixelPtr + 3) = FMath::Clamp(COLOR_TO_BYTE(NewColor.A), 0, 255); // alpha is not cumulative
+       *PixelPtr = AddSaturated(*PixelPtr, COLOR_TO_BYTE(NewColor.B));
+       *(PixelPtr + 1) = AddSaturated(*(PixelPtr + 1), COLOR_TO_BYTE(NewColor.G));
+       *(PixelPtr + 2) = AddSaturated(*(PixelPtr + 2), COLOR_TO_BYTE(NewColor.R));
+       *(PixelPtr + 3) = AddSaturated(0, COLOR_TO_BYTE(NewColor.A)); // alpha is not cumulative
 }
 
 FORCEINLINE uint8* UDynamicPixelRenderingTexture::GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const
