@@ -79,160 +79,24 @@ void UAgentHeatmapProcessor::ConfigureQueries()
 
 void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-	// if the time dilation subsystem is not valid attempt to get it
-	if(TimeDilationSubSystem == nullptr)
-	{
-		TimeDilationSubSystem = ExecutionContext.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
+        if (!EnsureTimeSubsystem(ExecutionContext))
+        {
+                return;
+        }
 
-		// in case the subsystem is not valid return and try again next tick
-		if(TimeDilationSubSystem == nullptr)
-		{
-			return;
-		}
-	}
-	
-	
-	//TODO: too many checks needs to be optimized
-	// Get the time dilation subsystem and check current time step
-	if(CurrentTimeStep != TimeDilationSubSystem->CurrentTimeStep) // this works by adding this to a processor requirement instead of the entity query
-	{
-		CurrentTimeStep = TimeDilationSubSystem->CurrentTimeStep;
-		bIsPaused = TimeDilationSubSystem->bIsPaused;
-	}
-	// check that the pause state not changed this way if the time step hasn't changed but is about to we need to get animations moving again
-	else if(bIsPaused != TimeDilationSubSystem->bIsPaused)
-	{
-		bIsPaused = TimeDilationSubSystem->bIsPaused;
-	}
-	else
-	{
-		//return;
-	}
+        UpdateTimeStepAndPause();
 
-	// clear the heatmap locations array but maintain memory allocation size
-	HeatmapLocations.Reset();
-	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context) {
+        HeatmapLocations.Reset();
 
-		
-		// Check if we are in world and registered the properties -- we use a bool so we only check once and not every variable each time
-		if(!bRegisteredProperties)
-		{
-			RegisterProperties(Context);
+        EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+        {
+                ProcessChunk(Context);
+        }));
 
-			// we check again because we need to make sure we have the properties before we continue and in world 
-			if(!bRegisteredProperties)
-			{
-				return;
-			}
-		}
+        ApplyHeatmapUpdates();
 
-		
-		// if the number of active heatmaps changes then we need to update the heatmap count and set the last pause loop to false
-		if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
-		{
-			ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
-			bLastPauseLoop = false; // reset the last pause loop so we can update the heatmaps
-		}
-
-		// if we swap data the last time needs to be updated
-		// if (TimeDilationSubSystem->GetCurrentSimTime() == 0.0f)
-		// {
-		// 	LastUpdatedCurrentTime = 0.0f;
-		// }
-		if (TimeDilationSubSystem->GetCurrentSimTime() < LastUpdatedCurrentTime)
-		{
-			LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
-			bUpdateHeatmap = true;
-		}
-
-		// if time is the same then no heatmap update is needed
-		// TODO: this is a TEMP fix by limiting the heatmap update to no more than 0.1 seconds between updates
-		else if (LastUpdatedCurrentTime != TimeDilationSubSystem->GetCurrentSimTime() || LastUpdatedCurrentTime == 0.0f)// if 0 then this is first run
-		{
-			float TimeDifference = TimeDilationSubSystem->GetCurrentSimTime() - LastUpdatedCurrentTime;
-			if(TimeDifference < 0.1f && LastUpdatedCurrentTime != 0.0f)
-			{
-				bUpdateHeatmap = false;
-			}
-			else
-			{
-				bUpdateHeatmap = true;
-				LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
-			}
-		
-		}
-		// Get the entity info fragment
-		const TArrayView<FEntityInfoFragment>& EntityInfoFragment = Context.GetMutableFragmentView<FEntityInfoFragment>();
-		
-
-		// TODO: need to not empty the locations for every loop as this is causing things to reset before they are sent to the heatmap
-		// TODO: need to sort a better way to memory manage the heatmap locations -> we know max agents so implement memory management for this
-		
-		// // Clear the heatmap locations array
-		// HeatmapLocations.Empty();
-		//
-		// // Size the heatmap locations array to the number of entities
-		// HeatmapLocations.Reserve(EntityInfoFragment.Num());
-
-		/* TODO
-		 * this for loop is not great on performance it accounts for 15 -20ms  and is causing hitches in the framerate
-		 * 
-		 * main problem is the logic on this loop needs adjusting to not be so heavy on the cpu and be thread safe
-		 * current variables and methods are not thread safe 
-		 *
-		 * another big problem is the ism components -> the issue is the update instance transform can only happen on main thread
-		 * 
-		*/
-		
-		for(FEntityInfoFragment& EntityInfoFrag : EntityInfoFragment)
-		{
-			//HeatmapSubsystem->UpdateHeatmaps(EntityInfo.CurrentLocatiodn);
-		
-			// if the agent render is false and already ready to destroy we dont need to update the instance
-			if(!EntityInfoFrag.bRenderAgent && EntityInfoFrag.bReadyToDestroy) 
-			{
-				continue;
-			}
-					
-			// as the above checks the render state we don't need to check if the instance is valid
-			HeatmapLocations.Add(EntityInfoFrag.CurrentLocation);
-		}
-		
-		
-	}));
-
-
-	// TODO: this causes 4-5ms overhead likely due to parts being non async
-
-	
-	
-	// are there any locations to update the heatmap with
-	if(!HeatmapLocations.IsEmpty())
-	{
-		// update if in valid time interval
-		if (bUpdateHeatmap && !bLastPauseLoop)
-		{
-			HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
-		}
-		
-		// if we don't have heatmaps then don't perform update logic
-		if (!HeatmapSubsystem->AnyHeatmapsActive())
-		{
-			// ensure that the last pause loop is false so when heatmaps are active again they will update
-			bLastPauseLoop = false;
-			HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
-		}
-	}
-	else
-	{
-		HeatmapSubsystem->ClearEmptyHeatmaps();//clear live tracking heatmaps
-	}
-
-	// update the pause state
-	bLastPauseLoop = bIsPaused;
+        bLastPauseLoop = bIsPaused;
 }
-
 void UAgentHeatmapProcessor::RegisterProperties(FMassExecutionContext& Context)
 {
 	// Check if we are in world
@@ -255,4 +119,98 @@ void UAgentHeatmapProcessor::RegisterProperties(FMassExecutionContext& Context)
 
 	// set the properties to registered
 	bRegisteredProperties = true;
+}
+bool UAgentHeatmapProcessor::EnsureTimeSubsystem(FMassExecutionContext& Context)
+{
+        if (TimeDilationSubSystem == nullptr)
+        {
+                TimeDilationSubSystem = Context.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
+        }
+        return TimeDilationSubSystem != nullptr;
+}
+
+void UAgentHeatmapProcessor::UpdateTimeStepAndPause()
+{
+        if (CurrentTimeStep != TimeDilationSubSystem->CurrentTimeStep)
+        {
+                CurrentTimeStep = TimeDilationSubSystem->CurrentTimeStep;
+                bIsPaused = TimeDilationSubSystem->bIsPaused;
+        }
+        else if (bIsPaused != TimeDilationSubSystem->bIsPaused)
+        {
+                bIsPaused = TimeDilationSubSystem->bIsPaused;
+        }
+}
+
+void UAgentHeatmapProcessor::UpdateHeatmapInterval()
+{
+        if (TimeDilationSubSystem->GetCurrentSimTime() < LastUpdatedCurrentTime)
+        {
+                LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
+                bUpdateHeatmap = true;
+        }
+        else if (LastUpdatedCurrentTime != TimeDilationSubSystem->GetCurrentSimTime() || LastUpdatedCurrentTime == 0.0f)
+        {
+                float TimeDifference = TimeDilationSubSystem->GetCurrentSimTime() - LastUpdatedCurrentTime;
+                if (TimeDifference < 0.1f && LastUpdatedCurrentTime != 0.0f)
+                {
+                        bUpdateHeatmap = false;
+                }
+                else
+                {
+                        bUpdateHeatmap = true;
+                        LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
+                }
+        }
+}
+
+void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
+{
+        if (!bRegisteredProperties)
+        {
+                RegisterProperties(Context);
+                if (!bRegisteredProperties)
+                {
+                        return;
+                }
+        }
+
+        if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
+        {
+                ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
+                bLastPauseLoop = false;
+        }
+
+        UpdateHeatmapInterval();
+
+        const TArrayView<FEntityInfoFragment>& EntityInfoFragment = Context.GetMutableFragmentView<FEntityInfoFragment>();
+        for (FEntityInfoFragment& EntityInfoFrag : EntityInfoFragment)
+        {
+                if (!EntityInfoFrag.bRenderAgent && EntityInfoFrag.bReadyToDestroy)
+                {
+                        continue;
+                }
+                HeatmapLocations.Add(EntityInfoFrag.CurrentLocation);
+        }
+}
+
+void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
+{
+        if (!HeatmapLocations.IsEmpty())
+        {
+                if (bUpdateHeatmap && !bLastPauseLoop)
+                {
+                        HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
+                }
+
+                if (!HeatmapSubsystem->AnyHeatmapsActive())
+                {
+                        bLastPauseLoop = false;
+                        HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
+                }
+        }
+        else
+        {
+                HeatmapSubsystem->ClearEmptyHeatmaps();
+        }
 }
