@@ -526,7 +526,7 @@ FVector2D AHeatmapPixelTextureVisualizer::ActorWorldToUV(const FVector& EntityWo
 	bool bAdjustY = (HeatmapMeshSize2D.X >= HeatmapMeshSize2D.Y);
 	// Compute the ratio as the smaller mesh dimension divided by the larger.
 	float ratio = bAdjustY ? (HeatmapMeshSize2D.Y / HeatmapMeshSize2D.X) 
-						   : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
+		              : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
     
 	// Apply a center-based aspect ratio correction about the midpoint (0.5, 0.5) in normalized space.
 	if (bAdjustY)
@@ -910,11 +910,11 @@ TArray<FBox3d> AHeatmapPixelTextureVisualizer::FindAllQuads(ARuntimeMeshBuilder*
 
 	//DrawDebugBox(GetWorld(), MeshBounds.GetCenter(), MeshBounds.GetExtent(), FColor::Blue, false, 1000.0f, 0, 4.0f);
 	
-       if(MeshBuilder)
-       {
-               const double StartTime = FPlatformTime::Seconds();
-               UE_LOG(LogTemp, Warning, TEXT("Starting Mesh Triangle Generation"));
-               // create size for array
+	if(MeshBuilder)
+	{
+		// const double StartTime = FPlatformTime::Seconds();
+		// UE_LOG(LogTemp, Warning, TEXT("Starting Mesh Triangle Generation"));
+		// create size for array
 		TArray<FVector> ValidVertices;
 
 		// if the mesh builder is using datasmith then we need to loop over all the meshes and get the vertices
@@ -979,41 +979,41 @@ TArray<FBox3d> AHeatmapPixelTextureVisualizer::FindAllQuads(ARuntimeMeshBuilder*
 			}
 		}
 		
-               // build a simple spatial hash to avoid scanning every vertex per step
-               TMap<FIntPoint, FBox3d> QuadMap;
-               for (const FVector& Vertex : ValidVertices)
-               {
-                       const int32 CellX = FMath::FloorToInt((Vertex.X - StartPos.X) / StepSize);
-                       const int32 CellY = FMath::FloorToInt((Vertex.Y - StartPos.Y) / StepSize);
-                       const FIntPoint Key(CellX, CellY);
-                       if (!QuadMap.Contains(Key))
-                       {
-                               FVector Min(StartPos.X + CellX * StepSize,
-                                           StartPos.Y + CellY * StepSize,
-                                           MarchingBox.Min.Z);
-                               FVector Max(StartPos.X + (CellX + 1) * StepSize,
-                                           StartPos.Y + (CellY + 1) * StepSize,
-                                           MarchingBox.Max.Z);
-                               QuadMap.Add(Key, FBox3d(Min, Max));
-                       }
-               }
+		// build a simple spatial hash to avoid scanning every vertex per step
+		TMap<FIntPoint, FBox3d> QuadMap;
+		for (const FVector& Vertex : ValidVertices)
+		{
+			const int32 CellX = FMath::FloorToInt((Vertex.X - StartPos.X) / StepSize);
+			const int32 CellY = FMath::FloorToInt((Vertex.Y - StartPos.Y) / StepSize);
+			const FIntPoint Key(CellX, CellY);
+			if (!QuadMap.Contains(Key))
+			{
+				FVector Min(StartPos.X + CellX * StepSize,
+				            StartPos.Y + CellY * StepSize,
+				            MarchingBox.Min.Z);
+				FVector Max(StartPos.X + (CellX + 1) * StepSize,
+				            StartPos.Y + (CellY + 1) * StepSize,
+				            MarchingBox.Max.Z);
+				QuadMap.Add(Key, FBox3d(Min, Max));
+			}
+		}
 
-               for (const TPair<FIntPoint, FBox3d>& Pair : QuadMap)
-               {
-                       Quads.Add(Pair.Value);
-               }
+		for (const TPair<FIntPoint, FBox3d>& Pair : QuadMap)
+		{
+			Quads.Add(Pair.Value);
+		}
 
-               // Log how many boxes found
-               UE_LOG(LogTemp, Warning, TEXT("Found Quads: %d"), Quads.Num());
-               const double EndTime = FPlatformTime::Seconds();
-               UE_LOG(LogTemp, Warning, TEXT("FindAllQuads took %.2f ms"), (EndTime - StartTime) * 1000.0);
+		// Log how many boxes found
+		// UE_LOG(LogTemp, Warning, TEXT("Found Quads: %d"), Quads.Num());
+		// const double EndTime = FPlatformTime::Seconds();
+		// UE_LOG(LogTemp, Warning, TEXT("FindAllQuads took %.2f ms"), (EndTime - StartTime) * 1000.0);
 	}
 
 	return Quads;
 	
 	
 	
-       // Algorithm refactored to use spatial hashing
+	// Algorithm refactored to use spatial hashing
 	
 	 
 	
