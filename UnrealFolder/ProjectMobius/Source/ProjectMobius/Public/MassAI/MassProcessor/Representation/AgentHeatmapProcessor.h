@@ -54,10 +54,25 @@ protected:
 	 *
 	 * @param Context - The execution context
 	 */
-	void RegisterProperties(FMassExecutionContext& Context);
+        void RegisterProperties(FMassExecutionContext& Context);
 
 private:
-	// Entity Query
+        /** Ensure the time dilation subsystem is valid */
+        bool EnsureTimeSubsystem(FMassExecutionContext& Context);
+
+        /** Update cached time step and pause state */
+        void UpdateTimeStepAndPause();
+
+        /** Update internal state determining if heatmaps should be updated */
+        void UpdateHeatmapInterval();
+
+        /** Process a single entity chunk */
+        void ProcessChunk(FMassExecutionContext& Context);
+
+        /** Apply the collected heatmap data */
+        void ApplyHeatmapUpdates();
+
+        // Entity Query
 	FMassEntityQuery EntityQuery;
 
 	/** Subsystem for heatmaps -- TODO: move this to its own processor */
