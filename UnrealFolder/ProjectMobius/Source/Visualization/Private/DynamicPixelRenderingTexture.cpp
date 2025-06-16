@@ -143,10 +143,10 @@ void UDynamicPixelRenderingTexture::SetPixelColor(uint8*& PixelPtrToUpdate, FLin
 	{
 		AddPixelColor_Internal(PixelPtrToUpdate, NewColor);
 		// if the r channel is a value higher than the circle colour then a blur is needed
-		if (!bIsBlurRequired && *(PixelPtrToUpdate + 2) > COLOR_TO_BYTE(0.1419f))// TODO: this value needs to either be a parameter or passed in - this is the lower band
-		{
-			bIsBlurRequired = true;
-		}
+               if (!bIsBlurRequired && *(PixelPtrToUpdate + 2) > COLOR_TO_BYTE(BlurTriggerThreshold))// TODO: this value needs to either be a parameter or passed in - this is the lower band
+               {
+                       bIsBlurRequired = true;
+               }
 	}
 	else
 	{
