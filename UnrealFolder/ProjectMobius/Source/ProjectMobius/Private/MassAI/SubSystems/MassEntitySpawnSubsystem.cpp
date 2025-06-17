@@ -362,28 +362,13 @@ void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
 
 		USkeletalMesh* AgentSkeletalMesh = Cast<USkeletalMesh>(StaticLoadObject(USkeletalMesh::StaticClass(), NULL, TEXT("SkeletalMesh'/Game/MakeHuman/Male/Skeleton/MakeHumanMaleLowPoly_Skeleton.MakeHumanMaleLowPoly_Skeleton'")));
 		
-		// Create the Niagara Actor Representation System
-		ANiagaraAgentRepActor* NiagaraAgentRepActor = NewObject<ANiagaraAgentRepActor>(GetWorld(), TEXT("NiagaraAgentRepActor"));
-
-		// Create the Niagara System
-		//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
-		UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/LowSpec/NS_NoAnimationLowSpec.NS_NoAnimationLowSpec'")));
-		
-		// Set the Niagara System
-		NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
-
-		// Activate the Niagara System
-		NiagaraAgentRepActor->GetNiagaraComponent()->Activate(true);
-
-		
 		// create the shared fragments
-		AgentRepresentationFragment = FAgentRepresentationFragment(AgentRepresentationActor, MaleAgentMesh, FemaleAgentMesh, AgentMaterial, AgentSkeletalMesh, NiagaraAgentRepActor);
+		AgentRepresentationFragment = FAgentRepresentationFragment(AgentRepresentationActor, MaleAgentMesh, FemaleAgentMesh, AgentMaterial, AgentSkeletalMesh);
 
 		SharedAgentRepresentationFrag = FSharedStruct::Make(AgentRepresentationFragment);
 
 		// Add the shared fragment to the build context
 		PedestrianTemplateData.AddSharedFragment(SharedAgentRepresentationFrag);
-		
 	}
 
 	// NIAGARA -> CONVERSION
