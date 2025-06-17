@@ -204,7 +204,8 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			//TODO: this is temp fix we already have this set in the subsystem we just need to spawn it + need to sort the number to be the same for genders etc -> Refactor this:repeated code for this actor so make function
 			// Create the Niagara System
 			UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
-			
+			//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/LowSpec/NS_NoAnimationLowSpec.NS_NoAnimationLowSpec'")));
+
 			// Set the Niagara System
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
 			

@@ -367,6 +367,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
 
 		// Create the Niagara System
 		UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
+		//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/LowSpec/NS_NoAnimationLowSpec.NS_NoAnimationLowSpec'")));
 		
 		// Set the Niagara System
 		NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
