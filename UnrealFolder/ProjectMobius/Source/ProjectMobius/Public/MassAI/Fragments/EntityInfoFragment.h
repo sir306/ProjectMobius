@@ -105,3 +105,69 @@ struct PROJECTMOBIUS_API FEntityInfoFragment: public FMassFragment
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
 	bool bAnimationChanged = false;
 };
+
+/**
+ * 
+ */
+USTRUCT()
+struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
+{
+	GENERATED_BODY()
+	
+	/** The Entity ID */
+	UPROPERTY(EditAnywhere, Category = "EntityInfo")
+	int32 EntityID = 0;
+
+	/** The current location of the pedestrian */
+	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
+	FVector CurrentLocation = FVector::ZeroVector;
+
+	/** The current Rotation of the pedestrian */
+	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
+	FRotator CurrentRotation = FRotator::ZeroRotator;
+
+	/** Current Speed of the agent */
+	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
+	float CurrentSpeed = 0.0f;
+
+	/** Gait/Directional Speed */
+	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
+	float GaitDirectionalSpeed = 0.0f;
+};
+
+/**
+ * 
+ */
+USTRUCT()
+struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
+{
+	GENERATED_BODY()
+
+	/** The Entity ID */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	int32 EntityID = 0;
+
+	/** Should this agent be rendered */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	bool bRenderAgent = true;
+
+	/** The Instance ID associated for this Entity */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	int32 InstanceID = 0;
+
+	/** Agent Gender */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	bool bIsMale = true;
+
+	/** Agent Age Demographic */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	EAgeDemographic AgeDemographic = EAgeDemographic::Ead_Adult;
+
+	/** Ready to be destroyed */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	bool bReadyToDestroy = false;
+	
+	/** Animation Changed */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	bool bAnimationChanged = false;
+};
