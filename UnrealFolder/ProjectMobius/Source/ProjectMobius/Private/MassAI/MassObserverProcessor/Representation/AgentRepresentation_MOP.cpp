@@ -198,13 +198,25 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		}
 		else if (!bHasSpawned)
 		{
+			// TEST update effect to use low spec effect
+			//AgentRepresentationFragment.bUseLowSpecAgentRenderEffect = true;
+			
 			// Spawn the Niagara actor
 			ANiagaraAgentRepActor* NiagaraAgentRepActor = Context.GetWorld()->SpawnActor<ANiagaraAgentRepActor>(FVector(0, 0, 0), FRotator(0, 0, 0));
 
-			//TODO: this is temp fix we already have this set in the subsystem we just need to spawn it + need to sort the number to be the same for genders etc -> Refactor this:repeated code for this actor so make function
+			// Get the MRS subsystem
+			UMRS_RepresentationSubsystem* MRSSubsystem = Context.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
+			
 			// Create the Niagara System
 			//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
-			UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/LowSpec/NS_NoAnimationLowSpec.NS_NoAnimationLowSpec'")));
+			UNiagaraSystem* NiagaraSystem = MRSSubsystem->LoadNiagaraAgentSystem(AgentRepresentationFragment.bUseLowSpecAgentRenderEffect);
+
+			if (NiagaraSystem == nullptr)
+			{
+				// Log error if the Niagara System could not be loaded
+				UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
+				return;
+			}
 
 			// Set the Niagara System
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);

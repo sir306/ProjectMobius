@@ -32,6 +32,7 @@
 #include "NiagaraComponent.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 
 UMRS_RepresentationSubsystem::UMRS_RepresentationSubsystem()
@@ -391,6 +392,18 @@ FVatMovementFrames UMRS_RepresentationSubsystem::GetMovementFrames(EPedestrianMo
 void UMRS_RepresentationSubsystem::SetMaxRenderHeight(float NewMaxRenderHeight)
 {
 	MaxRenderHeight = NewMaxRenderHeight;
+}
+
+const TCHAR* UMRS_RepresentationSubsystem::GetNiagaraAgentSystemObjectPath(bool bIsLowSpec)
+{
+	return bIsLowSpec ? TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/LowSpec/NS_NoAnimationLowSpec.NS_NoAnimationLowSpec'") :
+	TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'");
+}
+
+UNiagaraSystem* UMRS_RepresentationSubsystem::LoadNiagaraAgentSystem(bool bIsLowSpec)
+{
+	const TCHAR* NiagaraSystemPath = GetNiagaraAgentSystemObjectPath(bIsLowSpec);
+	return Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), nullptr, NiagaraSystemPath));
 }
 
 void UMRS_RepresentationSubsystem::Initialize(FSubsystemCollectionBase& Collection)

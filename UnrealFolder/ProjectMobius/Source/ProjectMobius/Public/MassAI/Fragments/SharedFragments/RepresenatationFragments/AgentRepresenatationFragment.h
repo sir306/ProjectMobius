@@ -53,6 +53,7 @@ public:
 	// TODO: add an array of characters that stores the the ism type, instance id and agent id - this will be used so we can do respawns of agents
 	
 	~FAgentRepresentationFragment();
+	
 #pragma endregion METHODS
 
 #pragma region PROPERTIES
@@ -106,6 +107,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	int32 NumberOfChildren;// TODO: Maybe do different genders
 
+	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
+	/** Using low spec agent render effect? */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	bool bUseLowSpecAgentRenderEffect = false;
+	
 #pragma endregion PROPERTIES
 };
 
