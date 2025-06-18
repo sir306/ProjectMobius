@@ -26,7 +26,6 @@
 #include "MassCommonFragments.h"
 #include "MassSpawnerSubsystem.h"
 // Fragments
-#include "MassAI/Fragments/PedestrianMovementFragment.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
