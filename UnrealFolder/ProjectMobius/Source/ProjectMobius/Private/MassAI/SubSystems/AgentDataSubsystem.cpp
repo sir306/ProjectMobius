@@ -731,8 +731,8 @@ uint32 FJsonDataRunnable:: Run()
 		// 		UE_LOG(LogTemp, Display, TEXT("Movement sample count: %d"), MovementSamples.Num());
 		// 	});
 		// }
-
-		AgentMovementInfoData.AddMovementSample(CurrentDataCount, MovementSamples);
+		
+		AgentMovementInfoData.SimulationData.Add(CurrentDataCount, MovementSamples);
 		
 	
 		// Calculate the current percentage of the data loaded
