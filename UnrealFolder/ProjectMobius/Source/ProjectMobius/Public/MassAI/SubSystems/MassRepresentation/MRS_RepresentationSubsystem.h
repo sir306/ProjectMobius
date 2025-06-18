@@ -33,6 +33,7 @@
  * 
  */
 
+class UNiagaraSystem;
 enum class EAgeDemographic : uint8;
 
 template<>
@@ -163,6 +164,20 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MRS|Subsystem|ThesisResearch")
 	float GetMaxRenderHeight() const { return MaxRenderHeight; }
+
+	/**
+	 * Returns the object path for the niagara agent system
+	 * @param[bool] bIsLowSpec If true, returns the low spec version of the niagara agent system
+	 * @return[const TCHAR*] The object path for the niagara agent system
+	 */
+	static const TCHAR* GetNiagaraAgentSystemObjectPath(bool bIsLowSpec = false);
+
+	/**
+	 * Load the Niagara agent system, when calling this method you should perform a null check on the returned value
+	 * @param[bool] bIsLowSpec If true, loads the low spec version of the niagara agent system
+	 * @return[UNiagaraSystem*] The loaded niagara system
+	 */
+	static UNiagaraSystem* LoadNiagaraAgentSystem(bool bIsLowSpec = false);
 
 #pragma endregion PUBLIC_METHODS
 
