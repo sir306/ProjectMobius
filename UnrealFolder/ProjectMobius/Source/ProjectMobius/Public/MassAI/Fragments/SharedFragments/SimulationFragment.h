@@ -39,30 +39,6 @@ struct PROJECTMOBIUS_API FSimMovementSample
 {
 	GENERATED_BODY()
 public:
-	FSimMovementSample(){};
-	
-	FSimMovementSample(int32 InEntityID, FVector InPosition, FRotator InRotation, float InSpeed, FString InMode)
-	{
-		EntityID = InEntityID;
-		Position = InPosition;
-		Rotation = InRotation;
-		Speed = InSpeed;
-		Mode = InMode;
-	};
-	
-	FSimMovementSample(int32 InEntityID, FVector InPosition, FRotator InRotation, float InSpeed, FString InMode, EPedestrianMovementBracket InMovementBracket, unsigned long InStepDurationMS, FVelocityVector2D InStepVector)
-	{
-		EntityID = InEntityID;
-		Position = InPosition;
-		Rotation = InRotation;
-		Speed = InSpeed;
-		Mode = InMode;
-		MovementBracket = InMovementBracket;
-		StepDurationMS = InStepDurationMS;
-		StepVector = InStepVector;
-	};
-
-#pragma region PUBLIC_PROPERTIES
 	/** Entity ID */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "MovementSample")
 	int32 EntityID = 0;
@@ -92,8 +68,6 @@ public:
 
 	/** Angular vectors, smoothed across estimated steps/strides */
 	FVelocityVector2D StepVector = FVelocityVector2D();
-
-#pragma endregion PUBLIC_PROPERTIES
 };
 
 /**
