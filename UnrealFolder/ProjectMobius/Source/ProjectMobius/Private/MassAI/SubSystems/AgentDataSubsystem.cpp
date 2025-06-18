@@ -285,8 +285,36 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		int32 EntityMap = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("map"));
 
 		// Create the entity info fragment
-		FEntityInfoFragment EntityInfo(EntityID, EntityName, EntitySimTime, EntityMaxSpeed, EntityM_Plane, EntityMap);
+		FEntityInfoFragment EntityInfo;(EntityID, EntityName, EntitySimTime, EntityMaxSpeed, EntityM_Plane, EntityMap);
+		// Assign Vals
+		EntityInfo.EntityID = EntityID;
+		EntityInfo.EntityName = EntityName;
+		EntityInfo.EntitySimTimeS = EntitySimTime;
+		EntityInfo.EntityMaxSpeed = EntityMaxSpeed;
+		EntityInfo.EntityM_Plane = EntityM_Plane;
+		EntityInfo.EntityMap = EntityMap;
 
+		EntityInfo.bIsMale = !(EntityName.Contains("Female"));
+
+		// if the entity name contains a child, adult or elderly then we need to set the age demographic accordingly
+		if (EntityName.Contains("Child"))
+		{
+			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Child;
+		}
+		else if (EntityName.Contains("Elderly"))
+		{
+			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Elderly;
+		}
+		else if (EntityName.Contains("Adult"))
+		{
+			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Adult;
+		}
+		else // no valid age demographic found -> TODO: for now just set it to adult but need to think on how we want to handle this
+		{
+			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Adult;
+		}
+		
+		
 		// Add the entity info fragment to the entity info array
 		
 	}

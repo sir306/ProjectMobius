@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "MassRepresentationSubsystem.h"
+#include "EnumsAndStructs/MassAIEnums.h"
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "MRS_RepresentationSubsystem.generated.h"
 
@@ -34,7 +35,6 @@
  */
 
 class UNiagaraSystem;
-enum class EAgeDemographic : uint8;
 
 template<>
 struct TMassExternalSubsystemTraits<UMRS_RepresentationSubsystem> final
@@ -45,28 +45,6 @@ struct TMassExternalSubsystemTraits<UMRS_RepresentationSubsystem> final
 		ThreadSafeWrite = false,
 		GameThreadOnly = false,
 	};
-};
-
-/**
- * Enum for pedestrian genders
- */
-UENUM()
-enum class EPedestrianGender : uint8
-{
-	Epg_Male = 0,
-	Epg_Female = 1,
-	Epg_Default = 2
-};
-
-UENUM()
-enum class EPedestrianMovementBracket : uint8
-{
-	Emb_NotMoving = 0,
-	Emb_Shuffle = 1,
-	Emb_SlowWalk = 2,
-	Emb_Walk = 3,
-	Emb_BriskWalk = 4,
-	Emb_Error = 5
 };
 
 struct FVatMovementFrames

@@ -26,29 +26,9 @@
 
 #include "CoreMinimal.h"
 #include "MassEntityTypes.h" // So we can use the FMassFragment
+#include "EnumsAndStructs/MassAIEnums.h"
 #include "EntityInfoFragment.generated.h"
-//TODO: decouple this as the fragment contains to much data and not all are needed in every processor
-enum class EPedestrianMovementBracket : uint8;
 
-/**
- * Enum to define the different age demographics
- * ie Child, Adult, Elderly
- */
-UENUM()
-enum class EAgeDemographic : uint8
-{
-	/** Child */
-	Ead_Child = 0,
-
-	/** Adult */
-	Ead_Adult = 1,
-
-	/** Elderly */
-	Ead_Elderly = 2,
-
-	/** Default */
-	Ead_Default = 3
-};
 
 /**
  * 
@@ -57,79 +37,61 @@ USTRUCT(BlueprintType)
 struct PROJECTMOBIUS_API FEntityInfoFragment: public FMassFragment
 {
 	GENERATED_BODY()
-
-public:
-#pragma region CONSTRUCTORS_DESTRUCTORS
-	// Default Constructor
-	FEntityInfoFragment();
-
-	// Standard Constructor
-	FEntityInfoFragment(int32 InEntityID, FString InEntityName, FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane, int32 InEntityMap);
-
-	// Default Destructor
-	~FEntityInfoFragment();
-
-#pragma endregion CONSTRUCTORS_DESTRUCTORS
 	
-
-#pragma region PUBLIC_METHODS
-#pragma endregion PUBLIC_METHODS
-
-#pragma region PUBLIC_PROPERTIES
 	/** The Entity ID */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
-	int32 EntityID;
+	int32 EntityID = 0;
 
 	/** The Entity Name */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
-	FString EntityName;
+	FString EntityName = "Default[0]";
 
 	/** The Entity simTimeS */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
-	FString EntitySimTimeS;
+	FString EntitySimTimeS = "0.0";
 
 	/** The Entity MaxSpeed */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
-	float EntityMaxSpeed;
+	float EntityMaxSpeed = 1.0f;
 
 	/** The Entity M_Plane */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
-	FString EntityM_Plane;
+	FString EntityM_Plane = "F#0";
 
 	/** Entity Map */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
-	int32 EntityMap;
+	int32 EntityMap = 0;
 
 	/** The current location of the pedestrian */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	FVector CurrentLocation;
+	FVector CurrentLocation = FVector::ZeroVector;
 
 	/** The current Rotation of the pedestrian */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	FRotator CurrentRotation;
+	FRotator CurrentRotation = FRotator::ZeroRotator;
 
 	/** Should this agent be rendered */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	bool bRenderAgent;
+	bool bRenderAgent = true;
 
 	/** The Instance ID associated for this Entity */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	int32 InstanceID;
+	int32 InstanceID = 0;
 
 	/** Agent Gender */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	bool bIsMale;
+	bool bIsMale = true;
 
 	/** Agent Age Demographic */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
 	EAgeDemographic AgeDemographic = EAgeDemographic::Ead_Adult;
 
 	/** Ready to be destroyed */
-	bool bReadyToDestroy;
+	bool bReadyToDestroy = false;
 
 	/** Current Speed of the agent */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	float CurrentSpeed;
+	float CurrentSpeed = 0.0f;
 
 	/** Gait/Directional Speed */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
@@ -137,11 +99,9 @@ public:
 
 	/** Current Movement Bracket */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	EPedestrianMovementBracket CurrentMovementBracket;
+	EPedestrianMovementBracket CurrentMovementBracket  = EPedestrianMovementBracket::Emb_NotMoving;
 
 	/** Animation Changed */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
 	bool bAnimationChanged = false;
-
-#pragma endregion PUBLIC_PROPERTIES
 };
