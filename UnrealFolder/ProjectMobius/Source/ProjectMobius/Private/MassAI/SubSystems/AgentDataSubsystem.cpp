@@ -705,7 +705,11 @@ uint32 FJsonDataRunnable:: Run()
 			}
 		
 			// Create the movement sample
-			FSimMovementSample MovementSample(EntityID, Position, Rotation, Speed, Mode);
+			FSimMovementSample MovementSample;
+			MovementSample.EntityID = EntityID;
+			MovementSample.Position = Position;
+			MovementSample.Rotation = Rotation;
+			MovementSample.Speed = Speed;
 			
 			// Add the movement sample
 			MovementSamples.Add(MovementSample);
