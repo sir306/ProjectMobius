@@ -47,9 +47,7 @@ UPedestrianInitializeMOP::UPedestrianInitializeMOP()
 	// Set the observed type fragments of this observer processor
 	ObservedType = FEntityInfoFragment::StaticStruct();
 	Operation = EMassObservedOperation::Add;
-	//ExecutionFlags = (int32)EProcessorExecutionFlags::All;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
-	ExecutionOrder.ExecuteBefore.Add(UE::Mass::ProcessorGroupNames::Avoidance);
+
 	bRequiresGameThreadExecution = false;
 }
 
@@ -76,6 +74,7 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 
 void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
+	//UE_LOG(LogTemp, Display, TEXT("UPedestrianInitializeMOP::Execute()"));
 	// int offset value for the entity index this is so the intitial values can be assigned correctly
 	int32 EntityIndexOffset = 0;
 
@@ -123,79 +122,31 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		// Get the first Shared Movement Sample for all entities
 		TArray<FSimMovementSample> AllAgentMovementSamples = SharedAgentMovement.SimulationData[CurrentTimeStep];
 
+		auto Entities = Context.GetEntities();
 		
-		
-		for(FEntityInfoFragment& EntityInfo : EntityInfoFragment)
+		for (int i = 0; i < Entities.Num(); i++)
 		{
-			// Set the Agent Info
-			//InitializeEntityInfoAgent(EntityIndexOffset, EntityInfo);
-			//InitializeEntityInfoAgent(EntityInfo, AllAgentMovementSamples[EntityIndexOffset].EntityID, AllAgentMovementSamples[EntityIndexOffset].En, TEXT("0"), 0.0f, TEXT("M_Plane"), 0);
-			EntityInfo.CurrentLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
-			EntityInfo.CurrentRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
-			EntityIndexOffset++;
-		}
+			auto Entity = Entities[i];
+			// Add the Mass Entity Representation Tag to current Entity - so we know the data is ready for render logic
+			Context.Defer().AddTag<FMassEntityRepresentationTag>(Entity);
+			int32 EntityIndex = Entity.Index - 1; // Entity.Index is 1 based, so we subtract 1 to get the correct index
 
-		
-		// loop through the movement data at timestep 0 and get the unique Z values
-		for (int i = 0; i < SharedAgentMovement.SimulationData[0].Num(); i++)
-		{
-			float ZValue = AllAgentMovementSamples[i].Position.Z;
+			auto& EntityInfo = EntityInfoFragment[i];
+			
+			// Set the Agent Info
+			InitializeEntityInfoAgent(EntityIndex, EntityInfo);
+			
+			// check all movement samples so we can get all unique Z values
+			float ZValue = AllAgentMovementSamples[EntityIndex].Position.Z;
 			if (!UniqueZValues.Contains(ZValue))
 			{
 				UniqueZValues.Add(ZValue);
 			}
 		}
-
 		
-		//
-		// // Loop through all the entities and assign the pedestrian locations
-		// for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); EntityIndex++)
-		// {
-		// 	FMassEntityHandle EntityHandle = Context.GetEntity(EntityIndex);
-		//
-		// 	// For now set spawn amount to greater than data size and destroy entities that are not in the data
-		// 	if (EntityHandle.Index - 1 > DataSize)
-		// 	{
-		// 		// log
-		// 		// UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute Destroying Entity"));
-		// 		//
-		// 		// // log index and EntityHandle.Index
-		// 		// UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute EntityIndex: %d"), EntityIndex);
-		// 		// UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute EntityHandle.Index: %d"), EntityHandle.Index);
-		// 		
-		// 		// Destroy the entity
-		// 		//Context.Defer().DestroyEntity(EntityHandle);
-		// 		// TODO: at the momement the entity is being destroyed but the tag method is not working on visualization side
-		// 		//Context.Defer().AddTag<FMassEntityDeleteTag>(EntityHandle);
-		// 	}
-		// 	else
-		// 	{
-		// 		// Get the first Shared Movement Sample for all entities
-		// 		TArray<FSimMovementSample> AllAgentMovementSamples = SharedAgentMovement.SimulationData[0];
-		// 		//TODO this was being set here but due to being unable to order the processors it is now being handled in the AgentRepresentation_MOP
-		// 		//FSimMovementSample AgentMovementSamples = SharedAgentMovement.SimulationData[0][EntityIndex];
-		//
-		// 		// Set the Agent Info
-		// 		InitializeEntityInfoAgent(EntityHandle.Index - 1, EntityInfoFragment[EntityIndex]);
-		//
-		// 		//TODO: change to use a lookup so no need to loop
-		// 		for (int i = 0; i < AllAgentMovementSamples.Num(); i++)
-		// 		{
-		// 			if (AllAgentMovementSamples[i].EntityID == EntityInfoFragment[EntityIndex].EntityID)
-		// 			{
-		// 				EntityInfoFragment[EntityIndex].CurrentLocation = AllAgentMovementSamples[i].Position * 10;
-		// 				EntityInfoFragment[EntityIndex].CurrentRotation = AllAgentMovementSamples[i].Rotation;
-		// 				// This is an entity we want to render so add tag
-		// 				//Context.Defer().AddTag<FMassEntityRepresentationTag>(EntityHandle);
-		// 				//break;
-		// 			}
-		// 		}
-		// 		
-		// 	}
-		// }
-		//UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Finished"));
-		}));
-	//EntityManager.FlushCommands();
+		
+	}));
+
 
 	// once all the chunks have been processed we need to set the unique Z values in the heatmap subsystem
 	if (UniqueZValues.Num() > 0)
@@ -207,6 +158,8 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			HeatmapSubsystem->UpdateSpawnHeightLocations(UniqueZValues);
 		}
 	}
+	ExecutionContext.FlushDeferred();
+	
 }
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(int32 InEntityID, FEntityInfoFragment& EntityInfoToAssign)

@@ -73,6 +73,8 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 	// Required Query Tags
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None);
 
+	EntityQuery.AddTagRequirement<FMassEntityRepresentationTag>(EMassFragmentPresence::All); // If all entities have tag, do process
+
 	// Register the entity query with the processor
 	EntityQuery.RegisterWithProcessor(*this);
 

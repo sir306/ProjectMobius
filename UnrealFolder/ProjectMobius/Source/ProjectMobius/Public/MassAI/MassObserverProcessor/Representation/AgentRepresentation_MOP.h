@@ -91,10 +91,7 @@ protected:
 	 * @return The index of the instance in the ISM Component
 	 */
 	static int32 AddInstanceToISMComponent(UInstancedStaticMeshComponent* ISMComponent, const FTransform& InstanceTransform);
-	void InitializeEntityInfoAgent(int32 InEntityID, FEntityInfoFragment& EntityInfoToAssign);
-	void InitializeEntityInfoAgent(FEntityInfoFragment& EntityInfoToAssign, int32 InEntityID, FString InEntityName,
-	                               FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane,
-	                               int32 InEntityMap);
+
 
 
 private:

@@ -56,13 +56,10 @@ class UTimeDilationSubSystem;
 
 UAgentRepresentation_MOP::UAgentRepresentation_MOP()
 {
-	ObservedType = FEntityInfoFragment::StaticStruct();
+	ObservedType = FMassEntityRepresentationTag::StaticStruct();
 	Operation = EMassObservedOperation::Add;
 	bRequiresGameThreadExecution = true;
-	ProcessingPhase = EMassProcessingPhase::PrePhysics;
 
-	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::Avoidance);
-	
 	// log processor name
 	UE_LOG(LogTemp, Warning, TEXT("AgentRepresentation_MOP %s"), *GetProcessorName());
 
@@ -79,10 +76,11 @@ void UAgentRepresentation_MOP::ConfigureQueries()
 	
 	// Entity frags
 	EntityQuery.AddRequirement<FEntityInfoFragment>(EMassFragmentAccess::ReadWrite);
+	
 	// Subsystems
 	EntityQuery.AddSubsystemRequirement<UMRS_RepresentationSubsystem>(EMassFragmentAccess::ReadWrite);
 	// Tags
-	//EntityQuery.AddTagRequirement<FMassEntityRepresentationTag>(EMassFragmentPresence::Any); // If entity has tag, do process
+	EntityQuery.AddTagRequirement<FMassEntityRepresentationTag>(EMassFragmentPresence::All); // If all entities have tag, do process
 	//EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None); // If entity has delete tag, do not process
 
 	EntityQuery.RegisterWithProcessor(*this);
@@ -90,6 +88,7 @@ void UAgentRepresentation_MOP::ConfigureQueries()
 
 void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
+	//UE_LOG(LogTemp, Display, TEXT("UAgentRepresentation_MOP::Execute()"));
 	// check if execution context is in world
 	if (!ExecutionContext.GetWorld())
 	{
@@ -167,19 +166,6 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			
 			for(FEntityInfoFragment& EntityInfo : EntityInfoFragment)
 			{
-				// Set the Agent Info
-				InitializeEntityInfoAgent(EntityIndexOffset, EntityInfo);
-				
-				for(FSimMovementSample MovementSample : Context.GetSharedFragment<FSimulationFragment>().SimulationData[CurrentTimeStep])
-				{
-					if(MovementSample.EntityID == EntityInfo.EntityID)
-					{
-						EntityInfo.CurrentLocation = MovementSample.Position;
-						EntityInfo.CurrentRotation = MovementSample.Rotation;
-						break;
-					}
-				}
-				
 				
 				EntityIndexOffset++;
 				// log index
@@ -229,8 +215,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 			for(FEntityInfoFragment& EntityInfo : EntityInfoFragment)
 			{
-				// Set the Agent Info
-				InitializeEntityInfoAgent(EntityIndexOffset, EntityInfo);
+
 				EntityIndexOffset++;
 				// log index
 				//UE_LOG(LogTemp, Warning, TEXT("UAgentRepresentation_MOP::EntityIndexOffset: %d"), EntityIndexOffset);
@@ -284,10 +269,6 @@ void UAgentRepresentation_MOP::DefaultEntitySetup(const TArrayView<FEntityInfoFr
     	
 	for(FEntityInfoFragment& EntityInfo : EntityInfoFrag)
 	{
-		// Set the Agent Info
-		InitializeEntityInfoAgent(EntityIndexOffset, EntityInfo);
-
-
 		// TODO
 		// Get the float value for the agent variation
 		float AgentVariationFloat = FMath::FRandRange(0.0f, 20.0f);
@@ -435,23 +416,4 @@ int32 UAgentRepresentation_MOP::AddInstanceToISMComponent(UInstancedStaticMeshCo
 	ISMComponent->SetCustomDataValue(InstanceIndex, 3, 14.0f);
 
 	return InstanceIndex;
-}
-
-void UAgentRepresentation_MOP::InitializeEntityInfoAgent(int32 InEntityID, FEntityInfoFragment& EntityInfoToAssign)
-{
-	// Get AgentDataSubsystem
-	//auto& SubProcessorReqSubBits = ProcessorRequirements.GetRequiredConstSubsystems(); // TODO figure this out
-	UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();
-	
-	AgentDataSubsystem->SetEntityInfoByIndex(InEntityID, EntityInfoToAssign);
-}
-
-void UAgentRepresentation_MOP::InitializeEntityInfoAgent(FEntityInfoFragment& EntityInfoToAssign, int32 InEntityID, FString InEntityName, FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane, int32 InEntityMap)
-{
-	EntityInfoToAssign.EntityID = InEntityID;
-	EntityInfoToAssign.EntityName = InEntityName;
-	EntityInfoToAssign.EntitySimTimeS = InEntitySimTimeS;
-	EntityInfoToAssign.EntityMaxSpeed = InEntityMaxSpeed;
-	EntityInfoToAssign.EntityM_Plane = InEntityM_Plane;
-	EntityInfoToAssign.EntityMap = InEntityMap;
 }

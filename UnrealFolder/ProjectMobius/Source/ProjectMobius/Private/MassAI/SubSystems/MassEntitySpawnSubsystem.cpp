@@ -276,7 +276,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
-	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();
+	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();	
 
 	// ensure a new fragment is created as not to get clashes
 	SimulationFragment = FSimulationFragment();
