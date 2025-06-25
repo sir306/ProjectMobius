@@ -54,15 +54,17 @@ protected:
 	 */
 	void DefaultEntitySetup(const TArrayView<FEntityMovementFragment>& EntityMovementFrag, const TArrayView<FEntityRenderingFragment>& EntityRenderingFrag, FAgentRepresentationFragment& AgentRepresentationFragment, UInstancedStaticMeshComponent* MaleISMComponent, UInstancedStaticMeshComponent* FemaleISMComponent, int32 EntityIndexOffst);
 
-	/**
-	 * Process the current entity and set up the corresponding niagara system for the demographic of this entity
-	 *
-	 * @param[FEntityInfoFragment] EntityInfo The entity info fragment to assign to the agent representation
-	 * @param[FAgentRepresentationFragment] AgentFrag The agent representation fragment to assign to the entity
-	 * @param[FAgentNiagaraRepSharedFrag] NiagaraFrag The agent niagara representation shared fragment to assign to the entity
-	 * 
-	 */
-	static void ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag, FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag);
+       /**
+        * Process the current entity using its movement and rendering fragments.
+        * Consumes {@link FEntityMovementFragment} and {@link FEntityRenderingFragment}
+        * to populate Niagara and representation data for the agent.
+        *
+        * @param EntityMovementFrag Movement data for the entity
+        * @param EntityRenderingFrag Rendering data that will be updated with the instance id
+        * @param AgentFrag Representation fragment that stores per-agent counts
+        * @param NiagaraFrag Niagara shared fragment that gathers instance data
+        */
+       static void ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag, FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag);
 
 	/**
 	 * In the event of a miss match in indexing and offset, we need to reset the data in the niagara system and the
