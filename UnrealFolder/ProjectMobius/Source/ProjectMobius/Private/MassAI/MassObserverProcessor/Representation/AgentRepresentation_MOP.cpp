@@ -103,7 +103,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		// Get the agent representation fragment
 		FAgentRepresentationFragment& AgentRepresentationFragment = Context.GetMutableSharedFragment<FAgentRepresentationFragment>();
 
-		// Get the pedestrian movement fragment
+               // Get the entity movement and rendering fragments
 		TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 
