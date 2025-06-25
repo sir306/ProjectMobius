@@ -61,7 +61,8 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 	EntityQuery.AddSharedRequirement<FAgentRepresentationFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
 
 	// The Entity Query Required fragments for this processor;
-	EntityQuery.AddRequirement<FEntityInfoFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
 
 	// Add the shared Niagara representation fragment
 	EntityQuery.AddSharedRequirement<FAgentNiagaraRepSharedFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
@@ -132,56 +133,61 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 
 void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 {
-	// Get the entity info fragment
-	const TArrayView<FEntityInfoFragment>& EntityInfoFragment = Context.GetMutableFragmentView<FEntityInfoFragment>();
+	// Get the entity Rendering fragment
+	const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
+	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 
-	// loop through the entity info fragment
-	for (FEntityInfoFragment& EntityInfo: EntityInfoFragment)
+	auto Entities = Context.GetEntities();
+		
+	for (int i = 0; i < Entities.Num(); i++)
 	{
+		auto EntityMovement = EntityMovementFragment[i];
+		auto& EntityRendering = EntityRenderingFragment[i];
+
 		// Get the entity instance index
-		int32 EntityIndex = EntityInfo.InstanceID;
+		int32 EntityInstanceID = EntityRendering.InstanceID;
 
 		// check if the entity is a child
-		if (EntityInfo.AgeDemographic == EAgeDemographic::Ead_Child)
+		if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
 		{
-			SetAgentData(EntityIndex, EntityInfo, ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+			SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
 		}
 		// check if elderly
-		else if (EntityInfo.AgeDemographic == EAgeDemographic::Ead_Elderly)
+		else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
 		{
-			if (EntityInfo.bIsMale)
+			if (EntityRendering.bIsMale)
 			{
-				SetAgentData(EntityIndex, EntityInfo, ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
 			}
 			else
 			{
-				SetAgentData(EntityIndex, EntityInfo, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 			}
 			
 		}
 		else // entity is an adult
 		{
-			if (EntityInfo.bIsMale)
+			if (EntityRendering.bIsMale)
 			{
-				SetAgentData(EntityIndex, EntityInfo, MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
 			}
 			else
 			{
-				SetAgentData(EntityIndex, EntityInfo, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 			}
 		}
-		
 	}
+	
 }
 
-void UNiagaraAgentRepProcessor::SetAgentData(int32 Index, FEntityInfoFragment& EntityInfo, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates)
+void UNiagaraAgentRepProcessor::SetAgentData(int32 Index, const FEntityMovementFragment EntityMovementFragment, FEntityRenderingFragment& EntityRenderingFragment, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates)
 {
-	LocationAndScales[Index] = FVector4(EntityInfo.CurrentLocation.X,EntityInfo.CurrentLocation.Y,EntityInfo.CurrentLocation.Z, EntityInfo.bRenderAgent ? 1.0f : 0.0f);
-	Rotations[Index] = EntityInfo.CurrentRotation.Quaternion();
-	AnimationStates[Index] = GetIntAnimState(EntityInfo.CurrentMovementBracket);
+	LocationAndScales[Index] = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, EntityRenderingFragment.bRenderAgent ? 1.0f : 0.0f);
+	Rotations[Index] = EntityMovementFragment.CurrentRotation.Quaternion();
+	AnimationStates[Index] = GetIntAnimState(EntityMovementFragment.CurrentMovementBracket);
 
 	// update entity destroy state
-	EntityInfo.bReadyToDestroy = !EntityInfo.bRenderAgent;
+	EntityRenderingFragment.bReadyToDestroy = !EntityRenderingFragment.bRenderAgent;
 }
 
 int32 UNiagaraAgentRepProcessor::GetIntAnimState(EPedestrianMovementBracket AnimState)

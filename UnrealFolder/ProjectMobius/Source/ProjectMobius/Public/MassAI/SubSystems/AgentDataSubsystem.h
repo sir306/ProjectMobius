@@ -100,6 +100,8 @@ public:
 	/** Get Entity Info by Index */
 	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
 	void SetEntityInfoByIndex(int32 Index, FEntityInfoFragment& EntityInfoFragToUpdate) const;
+	
+	void SetEntityRenderingByIndex(int32 Index, FEntityRenderingFragment& EntityRenderingFragToUpdate) const;
 
 	/**
 	 * Function bound to the delegate to broadcast for updated max agent count

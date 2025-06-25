@@ -29,6 +29,8 @@
 #include "PedestrianMovementProcessor.generated.h"
 
 
+struct FEntityRenderingFragment;
+struct FEntityMovementFragment;
 struct FEntityInfoFragment;
 /**
  * 
@@ -52,22 +54,23 @@ protected:
 	/**
 	* Method to update an EntityInfoFragment to either render or not render
 	* 
-	* @param EntityInfoFragToUpdate: The EntityInfoFragment to update
+	* @param EntityRenderFragToUpdate: The EntityInfoFragment to update
 	* @param bNewRenderStatus: The new render status to update the EntityInfoFragment with
 	* 
 	*/
-	static void RenderEntityInfoFragment(FEntityInfoFragment& EntityInfoFragToUpdate, bool bNewRenderStatus = false);
+	static void RenderEntityInfoFragment(FEntityRenderingFragment& EntityRenderFragToUpdate, bool bNewRenderStatus = false);
 
 	/**
 	* Method to update an EntityInfoFragment with new location, rotation and render status
 	* 
-	* @param EntityInfoFragToUpdate: The EntityInfoFragment to update
+	* @param EntityMovementFragToUpdate: The EntityInfoFragment to update
+	* @param EntityRenderFragToUpdate : The EntityRenderingFragment to update
 	* @param NewLocation: The new location to update the EntityInfoFragment with
 	* @param NewRotation: The new rotation to update the EntityInfoFragment with
 	* @param bNewRenderStatus: The new render status to update the EntityInfoFragment with
 	* 
 	*/
-	static void UpdateEntityInfoFragment(FEntityInfoFragment& EntityInfoFragToUpdate, const FVector& NewLocation, const FRotator& NewRotation, bool bNewRenderStatus = true);
+	static void UpdateEntityInfoFragment(FEntityMovementFragment& EntityMovementFragToUpdate, FEntityRenderingFragment& EntityRenderFragToUpdate, const FVector& NewLocation, const FRotator& NewRotation, bool bNewRenderStatus = true);
 
 	/**
 	* Method to check ID of movement data matches the ID of the EntityInfoFragment

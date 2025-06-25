@@ -293,29 +293,6 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		EntityInfo.EntityMaxSpeed = EntityMaxSpeed;
 		EntityInfo.EntityM_Plane = EntityM_Plane;
 		EntityInfo.EntityMap = EntityMap;
-
-		EntityInfo.bIsMale = !(EntityName.Contains("Female"));
-
-		// if the entity name contains a child, adult or elderly then we need to set the age demographic accordingly
-		if (EntityName.Contains("Child"))
-		{
-			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Child;
-		}
-		else if (EntityName.Contains("Elderly"))
-		{
-			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Elderly;
-		}
-		else if (EntityName.Contains("Adult"))
-		{
-			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Adult;
-		}
-		else // no valid age demographic found -> TODO: for now just set it to adult but need to think on how we want to handle this
-		{
-			EntityInfo.AgeDemographic = EAgeDemographic::Ead_Adult;
-		}
-		
-		
-		// Add the entity info fragment to the entity info array
 		
 	}
 }
@@ -327,20 +304,6 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 		UE_LOG(LogTemp, Warning, TEXT("Index out of range"));
 		return;
 	}
-	
-	// // Check that the JSON Object is valid
-	// if (!JSONObject->GetArrayField("entities").IsEmpty())
-	//    {
-	//        UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-	//        return;
-	//    }
-	//
-	// // Get the JSON object for this index is valid
-	// if (!JSONObject->GetArrayField("entities")[Index]->AsObject().IsValid())
-	//    {
-	//        UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-	//        return;
-	//    }
 	
 	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
 
@@ -366,21 +329,47 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	// Get the entity map
 	EntityInfoFragToUpdate.EntityMap = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("map", 3));
 
+}
+
+void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
+	FEntityRenderingFragment& EntityRenderingFragToUpdate) const
+{
+	if (Index < 0 || Index >= MaxAgents)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Index out of range"));
+		return;
+	}
+
+	EntityRenderingFragToUpdate.EntityID = Index;
+	
+	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
+
+	// Get the JSON object for this 
+	TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
+
+	if (!JSONEntityDataObject.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
+		return;
+	}
+	FString AgentName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name", 4));
+
+	
 	// update gender
-	EntityInfoFragToUpdate.bIsMale = !(EntityInfoFragToUpdate.EntityName.Contains("Female"));
+	EntityRenderingFragToUpdate.bIsMale = !(AgentName.Contains("Female"));
 
 	// update age demographic
-	if (EntityInfoFragToUpdate.EntityName.Contains("Child"))
+	if (AgentName.Contains("Child"))
 	{
-		EntityInfoFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Child;
+		EntityRenderingFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Child;
 	}
-	else if (EntityInfoFragToUpdate.EntityName.Contains("Elderly"))
+	else if (AgentName.Contains("Elderly"))
 	{
-		EntityInfoFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Elderly;
+		EntityRenderingFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Elderly;
 	}
-	else if (EntityInfoFragToUpdate.EntityName.Contains("Adult"))
+	else if (AgentName.Contains("Adult"))
 	{
-		EntityInfoFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Adult;
+		EntityRenderingFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Adult;
 
 		//DEBUG: Sample data has adults with gender not elderly
 		// so create rand bool to set to elderly to see a mix of adults and elderly in test sim
@@ -391,15 +380,15 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	}
 	else // no valid age demographic found -> TODO: for now just set it to adult but need to think on how we want to handle this
 	{
-		EntityInfoFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Adult;
+		EntityRenderingFragToUpdate.AgeDemographic = EAgeDemographic::Ead_Adult;
 	}
 
 	// These are defaults but respawning agents that have this set will still be set to false
 	// Ensure they are set to be rendered
-	EntityInfoFragToUpdate.bRenderAgent = true;
+	EntityRenderingFragToUpdate.bRenderAgent = true;
 
 	// Set the entity to not be ready to destroy
-	EntityInfoFragToUpdate.bReadyToDestroy = false;
+	EntityRenderingFragToUpdate.bReadyToDestroy = false;
 }
 
 void UAgentDataSubsystem::UpdateMaxAgentCount(int32 NewMaxAgentCount)

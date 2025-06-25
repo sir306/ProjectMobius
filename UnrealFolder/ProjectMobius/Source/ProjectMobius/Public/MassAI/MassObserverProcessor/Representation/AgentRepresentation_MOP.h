@@ -52,7 +52,7 @@ protected:
 	 *
 	 * @param[TArrayView<FEntityInfoFragment>] EntityInfoFrag The entity info fragment to assign to the agent representation
 	 */
-	void DefaultEntitySetup(const TArrayView<FEntityInfoFragment>& EntityInfoFrag, FAgentRepresentationFragment& AgentRepresentationFragment, UInstancedStaticMeshComponent* MaleISMComponent, UInstancedStaticMeshComponent* FemaleISMComponent, int32 EntityIndexOffst);
+	void DefaultEntitySetup(const TArrayView<FEntityMovementFragment>& EntityMovementFrag, const TArrayView<FEntityRenderingFragment>& EntityRenderingFrag, FAgentRepresentationFragment& AgentRepresentationFragment, UInstancedStaticMeshComponent* MaleISMComponent, UInstancedStaticMeshComponent* FemaleISMComponent, int32 EntityIndexOffst);
 
 	/**
 	 * Process the current entity and set up the corresponding niagara system for the demographic of this entity
@@ -62,7 +62,7 @@ protected:
 	 * @param[FAgentNiagaraRepSharedFrag] NiagaraFrag The agent niagara representation shared fragment to assign to the entity
 	 * 
 	 */
-	static void ProcessEntity(FEntityInfoFragment& EntityInfo, FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag);
+	static void ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag, FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag);
 
 	/**
 	 * In the event of a miss match in indexing and offset, we need to reset the data in the niagara system and the

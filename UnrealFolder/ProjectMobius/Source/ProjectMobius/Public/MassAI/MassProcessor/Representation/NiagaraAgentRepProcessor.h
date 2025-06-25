@@ -30,6 +30,8 @@
 #include "NiagaraAgentRepProcessor.generated.h"
 
 
+struct FEntityRenderingFragment;
+struct FEntityMovementFragment;
 class UNiagaraComponent;
 struct FAgentRepresentationFragment;
 struct FEntityInfoFragment;
@@ -69,7 +71,7 @@ protected:
 	 * @param[TArray<int32>] AnimationStates - The array to set the data at for the animation states
 	 * 
 	 */
-	static void SetAgentData(int32 Index, FEntityInfoFragment& EntityInfo, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates);
+	static void SetAgentData(int32 Index, const FEntityMovementFragment EntityMovementFragment, FEntityRenderingFragment& EntityRenderingFragment, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates);
 	
 	/**
 	 * Helper method to get the correct animation integer state value

@@ -61,49 +61,6 @@ struct PROJECTMOBIUS_API FEntityInfoFragment: public FMassFragment
 	/** Entity Map */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "EntityInfo")
 	int32 EntityMap = 0;
-
-	/** The current location of the pedestrian */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	FVector CurrentLocation = FVector::ZeroVector;
-
-	/** The current Rotation of the pedestrian */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	FRotator CurrentRotation = FRotator::ZeroRotator;
-
-	/** Should this agent be rendered */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	bool bRenderAgent = true;
-
-	/** The Instance ID associated for this Entity */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	int32 InstanceID = 0;
-
-	/** Agent Gender */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	bool bIsMale = true;
-
-	/** Agent Age Demographic */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	EAgeDemographic AgeDemographic = EAgeDemographic::Ead_Adult;
-
-	/** Ready to be destroyed */
-	bool bReadyToDestroy = false;
-
-	/** Current Speed of the agent */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	float CurrentSpeed = 0.0f;
-
-	/** Gait/Directional Speed */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	float GaitDirectionalSpeed = 0.0f;
-
-	/** Current Movement Bracket */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianMovement")
-	EPedestrianMovementBracket CurrentMovementBracket  = EPedestrianMovementBracket::Emb_NotMoving;
-
-	/** Animation Changed */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "PedestrianRendering")
-	bool bAnimationChanged = false;
 };
 
 /**
@@ -133,6 +90,10 @@ struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
 	/** Gait/Directional Speed */
 	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
 	float GaitDirectionalSpeed = 0.0f;
+
+	/** Current Movement Bracket */
+	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
+	EPedestrianMovementBracket CurrentMovementBracket  = EPedestrianMovementBracket::Emb_NotMoving;
 };
 
 /**

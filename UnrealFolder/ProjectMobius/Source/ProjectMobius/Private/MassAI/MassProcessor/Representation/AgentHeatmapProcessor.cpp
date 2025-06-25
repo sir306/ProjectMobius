@@ -61,7 +61,8 @@ UAgentHeatmapProcessor::UAgentHeatmapProcessor():
 void UAgentHeatmapProcessor::ConfigureQueries()
 {
 	// The Entity Query Required fragments for this processor;
-	EntityQuery.AddRequirement<FEntityInfoFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadOnly);
 
 	/* Add subsystem requirements */
 	// Heatmap module subsystem
@@ -79,23 +80,23 @@ void UAgentHeatmapProcessor::ConfigureQueries()
 
 void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-        if (!EnsureTimeSubsystem(ExecutionContext))
-        {
-                return;
-        }
+	if (!EnsureTimeSubsystem(ExecutionContext))
+	{
+		return;
+	}
 
-        UpdateTimeStepAndPause();
+	UpdateTimeStepAndPause();
 
-        HeatmapLocations.Reset();
+	HeatmapLocations.Reset();
 
-        EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
-        {
-                ProcessChunk(Context);
-        }));
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	{
+		ProcessChunk(Context);
+	}));
 
-        ApplyHeatmapUpdates();
+	ApplyHeatmapUpdates();
 
-        bLastPauseLoop = bIsPaused;
+	bLastPauseLoop = bIsPaused;
 }
 void UAgentHeatmapProcessor::RegisterProperties(FMassExecutionContext& Context)
 {
@@ -122,95 +123,101 @@ void UAgentHeatmapProcessor::RegisterProperties(FMassExecutionContext& Context)
 }
 bool UAgentHeatmapProcessor::EnsureTimeSubsystem(FMassExecutionContext& Context)
 {
-        if (TimeDilationSubSystem == nullptr)
-        {
-                TimeDilationSubSystem = Context.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
-        }
-        return TimeDilationSubSystem != nullptr;
+	if (TimeDilationSubSystem == nullptr)
+	{
+		TimeDilationSubSystem = Context.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
+	}
+	return TimeDilationSubSystem != nullptr;
 }
 
 void UAgentHeatmapProcessor::UpdateTimeStepAndPause()
 {
-        if (CurrentTimeStep != TimeDilationSubSystem->CurrentTimeStep)
-        {
-                CurrentTimeStep = TimeDilationSubSystem->CurrentTimeStep;
-                bIsPaused = TimeDilationSubSystem->bIsPaused;
-        }
-        else if (bIsPaused != TimeDilationSubSystem->bIsPaused)
-        {
-                bIsPaused = TimeDilationSubSystem->bIsPaused;
-        }
+	if (CurrentTimeStep != TimeDilationSubSystem->CurrentTimeStep)
+	{
+		CurrentTimeStep = TimeDilationSubSystem->CurrentTimeStep;
+		bIsPaused = TimeDilationSubSystem->bIsPaused;
+	}
+	else if (bIsPaused != TimeDilationSubSystem->bIsPaused)
+	{
+		bIsPaused = TimeDilationSubSystem->bIsPaused;
+	}
 }
 
 void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 {
-        if (TimeDilationSubSystem->GetCurrentSimTime() < LastUpdatedCurrentTime)
-        {
-                LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
-                bUpdateHeatmap = true;
-        }
-        else if (LastUpdatedCurrentTime != TimeDilationSubSystem->GetCurrentSimTime() || LastUpdatedCurrentTime == 0.0f)
-        {
-                float TimeDifference = TimeDilationSubSystem->GetCurrentSimTime() - LastUpdatedCurrentTime;
-                if (TimeDifference < 0.1f && LastUpdatedCurrentTime != 0.0f)
-                {
-                        bUpdateHeatmap = false;
-                }
-                else
-                {
-                        bUpdateHeatmap = true;
-                        LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
-                }
-        }
+	if (TimeDilationSubSystem->GetCurrentSimTime() < LastUpdatedCurrentTime)
+	{
+		LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
+		bUpdateHeatmap = true;
+	}
+	else if (LastUpdatedCurrentTime != TimeDilationSubSystem->GetCurrentSimTime() || LastUpdatedCurrentTime == 0.0f)
+	{
+		float TimeDifference = TimeDilationSubSystem->GetCurrentSimTime() - LastUpdatedCurrentTime;
+		if (TimeDifference < 0.1f && LastUpdatedCurrentTime != 0.0f)
+		{
+			bUpdateHeatmap = false;
+		}
+		else
+		{
+			bUpdateHeatmap = true;
+			LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
+		}
+	}
 }
 
 void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 {
-        if (!bRegisteredProperties)
-        {
-                RegisterProperties(Context);
-                if (!bRegisteredProperties)
-                {
-                        return;
-                }
-        }
+	if (!bRegisteredProperties)
+	{
+		RegisterProperties(Context);
+		if (!bRegisteredProperties)
+		{
+			return;
+		}
+	}
 
-        if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
-        {
-                ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
-                bLastPauseLoop = false;
-        }
+	if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
+	{
+		ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
+		bLastPauseLoop = false;
+	}
 
-        UpdateHeatmapInterval();
+	UpdateHeatmapInterval();
 
-        const TArrayView<FEntityInfoFragment>& EntityInfoFragment = Context.GetMutableFragmentView<FEntityInfoFragment>();
-        for (FEntityInfoFragment& EntityInfoFrag : EntityInfoFragment)
-        {
-                if (!EntityInfoFrag.bRenderAgent && EntityInfoFrag.bReadyToDestroy)
-                {
-                        continue;
-                }
-                HeatmapLocations.Add(EntityInfoFrag.CurrentLocation);
-        }
+	TConstArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetFragmentView<FEntityRenderingFragment>();
+	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
+	auto Entities = Context.GetEntities();
+		
+	for (int i = 0; i < Entities.Num(); i++)
+	{
+		auto EntityMovement = EntityMovementFragment[i];
+		auto& EntityRendering = EntityRenderingFragment[i];
+		
+		if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
+		{
+			continue;
+		}
+		HeatmapLocations.Add(EntityMovement.CurrentLocation);
+	}
 }
 
 void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 {
-        if (!HeatmapLocations.IsEmpty())
-        {
-                if (bUpdateHeatmap && !bLastPauseLoop)
-                {
-                        HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
-                }
+	if (!HeatmapLocations.IsEmpty())
+	{
+		if (bUpdateHeatmap && !bLastPauseLoop)
+		{
+			HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
+		}
 
-                if (!HeatmapSubsystem->AnyHeatmapsActive())
-                {
-                        bLastPauseLoop = false;
-                        HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
-                }
-        }
-        else
-        {
-                HeatmapSubsystem->ClearEmptyHeatmaps();
-        }
+		if (!HeatmapSubsystem->AnyHeatmapsActive())
+		{
+			bLastPauseLoop = false;
+			HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
+		}
+	}
+	else
+	{
+		HeatmapSubsystem->ClearEmptyHeatmaps();
+	}
 }

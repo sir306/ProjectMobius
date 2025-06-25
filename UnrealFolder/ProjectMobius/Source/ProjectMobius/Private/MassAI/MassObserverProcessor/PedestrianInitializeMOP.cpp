@@ -59,6 +59,8 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 
 	// The Entity Query Required fragments for this processor
 	EntityQuery.AddRequirement<FEntityInfoFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
 
 	// Register the entity query with the processor
 	EntityQuery.RegisterWithProcessor(*this);
@@ -74,7 +76,7 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 
 void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-	//UE_LOG(LogTemp, Display, TEXT("UPedestrianInitializeMOP::Execute()"));
+	UE_LOG(LogTemp, Display, TEXT("UPedestrianInitializeMOP::Execute()"));
 	// int offset value for the entity index this is so the intitial values can be assigned correctly
 	int32 EntityIndexOffset = 0;
 
@@ -108,6 +110,9 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		// Get the required fragments
 		const TArrayView<FEntityInfoFragment>& EntityInfoFragment = Context.GetMutableFragmentView<FEntityInfoFragment>();
 
+		const TArrayView<FEntityMovementFragment>& EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
+		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
+
 		// check timestep index is valid
 		if (SharedAgentMovement.SimulationData.Num() - 1 < CurrentTimeStep)
 		{
@@ -135,7 +140,20 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			
 			// Set the Agent Info
 			InitializeEntityInfoAgent(EntityIndex, EntityInfo);
+
+			auto& EntityMovement = EntityMovementFragment[i];
+			// Set the Entity Movement Fragment with correct data
+			EntityMovement.EntityID = EntityInfo.EntityID;
+			// assumption is that the movement data is ordered
+			EntityMovement.CurrentLocation = AllAgentMovementSamples[EntityIndex].Position;
+			EntityMovement.CurrentRotation = AllAgentMovementSamples[EntityIndex].Rotation;
+			EntityMovement.CurrentSpeed = AllAgentMovementSamples[EntityIndex].Speed;
+
+			auto& EntityRendering = EntityRenderingFragment[i];
 			
+			UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();			
+			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndex, EntityRendering);
+
 			// check all movement samples so we can get all unique Z values
 			float ZValue = AllAgentMovementSamples[EntityIndex].Position.Z;
 			if (!UniqueZValues.Contains(ZValue))
@@ -145,7 +163,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		}
 		
 		
-	}));
+		}));
 
 
 	// once all the chunks have been processed we need to set the unique Z values in the heatmap subsystem
