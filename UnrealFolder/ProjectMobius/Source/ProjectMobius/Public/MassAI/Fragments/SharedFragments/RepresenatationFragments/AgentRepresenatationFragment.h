@@ -139,7 +139,7 @@ public:
 #pragma region PROPERTIES
 	/** Actor Class that holds instances that are created */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresenatationActor;
+	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresentationActor;
 
 	// TODO: Possible add the Custom Data for the Niagara Actor params in here
 

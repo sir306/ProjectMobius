@@ -83,15 +83,15 @@ FAgentRepresentationFragment::~FAgentRepresentationFragment()
 
 FNiagaraAgentRepFragment::FNiagaraAgentRepFragment()
 {
-	NiagaraRepresenatationActor = nullptr;
+	NiagaraRepresentationActor = nullptr;
 }
 
 FNiagaraAgentRepFragment::FNiagaraAgentRepFragment(TWeakObjectPtr<ANiagaraAgentRepActor> InActor)
 {
-	NiagaraRepresenatationActor = InActor;
+	NiagaraRepresentationActor = InActor;
 }
 
 FNiagaraAgentRepFragment::~FNiagaraAgentRepFragment()
 {
-	NiagaraRepresenatationActor = nullptr;
+	NiagaraRepresentationActor = nullptr;
 }
