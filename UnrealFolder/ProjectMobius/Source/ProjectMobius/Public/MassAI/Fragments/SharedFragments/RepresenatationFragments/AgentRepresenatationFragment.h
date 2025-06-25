@@ -60,32 +60,77 @@ public:
 	/** Actor Class that holds instances that are created */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	TObjectPtr<AAgentRepresentationActorISM> ActorRepresentationClass;
-
+	
 	/** The Male Static Mesh that is used */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	UStaticMesh* MaleStaticMesh;
-
+	
 	/** The Female Static Mesh that is used */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	UStaticMesh* FemaleStaticMesh;
-
+	
 	/** The Material that is used for the static mesh*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	UMaterial* Material;
-
+	
 	/** The Skeletal Mesh that is used */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	USkeletalMesh* SkeletalMesh;
-
+	
 	///** The Skeletal Mesh Animation that is used for the skelatal mesh */
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	//class UAnimInstance* Animation;
-
+	
 	//NOTE: this is were things are progressing towards
 	
 	/** The Niagara System Actor for the rendering of agents */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	TObjectPtr<ANiagaraAgentRepActor> NiagaraAgentRepActor;
+	
+	/** Number of Male Adults */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	int32 NumberOfMaleAdults;
+	
+	/** Number of Male Elderly */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	int32 NumberOfMaleElderly;
+	
+	/** Number of Female Adults */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	int32 NumberOfFemaleAdults;
+	
+	/** Number of Female Elderly */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	int32 NumberOfFemaleElderly;
+	
+	/** Number of Female Adults */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	int32 NumberOfChildren;// TODO: Maybe do different genders
+	
+	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
+	/** Using low spec agent render effect? */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	bool bUseLowSpecAgentRenderEffect = false;
+	
+#pragma endregion PROPERTIES
+};
+
+
+/**
+ * A Niagara-based fragment used in a Mass Entity system for managing
+ * the representation and the number of agents in a simulation, and the rendering quality settings.
+ */
+USTRUCT(BlueprintType)
+struct PROJECTMOBIUS_API FNiagaraStatsFragment : public FMassSharedFragment
+{
+	GENERATED_BODY()
+
+public:
+
+#pragma region PROPERTIES
+	/** Actor Class that holds instances that are created */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresentationActor;
 
 	/** Number of Male Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
@@ -111,37 +156,6 @@ public:
 	/** Using low spec agent render effect? */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
 	bool bUseLowSpecAgentRenderEffect = false;
-	
-#pragma endregion PROPERTIES
-};
-
-
-/**
- * A Niagara-based fragment used in a Mass Entity system for managing
- * the representation of agent actors within the Niagara framework.
- */
-USTRUCT(BlueprintType)
-struct PROJECTMOBIUS_API FNiagaraAgentRepFragment : public FMassSharedFragment
-{
-	GENERATED_BODY()
-
-public:
-#pragma region METHODS
-	/** Default Constructor */
-	FNiagaraAgentRepFragment();
-
-	/** Constructor With editable params */
-	FNiagaraAgentRepFragment(TWeakObjectPtr<class ANiagaraAgentRepActor> InActor);
-
-	~FNiagaraAgentRepFragment();
-#pragma endregion METHODS
-
-#pragma region PROPERTIES
-	/** Actor Class that holds instances that are created */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresentationActor;
-
-	// TODO: Possible add the Custom Data for the Niagara Actor params in here
 
 #pragma endregion PROPERTIES
 };

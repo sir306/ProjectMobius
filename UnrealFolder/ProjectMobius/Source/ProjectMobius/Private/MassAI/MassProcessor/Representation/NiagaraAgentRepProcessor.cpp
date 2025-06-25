@@ -42,7 +42,8 @@
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraRepSharedFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+
 
 
 UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
@@ -57,15 +58,13 @@ UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
 
 void UNiagaraAgentRepProcessor::ConfigureQueries()
 {
-	// The required fragments for this processor
-	EntityQuery.AddSharedRequirement<FAgentRepresentationFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
-
 	// The Entity Query Required fragments for this processor;
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
 
 	// Add the shared Niagara representation fragment
-	EntityQuery.AddSharedRequirement<FAgentNiagaraRepSharedFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
+	EntityQuery.AddSharedRequirement<FAgentNiagaraDataFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
+	EntityQuery.AddSharedRequirement<FNiagaraStatsFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
 
 	/* Add subsystem requirements */
 	// Representation subsystem
@@ -93,7 +92,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	{
 		//TODO: need to look at mass ai signals and how to use them -> this should be the equivalent to delegates and events -> and the reloading the shared fragments should only occur then
 		// Get the Niagara agent representation frag for the system
-		AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraRepSharedFrag>();
+		AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>();
 		// We should only assign the properties once
 		if (!bRegisteredProperties)
 		{
@@ -101,7 +100,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		}
 		//TODO: this check does not work at all, it never returns true despite data changes!!
 		// Check that the array sizes are correct -> this happens when agent data changes
-		else if (!CheckAgentCountArraySize(Context.GetMutableSharedFragment<FAgentRepresentationFragment>()))
+		else if (!CheckAgentCountArraySize(Context.GetMutableSharedFragment<FNiagaraStatsFragment>()))
 		{
 			// reset the registered properties bool
 			bRegisteredProperties = false;
@@ -220,7 +219,7 @@ int32 UNiagaraAgentRepProcessor::GetIntAnimState(EPedestrianMovementBracket Anim
 void UNiagaraAgentRepProcessor::RegisterProperties(FMassExecutionContext& Context)
 {
 	// Get the Niagara agent representation frag for the system
-	AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraRepSharedFrag>();
+	AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>();
 
 	// Get the male agent locations and scales
 	MaleAdultAgentLocationAndScales = AgentNiagaraRepSharedFrag.MaleAdultAgentLocationAndScales;
@@ -277,7 +276,7 @@ void UNiagaraAgentRepProcessor::RegisterProperties(FMassExecutionContext& Contex
 	RepresentationSubsystem = Context.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
 
 	// Map the agent count to the array
-	MapAgentCountToArray(Context.GetMutableSharedFragment<FAgentRepresentationFragment>());
+	MapAgentCountToArray(Context.GetMutableSharedFragment<FNiagaraStatsFragment>());
 
 	// check we got the subsystems -> if not then we need to return and not update the register flag
 	if (TimeDilationSubSystem == nullptr || RepresentationSubsystem == nullptr ||
@@ -301,24 +300,24 @@ void UNiagaraAgentRepProcessor::PauseResumeAnimations(bool bPause) const
 	NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableFloat(TEXT("PauseResumeAnimations"), bPause ? 0.0f : 1.0f);
 }
 
-void UNiagaraAgentRepProcessor::MapAgentCountToArray(const FAgentRepresentationFragment& AgentRepresentationFragment)
+void UNiagaraAgentRepProcessor::MapAgentCountToArray(const FNiagaraStatsFragment& AgentStatsFragment)
 {
 	NumberOfAgentsArray.Reset(5);
 
-	NumberOfAgentsArray.Add(AgentRepresentationFragment.NumberOfMaleAdults);
-	NumberOfAgentsArray.Add(AgentRepresentationFragment.NumberOfFemaleAdults);
-	NumberOfAgentsArray.Add(AgentRepresentationFragment.NumberOfMaleElderly);
-	NumberOfAgentsArray.Add(AgentRepresentationFragment.NumberOfFemaleElderly);
-	NumberOfAgentsArray.Add(AgentRepresentationFragment.NumberOfChildren);
+	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfMaleAdults);
+	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfFemaleAdults);
+	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfMaleElderly);
+	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfFemaleElderly);
+	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfChildren);
 }
 
-bool UNiagaraAgentRepProcessor::CheckAgentCountArraySize(const FAgentRepresentationFragment& AgentRepresentationFragment) const
+bool UNiagaraAgentRepProcessor::CheckAgentCountArraySize(const FNiagaraStatsFragment& AgentStatsFragment) const
 {
-	bool bMaleAdultsCorrect = CheckAgentArraySize(0, AgentRepresentationFragment.NumberOfMaleAdults);
-	bool bFemaleAdultsCorrect = CheckAgentArraySize(1, AgentRepresentationFragment.NumberOfFemaleAdults);
-	bool bMaleElderlyCorrect = CheckAgentArraySize(2, AgentRepresentationFragment.NumberOfMaleElderly);
-	bool bFemaleElderlyCorrect = CheckAgentArraySize(3, AgentRepresentationFragment.NumberOfFemaleElderly);
-	bool bChildrenCorrect = CheckAgentArraySize(4, AgentRepresentationFragment.NumberOfChildren);
+	bool bMaleAdultsCorrect = CheckAgentArraySize(0, AgentStatsFragment.NumberOfMaleAdults);
+	bool bFemaleAdultsCorrect = CheckAgentArraySize(1, AgentStatsFragment.NumberOfFemaleAdults);
+	bool bMaleElderlyCorrect = CheckAgentArraySize(2, AgentStatsFragment.NumberOfMaleElderly);
+	bool bFemaleElderlyCorrect = CheckAgentArraySize(3, AgentStatsFragment.NumberOfFemaleElderly);
+	bool bChildrenCorrect = CheckAgentArraySize(4, AgentStatsFragment.NumberOfChildren);
 
 	// if any are false then we need to return false
 	if (!bMaleAdultsCorrect || !bFemaleAdultsCorrect || !bMaleElderlyCorrect || !bFemaleElderlyCorrect || !bChildrenCorrect)

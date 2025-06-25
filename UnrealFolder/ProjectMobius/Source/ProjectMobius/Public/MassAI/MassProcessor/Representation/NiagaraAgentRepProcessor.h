@@ -26,10 +26,11 @@
 
 #include "CoreMinimal.h"
 #include "MassProcessor.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraRepSharedFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 #include "NiagaraAgentRepProcessor.generated.h"
 
 
+struct FNiagaraStatsFragment;
 struct FEntityRenderingFragment;
 struct FEntityMovementFragment;
 class UNiagaraComponent;
@@ -98,16 +99,16 @@ protected:
 	/**
 	 * Get the number of agents in the system and map it to the array
 	 *
-	 * @param[FAgentRepresentationFragment] AgentRepresentationFragment The agent representation fragment to get the number of agents from
+	 * @param[FAgentRepresentationFragment] AgentStatsFragment The agent representation fragment to get the number of agents from
 	 */
-	void MapAgentCountToArray(const FAgentRepresentationFragment& AgentRepresentationFragment);
+	void MapAgentCountToArray(const FNiagaraStatsFragment& AgentStatsFragment);
 
 	/**
 	 * Check the amount of agents in count array against the corresponding location and scale arrays
 	 *
 	 * @return[bool] If the arrays are the same size returns true
 	 */
-	bool CheckAgentCountArraySize(const FAgentRepresentationFragment& AgentRepresentationFragment) const;
+	bool CheckAgentCountArraySize(const FNiagaraStatsFragment& AgentStatsFragment) const;
 
 	/**
 	 * Helper method to check if the agent count array is the same size as the location and scale arrays
@@ -210,7 +211,7 @@ private:
 
 	/** Niagara Shared Frag */
 	UPROPERTY()
-	FAgentNiagaraRepSharedFrag AgentNiagaraRepSharedFrag;
+	FAgentNiagaraDataFrag AgentNiagaraRepSharedFrag;
 
 	// bool to say if we have the registered the necessary properties of this processor
 	UPROPERTY()

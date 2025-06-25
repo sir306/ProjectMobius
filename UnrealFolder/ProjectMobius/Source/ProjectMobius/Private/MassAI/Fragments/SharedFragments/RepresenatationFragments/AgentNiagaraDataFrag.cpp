@@ -22,10 +22,10 @@
  * IN THE SOFTWARE.
  */
 
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraRepSharedFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 
 
-FAgentNiagaraRepSharedFrag::FAgentNiagaraRepSharedFrag()
+FAgentNiagaraDataFrag::FAgentNiagaraDataFrag()
 {
 	// Initialize the arrays
 
@@ -55,6 +55,6 @@ FAgentNiagaraRepSharedFrag::FAgentNiagaraRepSharedFrag()
 	ChildrenAnimationStates = TArray<int32>();
 }
 
-FAgentNiagaraRepSharedFrag::~FAgentNiagaraRepSharedFrag()
+FAgentNiagaraDataFrag::~FAgentNiagaraDataFrag()
 {
 }

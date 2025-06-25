@@ -30,7 +30,7 @@
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
 #include "AgentRepresentation_MOP.generated.h"
 
-struct FAgentNiagaraRepSharedFrag;
+struct FAgentNiagaraDataFrag;
 /**
  * 
  */
@@ -54,20 +54,20 @@ protected:
 	 *
 	 * @param EntityMovementFrag Movement data for the entity
 	 * @param EntityRenderingFrag Rendering data that will be updated with the instance id
-	 * @param AgentFrag Representation fragment that stores per-agent counts
-	 * @param NiagaraFrag Niagara shared fragment that gathers instance data
+	 * @param NiagaraStatsFrag Representation fragment that stores per-agent counts
+	 * @param NiagaraDataFrag Niagara shared fragment that gathers instance data
 	 */
-	static void ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag, FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag);
+	static void ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag, FNiagaraStatsFragment& NiagaraStatsFrag, FAgentNiagaraDataFrag& NiagaraDataFrag);
 
 	/**
 	 * In the event of a miss match in indexing and offset, we need to reset the data in the niagara system and the
 	 * corresponding fragments
 	 *
-	 * @param[FAgentRepresentationFragment] AgentFrag The agent representation fragment to assign to the entity
+	 * @param[FNiagaraStatsFragment] NiagaraStatsFrag The agent representation fragment to assign to the entity
 	 * @param[FAgentNiagaraRepSharedFrag] NiagaraFrag The agent niagara representation shared fragment to assign to the entity
 	 * 
 	 */
-	void ResetDataInNiagaraSystem(FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag);
+	void ResetDataInNiagaraSystem(FNiagaraStatsFragment& NiagaraStatsFrag, FAgentNiagaraDataFrag& NiagaraFrag);
 
 	/**
 	 * Method to get the current spawn niagara actor or create one if not found

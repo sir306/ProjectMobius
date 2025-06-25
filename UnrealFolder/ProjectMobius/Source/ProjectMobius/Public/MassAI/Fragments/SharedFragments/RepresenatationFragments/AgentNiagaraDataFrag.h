@@ -26,19 +26,19 @@
 
 #include "CoreMinimal.h"
 #include "MassEntityTypes.h"
-#include "AgentNiagaraRepSharedFrag.generated.h"
+#include "AgentNiagaraDataFrag.generated.h"
 
 /**
  * 
  */
 USTRUCT(BlueprintType)
-struct PROJECTMOBIUS_API FAgentNiagaraRepSharedFrag : public FMassSharedFragment
+struct PROJECTMOBIUS_API FAgentNiagaraDataFrag : public FMassSharedFragment
 {
 	GENERATED_BODY()
 	
 public:
-	FAgentNiagaraRepSharedFrag();
-	~FAgentNiagaraRepSharedFrag();
+	FAgentNiagaraDataFrag();
+	~FAgentNiagaraDataFrag();
 
 	/** Array of Agents to send to the Niagara System */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityNiagaraRepresenatation")

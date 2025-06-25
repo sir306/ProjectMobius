@@ -44,7 +44,7 @@
 // Niagara
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraRepSharedFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 
 class UTimeDilationSubSystem;
 
@@ -180,7 +180,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	PedestrianArchetypeHandle = FMassArchetypeHandle();
 
 	// Reset Niagara Shared Rep Frag
-	NiagaraSharedRepFrag.Reset();
+	NiagaraSharedDataFrag.Reset();
 	
 
 	float elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - RealtimeSeconds;
@@ -347,41 +347,51 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
 {
-	// we only want to add the shared fragment if it doesn't already exist
-	if(!PedestrianTemplateData.HasSharedFragment<FAgentRepresentationFragment>())
-	{
-		//TODO: Refactor this code we don't use the ISM component anymore and this code is messy and will be better if cleaned
-		
-		// Create the agent representation actor
-		AAgentRepresentationActorISM* AgentRepresentationActor = NewObject<AAgentRepresentationActorISM>(GetWorld(), TEXT("ActorRepresentationClass"));
+	// Removed the old fragment logic - it is commented out below as the logic may be useful in the future
 
-		UStaticMesh* MaleAgentMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL, TEXT("StaticMesh'/Game/MakeHuman/Male/SM_MakeHuman.SM_MakeHuman'")));
-		
-		UStaticMesh* FemaleAgentMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL, TEXT("StaticMesh/Script/Engine.StaticMesh'/Game/MakeHuman/Female/SM_MakeHumanFemale.SM_MakeHumanFemale'"))); 
-		
-		UMaterial* AgentMaterial = Cast<UMaterial>(StaticLoadObject(UMaterial::StaticClass(), NULL, TEXT("Material'/Game/MakeHuman/Male/Skeleton/Human_body_003.Human_body_003'")));
+	// // we only want to add the shared fragment if it doesn't already exist
+	// if(!PedestrianTemplateData.HasSharedFragment<FAgentRepresentationFragment>())
+	// {
+	// 	//TODO: Refactor this code we don't use the ISM component anymore and this code is messy and will be better if cleaned
+	// 	
+	// 	// Create the agent representation actor
+	// 	AAgentRepresentationActorISM* AgentRepresentationActor = NewObject<AAgentRepresentationActorISM>(GetWorld(), TEXT("ActorRepresentationClass"));
+	//
+	// 	UStaticMesh* MaleAgentMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL, TEXT("StaticMesh'/Game/MakeHuman/Male/SM_MakeHuman.SM_MakeHuman'")));
+	// 	
+	// 	UStaticMesh* FemaleAgentMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL, TEXT("StaticMesh/Script/Engine.StaticMesh'/Game/MakeHuman/Female/SM_MakeHumanFemale.SM_MakeHumanFemale'"))); 
+	// 	
+	// 	UMaterial* AgentMaterial = Cast<UMaterial>(StaticLoadObject(UMaterial::StaticClass(), NULL, TEXT("Material'/Game/MakeHuman/Male/Skeleton/Human_body_003.Human_body_003'")));
+	//
+	// 	USkeletalMesh* AgentSkeletalMesh = Cast<USkeletalMesh>(StaticLoadObject(USkeletalMesh::StaticClass(), NULL, TEXT("SkeletalMesh'/Game/MakeHuman/Male/Skeleton/MakeHumanMaleLowPoly_Skeleton.MakeHumanMaleLowPoly_Skeleton'")));
+	// 	
+	// 	// create the shared fragments
+	// 	AgentRepresentationFragment = FAgentRepresentationFragment(AgentRepresentationActor, MaleAgentMesh, FemaleAgentMesh, AgentMaterial, AgentSkeletalMesh);
+	//
+	// 	SharedAgentRepresentationFrag = FSharedStruct::Make(AgentRepresentationFragment);
+	//
+	// 	// Add the shared fragment to the build context
+	// 	PedestrianTemplateData.AddSharedFragment(SharedAgentRepresentationFrag);
+	// }
 
-		USkeletalMesh* AgentSkeletalMesh = Cast<USkeletalMesh>(StaticLoadObject(USkeletalMesh::StaticClass(), NULL, TEXT("SkeletalMesh'/Game/MakeHuman/Male/Skeleton/MakeHumanMaleLowPoly_Skeleton.MakeHumanMaleLowPoly_Skeleton'")));
-		
-		// create the shared fragments
-		AgentRepresentationFragment = FAgentRepresentationFragment(AgentRepresentationActor, MaleAgentMesh, FemaleAgentMesh, AgentMaterial, AgentSkeletalMesh);
-
-		SharedAgentRepresentationFrag = FSharedStruct::Make(AgentRepresentationFragment);
-
-		// Add the shared fragment to the build context
-		PedestrianTemplateData.AddSharedFragment(SharedAgentRepresentationFrag);
-	}
-
-	// NIAGARA -> CONVERSION
-
-	// check to see if the Niagara Fragment is already in the template data
-	if (!PedestrianTemplateData.HasSharedFragment<FAgentNiagaraRepSharedFrag>())
+	// check to see if the Niagara stats Fragment is already in the template data
+	if (!PedestrianTemplateData.HasSharedFragment<FNiagaraStatsFragment>())
 	{
 		// create the shared fragment
-		NiagaraSharedRepFrag = FSharedStruct::Make(FAgentNiagaraRepSharedFrag()); // We can add specific data to this later
+		NiagaraSharedStatsFrag = FSharedStruct::Make(FNiagaraStatsFragment()); // We can add specific data to this later
 
 		// Add the shared fragment to the build context
-		PedestrianTemplateData.AddSharedFragment(NiagaraSharedRepFrag);
+		PedestrianTemplateData.AddSharedFragment(NiagaraSharedStatsFrag);
+	}
+
+	// check to see if the Niagara data Fragment is already in the template data
+	if (!PedestrianTemplateData.HasSharedFragment<FAgentNiagaraDataFrag>())
+	{
+		// create the shared fragment
+		NiagaraSharedDataFrag = FSharedStruct::Make(FAgentNiagaraDataFrag()); // We can add specific data to this later
+
+		// Add the shared fragment to the build context
+		PedestrianTemplateData.AddSharedFragment(NiagaraSharedDataFrag);
 	}
 	
 }

@@ -80,18 +80,3 @@ FAgentRepresentationFragment::FAgentRepresentationFragment(TObjectPtr<AAgentRepr
 FAgentRepresentationFragment::~FAgentRepresentationFragment()
 {
 }
-
-FNiagaraAgentRepFragment::FNiagaraAgentRepFragment()
-{
-	NiagaraRepresentationActor = nullptr;
-}
-
-FNiagaraAgentRepFragment::FNiagaraAgentRepFragment(TWeakObjectPtr<ANiagaraAgentRepActor> InActor)
-{
-	NiagaraRepresentationActor = InActor;
-}
-
-FNiagaraAgentRepFragment::~FNiagaraAgentRepFragment()
-{
-	NiagaraRepresentationActor = nullptr;
-}

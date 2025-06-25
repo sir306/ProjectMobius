@@ -137,8 +137,11 @@ public:
 
 	/** Niagara Shared Rep Frag - contains all the variable that are sent to the niagara system */
 	UPROPERTY()
-	FSharedStruct NiagaraSharedRepFrag;
+	FSharedStruct NiagaraSharedDataFrag;
 	
+	UPROPERTY()
+	FSharedStruct NiagaraSharedStatsFrag;
+
 	FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues;
 
 	// The agent data subsystem for getting the data for the pedestrians

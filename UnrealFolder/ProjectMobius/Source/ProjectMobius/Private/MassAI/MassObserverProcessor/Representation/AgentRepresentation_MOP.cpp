@@ -50,7 +50,7 @@
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraDataInterface.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraRepSharedFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 
 class UTimeDilationSubSystem;
 
@@ -68,11 +68,10 @@ UAgentRepresentation_MOP::UAgentRepresentation_MOP()
 void UAgentRepresentation_MOP::ConfigureQueries()
 {
 	// Shared frags
-	EntityQuery.AddSharedRequirement<FAgentRepresentationFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
 	EntityQuery.AddSharedRequirement<FSimulationFragment>(EMassFragmentAccess::ReadOnly, EMassFragmentPresence::All);
-
 	// Add the shared Niagara representation fragment
-	EntityQuery.AddSharedRequirement<FAgentNiagaraRepSharedFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
+	EntityQuery.AddSharedRequirement<FAgentNiagaraDataFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
+	EntityQuery.AddSharedRequirement<FNiagaraStatsFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
 	
 	// Entity frags
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
@@ -100,44 +99,33 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this](FMassExecutionContext& Context)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("UAgentRepresentation_MOP::Execute"));
-		// Get the agent representation fragment
-		FAgentRepresentationFragment& AgentRepresentationFragment = Context.GetMutableSharedFragment<FAgentRepresentationFragment>();
-
+		
                // Get the entity movement and rendering fragments
 		TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 
 		// Get the Niagara agent representation frag for the system
-		FAgentNiagaraRepSharedFrag& AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraRepSharedFrag>();
-
-
-		TObjectPtr<AAgentRepresentationActorISM> AgentRepresentationActor;
+		FAgentNiagaraDataFrag& AgentNiagaraDataSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>();
+		FNiagaraStatsFragment& AgentNiagaraStatsSharedFrag = Context.GetMutableSharedFragment<FNiagaraStatsFragment>();
 		
 		//TODO: need to do index size and offset check here
-		int32 CurrentInstanceTotal = AgentRepresentationFragment.NumberOfMaleAdults + AgentRepresentationFragment.NumberOfFemaleAdults +
-			AgentRepresentationFragment.NumberOfChildren + AgentRepresentationFragment.NumberOfMaleElderly +
-			AgentRepresentationFragment.NumberOfFemaleElderly;
+		int32 CurrentInstanceTotal = AgentNiagaraStatsSharedFrag.NumberOfMaleAdults + AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults +
+			AgentNiagaraStatsSharedFrag.NumberOfChildren + AgentNiagaraStatsSharedFrag.NumberOfMaleElderly +
+			AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly;
 
 		// TODO: this check will always fail on data swap as the frags are reset so sizes will be 0 like the offset
 		// if the index offset is greater or less than the total then there is a miss match with current data the indexing should always be the same
 		if (!EntityIndexOffset == CurrentInstanceTotal)
 		{
-			ResetDataInNiagaraSystem(AgentRepresentationFragment, AgentNiagaraRepSharedFrag);
+			ResetDataInNiagaraSystem(AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
 
-			Context.GetMutableSharedFragment<FAgentRepresentationFragment>() = AgentRepresentationFragment;
-			Context.GetMutableSharedFragment<FAgentNiagaraRepSharedFrag>() = AgentNiagaraRepSharedFrag;
+			Context.GetMutableSharedFragment<FNiagaraStatsFragment>() = AgentNiagaraStatsSharedFrag;
+			Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>() = AgentNiagaraDataSharedFrag;
 		}
 		
 		// to avoid spawning multiple ISMs check that it has not already been spawned
 		if (bHasSpawned)
 		{
-			// Get the shared actor component from the shared fragment
-			AgentRepresentationActor = AgentRepresentationFragment.ActorRepresentationClass;
-			
-			TArray<AActor*> AgentRepresentationActors;
-			
-			UGameplayStatics::GetAllActorsOfClass(GetWorld(), AAgentRepresentationActorISM::StaticClass(), AgentRepresentationActors);
-			
 			// Get the Niagara actor
 			auto FoundActor = UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass());
 			ANiagaraAgentRepActor* NiagaraAgentRepActor;
@@ -155,10 +143,10 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			NiagaraAgentRepActor = GetOrCreateNiagaraRepActor(GetWorld());
 			
 			// Set the shared actor component in the shared fragment
-			AgentRepresentationFragment.NiagaraAgentRepActor = NiagaraAgentRepActor;
+			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
 
 			// DEACTIVATE THE NIAGARA SYSTEM
-			AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->DeactivateImmediate();
+			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
 
 
 			// get time dilation subsystem current time step
@@ -178,7 +166,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 				auto& EntityMovement = EntityMovementFragment[i];
 				auto& EntityRendering = EntityRenderingFragment[i];
 				// Process the entity and set up the corresponding niagara system for the demographic of this entity
-				ProcessEntity(EntityMovement,EntityRendering, AgentRepresentationFragment, AgentNiagaraRepSharedFrag);
+				ProcessEntity(EntityMovement,EntityRendering, AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
 				
 				EntityIndexOffset++;
 			}
@@ -197,7 +185,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			
 			// Create the Niagara System
 			//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
-			UNiagaraSystem* NiagaraSystem = MRSSubsystem->LoadNiagaraAgentSystem(AgentRepresentationFragment.bUseLowSpecAgentRenderEffect);
+			UNiagaraSystem* NiagaraSystem = MRSSubsystem->LoadNiagaraAgentSystem(AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect);
 
 			if (NiagaraSystem == nullptr)
 			{
@@ -210,7 +198,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
 			
 			// Set the shared actor component in the shared fragment
-			AgentRepresentationFragment.NiagaraAgentRepActor = NiagaraAgentRepActor;
+			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
 			
 			// flag to see if the initial spawn has been done
 			bHasSpawned = true;
@@ -228,26 +216,26 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 				auto& EntityMovement = EntityMovementFragment[i];
 				auto& EntityRendering = EntityRenderingFragment[i];
 				// Process the entity and set up the corresponding niagara system for the demographic of this entity
-				ProcessEntity(EntityMovement,EntityRendering, AgentRepresentationFragment, AgentNiagaraRepSharedFrag);
+				ProcessEntity(EntityMovement,EntityRendering, AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
 				
 				EntityIndexOffset++;
 			}
 			
 		}
 
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->ClearSimCache();
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->ClearSimCache();
 
 		// get the niagara variables for number of agents
 		
 		// Activate the Niagara System
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->Activate(true);
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
 
 		// Set the number of agents in the system
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentRepresentationFragment.NumberOfMaleAdults);
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyMaleAgentNumber"), AgentRepresentationFragment.NumberOfMaleElderly);
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentRepresentationFragment.NumberOfFemaleAdults);
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentRepresentationFragment.NumberOfFemaleElderly);
-		AgentRepresentationFragment.NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableInt(TEXT("ChildNumberOfAgents"), AgentRepresentationFragment.NumberOfChildren);
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyMaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleElderly);
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults);
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly);
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ChildNumberOfAgents"), AgentNiagaraStatsSharedFrag.NumberOfChildren);
 		
 
 		// log the number of agents
@@ -264,7 +252,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 // Consume movement and rendering fragments to fill Niagara arrays and update counts.
 void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag,
-                                             FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag)
+                                             FNiagaraStatsFragment& NiagaraStatsFrag, FAgentNiagaraDataFrag& NiagaraDataFrag)
 {
 	FVector4 LocationScale = FVector4(EntityMovementFrag.CurrentLocation, 1.0f);
 	FQuat RotationQuat = EntityMovementFrag.CurrentRotation.Quaternion();
@@ -275,24 +263,24 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 		switch (EntityRenderingFrag.AgeDemographic)
 		{
 		case EAgeDemographic::Ead_Child:
-			EntityRenderingFrag.InstanceID = AgentFrag.NumberOfChildren++; // ++ on right side of assignment means post increment
-			NiagaraFrag.ChildrenAgentLocationAndScales.Add(LocationScale);
-			NiagaraFrag.ChildrenAgentRotations.Add(RotationQuat);
-			NiagaraFrag.ChildrenAnimationStates.Add(AnimationState);
+			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfChildren++; // ++ on right side of assignment means post increment
+			NiagaraDataFrag.ChildrenAgentLocationAndScales.Add(LocationScale);
+			NiagaraDataFrag.ChildrenAgentRotations.Add(RotationQuat);
+			NiagaraDataFrag.ChildrenAnimationStates.Add(AnimationState);
 			break;
 
 		case EAgeDemographic::Ead_Elderly:
 	
-			EntityRenderingFrag.InstanceID = AgentFrag.NumberOfMaleElderly++;
-			NiagaraFrag.ElderlyMaleAdultAgentLocationAndScales.Add(LocationScale);
-			NiagaraFrag.ElderlyMaleAdultAgentRotations.Add(RotationQuat);
-			NiagaraFrag.ElderlyMaleAdultAnimationStates.Add(AnimationState);
+			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfMaleElderly++;
+			NiagaraDataFrag.ElderlyMaleAdultAgentLocationAndScales.Add(LocationScale);
+			NiagaraDataFrag.ElderlyMaleAdultAgentRotations.Add(RotationQuat);
+			NiagaraDataFrag.ElderlyMaleAdultAnimationStates.Add(AnimationState);
 			break;
 		case EAgeDemographic::Ead_Adult:
-			EntityRenderingFrag.InstanceID = AgentFrag.NumberOfMaleAdults++;
-			NiagaraFrag.MaleAdultAgentLocationAndScales.Add(LocationScale);
-			NiagaraFrag.MaleAdultAgentRotations.Add(RotationQuat);
-			NiagaraFrag.MaleAdultAnimationStates.Add(AnimationState);
+			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfMaleAdults++;
+			NiagaraDataFrag.MaleAdultAgentLocationAndScales.Add(LocationScale);
+			NiagaraDataFrag.MaleAdultAgentRotations.Add(RotationQuat);
+			NiagaraDataFrag.MaleAdultAnimationStates.Add(AnimationState);
 			break;
 		case EAgeDemographic::Ead_Default:
 			break;
@@ -303,23 +291,23 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 		switch (EntityRenderingFrag.AgeDemographic)
 		{
 		case EAgeDemographic::Ead_Child: // TODO: no female children yet
-			EntityRenderingFrag.InstanceID = AgentFrag.NumberOfChildren++; // ++ on right side of assignment means post increment
-			NiagaraFrag.ChildrenAgentLocationAndScales.Add(LocationScale);
-			NiagaraFrag.ChildrenAgentRotations.Add(RotationQuat);
-			NiagaraFrag.ChildrenAnimationStates.Add(AnimationState);
+			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfChildren++; // ++ on right side of assignment means post increment
+			NiagaraDataFrag.ChildrenAgentLocationAndScales.Add(LocationScale);
+			NiagaraDataFrag.ChildrenAgentRotations.Add(RotationQuat);
+			NiagaraDataFrag.ChildrenAnimationStates.Add(AnimationState);
 			break;
 
 		case EAgeDemographic::Ead_Elderly:
-			EntityRenderingFrag.InstanceID = AgentFrag.NumberOfFemaleElderly++;
-			NiagaraFrag.ElderlyFemaleAdultAgentLocationAndScales.Add(LocationScale);
-			NiagaraFrag.ElderlyFemaleAdultAgentRotations.Add(RotationQuat);
-			NiagaraFrag.ElderlyFemaleAdultAnimationStates.Add(AnimationState);
+			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfFemaleElderly++;
+			NiagaraDataFrag.ElderlyFemaleAdultAgentLocationAndScales.Add(LocationScale);
+			NiagaraDataFrag.ElderlyFemaleAdultAgentRotations.Add(RotationQuat);
+			NiagaraDataFrag.ElderlyFemaleAdultAnimationStates.Add(AnimationState);
 			break;
 		case EAgeDemographic::Ead_Adult:
-			EntityRenderingFrag.InstanceID = AgentFrag.NumberOfFemaleAdults++;
-			NiagaraFrag.FemaleAdultAgentLocationAndScales.Add(LocationScale);
-			NiagaraFrag.FemaleAdultAgentRotations.Add(RotationQuat);
-			NiagaraFrag.FemaleAdultAnimationStates.Add(AnimationState);
+			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfFemaleAdults++;
+			NiagaraDataFrag.FemaleAdultAgentLocationAndScales.Add(LocationScale);
+			NiagaraDataFrag.FemaleAdultAgentRotations.Add(RotationQuat);
+			NiagaraDataFrag.FemaleAdultAnimationStates.Add(AnimationState);
 			break;
 		case EAgeDemographic::Ead_Default:
 			break;
@@ -327,14 +315,14 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 	}
 }
 
-void UAgentRepresentation_MOP::ResetDataInNiagaraSystem(FAgentRepresentationFragment& AgentFrag,
-                                                        FAgentNiagaraRepSharedFrag& NiagaraFrag)
+void UAgentRepresentation_MOP::ResetDataInNiagaraSystem(FNiagaraStatsFragment& NiagaraStatsFrag,
+                                                        FAgentNiagaraDataFrag& NiagaraFrag)
 {
-	AgentFrag.NumberOfFemaleAdults = 0;
-	AgentFrag.NumberOfFemaleElderly = 0;
-	AgentFrag.NumberOfMaleAdults = 0;
-	AgentFrag.NumberOfMaleElderly = 0;
-	AgentFrag.NumberOfChildren = 0;
+	NiagaraStatsFrag.NumberOfFemaleAdults = 0;
+	NiagaraStatsFrag.NumberOfFemaleElderly = 0;
+	NiagaraStatsFrag.NumberOfMaleAdults = 0;
+	NiagaraStatsFrag.NumberOfMaleElderly = 0;
+	NiagaraStatsFrag.NumberOfChildren = 0;
 	EntityIndexOffset = 0;
 
 #define RESET_NIAGARA_FRAG(Field) NiagaraFrag.Field.Reset()
@@ -355,9 +343,9 @@ void UAgentRepresentation_MOP::ResetDataInNiagaraSystem(FAgentRepresentationFrag
 	RESET_NIAGARA_FRAG(ChildrenAgentLocationAndScales);
 	RESET_NIAGARA_FRAG(ChildrenAnimationStates);
 
-	if (AgentFrag.NiagaraAgentRepActor && AgentFrag.NiagaraAgentRepActor->GetNiagaraComponent())
+	if (NiagaraStatsFrag.NiagaraRepresentationActor.Get() && NiagaraStatsFrag.NiagaraRepresentationActor->GetNiagaraComponent())
 	{
-		AgentFrag.NiagaraAgentRepActor->GetNiagaraComponent()->Deactivate();
+		NiagaraStatsFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Deactivate();
 		
 	}
 }
