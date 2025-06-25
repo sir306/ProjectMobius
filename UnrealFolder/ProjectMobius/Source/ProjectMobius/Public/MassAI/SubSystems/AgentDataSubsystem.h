@@ -97,10 +97,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
 	void BuildPedestrianAgentInfo();
 
-	/** Get Entity Info by Index */
+	/**
+	 * Set the Entity Info fragment by Index from the JSON data
+	 *
+	 * @param[int32] Index The index of the entity to set
+	 * @param[FEntityInfoFragment&] EntityInfoFragToUpdate The entity info fragment to update
+	 */
 	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
 	void SetEntityInfoByIndex(int32 Index, FEntityInfoFragment& EntityInfoFragToUpdate) const;
-	
+
+	/**
+	 * Set the Entity Rendering fragment by Index from the JSON data
+	 * 
+	 * @param[int32] Index The index of the entity to set
+	 * @param[FEntityRenderingFragment&] EntityRenderingFragToUpdate The entity rendering fragment to update
+	 */
 	void SetEntityRenderingByIndex(int32 Index, FEntityRenderingFragment& EntityRenderingFragToUpdate) const;
 
 	/**

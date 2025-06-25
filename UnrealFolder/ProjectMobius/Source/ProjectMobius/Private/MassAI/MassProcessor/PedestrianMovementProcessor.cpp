@@ -215,7 +215,8 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Get the required fragments
 			const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 			const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
-	
+
+			//TODO: REFACTOR THIS LOOP, too much code in here and it is not readable and has repetitive code
 			auto Entities = Context.GetEntities();
 
 			// loop through the entity info fragment and update the location and rotation

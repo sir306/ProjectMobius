@@ -30,19 +30,13 @@
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
 #include "MassAI/Fragments/EntityInfoFragment.h"
-// Shared Fragments to include with the processor
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
 // Tags
 #include "MassAI/Tags/MassAITags.h"
 // Subsystems to include with the processor
-#include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
-// actors
-#include "MassAI/Actors/AgentRepresentationActorISM.h"
-#include "Components/InstancedStaticMeshComponent.h"
-// multithreading and async
 #include "Subsystems/HeatmapSubsystem.h"
-#include "Async/ParallelFor.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+// multithreading and async
+#include "Async/ParallelFor.h"
 
 UAgentHeatmapProcessor::UAgentHeatmapProcessor():
 	HeatmapSubsystem(nullptr), bRegisteredProperties(false)
@@ -184,6 +178,7 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 
 	UpdateHeatmapInterval();
 
+	// TODO: add comments to explain the purpose of this function and what it does
 	TConstArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetFragmentView<FEntityRenderingFragment>();
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 	auto Entities = Context.GetEntities();

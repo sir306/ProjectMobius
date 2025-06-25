@@ -128,38 +128,42 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		TArray<FSimMovementSample> AllAgentMovementSamples = SharedAgentMovement.SimulationData[CurrentTimeStep];
 
 		auto Entities = Context.GetEntities();
-		
+
+		//TODO: We have two methods that rely on the agent subsystem we should assign it to a variable and use it
 		for (int i = 0; i < Entities.Num(); i++)
 		{
 			auto Entity = Entities[i];
 			// Add the Mass Entity Representation Tag to current Entity - so we know the data is ready for render logic
 			Context.Defer().AddTag<FMassEntityRepresentationTag>(Entity);
-			int32 EntityIndex = Entity.Index - 1; // Entity.Index is 1 based, so we subtract 1 to get the correct index
 
 			auto& EntityInfo = EntityInfoFragment[i];
 			
 			// Set the Agent Info
-			InitializeEntityInfoAgent(EntityIndex, EntityInfo);
+			InitializeEntityInfoAgent(EntityIndexOffset, EntityInfo);
 
 			auto& EntityMovement = EntityMovementFragment[i];
 			// Set the Entity Movement Fragment with correct data
 			EntityMovement.EntityID = EntityInfo.EntityID;
+
+			//TODO: This is a poor assumption and should really be searching and checking
 			// assumption is that the movement data is ordered
-			EntityMovement.CurrentLocation = AllAgentMovementSamples[EntityIndex].Position;
-			EntityMovement.CurrentRotation = AllAgentMovementSamples[EntityIndex].Rotation;
-			EntityMovement.CurrentSpeed = AllAgentMovementSamples[EntityIndex].Speed;
+			EntityMovement.CurrentLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
+			EntityMovement.CurrentRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
+			EntityMovement.CurrentSpeed = AllAgentMovementSamples[EntityIndexOffset].Speed;
 
 			auto& EntityRendering = EntityRenderingFragment[i];
 			
 			UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();			
-			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndex, EntityRendering);
+			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndexOffset, EntityRendering);
 
 			// check all movement samples so we can get all unique Z values
-			float ZValue = AllAgentMovementSamples[EntityIndex].Position.Z;
+			float ZValue = AllAgentMovementSamples[EntityIndexOffset].Position.Z;
 			if (!UniqueZValues.Contains(ZValue))
 			{
 				UniqueZValues.Add(ZValue);
 			}
+			
+			EntityIndexOffset++;
 		}
 		
 		

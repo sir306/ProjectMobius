@@ -119,9 +119,11 @@ public:
 	FMassArchetypeHandle PedestrianArchetypeHandle;
 
 	// The Handle for spawned pedestrians
+	UPROPERTY()
 	TArray<FMassEntityHandle> SpawnedEntityPedestrianHandles;
 
 	// The template data for the pedestrians contains fragments and shared fragments etc
+	UPROPERTY()
 	FMassEntityTemplateData PedestrianTemplateData;
 
 	UPROPERTY()

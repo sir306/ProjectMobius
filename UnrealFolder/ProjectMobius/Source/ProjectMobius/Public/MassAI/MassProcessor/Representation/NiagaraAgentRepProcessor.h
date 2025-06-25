@@ -65,7 +65,8 @@ protected:
 	 * Helper method to set the extracted data at the correct index and in the correct array
 	 *
 	 * @param[int32] Index - The index to set the data at
-	 * @param[FEntityInfoFragment] EntityInfo - The entity info fragment to get the data from
+	 * @param[FEntityMovementFragment] EntityMovementFragment - The entity movement fragment to get the movement data from
+	 * @param[FEntityRenderingFragment] EntityRenderingFragment - The entity rendering fragment to get the rendering data from and manipulate
 	 * @param[TArray<FVector4>] LocationAndScales - The array to set the data at for the location and scales
 	 * @param[TArray<FQuat>] Rotations - The array to set the data at for the rotations
 	 * @param[TArray<int32>] AnimationStates - The array to set the data at for the animation states

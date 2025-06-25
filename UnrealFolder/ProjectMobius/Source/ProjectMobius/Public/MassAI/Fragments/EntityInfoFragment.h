@@ -31,7 +31,14 @@
 
 
 /**
- * 
+ * Contains information about the entity, that is useful for analytical purposes but currently holds no information
+ * useful to the viewer such as:
+ * - Entity ID (this is important for identifying the entity in the simulation, and is used by other fragments)
+ * - Entity Name
+ * - Entity SimTimeS
+ * - Entity MaxSpeed
+ * - Entity M_Plane
+ * - Entity Map
  */
 USTRUCT(BlueprintType)
 struct PROJECTMOBIUS_API FEntityInfoFragment: public FMassFragment
@@ -64,7 +71,8 @@ struct PROJECTMOBIUS_API FEntityInfoFragment: public FMassFragment
 };
 
 /**
- * 
+ * For every entity that is moving, we need to have a movement fragment, this tells the system where the
+ * entity is currently located, what its current speed is, and what its current movement bracket is.
  */
 USTRUCT()
 struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
@@ -97,7 +105,13 @@ struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
 };
 
 /**
- * 
+ * For every entity that is rendered, we need to have a rendering fragment, this tells the system whether the
+ * entity should be rendered, and if so what properties it has, such as:
+ * - what instance ID it is associated with
+ * - the gender of the agent
+ * - the age demographic of the agent
+ * - whether it is ready to be destroyed
+ * - whether the animation has changed
  */
 USTRUCT()
 struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
