@@ -449,16 +449,24 @@ bool FJsonDataRunnable::LoadFileAndDeserialize()
         // check file actually exists before creating the thread
         if (!FPaths::FileExists(JsonFilePath))
         {
+                // TODO: this needs to broadcast error message to the UI
                 bShouldStop = true;
                 return false;
         }
 
+        // Load File to String
         FFileHelper::LoadFileToString(JsonDataFile, *JsonFilePath);
+
+        // Create JSON Reader
         TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(JsonDataFile);
 
+        // Deserialize JSON Data
         bool bDeserializeSuccess = FJsonSerializer::Deserialize(JsonReader, JSONObject);
+
+        // if the deserialization was not successful, log it
         if (!bDeserializeSuccess)
         {
+                // TODO: this needs to broadcast error message to the UI
                 bShouldStop = true;
                 return false;
         }
@@ -471,138 +479,227 @@ void FJsonDataRunnable::ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& 
         bCalculateTimeBetweenSteps = true;
         bCalculateMaxTime = true;
 
+        // See if the metadata object is present and valid in this file
         if(JSONObject->HasField(StringCast<TCHAR>("metadata")))
         {
+                // Get the metadata object
                 TSharedPtr<FJsonObject> JSONMetaDataObject = JSONObject->GetObjectField(StringCast<TCHAR>("metadata"));
 
+                /**
+                 * The way mass entity spawns we need to use the actual number and not the index value,
+                 * the assignment of index values is done in the observor processors
+                 */
+
+                // check if the metadata field for max num entities is present and not blank
                 if(!JSONMetaDataObject->TryGetNumberField(StringCast<TCHAR>("max_num_entities"), MaxAgents))
                 {
+                        // Set the entity count from count of entities in the JSON object array if the metadata fields are not present or blank
                         MaxAgents = JSONObject->GetArrayField(StringCast<TCHAR>("entities")).Num();
                 }
 
+                /** we see if the metadata has the sampling rate field and the duration field,
+                 * it is also important to check that they are not blank or 0
+                 * so we can calculate the number of samples and get the time between steps */
                 if(JSONMetaDataObject->HasField(StringCast<TCHAR>("duration")) && JSONMetaDataObject->HasField(StringCast<TCHAR>("sampling_rate")) &&
                    JSONMetaDataObject->GetNumberField(StringCast<TCHAR>("duration")) > 0 && JSONMetaDataObject->GetNumberField(StringCast<TCHAR>("sampling_rate")) > 0)
                 {
+                        // Get the duration of the simulation
                         AgentMovementInfoData.MaxTime = JSONMetaDataObject->GetNumberField(StringCast<TCHAR>("duration"));
+
+                        // Get the sampling rate of the simulation
                         TimeBetweenSteps = JSONMetaDataObject->GetNumberField(StringCast<TCHAR>("sampling_rate"));
+
+                        // Calculate the number of samples
                         TargetDataCount = AgentMovementInfoData.MaxTime / TimeBetweenSteps;
 
+                        // don't calculate the time between steps
                         bCalculateTimeBetweenSteps = false;
+
+                        // don't calculate the max time
                         bCalculateMaxTime = false;
                 }
                 else
                 {
+                        // Set the target count to the simulation array count
                         TargetDataCount = JSONObject->GetArrayField(StringCast<TCHAR>("simulation")).Num();
                 }
         }
         else
         {
+                // Set the entity count from count of entities in the JSON object array if the metadata fields are not present or blank
                 MaxAgents = JSONObject->GetArrayField(StringCast<TCHAR>("entities")).Num();
         }
 }
 
 void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime)
 {
+        // get the simulation data array
         TArray<TSharedPtr<FJsonValue>> JsonSimDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("simulation"));
 
+        // keep looping until the thread is stopped or the current data count is equal to the target data count
         while (!bShouldStop && CurrentDataCount <= TargetDataCount)
         {
+                // Check that the JSON Object is valid
                 if (!JsonSimDataArray.IsValidIndex(CurrentDataCount) || !JsonSimDataArray[CurrentDataCount]->AsObject().IsValid())
                 {
+                        // TODO: this needs to broadcast error message to the UI
+                        // We cant log here as this is a separate thread
                         bShouldStop = true;
                         break;
                 }
 
+                // Get the JSON object for this
                 TSharedPtr<FJsonObject> JSONSimDataObject = JsonSimDataArray[CurrentDataCount]->AsObject();
 
+                // if metadata is present for max time then no need to calculate
                 if(bCalculateMaxTime)
                 {
                         AgentMovementInfoData.MaxTime = JSONSimDataObject->GetNumberField(StringCast<TCHAR>("time"));
                 }
 
+                // if metadata is present for time steps then no need to calculate
                 if(bCalculateTimeBetweenSteps)
                 {
+                        // get time field
                         float TimeVal = JSONSimDataObject->GetNumberField(StringCast<TCHAR>("time"));
                         TimeBetweenSteps = TimeVal - AgentMovementInfoData.MaxTime;
                 }
 
-                minimumStepDuration = 0.6;
-                maximumStepDuration = 1.0;
-                minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration*(int)std::round(((double)1.0 / (double)TimeBetweenSteps)));
-                maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps);
+                // Parameters for step-duration related smoothing, to account for head-tracking  body sway over step duration
+                minimumStepDuration = 0.6; // Minimum step duration in seconds, to assess suitable animation
+                maximumStepDuration = 1.0; // Maximum step duration in seconds, to assess suitable animation
+                minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration*(int)std::round(((double)1.0 / (double)TimeBetweenSteps))); // Min. num. time steps to forward-assess
+                maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps); // Max. num. time steps to forward-assess
                 timeDurationPerRecord = 1.0 / (double)(int)std::round(((double)1.0 / (double)TimeBetweenSteps));
 
+                // get the sample array for this
                 TArray<TSharedPtr<FJsonValue>> JSONSampleArray = JSONSimDataObject->GetArrayField(StringCast<TCHAR>("samples"));
 
+                // log if the sample array is empty
                 if (JSONSampleArray.Num() == 0)
                 {
                         UE_LOG(LogTemp, Warning, TEXT("No samples found for time step %d"), CurrentDataCount);
                 }
 
+                // create a movement sample array
                 TArray<FSimMovementSample> MovementSamples;
 
+                // loop through the sample array and build the movement sample values
                 for (int32 JsimSample = 0; JsimSample < JSONSampleArray.Num(); JsimSample++)
                 {
                         if (!JSONSampleArray[JsimSample]->AsObject().IsValid())
                         {
+                                // TODO: this needs to broadcast error message to the UI
+                                // We cant log here as this is a separate thread
                                 continue;
                         }
 
+                        // Get the JSON object
                         TSharedPtr<FJsonObject> JSONSampleDataObject = JSONSampleArray[JsimSample]->AsObject();
 
+                        // Get the entity ID
                         int32 EntityID;
                         if(!JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("entity"), EntityID))
                         {
-                                continue;
+                                // TODO: this needs to broadcast error message to the UI
+                                // We cant log here as this is a separate thread
+                                continue; // no ID
                         }
 
+                        // Initilize the position variable
                         FVector Position = FVector::ZeroVector;
+                        // Initialize the rotation variable
                         FRotator Rotation = FRotator::ZeroRotator;
 
+                        // Create a pointer to the position value
                         const TSharedPtr<FJsonObject>* PositionValue;
+                        // Get the Position field
                         if (JSONSampleDataObject->TryGetObjectField(StringCast<TCHAR>("position"), PositionValue))
                         {
+                                //  Check if position field has x, y and z fields and get the values
                                 if(PositionValue->ToSharedRef()->HasField(StringCast<TCHAR>("x")) && PositionValue->ToSharedRef()->HasField(StringCast<TCHAR>("y")) && PositionValue->ToSharedRef()->HasField(StringCast<TCHAR>("z")))
                                 {
-                                        Position.X = PositionValue->ToSharedRef()->GetNumberField(StringCast<TCHAR>("x"));
+                                        // Map the values to the position
+                                        Position.X = PositionValue->ToSharedRef()->GetNumberField(StringCast<TCHAR>("x")); //TODO need to work out for different modeling studios
                                         Position.Y = -PositionValue->ToSharedRef()->GetNumberField(StringCast<TCHAR>("y"));
                                         Position.Z = PositionValue->ToSharedRef()->GetNumberField(StringCast<TCHAR>("z"));
                                 }
                                 if(JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->GetBoolField(StringCast<TCHAR>("isSI")))
                                 {
+                                        // unit is SI so should be in meters - convert to cm
                                         Position *= 100.0f;
                                 }
                                 else
                                 {
-                                        Position *= 10.0f;
+                                        // unit is not SI
+                                        Position *= 10.0f; // unless we add a field to the metadata that stipulates the unit of measurement we will have to add a user prompt to select the unit of measurement
                                 }
+
+                                // measurement unit conversion
+                                //Position *= 10.0f; // unless we add a field to the metadata that stipulates the unit of measurement we will have to add a user prompt to select the unit of measurement
+
+                        }
+                        else
+                        {
+                                // TODO: this needs to broadcast error message to the UI
+                                // We cant log here as this is a separate thread
                         }
 
+                        // Get the Rotation field which is in degrees -- TODO: if meta present for rotation unit need to see if it is in degrees or radians
                         float RotationValue;
+
+                        // try get the rotation value
                         if (JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("rotation"), RotationValue))
                         {
+                                // if the metadata contains isDeg then we know the rotation is in degrees otherwise it is in radians
                                 if(JSONObject->HasField(StringCast<TCHAR>("metadata")) && JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->HasField(StringCast<TCHAR>("isDeg")))
                                 {
+                                        // is it degrees
                                         if(JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->GetBoolField(StringCast<TCHAR>("isDeg")))
                                         {
-                                                Rotation = FRotator(0.0f, (-RotationValue -  90), 0.0f);
+                                                // convert the degree rotation value to x,y,z // the minus 90 is to adjust the rotation to the correct direction for mesh needs better handle on this
+                                                Rotation = FRotator(0.0f, (-RotationValue -  90), 0.0f);//TODO: this is correct(for test data) and add method for different modeling studios
                                         }
                                         else
                                         {
-                                                Rotation = FRotator(0.0f, FMath::RadiansToDegrees(-RotationValue) - 90, 0.0f);
+                                                // convert the radian rotation value to x,y,z // the minus 90 is to adjust the rotation to the correct direction for mesh needs better handle on this
+                                                Rotation = FRotator(0.0f, FMath::RadiansToDegrees(-RotationValue) - 90, 0.0f);//TODO: this is correct(for test data) and add method for different modeling studios
                                         }
+
+
                                 }
                                 else
                                 {
-                                        Rotation = FRotator(0.0f, (-RotationValue -  90), 0.0f);
+                                        // the metadata doesn't exist so we assume it is in degrees
+
+                                        // convert the degree rotation value to x,y,z // the minus 90 is to adjust the rotation to the correct direction for mesh needs better handle on this
+                                        Rotation = FRotator(0.0f, (-RotationValue -  90), 0.0f);//TODO: this is correct(for test data) and add method for different modeling studios
                                 }
+
+                        }
+                        else
+                        {
+                                // TODO: this needs to broadcast error message to the UI
+                                // We cant log here as this is a separate thread
                         }
 
+                        // Get the speed
                         float Speed(0);
-                        JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("speed"), Speed);
 
+                        // try get the speed value
+                        if (!JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("speed"), Speed))
+                        {
+                                // throw error message
+                        }
+
+                        // Get the mode
                         FString Mode("");
-                        JSONSampleDataObject->TryGetStringField(StringCast<TCHAR>("mode"), Mode);
+
+                        // try get the mode string value
+                        if (!JSONSampleDataObject->TryGetStringField(StringCast<TCHAR>("mode"), Mode))
+                        {
+                                // throw error message
+                        }
 
                         FSimMovementSample MovementSample;
                         MovementSample.EntityID = EntityID;
@@ -617,46 +714,61 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 
                 AgentMovementInfoData.SimulationData.Add(CurrentDataCount, MovementSamples);
 
+                // Calculate the current percentage of the data loaded
                 float CurrentPercentage = (float)CurrentDataCount / (float)TargetDataCount;
 
+                // Broadcast the current percentage of the data loaded -- this is done on the game thread
                 AsyncTask(ENamedThreads::GameThread, [this, CurrentPercentage]()
                 {
+                        // Broadcast the current percentage of the data loaded
                         OnLoadSimulationDataProgress.Broadcast(CurrentPercentage);
                 });
 
+                // Increment the current data count
                 CurrentDataCount++;
         }
 }
 
 void FJsonDataRunnable::FinalizeProgress()
 {
+        // Perform Animation Preprocessing data here
+        // Broadcast the current percentage of the data loaded
         AsyncTask(ENamedThreads::GameThread, [this]()
         {
+                // Broadcast the current percentage of the data loaded as 0 this way the ui will show
                 OnLoadSimulationDataProgress.Broadcast(1.0f);
-                OnLoadSimulationDataProgress.Broadcast(0.0f);
+                OnLoadSimulationDataProgress.Broadcast(0.0f);// NEED to broadcast new load text here
         });
 
         CalcSmoothedStepMovementBrackets(AgentDataArray);
 
+        // let the thread sleep for 0.5 second
         FPlatformProcess::Sleep(0.5f);
 
+        // Broadcast that the simulation data has been loaded -- this is done on the game thread
         AsyncTask(ENamedThreads::GameThread, [this]()
         {
+                // Broadcast the current percentage of the data loaded
                 OnLoadSimulationDataProgress.Broadcast(1.0f);
+                // Broadcast that the simulation data has been loaded
                 OnLoadSimulationDataComplete.Broadcast();
         });
 
+        // let the thread sleep for 0.5 second
         FPlatformProcess::Sleep(0.5f);
 }
 
 uint32 FJsonDataRunnable:: Run()
 {
         bIsRunning = true;
+        // Broadcast the current percentage of the data loaded
         AsyncTask(ENamedThreads::GameThread, [this]()
         {
+                // Broadcast the current percentage of the data loaded as 0 this way the ui will show
                 OnLoadSimulationDataProgress.Broadcast(0.0f);
         });
 
+        // ensure the tread is not stopped
         bShouldStop = false;
 
         if (!LoadFileAndDeserialize())
@@ -675,10 +787,13 @@ uint32 FJsonDataRunnable:: Run()
                 OnMaxAgentCount.Broadcast(MaxAgents);
         });
 
+        // Size AgentDataArray to the max agents
         AgentDataArray.SetNum(MaxAgents);
 
+        // Run the main simulation loop
         RunSimulationLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
 
+        // Send the final progress and completion events
         FinalizeProgress();
 
         bIsRunning = false;
