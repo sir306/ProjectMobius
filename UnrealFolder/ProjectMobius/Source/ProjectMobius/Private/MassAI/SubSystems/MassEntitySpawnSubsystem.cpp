@@ -181,6 +181,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 
 	// Reset Niagara Shared Rep Frag
 	NiagaraSharedDataFrag.Reset();
+	NiagaraSharedStatsFrag.Reset();
 	
 
 	float elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - RealtimeSeconds;
