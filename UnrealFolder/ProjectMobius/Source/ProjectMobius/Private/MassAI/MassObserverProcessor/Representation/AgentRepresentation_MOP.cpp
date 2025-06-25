@@ -262,6 +262,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 	
 }
 
+// Consume movement and rendering fragments to fill Niagara arrays and update counts.
 void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& EntityMovementFrag, FEntityRenderingFragment& EntityRenderingFrag,
                                              FAgentRepresentationFragment& AgentFrag, FAgentNiagaraRepSharedFrag& NiagaraFrag)
 {
