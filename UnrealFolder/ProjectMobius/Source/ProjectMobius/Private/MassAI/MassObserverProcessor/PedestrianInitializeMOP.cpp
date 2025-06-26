@@ -39,6 +39,7 @@
 #include "MassAI/Tags/MassAITags.h"
 // Other includes
 #include <Kismet/KismetMathLibrary.h>
+#include "Dom/JsonObject.h"
 
 #include "Subsystems/HeatmapSubsystem.h"
 
@@ -202,12 +203,15 @@ void UPedestrianInitializeMOP::InitializeEntityInfoAgent(int32 InEntityID, FEnti
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(FEntityInfoFragment& EntityInfoToAssign, int32 InEntityID, FString InEntityName, FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane, int32 InEntityMap)
 {
-	EntityInfoToAssign.EntityID = InEntityID;
-	EntityInfoToAssign.EntityName = InEntityName;
-	EntityInfoToAssign.EntitySimTimeS = InEntitySimTimeS;
-	EntityInfoToAssign.EntityMaxSpeed = InEntityMaxSpeed;
-	EntityInfoToAssign.EntityM_Plane = InEntityM_Plane;
-	EntityInfoToAssign.EntityMap = InEntityMap;
+       TSharedPtr<FJsonObject> TempObj = MakeShared<FJsonObject>();
+       TempObj->SetNumberField(TEXT("id"), InEntityID);
+       TempObj->SetStringField(TEXT("name"), InEntityName);
+       TempObj->SetStringField(TEXT("simTimeS"), InEntitySimTimeS);
+       TempObj->SetNumberField(TEXT("max_speed"), InEntityMaxSpeed);
+       TempObj->SetStringField(TEXT("m_plane"), InEntityM_Plane);
+       TempObj->SetNumberField(TEXT("map"), InEntityMap);
+
+       UAgentDataSubsystem::ParseEntityInfo(TempObj, EntityInfoToAssign);
 }
 
 //void UPedestrianInitializeMOP::SetEntitiesPedestrianMovement(FPedestrianMovementFragment& PedestrianMovementToAssign, FSimMovementSample InSharedMovementData)
