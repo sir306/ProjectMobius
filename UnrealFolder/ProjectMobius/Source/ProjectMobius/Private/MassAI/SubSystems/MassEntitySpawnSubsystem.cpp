@@ -129,28 +129,7 @@ void UMassEntitySpawnSubsystem::SpawnMaxPedestrians()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Max Pedestrians is less than 0, likely a bad data file."));
 	}
-	// log if the json data runnable is not nullptr
-	UE_LOG(LogTemp, Warning, TEXT("JsonDataRunnable is nullptr: %s"), AgentDataSubsystem->JsonDataRunnable == nullptr ? TEXT("True") : TEXT("False"));
 	
-	if (AgentDataSubsystem->JsonDataRunnable != nullptr)
-	{
-		AgentDataSubsystem->JsonDataRunnable->Stop();
-
-		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
-		AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
-		// get the mobius widget subsystem
-		auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-		// check if the widget subsystem is valid
-		if (LoadingSubsystem)
-		{
-			// unbind current load percent
-			AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
-		}
-		AgentDataSubsystem->JsonDataRunnable->Exit();
-
-		// delete here is causing race condition issues with the runnable thread -> find where the last read reference is coming from
-		//delete AgentDataSubsystem->JsonDataRunnable;
-	}
 }
 
 void UMassEntitySpawnSubsystem::DestroySpawnedPedestrians(TConstArrayView<FMassEntityHandle> EntitiesToDestroy)
@@ -265,6 +244,8 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		AgentDataSubsystem->JsonDataRunnable->Exit();
 		
 		delete AgentDataSubsystem->JsonDataRunnable;
+
+		AgentDataSubsystem->JsonDataRunnable = nullptr;
 	}
 
 	// Get the JSON Data File using the FRunnable class to get the data asynchronously
@@ -296,9 +277,10 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 
 void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 {
-	// we don't need to check this as this method can only be called from this delegate so removal should be safe to do so
-	AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
-	
+	if (AgentDataSubsystem->JsonDataRunnable != nullptr)
+	{
+		AgentDataSubsystem->JsonDataRunnable->Stop();
+	}
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
 	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();
 	PedestrianTemplateData.AddFragment<FEntityMovementFragment>();
@@ -308,22 +290,12 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	SimulationFragment = FSimulationFragment();
 	
 	// create the shared fragments
-	SimulationFragment = AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData;
+	SimulationFragment = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
 
 	// Set the json object on the agent data subsystem
-	AgentDataSubsystem->JSONObject = AgentDataSubsystem->JsonDataRunnable->JSONObject;
+	AgentDataSubsystem->JSONObject = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
 
-	float TimeBetweenSteps = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
-
-	// removing this binding here is preferable over the start as it ensures it was called before removal
-	AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
-
-	// check if the widget subsystem is valid
-	if (auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>())
-	{
-		// unbind current load percent
-		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
-	}
+	float TimeBetweenSteps = MoveTemp(AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps);
 
 	//SimulationFragment.AddMovementSample();
 
@@ -358,9 +330,37 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Broadcast that the pedestrian data is ready to spawn
 	OnPedestrianDataReadyToSpawn.Broadcast();
+
+	AgentDataSubsystem->JsonDataRunnable->Exit();
 	
 	// At this point data should be ready to spawn
 	SpawnMaxPedestrians();
+	
+	if (AgentDataSubsystem->JsonDataRunnable != nullptr)
+	{
+		//AgentDataSubsystem->JsonDataRunnable->Stop();
+
+		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
+		AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
+		// get the mobius widget subsystem
+		auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+		// check if the widget subsystem is valid
+		if (LoadingSubsystem)
+		{
+			// unbind current load percent
+			AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.RemoveDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
+		}
+		//AgentDataSubsystem->JsonDataRunnable->Exit();
+
+		// delete here is causing race condition issues with the runnable thread -> find where the last read reference is coming from
+		//delete AgentDataSubsystem->JsonDataRunnable;
+	}
+
+	AsyncTask(ENamedThreads::GameThread, [this]()
+	{
+		delete AgentDataSubsystem->JsonDataRunnable;
+		AgentDataSubsystem->JsonDataRunnable = nullptr;
+	});
 }
 
 void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()

@@ -317,6 +317,8 @@ FJsonDataRunnable::~FJsonDataRunnable()
 		delete Thread;
 		Thread = nullptr;
 	}
+	AgentMovementInfoData = FSimulationFragment();
+	JSONObject = nullptr;
 }
 
 bool FJsonDataRunnable::LoadFileAndDeserialize()
@@ -418,8 +420,6 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 		if (!JsonSimDataArray.IsValidIndex(CurrentDataCount) || !JsonSimDataArray[CurrentDataCount]->AsObject().IsValid())
 		{
 			// TODO: this needs to broadcast error message to the UI
-			// We cant log here as this is a separate thread
-			bShouldStop = true;
 			break;
 		}
 
@@ -500,7 +500,7 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 					Position.Y = -PositionValue->ToSharedRef()->GetNumberField(StringCast<TCHAR>("y"));
 					Position.Z = PositionValue->ToSharedRef()->GetNumberField(StringCast<TCHAR>("z"));
 				}
-				if(JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->GetBoolField(StringCast<TCHAR>("isSI")))
+				if(JSONObject != nullptr && JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->GetBoolField(StringCast<TCHAR>("isSI")))
 				{
 					// unit is SI so should be in meters - convert to cm
 					Position *= 100.0f;
@@ -528,10 +528,10 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			if (JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("rotation"), RotationValue))
 			{
 				// if the metadata contains isDeg then we know the rotation is in degrees otherwise it is in radians
-				if(JSONObject->HasField(StringCast<TCHAR>("metadata")) && JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->HasField(StringCast<TCHAR>("isDeg")))
+				if(JSONObject != nullptr && JSONObject->HasField(StringCast<TCHAR>("metadata")) && JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->HasField(StringCast<TCHAR>("isDeg")))
 				{
 					// is it degrees
-					if(JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->GetBoolField(StringCast<TCHAR>("isDeg")))
+					if(JSONObject != nullptr && JSONObject->GetObjectField(StringCast<TCHAR>("metadata"))->GetBoolField(StringCast<TCHAR>("isDeg")))
 					{
 						// convert the degree rotation value to x,y,z // the minus 90 is to adjust the rotation to the correct direction for mesh needs better handle on this
 						Rotation = FRotator(0.0f, (-RotationValue -  90), 0.0f);//TODO: this is correct(for test data) and add method for different modeling studios
