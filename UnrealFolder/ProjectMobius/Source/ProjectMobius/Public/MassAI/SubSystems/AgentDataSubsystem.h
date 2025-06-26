@@ -89,10 +89,6 @@ public:
 	UFUNCTION()
 	void GetUpdatedJSONDataFile();
 	
-	/** Build Pedestrian Movement Data */
-	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
-	void BuildPedestrianMovementData();
-
 	/** Build Pedestrian Agent Info */
 	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
 	void BuildPedestrianAgentInfo();
@@ -290,21 +286,20 @@ protected:
 	/** Target Data Count */
 	int32 TargetDataCount = 0;
 
-       /** Bool to tell when the thread should stop */
-       bool bShouldStop = false;
+	/** Bool to tell when the thread should stop */
+	FThreadSafeBool bShouldStop = false;
 
 private:
-        /** Load the JSON file and deserialize it into the JSONObject */
-        bool LoadFileAndDeserialize();
+	/** Load the JSON file and deserialize it into the JSONObject */
+	bool LoadFileAndDeserialize();
 
-        /** Read metadata values from the JSON */
-        void ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
+	/** Read metadata values from the JSON */
+	void ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
 
-        /** Main simulation processing loop */
-        void RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
+	/** Main simulation processing loop */
+	void RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
 
-        /** Send the final progress and completion events */
-        void FinalizeProgress();
+	/** Send the final progress and completion events */
+	void FinalizeProgress();
 	
 };
-

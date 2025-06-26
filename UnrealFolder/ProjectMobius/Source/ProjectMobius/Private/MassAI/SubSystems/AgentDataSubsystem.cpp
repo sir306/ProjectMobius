@@ -151,105 +151,6 @@ void UAgentDataSubsystem::GetUpdatedJSONDataFile()
 	
 }
 
-void UAgentDataSubsystem::BuildPedestrianMovementData()
-{
-	//TArray<TSharedPtr<FJsonValue>> JsonSimulationDataArray = JSONObject->GetArrayField("simulation");
-	//{
-
-	//	// loop through the JSON array
-	//	for (int32 i_AllSimData = 0; i_AllSimData < JsonSimulationDataArray.Num(); i_AllSimData++)
-	//	{
-
-	//		if (!JsonSimulationDataArray[i_AllSimData]->AsObject().IsValid())
-	//		{
-	//			UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-	//			break;
-	//		}
-
-	//		// Get the JSON object for this 
-	//		TSharedPtr<FJsonObject> JSONSimDataObject = JsonSimulationDataArray[i_AllSimData]->AsObject();
-
-	//		// get time field
-	//		float TimeVal = JSONSimDataObject->GetNumberField("time");
-
-	//		// get the sample array for this
-	//		TArray<TSharedPtr<FJsonValue>> JSONSampleArray = JSONSimDataObject->GetArrayField("samples");
-
-	//		// create a movement sample array
-	//		TArray<FSimMovementSample> MovementSamples;
-
-	//		// loop through the sample array and build the movement sample values
-	//		for (int32 JsimSample = 0; JsimSample < JSONSampleArray.Num(); JsimSample++)
-	//		{
-	//			if (!JSONSampleArray[JsimSample]->AsObject().IsValid())
-	//			{
-	//				UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-	//				continue;
-	//			}
-
-	//			// Get the JSON object
-	//			TSharedPtr<FJsonObject> JSONSampleDataObject = JSONSampleArray[JsimSample]->AsObject();
-
-	//			// Get the entity ID
-	//			int32 EntityID = JSONSampleDataObject->GetIntegerField("entity");
-
-	//			// Initilize the position variable
-	//			FVector Position = FVector::ZeroVector;
-
-	//			// Get the Position field
-	//			TSharedPtr<FJsonObject> PositionValue = JSONSampleDataObject->GetObjectField("position");
-	//			if (PositionValue.IsValid())
-	//			{
-	//				// Map the values to the position
-	//				Position.X = PositionValue->GetNumberField("x");
-	//				Position.Y = -PositionValue->GetNumberField("y");
-	//				Position.Z = PositionValue->GetNumberField("z");
-	//			}
-	//			else
-	//			{
-	//				// Handle missing or invalid "position" field.
-	//				UE_LOG(LogTemp, Warning, TEXT("Missing or invalid 'position' field. Position will be set to 0,0,0"));
-
-	//			}
-
-	//			// Initialize the rotation variable
-	//			FRotator Rotation = FRotator::ZeroRotator;
-
-	//			// Get the Rotation field
-	//			float RotationValue = JSONSampleDataObject->GetNumberField("rotation");
-	//			if (PositionValue.IsValid())
-	//			{
-	//				// convert the degree rotation value to x,y,z
-	//				Rotation = FRotator(0.0f, -RotationValue, 0.0f);//TODO: this is correct(for test data) and add method for different modeling studios
-	//			}
-	//			else
-	//			{
-	//				// Handle missing or invalid "rotation" field.
-	//				UE_LOG(LogTemp, Warning, TEXT("Missing or invalid 'rotation' field. Rotation will be set to 0,0,0"));
-
-	//			}
-
-	//			// Get the speed
-	//			float Speed = JSONSampleDataObject->GetNumberField("speed");
-
-	//			// Get the mode
-	//			FString Mode = JSONSampleDataObject->GetStringField("mode");
-
-	//			// Create the movement sample
-	//			FSimMovementSample MovementSample(EntityID, Position, Rotation, Speed, Mode);
-
-	//			// Add the movement sample
-	//			MovementSamples.Add(MovementSample);
-
-	//		}
-
-	//		// add the movement sample values to the simulation data
-	//		AddMovementSample(i_AllSimData, MovementSamples);
-
-	//	}
-	//}
-}
-
 void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 {
 	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities"));
@@ -436,11 +337,12 @@ FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile)
 
 FJsonDataRunnable::~FJsonDataRunnable()
 {
-	// if the thread is still running, stop it
-	if (Thread != nullptr)
+	// ensure you’ve called Stop() first
+	if (Thread)
 	{
-		Thread->Kill(true);
+		Thread->WaitForCompletion();  // safe join off-thread
 		delete Thread;
+		Thread = nullptr;
 	}
 }
 
@@ -587,6 +489,7 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 		// loop through the sample array and build the movement sample values
 		for (int32 JsimSample = 0; JsimSample < JSONSampleArray.Num(); JsimSample++)
 		{
+			if (bShouldStop) break;
 			if (!JSONSampleArray[JsimSample]->AsObject().IsValid())
 			{
 				// TODO: this needs to broadcast error message to the UI
@@ -768,9 +671,6 @@ uint32 FJsonDataRunnable:: Run()
 		OnLoadSimulationDataProgress.Broadcast(0.0f);
 	});
 
-	// ensure the tread is not stopped
-	bShouldStop = false;
-
 	if (!LoadFileAndDeserialize())
 	{
 		bIsRunning = false;
@@ -802,12 +702,35 @@ uint32 FJsonDataRunnable:: Run()
 void FJsonDataRunnable::Stop()
 {
 	bShouldStop = true;
-	bIsRunning = false;
 }
 
 void FJsonDataRunnable::Exit()
 {
-	FRunnable::Exit();
+	// as the runnable contains multiple properties that are not handled by garbage collection,
+	// we need to ensure that we clean up properly
+
+	// 1) Signal your Run() loop to exit
+
+
+	// // 2) If you own your FRunnableThread, kill it and free it
+	// if (Thread)
+	// {
+	// 	// ensure the thread has really stopped before destroying it
+	// 	Thread->Kill(true);
+	// 	delete Thread;
+	// 	Thread = nullptr;
+	// }
+
+	// 3) Immediately release any non–Garbage‑collected, thread‑safe pointers
+	//    (your TSharedPtr will auto‑release, but Reset() here will drop the ref now)
+	JSONObject.Reset();
+
+	// 4) Optionally clear large TArrays now to free memory immediately
+	AgentMovementInfoData.SimulationData.Empty();
+	AgentDataArray.Empty();
+	EmbAvatarAnims.Empty();
+	StepVectors.Empty();
+	
 }
 
 TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)
@@ -824,9 +747,11 @@ TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)
 		// loop through the simulation data and get the movement samples
 		for (int32 i = 0; i < AgentMovementInfoData.SimulationData.Num(); i++)
 		{
+			if (bShouldStop) break;
 			// loop through the movement samples for this time step
 			for (FSimMovementSample MovementSample : AgentMovementInfoData.SimulationData[i])
 			{
+				if (bShouldStop) break;
 				if (MovementSample.EntityID == AgentID)
 				{
 					MovementSamples.Add(MovementSample);
@@ -840,91 +765,98 @@ TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)
 
 void FJsonDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> AgentSamples)
 {
-	// Loop through the agentsData, calculating the vectors for each agent
-	for (int a = 0; a < AgentSamples.Num(); a++)
-	{		
-		const int  DebugAgent = 0;
-		TArray<FVector> RecordVectors = TArray<FVector>();
-		CalculateSrcVectors(RecordVectors, AgentSamples[a]); // Calculate the short-time source vectors for the agent
-		AllocateAnimPts(RecordVectors.Num()); // Pre-allocate an array to receive the animation brackets
-		CurrentAgentAnimSmoothing = a;
-		FVector StepVector = FVector::ZeroVector;
-		int t = 0, tSpan = 1;
-		EPedestrianMovementBracket lastEmb = EPedestrianMovementBracket::Emb_NotMoving;
-		float stepDuration = 0.0f;
-
-		// Iterate t through all recordVectors, rapidly moving through the initial zero-speed records
-		for (t = 0; t < RecordVectors.Num() && (RecordVectors[t].Length()/(timeDurationPerRecord) < MinSpeedWalking); t++) {
-			SetAnimPt(t, EPedestrianMovementBracket::Emb_NotMoving, 1.0f);
-			// Debug info for tracing a single person consecutive output to assess the benefits of movement bracket smoothing
-			// if ((DebugAgent > -1) && (DebugAgent== a)){
-			// 	double recordSpeed = RecordVectors[t].Length()/(TimeBetweenSteps);
-			// 	std::cout << std::fixed << std::setprecision(2) << std::setw(4) << std::setfill('0');
-			// 	std::cout << "Motion[" << std::setw(3) << t << "] = " << RecordVectors[t].Length() * 100.0 << "cm, "
-			// 		<< recordSpeed << "m/s V(" << tSpan << ")step-pts " << std::endl;
-			// }
-		}
-		// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
-		// Note: we increase and decrease tSpan (rough timesteps in a step) depending on the required step duration
-		// 
-		// StepVector is the sum of the vectors from index t to t+tSpan (the rolling sum-vector for a following estimated step)
-		double lastSpeed = 0.0, stepSpeed = RecordVectors[t].Length()/(timeDurationPerRecord);
-		tSpan = minTimedSrcRecordsForStep;
-		AddManyVectors(RecordVectors, t, tSpan, StepVector); // Starting to move from zero, so animate the step that we are starting to take
-
-		// Now, we have a meaningful speed, so we can start calculating the proceeding records as part of moving steps
-		// Iterate from t to the end of the recordVectors, calculating the sum-vector for the next step duration
-		for (; t < RecordVectors.Num(); t++) {
-			stepSpeed = StepVector.Length()/(static_cast<double>(tSpan) * timeDurationPerRecord) / 100; // This 100 value is coming from the isSI conversion
-			EPedestrianMovementBracket thisAnimMF = CalculateStepAnimationParams(static_cast<float>(stepSpeed), stepDuration);
-			SetAnimPt(t, thisAnimMF, stepDuration);
-
-			// Debug info for tracing a single person consecutive output to assess the benefits of movement bracket smoothing
-			// if ((DebugAgent > -1) && (DebugAgent== a)) {
-			// 	double recordSpeed = RecordVectors[t].Length()/(TimeBetweenSteps);
-			// 	EPedestrianMovementBracket instantAnimF = CalculateStepAnimationParams((float)recordSpeed, stepDuration);
-			// 	const double speedDiff = recordSpeed - stepSpeed;
-			// 	std::cout << "Motion[" << std::setw(3) << t << "] = " << RecordVectors[t].Length() * 100.0 << "cm, "
-			// 		<< recordSpeed << "m/s V(" << tSpan << "pts) = " << stepSpeed << "m/s diff = " << speedDiff << "m/s"
-			// 		<< " Step Anim: " << (int)thisAnimMF << " Record: " << (int)instantAnimF
-			// 		<< std::endl;
-			// }
-
-			// Move the step forward by one record, by subtracting the last vector and adding the new one
-			StepVector -= RecordVectors[t]; // subtract this record single vector, ahead of the next step assessment, from t+1
-
-			int newtSpan = static_cast<int>(std::round(stepDuration / timeDurationPerRecord));
-
-			// Reduce tSpan? if the new tSpan is less than current one. No need to adjust the evctor sum, as we just removed record[t]
-			if ((newtSpan < tSpan) && (tSpan > minTimedSrcRecordsForStep)) {
-				tSpan--;
-			}
-			else // Assess increasing tSpan, if required, and within limits
-			{
-				if ((newtSpan > tSpan) && (tSpan < maxTimedSrcRecordsForStep) && (t + 1 + tSpan < RecordVectors.Num())) {
-					StepVector += RecordVectors[t + tSpan]; // add the next vector to the sum-vector
-					tSpan++; // increase the span if the step duration expected is longer than the current span
-				}
-
-				if (t + tSpan < RecordVectors.Num()) {
-					StepVector += RecordVectors[t + tSpan]; // add the new vector to the sum-vector
-				}
-				else tSpan--; // reduce the span if we are at the end of the recordVectors
-			}
-		}
-
-		//Calculate the current percentage of the data loaded
-		float CurrentPercentage = static_cast<float>(a) / static_cast<float>(MaxAgents);
-		// Broadcast the current percentage of the data loaded
-		AsyncTask(ENamedThreads::GameThread, [this, CurrentPercentage]()
+	bool bNotDone = false;
+	while (!bShouldStop && !bNotDone)
+	{
+		// Loop through the agentsData, calculating the vectors for each agent
+		for (int a = 0; a < AgentSamples.Num(); a++)
 		{
-			// Broadcast the current percentage of the data loaded as 0 this way the ui will show
-			OnLoadSimulationDataProgress.Broadcast(CurrentPercentage);
-		});
+			if (bShouldStop) break;
+			const int  DebugAgent = 0;
+			TArray<FVector> RecordVectors = TArray<FVector>();
+			CalculateSrcVectors(RecordVectors, AgentSamples[a]); // Calculate the short-time source vectors for the agent
+			AllocateAnimPts(RecordVectors.Num()); // Pre-allocate an array to receive the animation brackets
+			CurrentAgentAnimSmoothing = a;
+			FVector StepVector = FVector::ZeroVector;
+			int t = 0, tSpan = 1;
+			EPedestrianMovementBracket lastEmb = EPedestrianMovementBracket::Emb_NotMoving;
+			float stepDuration = 0.0f;
+
+			// Iterate t through all recordVectors, rapidly moving through the initial zero-speed records
+			for (t = 0; t < RecordVectors.Num() && (RecordVectors[t].Length()/(timeDurationPerRecord) < MinSpeedWalking); t++) {
+				if (bShouldStop) break;
+				SetAnimPt(t, EPedestrianMovementBracket::Emb_NotMoving, 1.0f);
+				// Debug info for tracing a single person consecutive output to assess the benefits of movement bracket smoothing
+				// if ((DebugAgent > -1) && (DebugAgent== a)){
+				// 	double recordSpeed = RecordVectors[t].Length()/(TimeBetweenSteps);
+				// 	std::cout << std::fixed << std::setprecision(2) << std::setw(4) << std::setfill('0');
+				// 	std::cout << "Motion[" << std::setw(3) << t << "] = " << RecordVectors[t].Length() * 100.0 << "cm, "
+				// 		<< recordSpeed << "m/s V(" << tSpan << ")step-pts " << std::endl;
+				// }
+			}
+			// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
+			// Note: we increase and decrease tSpan (rough timesteps in a step) depending on the required step duration
+			// 
+			// StepVector is the sum of the vectors from index t to t+tSpan (the rolling sum-vector for a following estimated step)
+			double lastSpeed = 0.0, stepSpeed = RecordVectors[t].Length()/(timeDurationPerRecord);
+			tSpan = minTimedSrcRecordsForStep;
+			AddManyVectors(RecordVectors, t, tSpan, StepVector); // Starting to move from zero, so animate the step that we are starting to take
+
+			// Now, we have a meaningful speed, so we can start calculating the proceeding records as part of moving steps
+			// Iterate from t to the end of the recordVectors, calculating the sum-vector for the next step duration
+			for (; t < RecordVectors.Num(); t++) {
+				if (bShouldStop) break;
+				stepSpeed = StepVector.Length()/(static_cast<double>(tSpan) * timeDurationPerRecord) / 100; // This 100 value is coming from the isSI conversion
+				EPedestrianMovementBracket thisAnimMF = CalculateStepAnimationParams(static_cast<float>(stepSpeed), stepDuration);
+				SetAnimPt(t, thisAnimMF, stepDuration);
+
+				// Debug info for tracing a single person consecutive output to assess the benefits of movement bracket smoothing
+				// if ((DebugAgent > -1) && (DebugAgent== a)) {
+				// 	double recordSpeed = RecordVectors[t].Length()/(TimeBetweenSteps);
+				// 	EPedestrianMovementBracket instantAnimF = CalculateStepAnimationParams((float)recordSpeed, stepDuration);
+				// 	const double speedDiff = recordSpeed - stepSpeed;
+				// 	std::cout << "Motion[" << std::setw(3) << t << "] = " << RecordVectors[t].Length() * 100.0 << "cm, "
+				// 		<< recordSpeed << "m/s V(" << tSpan << "pts) = " << stepSpeed << "m/s diff = " << speedDiff << "m/s"
+				// 		<< " Step Anim: " << (int)thisAnimMF << " Record: " << (int)instantAnimF
+				// 		<< std::endl;
+				// }
+
+				// Move the step forward by one record, by subtracting the last vector and adding the new one
+				StepVector -= RecordVectors[t]; // subtract this record single vector, ahead of the next step assessment, from t+1
+
+				int newtSpan = static_cast<int>(std::round(stepDuration / timeDurationPerRecord));
+
+				// Reduce tSpan? if the new tSpan is less than current one. No need to adjust the evctor sum, as we just removed record[t]
+				if ((newtSpan < tSpan) && (tSpan > minTimedSrcRecordsForStep)) {
+					tSpan--;
+				}
+				else // Assess increasing tSpan, if required, and within limits
+				{
+					if ((newtSpan > tSpan) && (tSpan < maxTimedSrcRecordsForStep) && (t + 1 + tSpan < RecordVectors.Num())) {
+						StepVector += RecordVectors[t + tSpan]; // add the next vector to the sum-vector
+						tSpan++; // increase the span if the step duration expected is longer than the current span
+					}
+
+					if (t + tSpan < RecordVectors.Num()) {
+						StepVector += RecordVectors[t + tSpan]; // add the new vector to the sum-vector
+					}
+					else tSpan--; // reduce the span if we are at the end of the recordVectors
+				}
+			}
+
+			//Calculate the current percentage of the data loaded
+			float CurrentPercentage = static_cast<float>(a) / static_cast<float>(MaxAgents);
+			// Broadcast the current percentage of the data loaded
+			AsyncTask(ENamedThreads::GameThread, [this, CurrentPercentage]()
+			{
+				// Broadcast the current percentage of the data loaded as 0 this way the ui will show
+				OnLoadSimulationDataProgress.Broadcast(CurrentPercentage);
+			});
 		
-		// Now: the animation movement brackets are stored in IKVectorSteps::agentsData[nPeople].embAvatarAnims[nTimeSteps]
+			// Now: the animation movement brackets are stored in IKVectorSteps::agentsData[nPeople].embAvatarAnims[nTimeSteps]
+		}
+		bNotDone = true; // we are done with the processing
 	}
-	
 }
 
 int FJsonDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sample)
@@ -952,6 +884,7 @@ void FJsonDataRunnable::SetAnimPt(int t, EPedestrianMovementBracket emb, float S
 	// Set the agent animation smoothing data
 	for (FSimMovementSample& MovementSample : AgentMovementInfoData.SimulationData[t])
 	{
+		if (bShouldStop) break;
 		if (MovementSample.EntityID == CurrentAgentAnimSmoothing)
 		{
 			MovementSample.MovementBracket = static_cast<EPedestrianMovementBracket>(emb);

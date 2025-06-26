@@ -40,7 +40,6 @@
 #include "MassEntityView.h"
 #include "Async/ParallelFor.h"
 #include "HAL/CriticalSection.h"
-#include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 
 UPedestrianMovementProcessor::UPedestrianMovementProcessor():

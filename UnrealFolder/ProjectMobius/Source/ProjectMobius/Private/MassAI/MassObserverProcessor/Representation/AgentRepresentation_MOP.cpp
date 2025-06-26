@@ -45,11 +45,12 @@
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
-#include "MassAI/SubSystems/AgentDataSubsystem.h"
+//#include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraDataInterface.h"
+#include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 
 class UTimeDilationSubSystem;

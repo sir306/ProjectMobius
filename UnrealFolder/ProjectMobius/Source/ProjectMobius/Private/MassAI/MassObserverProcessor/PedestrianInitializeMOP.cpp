@@ -180,8 +180,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			HeatmapSubsystem->UpdateSpawnHeightLocations(UniqueZValues);
 		}
 	}
-	ExecutionContext.FlushDeferred();
-	
+	ExecutionContext.FlushDeferred();	
 }
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(int32 InEntityID, FEntityInfoFragment& EntityInfoToAssign)
