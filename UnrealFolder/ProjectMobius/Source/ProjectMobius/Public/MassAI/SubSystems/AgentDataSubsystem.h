@@ -94,8 +94,13 @@ public:
 	void BuildPedestrianMovementData();
 
 	/** Build Pedestrian Agent Info */
-	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
-	void BuildPedestrianAgentInfo();
+        UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
+        void BuildPedestrianAgentInfo();
+
+       /**
+        * Helper used to parse entity info fields from a JSON object
+        */
+       static void ParseEntityInfo(const TSharedPtr<FJsonObject>& JsonObject, FEntityInfoFragment& OutInfo);
 
 	/**
 	 * Set the Entity Info fragment by Index from the JSON data

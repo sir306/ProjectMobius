@@ -42,6 +42,21 @@
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 
 
+void UAgentDataSubsystem::ParseEntityInfo(const TSharedPtr<FJsonObject>& InJsonObject, FEntityInfoFragment& OutInfo)
+{
+	if (!InJsonObject.IsValid())
+	{
+		return;
+	}
+
+	OutInfo.EntityID = InJsonObject->GetIntegerField(StringCast<TCHAR>("id"));
+	OutInfo.EntityName = InJsonObject->GetStringField(StringCast<TCHAR>("name"));
+	OutInfo.EntitySimTimeS = InJsonObject->GetStringField(StringCast<TCHAR>("simTimeS"));
+	OutInfo.EntityMaxSpeed = InJsonObject->GetNumberField(StringCast<TCHAR>("max_speed"));
+	OutInfo.EntityM_Plane = InJsonObject->GetStringField(StringCast<TCHAR>("m_plane"));
+	OutInfo.EntityMap = InJsonObject->GetIntegerField(StringCast<TCHAR>("map"));
+}
+
 UAgentDataSubsystem::UAgentDataSubsystem() :
 	JSONDataFile(TEXT("")),
 	JSONDataString(TEXT("")),
@@ -266,33 +281,8 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		// Get the JSON object for this 
 		TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[entityIndex]->AsObject();
 
-		// Get the entity ID 
-		int32 EntityID = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("id"));
-		
-		// Get the entity name
-		FString EntityName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name"));
-
-		// Get the entity sim time
-		FString EntitySimTime = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("simTimeS"));
-
-		// Get the entity max speed
-		float EntityMaxSpeed = JSONEntityDataObject->GetNumberField(StringCast<TCHAR>("max_speed"));
-
-		// Get the entity M_Plane
-		FString EntityM_Plane = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("m_plane"));
-
-		// Get the entity map
-		int32 EntityMap = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("map"));
-
-		// Create the entity info fragment
-		FEntityInfoFragment EntityInfo;(EntityID, EntityName, EntitySimTime, EntityMaxSpeed, EntityM_Plane, EntityMap);
-		// Assign Vals
-		EntityInfo.EntityID = EntityID;
-		EntityInfo.EntityName = EntityName;
-		EntityInfo.EntitySimTimeS = EntitySimTime;
-		EntityInfo.EntityMaxSpeed = EntityMaxSpeed;
-		EntityInfo.EntityM_Plane = EntityM_Plane;
-		EntityInfo.EntityMap = EntityMap;
+		FEntityInfoFragment EntityInfo;
+		ParseEntityInfo(JSONEntityDataObject, EntityInfo);
 		
 	}
 }
@@ -310,24 +300,7 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	// Get the JSON object for this 
 	TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
 
-	
-	// Get the entity ID
-	EntityInfoFragToUpdate.EntityID = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("id", 2));
-
-	// Get the entity name
-	EntityInfoFragToUpdate.EntityName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name", 4));
-
-	// Get the entity sim time
-	EntityInfoFragToUpdate.EntitySimTimeS = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("simTimeS", 8));
-
-	// Get the entity max speed
-	EntityInfoFragToUpdate.EntityMaxSpeed = JSONEntityDataObject->GetNumberField(StringCast<TCHAR>("max_speed", 9));
-
-	// Get the entity M_Plane
-	EntityInfoFragToUpdate.EntityM_Plane = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("m_plane", 7));
-
-	// Get the entity map
-	EntityInfoFragToUpdate.EntityMap = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("map", 3));
+	ParseEntityInfo(JSONEntityDataObject, EntityInfoFragToUpdate);
 
 }
 
