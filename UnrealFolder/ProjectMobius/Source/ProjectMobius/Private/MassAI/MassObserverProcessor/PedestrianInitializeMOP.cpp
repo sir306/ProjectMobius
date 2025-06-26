@@ -168,7 +168,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		}
 		
 		
-		}));
+	}));
 
 
 	// once all the chunks have been processed we need to set the unique Z values in the heatmap subsystem
@@ -203,15 +203,15 @@ void UPedestrianInitializeMOP::InitializeEntityInfoAgent(int32 InEntityID, FEnti
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(FEntityInfoFragment& EntityInfoToAssign, int32 InEntityID, FString InEntityName, FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane, int32 InEntityMap)
 {
-       TSharedPtr<FJsonObject> TempObj = MakeShared<FJsonObject>();
-       TempObj->SetNumberField(TEXT("id"), InEntityID);
-       TempObj->SetStringField(TEXT("name"), InEntityName);
-       TempObj->SetStringField(TEXT("simTimeS"), InEntitySimTimeS);
-       TempObj->SetNumberField(TEXT("max_speed"), InEntityMaxSpeed);
-       TempObj->SetStringField(TEXT("m_plane"), InEntityM_Plane);
-       TempObj->SetNumberField(TEXT("map"), InEntityMap);
+	TSharedPtr<FJsonObject> TempObj = MakeShared<FJsonObject>();
+	TempObj->SetNumberField(TEXT("id"), InEntityID);
+	TempObj->SetStringField(TEXT("name"), InEntityName);
+	TempObj->SetStringField(TEXT("simTimeS"), InEntitySimTimeS);
+	TempObj->SetNumberField(TEXT("max_speed"), InEntityMaxSpeed);
+	TempObj->SetStringField(TEXT("m_plane"), InEntityM_Plane);
+	TempObj->SetNumberField(TEXT("map"), InEntityMap);
 
-       UAgentDataSubsystem::ParseEntityInfo(TempObj, EntityInfoToAssign);
+	UAgentDataSubsystem::ParseEntityInfo(TempObj, EntityInfoToAssign);
 }
 
 //void UPedestrianInitializeMOP::SetEntitiesPedestrianMovement(FPedestrianMovementFragment& PedestrianMovementToAssign, FSimMovementSample InSharedMovementData)

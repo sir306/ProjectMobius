@@ -44,17 +44,17 @@
 
 void UAgentDataSubsystem::ParseEntityInfo(const TSharedPtr<FJsonObject>& InJsonObject, FEntityInfoFragment& OutInfo)
 {
-       if (!InJsonObject.IsValid())
-       {
-               return;
-       }
+	if (!InJsonObject.IsValid())
+	{
+		return;
+	}
 
-       OutInfo.EntityID = InJsonObject->GetIntegerField(StringCast<TCHAR>("id"));
-       OutInfo.EntityName = InJsonObject->GetStringField(StringCast<TCHAR>("name"));
-       OutInfo.EntitySimTimeS = InJsonObject->GetStringField(StringCast<TCHAR>("simTimeS"));
-       OutInfo.EntityMaxSpeed = InJsonObject->GetNumberField(StringCast<TCHAR>("max_speed"));
-       OutInfo.EntityM_Plane = InJsonObject->GetStringField(StringCast<TCHAR>("m_plane"));
-       OutInfo.EntityMap = InJsonObject->GetIntegerField(StringCast<TCHAR>("map"));
+	OutInfo.EntityID = InJsonObject->GetIntegerField(StringCast<TCHAR>("id"));
+	OutInfo.EntityName = InJsonObject->GetStringField(StringCast<TCHAR>("name"));
+	OutInfo.EntitySimTimeS = InJsonObject->GetStringField(StringCast<TCHAR>("simTimeS"));
+	OutInfo.EntityMaxSpeed = InJsonObject->GetNumberField(StringCast<TCHAR>("max_speed"));
+	OutInfo.EntityM_Plane = InJsonObject->GetStringField(StringCast<TCHAR>("m_plane"));
+	OutInfo.EntityMap = InJsonObject->GetIntegerField(StringCast<TCHAR>("map"));
 }
 
 UAgentDataSubsystem::UAgentDataSubsystem() :
@@ -281,8 +281,8 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		// Get the JSON object for this 
 		TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[entityIndex]->AsObject();
 
-               FEntityInfoFragment EntityInfo;
-               ParseEntityInfo(JSONEntityDataObject, EntityInfo);
+		FEntityInfoFragment EntityInfo;
+		ParseEntityInfo(JSONEntityDataObject, EntityInfo);
 		
 	}
 }
@@ -300,12 +300,12 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	// Get the JSON object for this 
 	TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
 
-       ParseEntityInfo(JSONEntityDataObject, EntityInfoFragToUpdate);
+	ParseEntityInfo(JSONEntityDataObject, EntityInfoFragToUpdate);
 
 }
 
 void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
-	FEntityRenderingFragment& EntityRenderingFragToUpdate) const
+                                                    FEntityRenderingFragment& EntityRenderingFragToUpdate) const
 {
 	if (Index < 0 || Index >= MaxAgents)
 	{
