@@ -163,17 +163,18 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 
 		EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
 		// Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
-		EntityManager->CreateExecutionContext(0).ClearExecutionData();
-		EntityManager->CreateExecutionContext(0).ClearEntityCollection();
+		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearExecutionData();
+		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearEntityCollection();
 		EntityManager->FlushCommands();
-
-		// if the template is not empty we need to check and destroy the archetype handle
-		if (PedestrianArchetypeHandle.IsValid())
-		{
-			PedestrianArchetypeHandle = FMassArchetypeHandle();
-		}
+		//EntityManager.Reset();
 	}
 
+	auto* ExistingActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
+	if (ExistingActor)
+	{
+		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
+		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
+	}
 
 	
 	// Get time now
