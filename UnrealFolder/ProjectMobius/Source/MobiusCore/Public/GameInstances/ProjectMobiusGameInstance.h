@@ -200,15 +200,19 @@ private:
 
 #pragma region DATA_FILES
 	/** Pedestrian Data File Path -- The complete file path */
+	UPROPERTY()
 	FString PedestrianDataFilePath;
 
 	/** Pedestrian Data File Name -- The name of the file */
+	UPROPERTY()
 	FString PedestrianDataFileName;
 
 	/** Simulation Mesh File Path -- The complete file path */
+	UPROPERTY()
 	FString SimulationMeshFilePath;
 
 	/** Simulation Mesh File Name -- The name of the file */
+	UPROPERTY()
 	FString SimulationMeshFileName;
 
 	//TODO: we will bring datatables back as it makes it to manage and requires less memory allocation

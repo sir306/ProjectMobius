@@ -165,6 +165,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		// Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
 		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearExecutionData();
 		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearEntityCollection();
+		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).FlushDeferred();
 		EntityManager->FlushCommands();
 		//EntityManager.Reset();
 	}
@@ -174,7 +175,6 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	{
 		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
 		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
-		// add destroy here and get the MOP to check if spawned before loop and reset the flag
 	}
 
 	
@@ -190,6 +190,10 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	// Reset Niagara Shared Rep Frag
 	NiagaraSharedDataFrag.Reset();
 	NiagaraSharedStatsFrag.Reset();
+
+	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
+	// data is created
+	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 	
 	
 	float elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - RealtimeSeconds;

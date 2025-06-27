@@ -141,13 +141,13 @@ public:
 	
 	UPROPERTY()
 	FSharedStruct NiagaraSharedStatsFrag;
-
+	
 	FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues;
 
 	// The agent data subsystem for getting the data for the pedestrians
 	UPROPERTY()
 	UAgentDataSubsystem* AgentDataSubsystem;
 
+	UPROPERTY()
 	FOnPedestrianDataLoaded OnPedestrianDataReadyToSpawn; // Delegate to broadcast when the pedestrian data is loaded and processed
-
 };

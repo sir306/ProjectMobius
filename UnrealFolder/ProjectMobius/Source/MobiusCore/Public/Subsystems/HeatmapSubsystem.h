@@ -205,13 +205,16 @@ protected:
 	
 private:
 	/** The XY spawn point for the heatmaps */
+	UPROPERTY()
 	FVector2D XYSpawnLocation;
 	
 	/** 2D Bounding Size of the heatmap  */
+	UPROPERTY()
 	FVector2D HeatmapBoundingSize = FVector2D(0, 0);
 
 	/** Array of Height Spawn Locations, this stores all the height spawn locations of the heatmaps, this is done as
 	 * mesh generation can at times take longer than the loading of the pedestrian data */
+	UPROPERTY()
 	TArray<float> HeightSpawnLocations = TArray<float>();
 
 	// these properties are responsible for debouncing the heatmap generation and preventing collisions on updating data
@@ -219,6 +222,7 @@ private:
 	FCriticalSection HeightSpawnDataLock;
 
 	/** Timer handle used for debouncing */
+	UPROPERTY()
 	FTimerHandle HeatmapGenerationTimerHandle;
 
 

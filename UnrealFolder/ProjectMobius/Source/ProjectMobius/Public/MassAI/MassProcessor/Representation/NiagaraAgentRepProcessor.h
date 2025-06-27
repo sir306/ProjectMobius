@@ -135,6 +135,7 @@ protected:
 	
 private:
 	// Entity Query
+	UPROPERTY()
 	FMassEntityQuery EntityQuery;
 
 	/** Niagara System */

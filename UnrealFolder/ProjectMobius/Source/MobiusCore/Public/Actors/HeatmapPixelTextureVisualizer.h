@@ -285,8 +285,8 @@ public:
 	 * TODO: Currently using integer values, this should be changed to a float value for more precise locations and scale to texture and mesh size
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
-	//int32 CircleRadius = 101; // 101 = 1.01m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING 
 	int32 CircleRadius = 110; // 110 = 1.1m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING 
+	//int32 CircleRadius = 101; // 101 = 1.01m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING 
 
 	/**
 	 * Is this a Standard Heatmap or a Voronoi Map:

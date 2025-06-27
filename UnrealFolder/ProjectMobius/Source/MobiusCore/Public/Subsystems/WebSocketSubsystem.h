@@ -71,14 +71,17 @@ private:
 	FProcHandle QtProcessHandle;
 	
 	// Process ID of the Qt App
+	UPROPERTY()
 	uint32 QtProcessID;
 
 	// WebSocket Server ProcHandle
 	FProcHandle WebSocketServerProcHandle;
 
 	// Process ID of the WebSocket Server
+	UPROPERTY()
 	uint32 WebSocketServerProcessID;
 
 	// Unique ID for this application instance - so we can talk to the correct qt apps
+	UPROPERTY()
 	FString UniqueMobiusAppID = "";
 };

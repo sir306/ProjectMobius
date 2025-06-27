@@ -218,7 +218,8 @@ public:
 	bool bIsPaused = true;
 
 	/** Project Mobius Interface - used to get variables */
-	IProjectMobiusInterface* ProjectMobiusInterface;
+	UPROPERTY()
+	TScriptInterface<IProjectMobiusInterface> ProjectMobiusInterface;
 
 #pragma endregion PUBLIC_PROPERTIES
 

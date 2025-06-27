@@ -122,6 +122,7 @@ private:
 
 #pragma region PRIVATE_VARIABLES
 	/** Holds the entity query and used for adding conditions to the query that this processor uses */
+	UPROPERTY()
 	FMassEntityQuery EntityQuery;
 
 	/** The subsystem that handles the simulation time and dilation logic */
@@ -129,13 +130,17 @@ private:
 	class UTimeDilationSubSystem* TimeDilationSubSystem;
 
 	/** The current Time step of the simulation */
+	UPROPERTY()
 	int32 CurrentTimeStep = 0;
 
+	UPROPERTY()
 	bool bAreSubSystemsSetup = false;
 
+	UPROPERTY()
 	int32 OffsetIndex = 0;
 
 	/** Current time step percentage - used to interpolate between time steps */
+	UPROPERTY()
 	float TimeStepPercentage = 0.0f;
 
 	/// To avoid repetitive loops through data sample we can use a map to store the entity ID and

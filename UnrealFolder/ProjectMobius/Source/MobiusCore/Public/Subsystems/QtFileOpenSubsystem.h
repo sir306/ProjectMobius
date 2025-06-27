@@ -74,9 +74,14 @@ private:
 	void OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
 
 private:
+	UPROPERTY()
 	bool bSelectionInProgress;
+
+	UPROPERTY()
 	FTimerHandle PollTimerHandle;
     
 	FProcHandle QtProcessHandle;
+
+	UPROPERTY()
 	uint32 QtProcessID;
 };

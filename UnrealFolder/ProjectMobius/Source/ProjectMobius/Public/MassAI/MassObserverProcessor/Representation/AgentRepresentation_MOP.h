@@ -90,9 +90,12 @@ protected:
 
 
 private:
+	UPROPERTY()
 	int32 EntityIndexOffset = 0;
 
+	UPROPERTY()
 	bool bHasSpawned = false;
 
+	UPROPERTY()
 	FMassEntityQuery EntityQuery;
 };

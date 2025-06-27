@@ -55,5 +55,6 @@ private:
 
 	//void SetEntitiesPedestrianMovement(FPedestrianMovementFragment& PedestrianMovementToAssign, FSimMovementSample InSharedMovementData);
 
+	UPROPERTY()
 	FMassEntityQuery EntityQuery;
 };
