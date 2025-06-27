@@ -174,6 +174,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	{
 		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
 		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
+		// add destroy here and get the MOP to check if spawned before loop and reset the flag
 	}
 
 	
