@@ -28,6 +28,7 @@
 #include "MassEntityTypes.h"
 #include "AgentRepresenatationFragment.generated.h"
 
+class AAgentRepresentationActorISM;
 class ANiagaraAgentRepActor;
 /**
  * 
@@ -37,45 +38,26 @@ struct PROJECTMOBIUS_API FAgentRepresentationFragment : public FMassSharedFragme
 {
 	GENERATED_BODY()
 
-public:
-#pragma region METHODS
-	/** Default Constructor */
-	FAgentRepresentationFragment();
-
-	/** Constructor With editable params */
-	FAgentRepresentationFragment(TObjectPtr<class AAgentRepresentationActorISM> InActor, UStaticMesh* InMaleStaticMesh,
-	                             UStaticMesh* InFemaleStaticMesh, UMaterial* InMaterial, USkeletalMesh* InSkeletalMesh);
-
-	/** Constructor With editable params */
-	FAgentRepresentationFragment(TObjectPtr<AAgentRepresentationActorISM> InActor, UStaticMesh* InMaleStaticMesh,
-								 UStaticMesh* InFemaleStaticMesh, UMaterial* InMaterial, USkeletalMesh* InSkeletalMesh, ANiagaraAgentRepActor *InNiagaraActor);
-
-	// TODO: add an array of characters that stores the the ism type, instance id and agent id - this will be used so we can do respawns of agents
-	
-	~FAgentRepresentationFragment();
-	
-#pragma endregion METHODS
-
 #pragma region PROPERTIES
 	/** Actor Class that holds instances that are created */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	TObjectPtr<AAgentRepresentationActorISM> ActorRepresentationClass;
+	TObjectPtr<AAgentRepresentationActorISM> ActorRepresentationClass = nullptr;
 	
 	/** The Male Static Mesh that is used */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	UStaticMesh* MaleStaticMesh;
+	UStaticMesh* MaleStaticMesh = nullptr;
 	
 	/** The Female Static Mesh that is used */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	UStaticMesh* FemaleStaticMesh;
+	UStaticMesh* FemaleStaticMesh = nullptr;
 	
 	/** The Material that is used for the static mesh*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	UMaterial* Material;
+	UMaterial* Material = nullptr;
 	
 	/** The Skeletal Mesh that is used */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	USkeletalMesh* SkeletalMesh;
+	USkeletalMesh* SkeletalMesh = nullptr;
 	
 	///** The Skeletal Mesh Animation that is used for the skelatal mesh */
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
@@ -85,27 +67,27 @@ public:
 	
 	/** The Niagara System Actor for the rendering of agents */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	TObjectPtr<ANiagaraAgentRepActor> NiagaraAgentRepActor;
+	TObjectPtr<ANiagaraAgentRepActor> NiagaraAgentRepActor = nullptr;
 	
 	/** Number of Male Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfMaleAdults;
+	int32 NumberOfMaleAdults = 0;
 	
 	/** Number of Male Elderly */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfMaleElderly;
+	int32 NumberOfMaleElderly = 0;
 	
 	/** Number of Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfFemaleAdults;
+	int32 NumberOfFemaleAdults = 0;
 	
 	/** Number of Female Elderly */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfFemaleElderly;
+	int32 NumberOfFemaleElderly = 0;
 	
 	/** Number of Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfChildren;// TODO: Maybe do different genders
+	int32 NumberOfChildren = 0;// TODO: Maybe do different genders
 	
 	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
 	/** Using low spec agent render effect? */

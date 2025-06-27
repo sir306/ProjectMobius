@@ -127,20 +127,9 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		// to avoid spawning multiple ISMs check that it has not already been spawned
 		if (bHasSpawned)
 		{
-			// Get the Niagara actor
-			auto FoundActor = UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass());
 			ANiagaraAgentRepActor* NiagaraAgentRepActor;
-			
-			if (FoundActor == nullptr) 
-			{
-				// Spawn the Niagara actor
-				NiagaraAgentRepActor = Context.GetWorld()->SpawnActor<ANiagaraAgentRepActor>(FVector(0, 0, 0), FRotator(0, 0, 0));
-			}
-			else
-			{
-				NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(FoundActor);
-			}
 
+			// Get the Niagara actor
 			NiagaraAgentRepActor = GetOrCreateNiagaraRepActor(GetWorld());
 			
 			// Set the shared actor component in the shared fragment
@@ -148,8 +137,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 			// DEACTIVATE THE NIAGARA SYSTEM
 			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
-
-
+			
 			// get time dilation subsystem current time step
 			int32 CurrentTimeStep = GetWorld()->GetSubsystem<UTimeDilationSubSystem>()->GetCurrentTimeStep();
 
@@ -244,8 +232,6 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		//UE_LOG(LogTemp, Warning, TEXT("FemaleNumberOfAgents: %d"), AgentRepresentationFragment.NumberOfFemaleAdults);
 		//UE_LOG(LogTemp, Warning, TEXT("ChildNumberOfAgents: %d"), AgentRepresentationFragment.NumberOfChildren);
 		
-		
-    	
 		//UE_LOG(LogTemp, Warning, TEXT("UAgentRepresentation_MOP::Finished"));
 	});
 	
@@ -355,7 +341,11 @@ ANiagaraAgentRepActor* UAgentRepresentation_MOP::GetOrCreateNiagaraRepActor(UWor
 {
 	auto* ExistingActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(World, ANiagaraAgentRepActor::StaticClass()));
 	if (ExistingActor)
+	{
+		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
+		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
 		return ExistingActor;
+	}
 
 	return World->SpawnActor<ANiagaraAgentRepActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 }

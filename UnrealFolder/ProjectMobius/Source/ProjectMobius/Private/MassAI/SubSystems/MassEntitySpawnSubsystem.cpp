@@ -42,6 +42,7 @@
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 // Niagara
+#include "MassExecutionContext.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
@@ -161,14 +162,19 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		UE_LOG(LogTemp, Warning, TEXT("PedestrianTemplateData Already Created"));
 
 		EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
+		// Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
+		EntityManager->CreateExecutionContext(0).ClearExecutionData();
+		EntityManager->CreateExecutionContext(0).ClearEntityCollection();
 		EntityManager->FlushCommands();
+
+		// if the template is not empty we need to check and destroy the archetype handle
+		if (PedestrianArchetypeHandle.IsValid())
+		{
+			PedestrianArchetypeHandle = FMassArchetypeHandle();
+		}
 	}
 
-	if (PedestrianArchetypeHandle.IsValid())
-	{
-		// log that the data is already created
-		UE_LOG(LogTemp, Warning, TEXT("PedestrianArchetypeHandle Already Created"));
-	}
+
 	
 	// Get time now
 	float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld());
@@ -183,7 +189,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	NiagaraSharedDataFrag.Reset();
 	NiagaraSharedStatsFrag.Reset();
 	
-
+	
 	float elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - RealtimeSeconds;
 	// log time taken
 	UE_LOG(LogTemp, Warning, TEXT("Time taken to build archetypes data: %f"), elapsedTime);
