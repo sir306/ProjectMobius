@@ -721,7 +721,6 @@ void FJsonDataRunnable::Exit()
 	StepVectors.Empty();
 	StepVectors.Shrink();
 	
-	UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data Runnable Exit Done inside method"));
 	bReadyToDelete = true; // Set the flag to true to indicate that the runnable is ready to be deleted
 }
 

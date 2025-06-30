@@ -149,7 +149,7 @@ public:
 	/** Broadcast the total agent count, for total stat count */
 	void BroadcastTotalAgentCount(int32 TotalAgentCount) const
 	{
-		//TODO: calls everyframe make it so it only calls when the agent count changes
+		//TODO: calls every frame make it so it only calls when the agent count changes
 		OnUpdateFloorStatCount.Broadcast(-1, TotalAgentCount);
 	}
 

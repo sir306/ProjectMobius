@@ -32,6 +32,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "MassEntitySpawnSubsystem.generated.h"
 
+class FJsonDataRunnable;
 class UAgentDataSubsystem;
 
 // Delegate to broadcast when the pedestrian data is loaded and processed
@@ -83,6 +84,23 @@ public:
 	* 
 	*/
 	void DestroySpawnedPedestrians(TConstArrayView<FMassEntityHandle> EntitiesToDestroy);
+
+	/**
+	 * Clean up method to destroy all spawned pedestrians and release MassAI resources
+	 */
+	void DestroyAllSpawnedPedestrians();
+
+	/**
+	 * Clear the Niagara simulation cache and destroy the Niagara instance not component
+	 */
+	void ClearNiagaraSim();
+
+	/**
+	 * Clean up method to kill the FJsonDataRunnable and clean up resources associated with it
+	 *
+	 * @param ToKill The FJsonDataRunnable to kill and clean up resources associated with it
+	 */
+	void AgentDataRunnableCleanup(FJsonDataRunnable* ToKill);
 	
 	/**
 	* Create the archetype for the pedestrian entity

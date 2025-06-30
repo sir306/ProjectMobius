@@ -130,6 +130,82 @@ void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragment
 
 void UMassEntitySpawnSubsystem::DestroySpawnedPedestrians(TConstArrayView<FMassEntityHandle> EntitiesToDestroy)
 {
+	if (EntitiesToDestroy.IsEmpty())
+	{
+		return;
+	}
+
+	EntityManager->BatchDestroyEntities(EntitiesToDestroy);
+	EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).FlushDeferred();
+	EntityManager->FlushCommands();
+}
+
+void UMassEntitySpawnSubsystem::DestroyAllSpawnedPedestrians()
+{
+	// check if the template data and archetype handle are not null
+	if (!PedestrianTemplateData.IsEmpty() || !SpawnedEntityPedestrianHandles.IsEmpty())
+	{
+		// log that the data is already created
+		UE_LOG(LogTemp, Warning, TEXT("PedestrianTemplateData Already Created"));
+
+		EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
+		// Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
+		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearExecutionData();
+		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearEntityCollection();
+		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).FlushDeferred();
+		EntityManager->FlushCommands();
+		//EntityManager.Reset();
+	}
+}
+
+void UMassEntitySpawnSubsystem::ClearNiagaraSim()
+{
+	auto* ExistingActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
+	if (ExistingActor)
+	{
+		ExistingActor->GetNiagaraComponent()->ClearSimCache(true);
+		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
+		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
+	}
+}
+
+void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(FJsonDataRunnable* ToKill)
+{
+	if (ToKill)
+	{
+		// 1) Clear the member now so no one else ever re-uses it
+		AgentDataSubsystem->JsonDataRunnable = nullptr;
+
+		// 2) Unbind your delegates immediately
+		ToKill->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
+		ToKill->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
+		if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>())
+		{
+			ToKill->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
+		}
+		
+
+		// 3) Schedule deletion of *that* runnable
+		AsyncTask(ENamedThreads::GameThread, [ToKill, this]()
+		{
+			ToKill->Stop();
+			ToKill->Exit();
+
+			while (!ToKill->bReadyToDelete)
+			{
+				// wait for the runnable to be ready to delete
+				FPlatformProcess::Sleep(0.01f); // sleep for a short time to avoid busy waiting
+			}
+			delete ToKill;  // safe: destructor will join + free the thread
+			
+			// Reset the template data
+			PedestrianTemplateData = FMassEntityTemplateData();
+
+			// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
+			// data is created
+			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+		});
+	}
 }
 
 FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
@@ -149,46 +225,18 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
-	// check if the template data and archetype handle are not null
-	if (!PedestrianTemplateData.IsEmpty() || !SpawnedEntityPedestrianHandles.IsEmpty())
-	{
-		// log that the data is already created
-		UE_LOG(LogTemp, Warning, TEXT("PedestrianTemplateData Already Created"));
-
-		EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
-		// Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
-		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearExecutionData();
-		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearEntityCollection();
-		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).FlushDeferred();
-		EntityManager->FlushCommands();
-		//EntityManager.Reset();
-	}
-
-	auto* ExistingActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
-	if (ExistingActor)
-	{
-		ExistingActor->GetNiagaraComponent()->ClearSimCache(true);
-		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
-		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
-	}
-
+	// Destroy any existing spawned pedestrians and clear the Niagara simulation
+	DestroyAllSpawnedPedestrians();
+	ClearNiagaraSim();
 	
-	// Get time now
-	float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld());
-
-	// Reset the template data
-	PedestrianTemplateData = FMassEntityTemplateData();
-
 	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
 	// data is created
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-	
-	float elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - RealtimeSeconds;
+
+	// Reset the template data
+	PedestrianTemplateData = FMassEntityTemplateData();
 	
 	LoadPedestrianData();
-	elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - elapsedTime;
-	// log time taken
-	UE_LOG(LogTemp, Warning, TEXT("Time taken to load data: %f"), elapsedTime);
 }
 
 void UMassEntitySpawnSubsystem::LoadPedestrianData()
@@ -211,29 +259,8 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
 
-	if (FJsonDataRunnable* ToKill = AgentDataSubsystem->JsonDataRunnable)
-	{
-		// 1) Clear the member now so no one else ever re-uses it
-		AgentDataSubsystem->JsonDataRunnable = nullptr;
-
-		// 2) Unbind your delegates immediately
-		ToKill->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
-		ToKill->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
-		if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>())
-		{
-			ToKill->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
-		}
-		
-
-		// 3) Schedule deletion of *that* runnable
-		AsyncTask(ENamedThreads::GameThread, [ToKill]()
-		{
-			ToKill->Stop();
-			ToKill->Exit();
-			delete ToKill;  // safe: destructor will join + free the thread
-			UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data Runnable Deleted"));
-		});
-	}
+	// Cleanup any existing runnable to avoid memory leaks
+	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
 	// Get the JSON Data File using the FRunnable class to get the data asynchronously
 	AgentDataSubsystem->JsonDataRunnable = new FJsonDataRunnable(JSONDataFile);
@@ -325,46 +352,8 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// At this point data should be ready to spawn
 	SpawnMaxPedestrians(ArchetypeSharedFragmentValues);
 	
-	if (FJsonDataRunnable* ToKill = AgentDataSubsystem->JsonDataRunnable)
-	{
-		// 1) Clear the member now so no one else ever re-uses it
-		AgentDataSubsystem->JsonDataRunnable = nullptr;
-
-		// 2) Unbind your delegates immediately
-		ToKill->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
-		ToKill->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
-		if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>())
-		{
-			ToKill->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
-		}
-
-		// 3) Schedule deletion of *that* runnable
-		AsyncTask(ENamedThreads::GameThread, [ToKill, this]()
-		{
-			ToKill->Stop();
-			ToKill->Exit();
-
-			// log exit done
-			UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data Runnable Exit Done"));
-
-			while (!ToKill->bReadyToDelete)
-			{
-				// wait for the runnable to be ready to delete
-				FPlatformProcess::Sleep(0.01f); // sleep for a short time to avoid busy waiting
-			}
-			delete ToKill;  // safe: destructor will join + free the thread
-			// log that the runnable has been deleted
-			UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data Runnable Deleted"));			
-			
-			// Reset the template data
-			PedestrianTemplateData = FMassEntityTemplateData();
-
-			// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
-			// data is created
-			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-			UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data cleared"));
-		});
-	}
+	// Cleanup any existing runnable to avoid memory leaks
+	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 }
 
 void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
