@@ -188,17 +188,18 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 	// reserve array space to avoid reallocations as entities are added
 	HeatmapLocations.Reserve(Entities.Num());
 		
-	for (int i = 0; i < Entities.Num(); i++)
-	{
-		auto EntityMovement = EntityMovementFragment[i];
-		auto& EntityRendering = EntityRenderingFragment[i];
-		
-		if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
-		{
-			continue;
-		}
-		HeatmapLocations.Add(EntityMovement.CurrentLocation);
-	}
+       ParallelFor(Entities.Num(), [&](int32 i)
+       {
+               auto EntityMovement = EntityMovementFragment[i];
+               auto& EntityRendering = EntityRenderingFragment[i];
+
+               if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
+               {
+                       return;
+               }
+
+               HeatmapLocations.Add(EntityMovement.CurrentLocation);
+       });
 }
 
 void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
