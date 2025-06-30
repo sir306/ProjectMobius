@@ -138,7 +138,6 @@ void UAgentDataSubsystem::GetJSONDataFile(FString InJsonDataFile)
 		UE_LOG(LogTemp, Warning, TEXT("Failed to Deserialize JSON Data"));
 		return;// TODO: Add error handling
 	}
-		
 }
 
 void UAgentDataSubsystem::GetUpdatedJSONDataFile()
@@ -344,6 +343,8 @@ bool FJsonDataRunnable::LoadFileAndDeserialize()
 	// Create JSON Reader
 	TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(JsonDataFile);
 
+	JSONObject.Reset();
+	
 	// Deserialize JSON Data
 	bool bDeserializeSuccess = FJsonSerializer::Deserialize(JsonReader, JSONObject);
 
@@ -689,28 +690,25 @@ void FJsonDataRunnable::Exit()
 	// as the runnable contains multiple properties that are not handled by garbage collection,
 	// we need to ensure that we clean up properly
 
-	// 1) Signal your Run() loop to exit
 
-
-	// // 2) If you own your FRunnableThread, kill it and free it
-	// if (Thread)
-	// {
-	// 	// ensure the thread has really stopped before destroying it
-	// 	Thread->Kill(true);
-	// 	delete Thread;
-	// 	Thread = nullptr;
-	// }
-
-	// 3) Immediately release any non–Garbage‑collected, thread‑safe pointers
-	//    (your TSharedPtr will auto‑release, but Reset() here will drop the ref now)
+	// Immediately release any non–Garbage‑collected, thread‑safe pointers
+	// (your TSharedPtr will auto‑release, but Reset() here will drop the ref now)
 	JSONObject.Reset();
 
-	// 4) Optionally clear large TArrays now to free memory immediately
-	AgentMovementInfoData.SimulationData.Empty();
-	AgentDataArray.Empty();
-	EmbAvatarAnims.Empty();
-	StepVectors.Empty();
+	for (auto& Pair : AgentMovementInfoData.SimulationData)
+	{
+		Pair.Value.Empty();   // frees any extra capacity in each TArray
+		Pair.Value.Shrink();   // frees any extra capacity in each TArray
+	}
 	
+	// Optionally clear large TArrays now to free memory immediately
+	AgentMovementInfoData.SimulationData.Empty();
+
+	AgentDataArray.Empty();
+	
+	EmbAvatarAnims.Empty();
+	
+	StepVectors.Empty();
 }
 
 TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)

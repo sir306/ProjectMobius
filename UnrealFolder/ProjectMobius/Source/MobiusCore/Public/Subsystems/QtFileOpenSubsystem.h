@@ -65,6 +65,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "File Dialog")
 	bool IsQtAppRunning();
 
+	UPROPERTY()
 	FOnFileSelectedDelegate OnFileSelected;
 protected:
 	virtual void BeginDestroy() override;

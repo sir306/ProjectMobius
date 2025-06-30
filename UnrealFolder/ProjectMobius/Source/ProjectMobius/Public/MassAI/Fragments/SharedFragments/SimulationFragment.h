@@ -83,6 +83,7 @@ public:
 	/** TMap for data the key is time and value is struct array of FSimMovementSample */
 	TMap<int32, TArray<FSimMovementSample>> SimulationData = TMap<int32, TArray<FSimMovementSample>>();
 
+	UPROPERTY()
 	float MaxTime = 0.0f;
 
 	///** Mapped Simulation Data */

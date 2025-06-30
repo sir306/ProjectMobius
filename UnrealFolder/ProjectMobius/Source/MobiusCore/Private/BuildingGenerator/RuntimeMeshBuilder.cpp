@@ -314,8 +314,24 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 	// set the mesh being loaded flag
 	bMeshBeingBuilt = true;
 	
-	FString FilePath = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\TechnicalSchool1000People\\Technical-School-For-Lab-3D.fbx";
 	AsyncAssimpLoader = NewObject<UAsyncAssimpMeshLoader>();
+
+	// check if runnable is null and if not then delete it
+	if (auto* ExistingRunnable = AsyncAssimpLoader->MeshLoaderRunnable)
+	{
+		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
+
+		// Stop the existing runnable
+		ExistingRunnable->Stop();
+		ExistingRunnable->Exit();
+
+		AsyncTask(ENamedThreads::GameThread, [&ExistingRunnable]
+		{
+			// Delete the existing runnable on the game thread
+			delete ExistingRunnable;
+		});
+	}
+	
 	// Create the runnable
 	AsyncAssimpLoader->MeshLoaderRunnable = new FAssimpMeshLoaderRunnable(PathToMesh);
 	AsyncAssimpLoader->MeshLoaderRunnable->OnLoadMeshDataComplete.AddDynamic(this, &ARuntimeMeshBuilder::GetTheAsyncMeshData);
@@ -366,6 +382,22 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 
 	// Broadcast that the mesh has been built
 	OnMeshBuilt.Broadcast(HeatmapOrigin, MobiusProceduralMeshComponent->Bounds.BoxExtent);
+
+	// check if runnable is null and if not then delete it
+	if (auto* ExistingRunnable = AsyncAssimpLoader->MeshLoaderRunnable)
+	{
+		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
+
+		// Stop the existing runnable
+		ExistingRunnable->Stop();
+		ExistingRunnable->Exit();
+
+		AsyncTask(ENamedThreads::GameThread, [&ExistingRunnable]
+		{
+			// Delete the existing runnable on the game thread
+			delete ExistingRunnable;
+		});
+	}
 }
 
 void ARuntimeMeshBuilder::UpdateMeshMaterial(UMaterialInstanceDynamic* InMaterial)
