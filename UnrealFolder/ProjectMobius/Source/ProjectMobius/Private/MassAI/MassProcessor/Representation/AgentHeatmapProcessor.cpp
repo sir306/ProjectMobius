@@ -82,7 +82,8 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 	UpdateTimeStepAndPause();
 
 	HeatmapLocations.Reset();
-
+	HeatmapLocations = TArray<FVector>();
+	
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
 		ProcessChunk(Context);
@@ -209,6 +210,7 @@ void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 		{
 			bLastPauseLoop = false;
 			HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
+			HeatmapLocations.Empty();
 		}
 	}
 	else

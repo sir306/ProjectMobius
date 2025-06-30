@@ -275,6 +275,7 @@ public:
 	TArray<FAgentData> AgentDataArray;
 
 	bool bIsRunning = false; // Flag to indicate if the thread is running
+	bool bReadyToDelete = false; // Flag to indicate if the thread is ready to be deleted
 	
 protected:
 	/** Pointer to a thread */

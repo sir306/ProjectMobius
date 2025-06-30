@@ -253,6 +253,8 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 	{
 		MaxAgentCount = AgentDataSubSystem->GetMaxAgents();
 	}
+	// log the max agent count
+	UE_LOG(LogTemp, Warning, TEXT("1called in floorstats Max Agent Count: %d"), MaxAgentCount);
 
 	// we cant have axis mins and max == the same or be min > max
 	if (MinAgentCountToSend > MaxAgentCount)
@@ -262,12 +264,15 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 		MinAgentCountToSend = MaxAgentCount;
 		MaxAgentCount = temp;
 	}
-
+	// log the max agent count
+	UE_LOG(LogTemp, Warning, TEXT("2called in floorstats Max Agent Count: %d"), MaxAgentCount);
 	if (MinAgentCountToSend == MaxAgentCount)
 	{
 		// they cant be equal so increase max
 		MaxAgentCount += 1;
 	}
+	// log the max agent count
+	UE_LOG(LogTemp, Warning, TEXT("3called in floorstats Max Agent Count: %d"), MaxAgentCount);
 	if (MaxTime == 0.0f)
 	{
 		// if max time is 0 then set it to 1
@@ -354,37 +359,37 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 		if(auto MES_Subsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
 		{
 			
-
+	
 			// if we have no data then smallest count is 0
-			if (MES_Subsystem->SimulationFragment.SimulationData.Num() == 0)
+			if (MES_Subsystem->NumOfAgentsPerTimeStep.Num() == 0)
 			{
 				// send empty data
 				SendQtAppChartData();
 				return;
 			}
-
-			CompleteUIData.Reserve(MES_Subsystem->SimulationFragment.SimulationData.Num()); // reserve some space for the data
-
+	
+			CompleteUIData.Reserve(MES_Subsystem->NumOfAgentsPerTimeStep.Num()); // reserve some space for the data
+	
 			int32 SmallestFoundSampleCount = INT32_MAX;
 			
 			// loop through samples
-			for (int32 i = 0; i < MES_Subsystem->SimulationFragment.SimulationData.Num(); i++)
+			for (int32 i = 0; i < MES_Subsystem->NumOfAgentsPerTimeStep.Num(); i++)
 			{
 				// New sample smaller than current smallest
-				if (MES_Subsystem->SimulationFragment.SimulationData[i].Num() < SmallestFoundSampleCount)
+				if (MES_Subsystem->NumOfAgentsPerTimeStep[i] < SmallestFoundSampleCount)
 				{
-					SmallestFoundSampleCount = MES_Subsystem->SimulationFragment.SimulationData[i].Num();
+					SmallestFoundSampleCount = MES_Subsystem->NumOfAgentsPerTimeStep[i];
 				}
 				
 				// get the sample count
-				int32 SampleCount = MES_Subsystem->SimulationFragment.SimulationData[i].Num();
-
+				int32 SampleCount = MES_Subsystem->NumOfAgentsPerTimeStep[i];
+	
 				// get the time frequency from time dilation subsystem
 				float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
-
+	
 				// time of current sample -> assumes no missing data
 				float CurrentTime = i * TimeBetweenSteps;
-
+	
 				// build the points array
 				auto NewPoint = MakeShared<FJsonObject>();
 				NewPoint->SetNumberField(TEXT("x"), CurrentTime);
@@ -393,7 +398,7 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 				
 				// add to the array
 				CompleteUIData.Add(MakeShared<FJsonValueObject>(NewPoint));
-
+	
 				
 			}
 			// Update the min agent count to send

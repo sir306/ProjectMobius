@@ -67,15 +67,13 @@ public:
 	* @param NumberOfPedestriansToSpawn: The number of pedestrians to spawn
 	* 
 	*/
-	UFUNCTION(BlueprintCallable, Category = "MassAI|Spawn")
-	void SpawnMassEntityPedestrians(int32 NumberOfPedestriansToSpawn);
+	void SpawnMassEntityPedestrians(int32 NumberOfPedestriansToSpawn, FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues);
 
 	/**
 	* A method for spawning the max amount of pedestrians that can be spawned from the data file 
 	* This method can be called from blueprints or code.
 	*/
-	UFUNCTION(BlueprintCallable, Category = "MassAI|Spawn")
-	void SpawnMaxPedestrians();
+	void SpawnMaxPedestrians(FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues);
 
 	/**
 	* A method used for destroying our spawned pedestrians at any point we are in the world not just end play.
@@ -89,8 +87,7 @@ public:
 	/**
 	* Create the archetype for the pedestrian entity
 	*/
-	UFUNCTION()
-	void CreatePedestrianArchetype();
+	FMassArchetypeHandle CreatePedestrianArchetype();
 
 	/**
 	* Create the template data for the pedestrian entity archetype
@@ -115,9 +112,6 @@ public:
 	*/
 	void BuildPedestrianRepresentationFragmentData(); // TODO: add inputs to allow for customisation of the pedestrian representation currently hardcoded values
 
-	// The archetype handle for the pedestrian archetype
-	FMassArchetypeHandle PedestrianArchetypeHandle;
-
 	// The Handle for spawned pedestrians
 	UPROPERTY()
 	TArray<FMassEntityHandle> SpawnedEntityPedestrianHandles;
@@ -127,23 +121,8 @@ public:
 	FMassEntityTemplateData PedestrianTemplateData;
 
 	UPROPERTY()
-	FSimulationFragment SimulationFragment;
-	UPROPERTY()
-	FAgentRepresentationFragment AgentRepresentationFragment;
-	UPROPERTY()
-	FSharedStruct SharedSimulationFragment;
-	UPROPERTY()
-	FSharedStruct SharedAgentRepresentationFrag;
-
-	/** Niagara Shared Rep Frag - contains all the variable that are sent to the niagara system */
-	UPROPERTY()
-	FSharedStruct NiagaraSharedDataFrag;
+	TArray<int32> NumOfAgentsPerTimeStep;
 	
-	UPROPERTY()
-	FSharedStruct NiagaraSharedStatsFrag;
-	
-	FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues;
-
 	// The agent data subsystem for getting the data for the pedestrians
 	UPROPERTY()
 	UAgentDataSubsystem* AgentDataSubsystem;

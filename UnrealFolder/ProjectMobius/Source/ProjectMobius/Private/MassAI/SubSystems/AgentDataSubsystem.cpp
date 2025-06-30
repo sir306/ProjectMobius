@@ -325,6 +325,13 @@ FJsonDataRunnable::~FJsonDataRunnable()
 	}
 	AgentMovementInfoData = FSimulationFragment();
 	JSONObject = nullptr;
+
+	// DEBUG: Prove the runnable has been deleted
+	// AsyncTask(ENamedThreads::GameThread, []()
+	// 	{
+	//
+	// 		UE_LOG(LogTemp, Warning, TEXT("Runnable Deleted"));
+	// 	});
 }
 
 bool FJsonDataRunnable::LoadFileAndDeserialize()
@@ -703,12 +710,19 @@ void FJsonDataRunnable::Exit()
 	
 	// Optionally clear large TArrays now to free memory immediately
 	AgentMovementInfoData.SimulationData.Empty();
+	AgentMovementInfoData.SimulationData.Shrink();
 
 	AgentDataArray.Empty();
+	AgentDataArray.Shrink();
 	
 	EmbAvatarAnims.Empty();
+	EmbAvatarAnims.Shrink();
 	
 	StepVectors.Empty();
+	StepVectors.Shrink();
+	
+	UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data Runnable Exit Done inside method"));
+	bReadyToDelete = true; // Set the flag to true to indicate that the runnable is ready to be deleted
 }
 
 TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)

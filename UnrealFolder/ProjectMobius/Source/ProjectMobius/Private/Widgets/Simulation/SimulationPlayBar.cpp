@@ -159,7 +159,7 @@ void USimulationPlayBar::StartSimulation()
 		return; // prevent unbinding and binding of delegates if the MassEntitySubsystem is not valid
 	}
 
-	MassEntitySubsystem->SpawnMaxPedestrians();
+	//MassEntitySubsystem->SpawnMaxPedestrians();
 
 	// call this so it gets the time dilation subsystem unpaused for the first call
 	OnPlayPauseButtonClicked();
