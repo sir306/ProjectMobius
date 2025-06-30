@@ -79,10 +79,13 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 		return;
 	}
 
-	UpdateTimeStepAndPause();
+        UpdateTimeStepAndPause();
 
-	HeatmapLocations.Reset();
-	HeatmapLocations = TArray<FVector>();
+        // determine if heatmaps should be updated this frame
+        UpdateHeatmapInterval();
+
+        // reuse the array storage instead of reallocating
+        HeatmapLocations.Reset();
 	
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
@@ -177,12 +180,13 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 		bLastPauseLoop = false;
 	}
 
-	UpdateHeatmapInterval();
+        // TODO: add comments to explain the purpose of this function and what it does
+        TConstArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetFragmentView<FEntityRenderingFragment>();
+        TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
+        auto Entities = Context.GetEntities();
 
-	// TODO: add comments to explain the purpose of this function and what it does
-	TConstArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetFragmentView<FEntityRenderingFragment>();
-	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
-	auto Entities = Context.GetEntities();
+        // reserve array space to avoid reallocations as entities are added
+        HeatmapLocations.Reserve(Entities.Num());
 		
 	for (int i = 0; i < Entities.Num(); i++)
 	{
