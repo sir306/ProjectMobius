@@ -78,8 +78,8 @@ void UMassEntitySpawnSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		// Bind the required Game Instance Delegates
 		GameInst->OnPedestrianVectorFileUpdated.AddDynamic(this, &UMassEntitySpawnSubsystem::CreatePedestrianTemplateData);
-		// log that it has binded
-		UE_LOG(LogTemp, Warning, TEXT("Data file Changed Delegate Binded"));
+               // log that it has bound
+               UE_LOG(LogTemp, Warning, TEXT("Data file Changed Delegate Bound"));
 
 		// Get the Current Data File set on the instance
 		//JSONDataFile = GameInst->GetPedestrianDataFilePath();
