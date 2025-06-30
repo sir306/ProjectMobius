@@ -214,4 +214,4 @@ UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
 # No user files should be present on the repo
 *.user
 *.txt.user
-*workspace.xml
+UnrealFolder/ProjectMobius/.idea/
