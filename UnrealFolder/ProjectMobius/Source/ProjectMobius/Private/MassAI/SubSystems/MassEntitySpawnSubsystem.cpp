@@ -50,13 +50,8 @@
 class UTimeDilationSubSystem;
 
 UMassEntitySpawnSubsystem::UMassEntitySpawnSubsystem() :
-	//PedestrianArchetypeHandle(FMassArchetypeHandle()),
 	SpawnedEntityPedestrianHandles(TArray<FMassEntityHandle>()),
 	PedestrianTemplateData(FMassEntityTemplateData()),
-	//SimulationFragment(FSimulationFragment()),
-	//AgentRepresentationFragment(FAgentRepresentationFragment()),
-	//SharedSimulationFragment(FSharedStruct()),
-	//SharedAgentRepresentationFrag(FSharedStruct()),
 	AgentDataSubsystem(nullptr)
 {
 }
@@ -78,8 +73,8 @@ void UMassEntitySpawnSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		// Bind the required Game Instance Delegates
 		GameInst->OnPedestrianVectorFileUpdated.AddDynamic(this, &UMassEntitySpawnSubsystem::CreatePedestrianTemplateData);
-               // log that it has bound
-               UE_LOG(LogTemp, Warning, TEXT("Data file Changed Delegate Bound"));
+		// log that it has bound
+		UE_LOG(LogTemp, Warning, TEXT("Data file Changed Delegate Bound"));
 
 		// Get the Current Data File set on the instance
 		//JSONDataFile = GameInst->GetPedestrianDataFilePath();
@@ -139,9 +134,6 @@ void UMassEntitySpawnSubsystem::DestroySpawnedPedestrians(TConstArrayView<FMassE
 
 FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 {
-	// Create the template data for the pedestrian entity archetype
-	//CreatePedestrianTemplateData();
-
 	// TemplateBuildContext
 	FMassEntityTemplateBuildContext PedestrianLocationTraitBuildContext = FMassEntityTemplateBuildContext(PedestrianTemplateData);
 
@@ -185,42 +177,18 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld());
 
 	// Reset the template data
-	//SharedSimulationFragment.Reset();
-	//SharedAgentRepresentationFrag.Reset();
 	PedestrianTemplateData = FMassEntityTemplateData();
-	//PedestrianArchetypeHandle = FMassArchetypeHandle();
-
-	// Reset Niagara Shared Rep Frag
-	//NiagaraSharedDataFrag.Reset();
-	//NiagaraSharedStatsFrag.Reset();
 
 	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
 	// data is created
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 	
-	
 	float elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - RealtimeSeconds;
-	// log time taken
-	UE_LOG(LogTemp, Warning, TEXT("Time taken to build archetypes data: %f"), elapsedTime);
 	
-	//AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	LoadPedestrianData();
 	elapsedTime = UGameplayStatics::GetRealTimeSeconds(GetWorld()) - elapsedTime;
 	// log time taken
 	UE_LOG(LogTemp, Warning, TEXT("Time taken to load data: %f"), elapsedTime);
-	// // Create the Pedestrian Movement Fragment Data
-	// BuildPedestrianMovementFragmentData();
-	// // Create the Pedestrian Representation Fragment Data
-	// BuildPedestrianRepresentationFragmentData();
-	// 	
-	// ArchetypeSharedFragmentValues = PedestrianTemplateData.GetSharedFragmentValues();
-	//
-	// // check shared fragment values are sorted and sort if not
-	// if (!ArchetypeSharedFragmentValues.IsSorted())
-	// {
-	// 	ArchetypeSharedFragmentValues.Sort();
-	// }
-	// UE_LOG(LogTemp, Warning, TEXT("Pedestrian Template Data Created"));
 }
 
 void UMassEntitySpawnSubsystem::LoadPedestrianData()
@@ -324,8 +292,6 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	float TimeBetweenSteps = MoveTemp(AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps);
 
-	//SimulationFragment.AddMovementSample();
-
 	// Get Time Dilation from the ProjectMobius Game Instance
 	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
 
@@ -334,9 +300,6 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
 	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
-		
-	//Get a hash of a FConstStructView of said fragment and store it
-	//SimFragHash = UE::StructUtils::GetStructCrc32(FStructView::Make(SimulationFragment));
 
 	auto SharedSimulationFragment = FSharedStruct::Make(SimulationFragment);
 
@@ -353,7 +316,6 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	{
 		ArchetypeSharedFragmentValues.Sort();
 	}
-	//UE_LOG(LogTemp, Warning, TEXT("Pedestrian Template Data Created"));
 
 	// Broadcast that the pedestrian data is ready to spawn
 	OnPedestrianDataReadyToSpawn.Broadcast();
@@ -394,14 +356,8 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 			// log that the runnable has been deleted
 			UE_LOG(LogTemp, Warning, TEXT("Pedestrian Data Runnable Deleted"));			
 			
-			//SharedSimulationFragment.Reset();
-			//SharedAgentRepresentationFrag.Reset();
+			// Reset the template data
 			PedestrianTemplateData = FMassEntityTemplateData();
-			//PedestrianArchetypeHandle = FMassArchetypeHandle();
-
-			// Reset Niagara Shared Rep Frag
-			//NiagaraSharedDataFrag.Reset();
-			//NiagaraSharedStatsFrag.Reset();
 
 			// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
 			// data is created
@@ -461,4 +417,3 @@ void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
 	}
 	
 }
-
