@@ -215,3 +215,4 @@ UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
 *.user
 *.txt.user
 UnrealFolder/ProjectMobius/.idea/
+UnrealFolder/ProjectMobius/.idea/*
