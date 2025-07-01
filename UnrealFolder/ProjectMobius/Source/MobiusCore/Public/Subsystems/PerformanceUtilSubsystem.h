@@ -55,5 +55,19 @@ public:
 	 * @param DeltaTime World delta time, the time since the last tick.
 	 */
 	virtual void Tick(float DeltaTime) override;
+
+	/**
+	 * Applies a console variable setting based on a string input.
+	 * The string should be in the format "CVarName=Value".
+	 *
+	 * @param CVarSetting The console variable setting to apply.
+	 */
+	void ApplyCVarSetting(const FString& CVarSetting);
 	
+	/**
+	 * Takes a string array to apply console commands for performance tuning.
+	 *
+	 * @param CommandArray The array of console commands to apply.
+	 */
+	void ApplyConsoleCommands(const TArray<FString>& CommandArray);
 };
