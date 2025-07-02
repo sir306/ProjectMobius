@@ -23,14 +23,18 @@ protected:
 	virtual void NativeConstruct() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
-	void UpdateScalabilityLevel();
+	virtual void UpdateScalabilityLevel();
 
 	UFUNCTION(BlueprintImplementableEvent)
 	TArray<FString> GetScalabilityLevelList();
 
 public:
-	/** Scalability Level Enum - defaults to Epic */
+	/** Scalability Category - defaults to Resolution */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings")
-	TEnumAsByte<EScalabilitySettings> ScalabilityLevel = ESsl_Epic;
-	
+	TEnumAsByte<EScalabilityCategories> ScalabilityCategory = ESc_GlobalIllumination;
+
+protected:
+	/** Scalability Level Enum */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings")
+	TEnumAsByte<EScalabilitySettings> ScalabilityLevel;
 };

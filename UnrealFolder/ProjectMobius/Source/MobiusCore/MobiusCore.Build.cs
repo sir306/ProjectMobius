@@ -14,6 +14,7 @@ public class MobiusCore : ModuleRules
                 "Core",
                 "MassEntity",
                 "ProceduralMeshComponent",
+                "RHI",
             }
         );
 

@@ -35,6 +35,24 @@ enum EScalabilitySettings : uint8
 	ESsl_High = 2 UMETA(DisplayName = "High"), // High scalability settings
 	ESsl_Epic = 3 UMETA(DisplayName = "Epic"), // Epic scalability settings
 	ESsl_Cinematic = 4 UMETA(DisplayName = "Cinematic"), // Cinematic scalability settings
-	ESsl_Default = 5 UMETA(DisplayName = "Default"), // Default scalability settings
+	ESsl_Default = 5 UMETA(DisplayName = "Default", Hidden), // Default scalability settings
 };
 
+/**
+ * Enum to define scalability categories for various settings.
+ */
+UENUM(BlueprintType)
+enum EScalabilityCategories : uint8
+{
+	ESc_Resolution = 0 UMETA(DisplayName = "Resolution"),
+	ESc_GlobalIllumination = 1 UMETA(DisplayName = "Global Illumination"),
+	ESc_PostProcessing = 2 UMETA(DisplayName = "Post Processing"),
+	ESc_Shadows = 3 UMETA(DisplayName = "Shadows"),
+	ESc_Textures = 4 UMETA(DisplayName = "Textures"),
+	ESc_Effects = 5 UMETA(DisplayName = "Effects"),
+	ESc_AntiAliasing = 6 UMETA(DisplayName = "Anti-Aliasing"),
+	ESc_ViewDistance = 7 UMETA(DisplayName = "View Distance"),
+	ESc_Reflections = 8 UMETA(DisplayName = "Reflections"),
+	ESc_Shading = 9 UMETA(DisplayName = "Shading"),
+	DefaultMax = 10 UMETA(DisplayName = "Default", Hidden),
+};

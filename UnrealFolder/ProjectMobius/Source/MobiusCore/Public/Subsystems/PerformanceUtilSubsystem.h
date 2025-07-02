@@ -6,6 +6,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "PerformanceUtilSubsystem.generated.h"
 
+enum EScalabilitySettings : uint8;
+enum EScalabilityCategories : uint8;
 /**
  * This subsystem is used to manage performance within the game. It can be used to notify the system when a users
  * hardware is not performing well, triggering automatic performance optimizations. Such as simple agent representations.
@@ -70,4 +72,51 @@ public:
 	 * @param CommandArray The array of console commands to apply.
 	 */
 	void ApplyConsoleCommands(const TArray<FString>& CommandArray);
+
+	/**
+	 * Apply predefined scalability settings to the game, based on the provided scalability level.
+	 *
+	 * @param[TEnumAsByte<EScalabilitySettings>] ScalabilityLevel The scalability level to apply.
+	 * @param[TEnumAsByte<EScalabilityCategories>] ScalabilityCategory The category of scalability settings to apply.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void ApplyScalabilityLevel(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel,
+		const TEnumAsByte<EScalabilityCategories> ScalabilityCategory);
+
+	/**
+	 * 
+	 * @param ScalabilityLevel The scalability level to apply to all categories.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void ApplyScalabilityLevelToAll(TEnumAsByte<EScalabilitySettings> ScalabilityLevel);
+
+	/**
+	 * Get the current scalability settings for the game for the given category.
+	 *
+	 * @param[TEnumAsByte<EScalabilityCategories>] ScalabilityCategory The category of scalability settings to retrieve.
+	 * @return The current scalability settings.
+	 */
+	EScalabilitySettings GetScalabilityLevel(const TEnumAsByte<EScalabilityCategories> ScalabilityCategory) const;
+
+	/**
+	 * Get the current screen resolution.
+	 * 
+	 * @return The current screen resolution as an FIntPoint.
+	 */
+	FIntPoint GetCurrentScreenResolution() const;
+
+	/**
+	 * Get all available screen resolutions for the system.
+	 * 
+	 * @return A list of all available screen resolutions for the system.
+	 */
+	TArray<FIntPoint> GetSystemScreenResolutions() const;
+
+	void UpdateScreenResolutions(FIntPoint NewResolution);
+	
+public:
+	/** Ptr to the game user setting object -> we use this to apply scalability settings
+	 * (as the console commands to change do not apply without it) */
+	UPROPERTY()
+	TObjectPtr<UGameUserSettings> GameUserSettings;
 };
