@@ -39,6 +39,21 @@ enum EScalabilitySettings : uint8
 };
 
 /**
+ * Enum to define global scalability settings, which are used to set the overall quality of the viewer, this is to
+ * simplify the scalability settings for the user, as they can be overwhelming with too many options.
+ */
+UENUM(BlueprintType)
+enum EGlobalScalabilitySettings : uint8
+{
+	EGss_Low = 0 UMETA(DisplayName = "Low"), // Low scalability settings
+	EGss_Medium = 1 UMETA(DisplayName = "Medium"), // Medium scalability settings
+	EGss_High = 2 UMETA(DisplayName = "High"), // High scalability settings
+	EGss_Epic = 3 UMETA(DisplayName = "Epic"), // Epic scalability settings
+	EGss_Custom = 4 UMETA(DisplayName = "Custom"), // Custom scalability settings
+	EGss_Default = 5 UMETA(DisplayName = "Default", Hidden), // Default scalability settings
+};
+
+/**
  * Enum to define scalability categories for various settings.
  */
 UENUM(BlueprintType)
@@ -54,5 +69,6 @@ enum EScalabilityCategories : uint8
 	ESc_ViewDistance = 7 UMETA(DisplayName = "View Distance"),
 	ESc_Reflections = 8 UMETA(DisplayName = "Reflections"),
 	ESc_Shading = 9 UMETA(DisplayName = "Shading"),
-	DefaultMax = 10 UMETA(DisplayName = "Default", Hidden),
+	ESc_Global = 10 UMETA(DisplayName = "Global"),
+	DefaultMax = 11 UMETA(DisplayName = "Default", Hidden),
 };

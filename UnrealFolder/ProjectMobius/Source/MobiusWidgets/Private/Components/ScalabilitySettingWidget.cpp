@@ -14,19 +14,38 @@ void UScalabilitySettingWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 	
-	// Ensure the widget is initialized with the current scalability level
-	if (auto PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
-	{
-		ScalabilityLevel = PerformanceUtilSubsystem->GetScalabilityLevel(ScalabilityCategory);
-	}
+	InitializeScalabilityLevel();
 }
 
 void UScalabilitySettingWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	InitializeScalabilityLevel();
 	// Update the scalability level when the widget is constructed
 	UpdateScalabilityLevel();
+}
+
+void UScalabilitySettingWidget::InitializeScalabilityLevel()
+{
+	// Ensure the widget is initialized with the current scalability level
+	if (auto PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
+	{
+		ScalabilityLevel = PerformanceUtilSubsystem->GetScalabilityLevel(ScalabilityCategory);
+
+		// Check we don't have different level from global and if so, update scalability to match and call update scalability for this category
+		if (PerformanceUtilSubsystem->GetGlobalScalabilitySetting() != EGss_Custom) // global isn't custom so the value must match	
+		{
+			uint8 GlobalScalabilityLevel = static_cast<uint8>(PerformanceUtilSubsystem->GetGlobalScalabilitySetting());
+			if (ScalabilityLevel != GlobalScalabilityLevel)
+			{
+				// Update the scalability level to match the global setting
+				ScalabilityLevel = static_cast<EScalabilitySettings>(GlobalScalabilityLevel);
+				PerformanceUtilSubsystem->ApplyScalabilityLevel(ScalabilityLevel, ScalabilityCategory);
+			}
+		}
+		
+	}
 }
 
 void UScalabilitySettingWidget::UpdateScalabilityLevel()
@@ -42,6 +61,10 @@ void UScalabilitySettingWidget::UpdateScalabilityLevel()
 			UE_LOG(LogTemp, Log, TEXT("Applied Scalability Level: %s for Category: %s"), 
 				*UEnum::GetValueAsString(ScalabilityLevel), 
 				*UEnum::GetValueAsString(ScalabilityCategory));
+		}
+		else if (ScalabilityCategory == ESc_Global)
+		{
+			// currently done in BP
 		}
 	}
 	else

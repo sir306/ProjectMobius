@@ -23,6 +23,8 @@ void UResolutionScalabilityWidget::UpdateCurrentScreenResolutionVal()
 				CurrentScreenResolution = FIntPoint(1280, 720);// Default resolution if none is set (as seen in the .ini file)
 			}
 		}
+		// log the current screen resolution
+		UE_LOG(LogTemp, Log, TEXT("Current Screen Resolution: %dx%d"), CurrentScreenResolution.X, CurrentScreenResolution.Y);
 	}
 	else
 	{

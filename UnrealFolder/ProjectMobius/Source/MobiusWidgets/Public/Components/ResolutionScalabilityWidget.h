@@ -4,13 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "ScalabilitySettingWidget.h"
+#include "Interfaces/TextHelperInterface.h"
 #include "ResolutionScalabilityWidget.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UResolutionScalabilityWidget : public UScalabilitySettingWidget
+class MOBIUSWIDGETS_API UResolutionScalabilityWidget : public UScalabilitySettingWidget, public ITextHelperInterface
 {
 	GENERATED_BODY()
 

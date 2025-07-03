@@ -6,6 +6,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "PerformanceUtilSubsystem.generated.h"
 
+enum EGlobalScalabilitySettings : uint8;
 enum EScalabilitySettings : uint8;
 enum EScalabilityCategories : uint8;
 /**
@@ -113,10 +114,27 @@ public:
 	TArray<FIntPoint> GetSystemScreenResolutions() const;
 
 	void UpdateScreenResolutions(FIntPoint NewResolution);
+
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
+	void UpdateGlobalScalabilitySetting(TEnumAsByte<EGlobalScalabilitySettings> NewSetting);
+
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
+	TEnumAsByte<EGlobalScalabilitySettings> GetCumulativeScalabilitySetting() const;
 	
-public:
+protected:
 	/** Ptr to the game user setting object -> we use this to apply scalability settings
 	 * (as the console commands to change do not apply without it) */
 	UPROPERTY()
 	TObjectPtr<UGameUserSettings> GameUserSettings;
+
+	/** Stores the global scalability setting value */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
+	TEnumAsByte<EGlobalScalabilitySettings> GlobalScalabilitySetting;
+
+
+public:
+	/** Returns the current global scalability setting */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
+	FORCEINLINE TEnumAsByte<EGlobalScalabilitySettings> GetGlobalScalabilitySetting() const { return GlobalScalabilitySetting; }
+	
 };

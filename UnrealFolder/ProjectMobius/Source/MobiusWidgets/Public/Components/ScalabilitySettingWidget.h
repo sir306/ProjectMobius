@@ -23,6 +23,9 @@ protected:
 	virtual void NativeConstruct() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	void InitializeScalabilityLevel();
+
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
 	virtual void UpdateScalabilityLevel();
 
 	UFUNCTION(BlueprintImplementableEvent)
@@ -33,8 +36,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings")
 	TEnumAsByte<EScalabilityCategories> ScalabilityCategory = ESc_GlobalIllumination;
 
-protected:
+private:
 	/** Scalability Level Enum */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings")
-	TEnumAsByte<EScalabilitySettings> ScalabilityLevel;
+	UPROPERTY(EditAnywhere, Category = "Scalability Settings")
+	TEnumAsByte<EScalabilitySettings> ScalabilityLevel = EScalabilitySettings::ESsl_Default;
+
+public:
+	/**
+	 * Setter for Scalability Level
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	FORCEINLINE void SetScalabilityLevel(const TEnumAsByte<EScalabilitySettings> NewScalabilityLevel) { ScalabilityLevel = NewScalabilityLevel; }
+
+	/**
+	 * Getter for Scalability Level
+	 * 
+	 * @return The current scalability level as an EScalabilitySettings enum value.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	FORCEINLINE TEnumAsByte<EScalabilitySettings> GetScalabilityLevel() const { return ScalabilityLevel; }
 };

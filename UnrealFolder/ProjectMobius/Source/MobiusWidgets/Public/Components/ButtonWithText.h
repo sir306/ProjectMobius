@@ -40,10 +40,6 @@ class MOBIUSWIDGETS_API UButtonWithText : public UBaseButton
 	
 public:
 	/**
-	 * 
-	 */
-	
-	/**
 	 * The SynchronizeProperties function is called when the widget is constructed,
 	 * this is where we can apply our custom style to the button.
 	 */
@@ -54,7 +50,7 @@ public:
 	 * the properties of the button text can be set or modified.
 	 */
 	virtual void ApplyMobiusButtonStyle() override;
-
+	
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	
 	/**

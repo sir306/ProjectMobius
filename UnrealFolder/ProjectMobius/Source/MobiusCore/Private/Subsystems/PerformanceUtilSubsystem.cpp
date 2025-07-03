@@ -158,9 +158,26 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 
 void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel)
 {
-	Scalability::FQualityLevels QualityLevels;
-	QualityLevels.SetFromSingleQualityLevel(ScalabilityLevel);
-	Scalability::SetQualityLevels(QualityLevels);
+	// check if GameUserSettings is valid
+	if (!GameUserSettings)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
+		return;
+	}
+
+	// TODO: check if we can optimize this and reduce
+	GameUserSettings->SetGlobalIlluminationQuality(ScalabilityLevel);
+	GameUserSettings->SetPostProcessingQuality(ScalabilityLevel);
+	GameUserSettings->SetShadowQuality(ScalabilityLevel);
+	GameUserSettings->SetTextureQuality(ScalabilityLevel);
+	GameUserSettings->SetVisualEffectQuality(ScalabilityLevel);
+	GameUserSettings->SetAntiAliasingQuality(ScalabilityLevel);
+	GameUserSettings->SetViewDistanceQuality(ScalabilityLevel);
+	GameUserSettings->SetReflectionQuality(ScalabilityLevel);
+	GameUserSettings->SetShadingQuality(ScalabilityLevel);
+	
+	// Apply the changes to the game user settings
+	GameUserSettings->ApplySettings(false);
 }
 
 EScalabilitySettings UPerformanceUtilSubsystem::GetScalabilityLevel(
@@ -264,5 +281,110 @@ void UPerformanceUtilSubsystem::UpdateScreenResolutions(FIntPoint NewResolution)
 
 	// Apply the changes to the game user settings
 	GameUserSettings->ApplySettings(false);
+}
+
+void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlobalScalabilitySettings> NewSetting)
+{
+	// check if GameUserSettings is valid
+	if (!GameUserSettings)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
+		return;
+	}
+	
+	if (GlobalScalabilitySetting == NewSetting)
+	{
+		// No change needed
+		return;
+	}
+	
+	switch (NewSetting)
+	{
+	case EGss_Low:
+		ApplyScalabilityLevelToAll(ESsl_Low);
+		break;
+	case EGss_Medium:
+		ApplyScalabilityLevelToAll(ESsl_Medium);
+		break;
+	case EGss_High:
+		ApplyScalabilityLevelToAll(ESsl_High);
+		break;
+	case EGss_Epic:
+		ApplyScalabilityLevelToAll(ESsl_Epic);
+		break;
+	case EGss_Custom:
+		// Custom settings are not predefined, so we do not apply any specific settings here.
+		break;
+	case EGss_Default:
+		// Default case does not require any action
+		break;
+	default: break;
+	}
+
+	GlobalScalabilitySetting = NewSetting;
+}
+
+TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulativeScalabilitySetting() const
+{
+	TEnumAsByte<EGlobalScalabilitySettings> CumulativeSetting = EGss_Low;
+	
+	// Check if GameUserSettings is valid
+	if (!GameUserSettings)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
+		return CumulativeSetting;
+	}
+
+	//TODO: Below can be optimized with a lambda
+	
+	// for each scalability category, check the current level and determine the cumulative setting
+
+	// the first check is to set the cumulative setting to the lowest level and then we will check each category
+	if (GameUserSettings->GetGlobalIlluminationQuality() != static_cast<int32>(CumulativeSetting))
+	{
+		CumulativeSetting = static_cast<EGlobalScalabilitySettings>(GameUserSettings->GetGlobalIlluminationQuality());
+	}
+	// Check Post Processing Quality - if they are not equal, then our global setting will be set to Custom
+	if (GameUserSettings->GetPostProcessingQuality() != static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check Shadows Quality
+	if (GameUserSettings->GetShadowQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check Texture Quality
+	if (GameUserSettings->GetTextureQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check Visual Effect Quality
+	if (GameUserSettings->GetVisualEffectQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check Anti-Aliasing Quality
+	if (GameUserSettings->GetAntiAliasingQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check View Distance Quality
+	if (GameUserSettings->GetViewDistanceQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check Reflection Quality
+	if (GameUserSettings->GetReflectionQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	// Check Shading Quality
+	if (GameUserSettings->GetShadingQuality() > static_cast<int32>(CumulativeSetting))
+	{
+		return CumulativeSetting = EGss_Custom;
+	}
+	
+	return CumulativeSetting;
 }
 
