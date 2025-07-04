@@ -56,11 +56,7 @@ void UScalabilitySettingWidget::UpdateScalabilityLevel()
 		{
 			// Apply the scalability level to the Performance Util Subsystem
 			PerformanceUtilSubsystem->ApplyScalabilityLevel(ScalabilityLevel, ScalabilityCategory);
-		
-			// Log the applied scalability level
-			UE_LOG(LogTemp, Log, TEXT("Applied Scalability Level: %s for Category: %s"), 
-				*UEnum::GetValueAsString(ScalabilityLevel), 
-				*UEnum::GetValueAsString(ScalabilityCategory));
+
 		}
 		else if (ScalabilityCategory == ESc_Global)
 		{
