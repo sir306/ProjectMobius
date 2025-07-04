@@ -7,6 +7,7 @@
 #include "Interfaces/TextHelperInterface.h"
 #include "ResolutionScalabilityWidget.generated.h"
 
+class UComboBoxString;
 /**
  * 
  */
@@ -28,7 +29,23 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
 	void UpdateScreenResolution(FIntPoint NewResolution);
 
+	/**
+	 * Populate the combo box with all available resolutions
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	void PopulateResolutionComboBox();
+
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	void SetSelectedDropdownOption(const FIntPoint& NewOption);
+
+#pragma region ComponentsAndProperties
+	/** Combo string box to display all available resolutions, allowing the user to quickly adjust the resolution */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+	TObjectPtr<UComboBoxString> ResolutionComboBox;
+	
 	/** Current Screen Resolution */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings")
 	FIntPoint CurrentScreenResolution = FIntPoint(0,0);
+
+#pragma endregion	
 };

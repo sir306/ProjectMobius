@@ -23,6 +23,8 @@
  */
 
 #include "WidgetInterface.h"
+
+#include "Components/ComboBoxString.h"
 #include "Components/TextBlock.h"
 
 

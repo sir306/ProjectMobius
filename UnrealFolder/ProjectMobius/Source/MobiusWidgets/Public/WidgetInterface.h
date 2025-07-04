@@ -28,6 +28,7 @@
 #include "UObject/Interface.h"
 #include "WidgetInterface.generated.h"
 
+
 class UTextBlock;
 // This class does not need to be modified.
 UINTERFACE()
@@ -54,4 +55,5 @@ public:
 	 * @param[FTextBlockStyle] TextBlockStyle The text block style to apply
 	 */
 	static void SetupTextBlockStyle(UTextBlock* TextBlockToStyle, const FTextBlockStyle& TextBlockStyle);
+	
 };

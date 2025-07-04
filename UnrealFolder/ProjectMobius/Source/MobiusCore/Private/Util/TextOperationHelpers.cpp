@@ -26,14 +26,13 @@ FText TextOperationHelpers::CleanInputTextToPositiveIntText(const FText& InputTe
 		}
 	}
 
+	// allow inputs to be empty
 	int32 Value = 0;
-	if (DigitsOnly.Len() > 0)
+	if (DigitsOnly.Len() >= 0)
 	{
 		Value = FCString::Atoi(*DigitsOnly);
 	}
-
-	// Ensure it is at least 1
-	Value = FMath::Max(1, Value);
+	
 
 	return FText::AsNumber(Value);
 }

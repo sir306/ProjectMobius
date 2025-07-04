@@ -3,6 +3,13 @@
 
 #include "Components/ResolutionScalabilityWidget.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
+#include "Util/WidgetUtilHelpers.h"
+
+// lambda to convert FIntPoint to FString with a formatting of 'X: {x}, Y: {y}'
+auto FormatResolution = [](const FIntPoint& Resolution) -> FString
+{
+	return FString::Printf(TEXT("X: %d, Y: %d"), Resolution.X, Resolution.Y);
+};
 
 void UResolutionScalabilityWidget::NativePreConstruct()
 {
@@ -73,4 +80,37 @@ void UResolutionScalabilityWidget::UpdateScreenResolution(FIntPoint NewResolutio
 			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Performance Util Subsystem not found!"));
 		}
 	}
+}
+
+void UResolutionScalabilityWidget::PopulateResolutionComboBox()
+{
+	// Check if the Performance Util Subsystem and combo box is valid
+	if (!GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>() || !ResolutionComboBox)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Performance Util Subsystem or Resolution Combo Box not found!"));
+		return;
+	}
+	
+	// Get all available resolutions from the Performance Util Subsystem
+	TArray<FIntPoint> AvailableResolutions = GetAllAvailableResolutions();
+
+	TArray<FString> ResolutionOptions;
+	
+	// build the resolution options array
+	for (const FIntPoint& Resolution : AvailableResolutions)
+	{
+		ResolutionOptions.Add(FormatResolution(Resolution));
+	}
+
+	// Create the current resolution string
+	FString CurrentResolutionStr = FormatResolution(CurrentScreenResolution);
+
+	// Update the combo box options with the formatted resolution strings
+	WidgetUtilHelpers::UpdateComboBoxOptions(ResolutionComboBox, ResolutionOptions, CurrentResolutionStr);
+}
+
+void UResolutionScalabilityWidget::SetSelectedDropdownOption(const FIntPoint& NewOption)
+{
+	FString NewOptionStr = FormatResolution(NewOption);
+	WidgetUtilHelpers::FindAndSetComboBoxOption(ResolutionComboBox, NewOptionStr);
 }
