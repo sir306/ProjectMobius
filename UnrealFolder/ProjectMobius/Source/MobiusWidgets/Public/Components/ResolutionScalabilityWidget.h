@@ -12,7 +12,7 @@ class UComboBoxString;
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UResolutionScalabilityWidget : public UScalabilitySettingWidget, public ITextHelperInterface
+class MOBIUSWIDGETS_API UResolutionScalabilityWidget : public UScalabilityWidgetBase, public ITextHelperInterface
 {
 	GENERATED_BODY()
 

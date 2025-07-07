@@ -3,15 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
-#include "EnumsAndStructs/ScalabilityEnums.h"
+#include "ScalabilityWidgetBase.h"
 #include "ScalabilitySettingWidget.generated.h"
 
+class UButtonWithText;
 /**
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UScalabilitySettingWidget : public UUserWidget
+class MOBIUSWIDGETS_API UScalabilitySettingWidget : public UScalabilityWidgetBase
 {
 	GENERATED_BODY()
 
@@ -22,37 +22,46 @@ protected:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 
-	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
-	void InitializeScalabilityLevel();
+	
+	virtual void InitializeScalabilityLevel() override;
 
-	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
-	virtual void UpdateScalabilityLevel();
 
-	UFUNCTION(BlueprintImplementableEvent)
+	virtual void UpdateScalabilityLevel() override;
+	
 	TArray<FString> GetScalabilityLevelList();
 
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	void ApplyButtonStyleForActiveSetting();
+
+	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
+	void UpdateScalabilityAndButtonStyle(EScalabilitySettings NewSetting);
+
 public:
-	/** Scalability Category - defaults to Resolution */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings")
-	TEnumAsByte<EScalabilityCategories> ScalabilityCategory = ESc_GlobalIllumination;
+	/** Button Style for this widget options */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings Style")
+	TObjectPtr<USlateWidgetStyleAsset> ScalabilityButtonStyle;
+
+	/** Low setting button */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings", meta = (BindWidget))
+	TObjectPtr<UButtonWithText> LowSetting_Button;
+
+	/** Medium setting button */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings", meta = (BindWidget))
+	TObjectPtr<UButtonWithText> MedSetting_Button;
+
+	/** High setting button */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings", meta = (BindWidget))
+	TObjectPtr<UButtonWithText> HighSetting_Button;
+
+	/** Epic setting button */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings", meta = (BindWidget))
+	TObjectPtr<UButtonWithText> EpicSetting_Button;
+
+	/** Cinematic setting button */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings", meta = (BindWidget))
+	TObjectPtr<UButtonWithText> CineSetting_Button;
 
 private:
-	/** Scalability Level Enum */
-	UPROPERTY(EditAnywhere, Category = "Scalability Settings")
-	TEnumAsByte<EScalabilitySettings> ScalabilityLevel = EScalabilitySettings::ESsl_Default;
-
-public:
-	/**
-	 * Setter for Scalability Level
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
-	FORCEINLINE void SetScalabilityLevel(const TEnumAsByte<EScalabilitySettings> NewScalabilityLevel) { ScalabilityLevel = NewScalabilityLevel; }
-
-	/**
-	 * Getter for Scalability Level
-	 * 
-	 * @return The current scalability level as an EScalabilitySettings enum value.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Scalability Settings")
-	FORCEINLINE TEnumAsByte<EScalabilitySettings> GetScalabilityLevel() const { return ScalabilityLevel; }
+	/** Configures the buttons to switch normal style with hovered and apply's the desired style to all */
+	void ConfigureButtonStyles();
 };
