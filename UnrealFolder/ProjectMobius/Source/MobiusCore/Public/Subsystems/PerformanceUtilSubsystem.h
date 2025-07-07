@@ -9,6 +9,7 @@
 enum EGlobalScalabilitySettings : uint8;
 enum EScalabilitySettings : uint8;
 enum EScalabilityCategories : uint8;
+enum EPedestrianScalabilitySettings : uint8;
 /**
  * This subsystem is used to manage performance within the game. It can be used to notify the system when a users
  * hardware is not performing well, triggering automatic performance optimizations. Such as simple agent representations.
@@ -120,6 +121,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
 	TEnumAsByte<EGlobalScalabilitySettings> GetCumulativeScalabilitySetting() const;
+
+	void GetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings& OutAvatarModelType) const;
+
+	void SetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings NewAvatarModelType);
 	
 protected:
 	/** Ptr to the game user setting object -> we use this to apply scalability settings
@@ -130,6 +135,10 @@ protected:
 	/** Stores the global scalability setting value */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
 	TEnumAsByte<EGlobalScalabilitySettings> GlobalScalabilitySetting;
+
+	/** Store the current pedestrian avatar type */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
+	TEnumAsByte<EPedestrianScalabilitySettings> CurrentAvatarModelType;
 
 
 public:

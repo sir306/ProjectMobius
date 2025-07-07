@@ -110,6 +110,9 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		}
 		else
 		{
+			// Check we using correct Niagara System based on the current scalability setting
+			CheckAndUpdateNiagaraRenderSpec(Context);
+			
 			// We only want to update the pause state if it has changed
 			if (bLastPauseLoop != TimeDilationSubSystem->bIsPaused)
 			{
@@ -354,4 +357,76 @@ void UNiagaraAgentRepProcessor::SetNiagaraAgentData(UNiagaraComponent* NiagaraCo
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(NiagaraComp, Location, Locations);
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat(NiagaraComp, Rotation, Rotations);
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32(NiagaraComp, AnimationState, AnimationStates);
+}
+
+void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionContext& Context)
+{
+	AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>();
+	auto& AgentNiagaraStatsSharedFrag = Context.GetMutableSharedFragment<FNiagaraStatsFragment>();
+	
+	// if RepresentationSubsystem is null then we need to return
+	if (RepresentationSubsystem == nullptr)
+	{
+		return;
+	}
+
+	// Check if the Niagara representation actor is valid
+	if (NiagaraAgentRepActor == nullptr || NiagaraAgentRepActor->GetNiagaraComponent() == nullptr)
+	{
+		return;
+	}
+	// Check if the Niagara representation actor has the correct render spec set
+	if (AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect == RepresentationSubsystem->IsCurrentPedestrianAvatarTypeLowSpec())
+	{
+		return; // if the render spec is the same then we don't need to update
+	}
+
+	// if we reach here then we need to update the render spec
+	AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect = RepresentationSubsystem->IsCurrentPedestrianAvatarTypeLowSpec();
+
+	// deactivate and destroy instance
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
+	
+
+	// Create the new system
+	UNiagaraSystem* NiagaraSystem = RepresentationSubsystem->LoadNiagaraAgentSystem(AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect);
+
+	if (NiagaraSystem == nullptr)
+	{
+		// Log error if the Niagara System could not be loaded
+		UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
+		return;
+	}
+
+	// Set the Niagara System
+	NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
+			
+	// Set the shared actor component in the shared fragment
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
+			
+
+	// once created we need to pass in the shared niagara data before we activate it
+
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->ClearSimCache();
+
+	// get the niagara variables for number of agents
+		
+	// Activate the Niagara System
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
+
+	// Set the number of agents in the system
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyMaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleElderly);
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults);
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly);
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ChildNumberOfAgents"), AgentNiagaraStatsSharedFrag.NumberOfChildren);
+
+	//
+
+	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("MaleAdultAgent"), MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
+	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ElderlyMaleAgent"), ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
+	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
+	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
+	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
 }

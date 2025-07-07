@@ -33,10 +33,13 @@
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "EnumsAndStructs/AvatarScalabilityEnum.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "Subsystems/PerformanceUtilSubsystem.h"
 
 UMRS_RepresentationSubsystem::UMRS_RepresentationSubsystem()
 {
+	PedestrianScalabilitySetting = EPedestrianScalabilitySettings::EPss_High; // Default to high scalability setting for pedestrians
 }
 
 void UMRS_RepresentationSubsystem::SetPedestrianMaterial(UMaterialInstanceDynamic* MaterialInst, EPedestrianGender AgentGender)
@@ -404,6 +407,34 @@ UNiagaraSystem* UMRS_RepresentationSubsystem::LoadNiagaraAgentSystem(bool bIsLow
 {
 	const TCHAR* NiagaraSystemPath = GetNiagaraAgentSystemObjectPath(bIsLowSpec);
 	return Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), nullptr, NiagaraSystemPath));
+}
+
+EPedestrianScalabilitySettings UMRS_RepresentationSubsystem::GetPedestrianScalabilitySetting() const
+{
+	return PedestrianScalabilitySetting;
+}
+
+void UMRS_RepresentationSubsystem::SetPedestrianScalabilitySetting(EPedestrianScalabilitySettings NewSetting)
+{
+	PedestrianScalabilitySetting = NewSetting;
+
+	// Get the performance util subsystem
+	if (UPerformanceUtilSubsystem* PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
+	{
+		PerformanceUtilSubsystem->SetCurrentPedestrianAvatarType(NewSetting);
+	}
+}
+
+bool UMRS_RepresentationSubsystem::IsCurrentPedestrianAvatarTypeLowSpec() const
+{
+	if (GetPedestrianScalabilitySetting() == EPedestrianScalabilitySettings::EPss_Low)
+	{
+		return true; // Low spec avatar
+	}
+	else
+	{
+		return false; // High spec avatar
+	}
 }
 
 void UMRS_RepresentationSubsystem::Initialize(FSubsystemCollectionBase& Collection)

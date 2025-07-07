@@ -1,7 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Components/ScalabilitySettingWidget.h"
+#include "Components/Scalability/ScalabilitySettingWidget.h"
 #include "Components/ButtonWithText.h"
 
 void UScalabilitySettingWidget::SynchronizeProperties()

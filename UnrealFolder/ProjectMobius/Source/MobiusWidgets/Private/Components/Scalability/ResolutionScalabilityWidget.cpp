@@ -1,7 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Components/ResolutionScalabilityWidget.h"
+#include "Components/Scalability/ResolutionScalabilityWidget.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
 #include "Util/WidgetUtilHelpers.h"
 

@@ -35,6 +35,7 @@
  */
 
 class UNiagaraSystem;
+enum EPedestrianScalabilitySettings : uint8;
 
 template<>
 struct TMassExternalSubsystemTraits<UMRS_RepresentationSubsystem> final
@@ -157,6 +158,16 @@ public:
 	 */
 	static UNiagaraSystem* LoadNiagaraAgentSystem(bool bIsLowSpec = false);
 
+	/** Get the pedestrian niagara system based on the current scalability setting */
+	EPedestrianScalabilitySettings GetPedestrianScalabilitySetting() const;
+
+	/** Update the pedestrian niagara system based on the new scalability setting */
+	void SetPedestrianScalabilitySetting(EPedestrianScalabilitySettings NewSetting);
+
+	//TODO: while still using bool on avatar choice in frag use this method to convert current setting to a bool
+	/** Get the current pedestrian avatar type */
+	bool IsCurrentPedestrianAvatarTypeLowSpec() const;
+
 #pragma endregion PUBLIC_METHODS
 
 #pragma region PUBLIC_VARIABLES
@@ -169,6 +180,9 @@ public:
 	float MaxRenderHeight = FLT_MAX;
 
 #pragma endregion PUBLIC_VARIABLES
+
+private:
+	EPedestrianScalabilitySettings PedestrianScalabilitySetting;
 
 protected:
 #pragma region INHERTITED_METHODS

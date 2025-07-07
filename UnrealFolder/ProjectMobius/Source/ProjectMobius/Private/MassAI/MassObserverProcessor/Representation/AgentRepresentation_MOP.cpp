@@ -179,6 +179,13 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 			// Get the MRS subsystem
 			UMRS_RepresentationSubsystem* MRSSubsystem = Context.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
+
+			// Check if the Niagara Stats frag matches the render effect type
+			if (MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec() != AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect)
+			{
+				// If the Niagara Stats frag does not match the render effect type, then set it on the Niagara Stats frag
+				AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect = MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec();
+			}
 			
 			// Create the Niagara System
 			//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));

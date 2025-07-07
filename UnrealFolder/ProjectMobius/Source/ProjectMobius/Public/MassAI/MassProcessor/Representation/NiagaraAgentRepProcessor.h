@@ -132,6 +132,11 @@ protected:
 	 * 
 	 */
 	static void SetNiagaraAgentData(UNiagaraComponent* NiagaraComp, const FString& BaseName, const TArray<FVector4>& Locations, const TArray<FQuat>& Rotations, const TArray<int32>& AnimationStates);
+
+	/** Check that the Niagara Stats frag has the correct render spec set and if not
+	 * updates the value and recreates and assigns the new system
+	 */
+	void CheckAndUpdateNiagaraRenderSpec(FMassExecutionContext& Context);
 	
 private:
 	// Entity Query

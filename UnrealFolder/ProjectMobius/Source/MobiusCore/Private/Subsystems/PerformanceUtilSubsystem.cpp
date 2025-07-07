@@ -388,3 +388,13 @@ TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulative
 	return CumulativeSetting;
 }
 
+void UPerformanceUtilSubsystem::GetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings& OutAvatarModelType) const
+{
+	OutAvatarModelType = CurrentAvatarModelType;
+}
+
+void UPerformanceUtilSubsystem::SetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings NewAvatarModelType)
+{
+	CurrentAvatarModelType = NewAvatarModelType;
+}
+
