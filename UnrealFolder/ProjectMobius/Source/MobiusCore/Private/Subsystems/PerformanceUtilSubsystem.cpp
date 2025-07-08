@@ -3,11 +3,14 @@
 
 #include "Subsystems/PerformanceUtilSubsystem.h"
 
+#include "EnumsAndStructs/AvatarScalabilityEnum.h"
 #include "EnumsAndStructs/ScalabilityEnums.h"
 #include "GameFramework/GameUserSettings.h"
 
 UPerformanceUtilSubsystem::UPerformanceUtilSubsystem()
 {
+	GlobalScalabilitySetting = EGss_Epic;
+	CurrentAvatarModelType = EPss_High;
 }
 
 UPerformanceUtilSubsystem::~UPerformanceUtilSubsystem()
@@ -40,12 +43,33 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UPerformanceUtilSubsystem::Deinitialize()
 {
+	// Clean up any resources or delegates here if needed
+	if (GameUserSettings)
+	{
+		GameUserSettings = nullptr; // Clear the pointer to the game user settings
+	}
+	// Ensure Timer handle is cleared if used
+	if (AutoScalabilityTimerHandle.IsValid())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
+		AutoScalabilityTimerHandle.Invalidate();
+	}
+	//TODO: investigate the best way to clear the delegate
+	// Clear the delegate -> this will ensure that we don't have any dangling pointers - but won't notify the listeners
+	OnAutoScalabilityChanged.Clear();
+	OnManualScalabilityChanged.Clear();
+	
+	
 	Super::Deinitialize();
 }
 
 void UPerformanceUtilSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// Calculate the current FPS based on DeltaTime
+	CalculateCurrentFPS(DeltaTime);
+	CheckCurrentFPS();
 }
 
 static bool ParseCVarString(const FString& InString, FString& OutName, FString& OutValue)
@@ -104,8 +128,24 @@ void UPerformanceUtilSubsystem::ApplyConsoleCommands(const TArray<FString>& Comm
 	}
 }
 
+//TODO: This method is simplistic and only calculates FPS based on DeltaTime.
+//We may want to implement a more robust FPS calculation that averages over multiple frames or uses a more complex
+//algorithm to account for frame drops and spikes.
+void UPerformanceUtilSubsystem::CalculateCurrentFPS(float DeltaTime)
+{
+	// Calculate the current FPS based on DeltaTime
+	if (DeltaTime > 0.0f)
+	{
+		CurrentFPS = 1.0f / DeltaTime;
+	}
+	else
+	{
+		// Avoid division by zero
+	}
+}
+
 void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel,
-	const TEnumAsByte<EScalabilityCategories> ScalabilityCategory)
+                                                      const TEnumAsByte<EScalabilityCategories> ScalabilityCategory)
 {
 	// check if GameUserSettings is valid
 	if (!GameUserSettings)
@@ -154,6 +194,9 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 
 	// Apply the changes to the game user settings
 	GameUserSettings->ApplySettings(false);
+
+	// TODO: Extract private update method so we can update settings automatically or by users
+	//OnManualScalabilityChanged.Broadcast();
 }
 
 void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel)
@@ -178,6 +221,9 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<ESc
 	
 	// Apply the changes to the game user settings
 	GameUserSettings->ApplySettings(false);
+
+	// TODO: Extract private update method so we can update settings automatically or by users
+	//OnManualScalabilityChanged.Broadcast();
 }
 
 EScalabilitySettings UPerformanceUtilSubsystem::GetScalabilityLevel(
@@ -281,6 +327,9 @@ void UPerformanceUtilSubsystem::UpdateScreenResolutions(FIntPoint NewResolution)
 
 	// Apply the changes to the game user settings
 	GameUserSettings->ApplySettings(false);
+
+	// TODO: Extract private update method so we can update settings automatically or by users
+	//OnManualScalabilityChanged.Broadcast();
 }
 
 void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlobalScalabilitySettings> NewSetting)
@@ -322,6 +371,9 @@ void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlob
 	}
 
 	GlobalScalabilitySetting = NewSetting;
+
+	// TODO: Extract private update method so we can update settings automatically or by users
+	//OnManualScalabilityChanged.Broadcast();
 }
 
 TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulativeScalabilitySetting() const
@@ -388,13 +440,81 @@ TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulative
 	return CumulativeSetting;
 }
 
-void UPerformanceUtilSubsystem::GetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings& OutAvatarModelType) const
+EPedestrianScalabilitySettings UPerformanceUtilSubsystem::GetCurrentPedestrianAvatarType() const
 {
-	OutAvatarModelType = CurrentAvatarModelType;
+	return CurrentAvatarModelType;
 }
 
 void UPerformanceUtilSubsystem::SetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings NewAvatarModelType)
 {
 	CurrentAvatarModelType = NewAvatarModelType;
+	
+	// Notify listeners that the avatar model type has changed
+	OnManualScalabilityChanged.Broadcast();
+}
+
+void UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS()
+{
+	// Clear the timer handle if it is valid
+	if (AutoScalabilityTimerHandle.IsValid())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
+		AutoScalabilityTimerHandle.Invalidate();
+	}
+
+	// Start applying Hardware optimizations
+	CheckHardwareUsageAndApplyOptimizations();// TODO: current method is a stub, we need to implement it
+
+	// Do other optimizations based
+
+
+
+	// set the avatar model type to low spec
+	CurrentAvatarModelType = EPss_Low;
+
+	// Notify listeners that auto scalability has changed
+	OnAutoScalabilityChanged.Broadcast();
+}
+
+//TODO: Our check for FPS is simplistic and only checks if the FPS is below a threshold. - we may want a range tolerance as well
+void UPerformanceUtilSubsystem::CheckCurrentFPS()
+{
+	if (CurrentFPS <= LowFPSThreshold)
+	{
+		if (!AutoScalabilityTimerHandle.IsValid())
+		{
+			// Start the timer to trigger auto scalability adjustments
+			GetWorld()->GetTimerManager().SetTimer(AutoScalabilityTimerHandle, this,
+			&UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS, 5.0f, false);
+		}
+	}
+	else
+	{
+		// if we have hit the low FPS threshold and the timer is valid, we clear it, provided the FPS has improved by our tolerance
+		if (AutoScalabilityTimerHandle.IsValid() && CurrentFPS > LowFPSThreshold + 5.0f)// Adding a tolerance of 5 FPS
+		{
+			GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
+			AutoScalabilityTimerHandle.Invalidate();
+		}
+	}
+}
+
+void UPerformanceUtilSubsystem::CheckHardwareUsageAndApplyOptimizations()
+{
+	// CPU Usage
+	// Is it multi-core/multi-threaded?
+	// If so, check the current CPU usage across all cores
+	// If single core/threaded then require big optimizations
+	/*
+	 * Single core/threaded cpu would mean that we have to disable some features that are CPU intensive, and scale
+	 * down core features where possible.
+	 */
+
+	// GPU Usage
+	// GPU check the current 3D usage
+	// GPU check the current VRAM usage
+	
+	// Memory Usage
+	// If any of these are above a certain threshold, apply optimizations
 }
 

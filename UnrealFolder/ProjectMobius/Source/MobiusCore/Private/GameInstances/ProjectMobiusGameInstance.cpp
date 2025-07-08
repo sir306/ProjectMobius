@@ -61,6 +61,17 @@ void UProjectMobiusGameInstance::Init()
 		CVar->Set(1, ECVF_SetByCode);
 	}
 
+	// Debug test for auto optimization
+	auto Cvar = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"));
+	if (Cvar)
+	{
+		Cvar->Set(30, ECVF_SetByCode);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("CVar t.MaxFPS not found!"));
+	}
+
 }
 
 void UProjectMobiusGameInstance::Shutdown()

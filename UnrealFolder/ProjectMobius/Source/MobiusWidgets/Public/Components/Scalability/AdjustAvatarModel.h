@@ -18,12 +18,17 @@ class MOBIUSWIDGETS_API UAdjustAvatarModel : public UUserWidget
 public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	
+
+	// Destructors
+	virtual void NativeDestruct() override;
+	virtual ~UAdjustAvatarModel() override;
 	
 	/** Get the current selected avatar model type from the performance util */
 	UFUNCTION(BlueprintCallable, Category = "Avatar Scalability Settings")
 	EPedestrianScalabilitySettings GetCurrentAvatarModelType() const;
-	
+
+	/** When the system performs automatic updates this method is called to update the state of the checkbox */
+	void AutoUpdateToggleState();
 	
 	/** TODO: Listed likely functions we will need to implement once the core logic and avatar models are ready
 		* Adjust the avatar model based on the current scalability settings *
@@ -34,6 +39,10 @@ public:
 	/** Toggles between realistic avatar with anims and static blob avatars - useful when users want more control of what they see */
 	UFUNCTION(BlueprintCallable, Category = "Avatar Scalability Settings")
 	void ToggleAvatarModel();
+
+	/** Checkbox to show the state of avatar model type being used */
+	UPROPERTY(BlueprintReadOnly, Category = "Avatar Scalability Settings", meta = (BindWidget))
+	TObjectPtr<class UCheckBox> HighLowPolyToggle;
 
 	/** Store the current Scalability setting of the pedestrian avatars */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Avatar Scalability Settings")

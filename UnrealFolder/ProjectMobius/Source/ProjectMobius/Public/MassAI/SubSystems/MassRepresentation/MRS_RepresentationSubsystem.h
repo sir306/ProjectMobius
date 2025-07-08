@@ -168,6 +168,9 @@ public:
 	/** Get the current pedestrian avatar type */
 	bool IsCurrentPedestrianAvatarTypeLowSpec() const;
 
+	/** When we incur an auto scalability update then call this method to update required fields */
+	void AutoScalabilityUpdate();
+
 #pragma endregion PUBLIC_METHODS
 
 #pragma region PUBLIC_VARIABLES
@@ -183,6 +186,10 @@ public:
 
 private:
 	EPedestrianScalabilitySettings PedestrianScalabilitySetting;
+
+	/** Ptr to the performance util subsystem */
+	UPROPERTY()
+	TObjectPtr<class UPerformanceUtilSubsystem> PerformanceUtilSubsystem;
 
 protected:
 #pragma region INHERTITED_METHODS

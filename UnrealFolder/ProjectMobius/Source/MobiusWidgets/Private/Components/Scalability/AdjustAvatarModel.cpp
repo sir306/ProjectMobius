@@ -3,7 +3,7 @@
 
 #include "Components/Scalability/AdjustAvatarModel.h"
 
-#include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
+#include "Components/CheckBox.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
 
 void UAdjustAvatarModel::NativePreConstruct()
@@ -14,19 +14,62 @@ void UAdjustAvatarModel::NativePreConstruct()
 void UAdjustAvatarModel::NativeConstruct()
 {
 	Super::NativeConstruct();
+	// Get the current avatar model type from the performance util subsystem and bind to its delegate
+	if (UPerformanceUtilSubsystem* PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
+	{
+		AutoUpdateToggleState();
+		PerformanceUtilSubsystem->OnAutoScalabilityChanged.AddUObject(this, &UAdjustAvatarModel::AutoUpdateToggleState);
+	}
+}
+
+void UAdjustAvatarModel::NativeDestruct()
+{
+	// Unbind the delegate to avoid dangling pointers
+	if (UPerformanceUtilSubsystem* PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
+	{
+		PerformanceUtilSubsystem->OnAutoScalabilityChanged.RemoveAll(this);
+	}
+	
+	Super::NativeDestruct();
+}
+
+UAdjustAvatarModel::~UAdjustAvatarModel()
+{
+	
 }
 
 EPedestrianScalabilitySettings UAdjustAvatarModel::GetCurrentAvatarModelType() const
 {
 	//TODO: we have method duplicates that we need to rename and call where appropriate
 
-	// Get the current avatar model type from the performance util subsystem?? or from the MRS subsystem
-	if (UMRS_RepresentationSubsystem* MRS_RepSystem = GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>())
+	// Get the current avatar model type from the performance util subsystem
+	if (UPerformanceUtilSubsystem* PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
 	{
-		return MRS_RepSystem->GetPedestrianScalabilitySetting();
+		return PerformanceUtilSubsystem->GetCurrentPedestrianAvatarType();
 	}
 	
 	return EPedestrianScalabilitySettings::EPss_High;
+}
+
+void UAdjustAvatarModel::AutoUpdateToggleState()
+{
+	// while the logic is being developed we can just call this method but may require need to change it later
+	CurrentAvatarModelType = GetCurrentAvatarModelType();
+
+	// return if the checkbox is not valid
+	if (!HighLowPolyToggle)
+	{
+		return;
+	}
+	
+	if (CurrentAvatarModelType == EPss_High)
+	{
+		HighLowPolyToggle->SetCheckedState(ECheckBoxState::Unchecked);
+	}
+	else
+	{
+		HighLowPolyToggle->SetCheckedState(ECheckBoxState::Checked);
+	}
 }
 
 void UAdjustAvatarModel::ToggleAvatarModel()
@@ -44,8 +87,8 @@ void UAdjustAvatarModel::ToggleAvatarModel()
 	}
 
 	// set the new type on the MRS subsystem
-	if (auto MRS_RepSystem = GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>())
+	if (UPerformanceUtilSubsystem* PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
 	{
-		MRS_RepSystem->SetPedestrianScalabilitySetting(CurrentAvatarModelType);
+		PerformanceUtilSubsystem->SetCurrentPedestrianAvatarType(CurrentAvatarModelType);
 	}
 }

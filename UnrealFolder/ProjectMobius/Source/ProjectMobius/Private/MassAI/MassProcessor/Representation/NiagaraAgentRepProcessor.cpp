@@ -359,6 +359,7 @@ void UNiagaraAgentRepProcessor::SetNiagaraAgentData(UNiagaraComponent* NiagaraCo
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32(NiagaraComp, AnimationState, AnimationStates);
 }
 
+//TODO: FIX THIS - when going low spec to high the animations remain paused and only resume when we pause and unpause 
 void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionContext& Context)
 {
 	AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>();
@@ -429,4 +430,7 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+
+	// If we are paused then we need to pause the animations and vice versa
+	PauseResumeAnimations(bLastPauseLoop);
 }

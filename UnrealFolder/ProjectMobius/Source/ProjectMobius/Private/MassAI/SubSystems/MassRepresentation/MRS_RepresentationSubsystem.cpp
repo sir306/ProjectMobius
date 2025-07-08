@@ -417,12 +417,6 @@ EPedestrianScalabilitySettings UMRS_RepresentationSubsystem::GetPedestrianScalab
 void UMRS_RepresentationSubsystem::SetPedestrianScalabilitySetting(EPedestrianScalabilitySettings NewSetting)
 {
 	PedestrianScalabilitySetting = NewSetting;
-
-	// Get the performance util subsystem
-	if (UPerformanceUtilSubsystem* PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
-	{
-		PerformanceUtilSubsystem->SetCurrentPedestrianAvatarType(NewSetting);
-	}
 }
 
 bool UMRS_RepresentationSubsystem::IsCurrentPedestrianAvatarTypeLowSpec() const
@@ -437,10 +431,43 @@ bool UMRS_RepresentationSubsystem::IsCurrentPedestrianAvatarTypeLowSpec() const
 	}
 }
 
+// TODO: refactor this method
+void UMRS_RepresentationSubsystem::AutoScalabilityUpdate()
+{
+	// Update the pedestrian scalability setting based on the performance util subsystem
+	SetPedestrianScalabilitySetting(PerformanceUtilSubsystem->GetCurrentPedestrianAvatarType());
+
+	// Future itterations will require us to implement logic to update materials for agents when they exist and other settings related
+}
+
 void UMRS_RepresentationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	// We want the performance util subsystem to be initialized before the representation subsystem, as this
+	// subsystem will be used to set the pedestrian scalability setting
+	PerformanceUtilSubsystem = Collection.InitializeDependency<UPerformanceUtilSubsystem>();
+
+	Super::Initialize(Collection);
+
+	// if the system was initialized successfully, we can bind the appropriate method to the delegate
+	if (PerformanceUtilSubsystem)
+	{
+		PerformanceUtilSubsystem->OnAutoScalabilityChanged.AddUObject(this, &UMRS_RepresentationSubsystem::AutoScalabilityUpdate);
+		//TODO: at the moment this method will be fine
+		PerformanceUtilSubsystem->OnManualScalabilityChanged.AddUObject(this, &UMRS_RepresentationSubsystem::AutoScalabilityUpdate);
+	}
 }
 
 void UMRS_RepresentationSubsystem::Deinitialize()
 {
+	// Unbind the delegate to avoid dangling pointers
+	if (PerformanceUtilSubsystem)
+	{
+		PerformanceUtilSubsystem->OnAutoScalabilityChanged.RemoveAll(this);
+		PerformanceUtilSubsystem->OnManualScalabilityChanged.RemoveAll(this);
+	}
+
+	// clear subsystem ptr
+	PerformanceUtilSubsystem = nullptr;
+
+	Super::Deinitialize();
 }
