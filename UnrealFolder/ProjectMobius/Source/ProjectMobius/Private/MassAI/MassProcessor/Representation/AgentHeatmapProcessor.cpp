@@ -187,7 +187,8 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 
 	// reserve array space to avoid reallocations as entities are added
 	HeatmapLocations.Reserve((HeatmapLocations.Num() + Entities.Num()));
-		
+	
+	// TODO: this loop is not parallelized, implement ParallelFor for performance and a threadsafe container for HeatmapLocations for simplicity
 	for (int i = 0; i < Entities.Num(); i++)
 	{
 		auto EntityMovement = EntityMovementFragment[i];
