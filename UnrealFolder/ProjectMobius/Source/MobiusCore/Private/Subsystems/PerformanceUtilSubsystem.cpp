@@ -501,6 +501,9 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 
 void UPerformanceUtilSubsystem::CheckHardwareUsageAndApplyOptimizations()
 {
+	// look at game user setting api - this may help
+	// https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/GameFramework/UGameUserSettings?application_version=5.6
+	
 	// CPU Usage
 	// Is it multi-core/multi-threaded?
 	// If so, check the current CPU usage across all cores

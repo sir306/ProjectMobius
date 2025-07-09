@@ -43,7 +43,7 @@ public class MobiusWidgets : ModuleRules
                 "Visualization", 
                 "Json", 
                 "JsonUtilities",
-                "MobiusCore",
+                "MobiusCore", "Niagara",
             }
         );
     }
