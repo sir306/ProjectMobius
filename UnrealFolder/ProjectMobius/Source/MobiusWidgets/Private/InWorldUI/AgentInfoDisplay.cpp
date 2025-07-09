@@ -29,6 +29,7 @@ void UAgentInfoDisplay::ReleaseSlateResources(bool bReleaseChildren)
 
 TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
 {
-	DisplayWidget = SNew(SPedestrianAgentMeshWidget, *this).Text("_Text");
+	DisplayWidget = SNew(SPedestrianAgentMeshWidget, *this)
+    .Text(FText::FromString(TEXT("Agent Info Display\nID:12345")));
 	return DisplayWidget.ToSharedRef();
 }

@@ -5,12 +5,14 @@
 
 #include "NiagaraCommon.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
+#include "Fonts/FontMeasure.h"
 #include "InWorldUI/AgentInfoDisplay.h"
 #include "Slate/SlateVectorArtInstanceData.h"
 
 void SPedestrianAgentMeshWidget::Construct(const FArguments& InArgs, UAgentInfoDisplay& InThis)
 {
 	ParentWidget = &InThis;
+	Text = InArgs._Text;
 }
 
 int32 SPedestrianAgentMeshWidget::OnPaint(
@@ -26,45 +28,50 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 
 	if (MeshId == -1)
 	{
-		// No mesh, nothing to draw
+		// No mesh to render
 		return SMeshWidget::OnPaint(
 			Args, AllottedGeometry, MyCullingRect,
 			OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	}
 
-	
-
-	// Defaults
-	//FVector2D ScreenPosition = FVector2D(FVector2D::ZeroVector); // Center of widget
-	FVector2D ScreenPosition = FVector2D(AllottedGeometry.GetLayoutBoundingRect().GetCenter2f().X,AllottedGeometry.GetLayoutBoundingRect().GetCenter2f().Y); // Center of widget
+	//FVector2D ScreenPosition = FVector2D::ZeroVector; // fallback
+	FVector2D ScreenPosition = AllottedGeometry.GetAbsolutePositionAtCoordinates(FVector2f(0.5f, 0.5f));
 	float SizeScale = ParentWidget->BaseSize / ParentWidget->ReferenceDistance;
-	//SizeScale = 1.0f; // Reset to 1.0f for now
-	
+
 	APlayerController* PlayerController = ParentWidget->GetOwningPlayer();
 	bool bProjected = false;
 
 	if (PlayerController && PlayerController->PlayerCameraManager)
 	{
-		FVector WorldLocation(0, 0, 0); // World origin
-
-		
+		const FVector WorldLocation(0, 0, 170);
 		const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
 		const float Distance = FVector::Dist(CameraLocation, WorldLocation);
-		//WorldLocation += FVector(((ParentWidget->BaseSize*0.5f) *ParentWidget->ReferenceDistance / Distance ), ((ParentWidget->BaseSize*0.5f) *ParentWidget->ReferenceDistance / Distance ), 0);
 
 		bProjected = UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
 			PlayerController, WorldLocation, ScreenPosition, false);
-
+		FVector2D ProjectedPosition = ScreenPosition;
 		if (bProjected && Distance > KINDA_SMALL_NUMBER)
 		{
-			// Compute scale based on distance
 			SizeScale = FMath::Clamp(
 				ParentWidget->ReferenceDistance / Distance,
 				0.1f, 1.0f);
+
+			// Get widget top-left in absolute coords
+			FVector2D TopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
+
+			// Apply screen position offset properly
+			ScreenPosition.Y = TopLeft.Y + FVector2D(ProjectedPosition * AllottedGeometry.Scale).Y;
+			
+			//ScreenPosition.X = ProjectedPosition.X - TopLeft.X;
+			ScreenPosition.X = FVector2D(ProjectedPosition.X * AllottedGeometry.Scale).X;
 		}
+		
 	}
 
-	// Prepare instance data
+	//TODO: this works but needs to be improved to offset the text properly and scale it to the size of the mesh,
+	// also need to offset the vertical position of the mesh, based on the distance, as up close it works but distance causes it to overlap with the agent and not float above it properly.
+
+	// Update Mesh Instance
 	FSlateVectorArtInstanceData InstanceData;
 	InstanceData.SetPosition(ScreenPosition);
 	InstanceData.SetScale(SizeScale);
@@ -73,10 +80,43 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 	PerInstanceUpdate.Add(
 		TArray<UE::Math::TVector4<float>>::ElementType(InstanceData.GetData()));
 
-	// Update per-instance buffer
 	const_cast<SPedestrianAgentMeshWidget*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
 
-	return SMeshWidget::OnPaint(
+	// Paint the mesh first
+	int32 CurrentLayer = SMeshWidget::OnPaint(
 		Args, AllottedGeometry, MyCullingRect,
 		OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+
+	// Draw Text on top
+	if (Text.IsSet() && !Text.Get().IsEmpty())
+	{
+		// draw text slightly above mesh
+		FVector2D TextPosition = ScreenPosition;
+
+		// adjust Y: move up (negative Y)
+		TextPosition.Y -= 40.0f;
+
+		FSlateFontInfo FontInfo = FCoreStyle::GetDefaultFontStyle("Regular", 16);
+		
+		FVector2f LocalSize(TextPosition.X, TextPosition.Y);
+		FSlateLayoutTransform LayoutTransform(TextPosition);
+
+		FPaintGeometry PaintGeometry(
+			LayoutTransform,
+			LocalSize,
+			TextPosition,
+			false
+		);
+		
+		FSlateDrawElement::MakeText(
+			OutDrawElements,
+			++CurrentLayer,
+			PaintGeometry,
+			Text.Get(),
+			FontInfo,
+			ESlateDrawEffect::None,
+			FLinearColor::White);
+	}
+
+	return CurrentLayer;
 }

@@ -30,4 +30,5 @@ protected:
 		bool bParentEnabled) const override;
 
 	UAgentInfoDisplay* ParentWidget = nullptr;
+	TAttribute<FText> Text;
 };
