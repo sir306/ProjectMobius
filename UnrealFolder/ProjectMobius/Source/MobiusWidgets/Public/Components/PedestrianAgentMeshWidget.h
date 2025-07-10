@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Slate/SMeshWidget.h"
+#include "EnumsAndStructs/AgentMeshViewer.h"
 #include "Components/PedestrianAgentMeshWidget.h"
 
 class UAgentInfoDisplay;
@@ -14,21 +15,37 @@ class MOBIUSWIDGETS_API SPedestrianAgentMeshWidget final : public SMeshWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SPedestrianAgentMeshWidget)
-		:
-		_Text()
-	{
+			:
+			_Text()
+		{
  
-	}
+		}
 		SLATE_ATTRIBUTE( FText, Text )
 	SLATE_END_ARGS()
 
-	 void Construct(const FArguments& InArgs, UAgentInfoDisplay& InThis);
+	void Construct(const FArguments& InArgs, UAgentInfoDisplay& InThis);
 
 protected:
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
-		FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
-		bool bParentEnabled) const override;
+	                      FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
+	                      bool bParentEnabled) const override;
 
 	UAgentInfoDisplay* ParentWidget = nullptr;
 	TAttribute<FText> Text;
+
+private:
+	/**  */
+	void BuildUIFromAgentData(
+		const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32 CurrentLayer,
+		FVector2D& ScreenPosition, float& SizeScale,const FPaintArgs& Args,
+		const FGeometry& AllottedGeometry,
+		const FSlateRect& MyCullingRect,
+		FSlateWindowElementList& OutDrawElements,
+		int32 LayerId,
+		const FWidgetStyle& InWidgetStyle,
+		bool bParentEnabled) const;
+
+	FText CreateUITextFromAgentData(
+		const FAgentMeshViewer& AgentData) const;
+
 };

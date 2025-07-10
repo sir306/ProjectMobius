@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "EnumsAndStructs/AgentMeshViewer.h"
 #include "AgentInfoDisplay.generated.h"
 
 class USlateVectorArtData;
@@ -18,9 +19,18 @@ class MOBIUSWIDGETS_API UAgentInfoDisplay : public UWidget
 
 public:
 	UAgentInfoDisplay();
+	
+	/** Updates the PedestrianAgentData array with the provided AgentData and ensures the display widget is prepared
+	 *  for potential updates. This method may involve marking the widget for repainting to reflect changes in the data.
+	 *  If the associated display widget is valid, the function checks its state, enabling deferred updates for optimized rendering.
+	 *
+	 * @param AgentData An array of FAgentMeshViewer objects containing data to update the current PedestrianAgentData.
+	 */
+	void UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData);
+	
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
-	float BaseSize = 100.0f;
+	float BaseSize = 100.0f; /*must match mesh size in cm - text rendered behaves as expected but mesh doesn't*/
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
 	float ReferenceDistance = 1000.0f;
@@ -28,7 +38,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
 	TObjectPtr<USlateVectorArtData> AgentInfoMeshAsset;
 
-	int32 AgentID;
+	int32 WidgetMeshViewerID;
+
+	/** To avoid constant rebuilds, we use this array to hold current information that will be used in OnPaint call */
+	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>();
 
 protected:
 	virtual void SynchronizeProperties() override;
