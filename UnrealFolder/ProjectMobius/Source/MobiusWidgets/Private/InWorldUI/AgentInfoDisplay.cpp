@@ -4,6 +4,7 @@
 #include "InWorldUI/AgentInfoDisplay.h"
 
 #include "Components/PedestrianAgentMeshWidget.h"
+#include "Subsystems/StatisticSubsystem.h"
 
 
 UAgentInfoDisplay::UAgentInfoDisplay(): WidgetMeshViewerID(0)
@@ -23,12 +24,22 @@ UAgentInfoDisplay::UAgentInfoDisplay(): WidgetMeshViewerID(0)
 	
 	PedestrianAgentData.Add(DebugData1);
 	PedestrianAgentData.Add(DebugData2);
+
+	if (auto World = GetWorld())
+	{
+		World->GetSubsystem<UStatisticSubsystem>()->UpdateAgentInfoMeshData(PedestrianAgentData);
+
+		// Bind delegate to trigger an update when the agent data changes
+		World->GetSubsystem<UStatisticSubsystem>()->OnAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
+	}
 }
 
-void UAgentInfoDisplay::UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData)
+void UAgentInfoDisplay::UpdateAgentInfoMeshData()
 {
-	PedestrianAgentData = AgentData;
-
+	if (auto World = GetWorld())
+	{
+		PedestrianAgentData = World->GetSubsystem<UStatisticSubsystem>()->GetAgentInfoMeshData();
+	}
 	// May need to invalidate the widget to update the display
 	if (DisplayWidget.IsValid())
 	{

@@ -85,7 +85,7 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 				ScreenPosition.X = FVector2D(ProjectedPosition.X * AllottedGeometry.Scale).X;
 			}
 			
-			BuildUIFromAgentData(
+			CurrentLayer = BuildUIFromAgentData(
 				AgentData, PerInstanceUpdate, CurrentLayer,
 				ScreenPosition, SizeScale, Args,
 				AllottedGeometry, MyCullingRect,
@@ -100,7 +100,7 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 	return CurrentLayer;
 }
 
-void SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32 CurrentLayer,
+int32 SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32 CurrentLayer,
                                                       FVector2D& ScreenPosition, float& SizeScale,const FPaintArgs& Args,
                                                       const FGeometry& AllottedGeometry,
                                                       const FSlateRect& MyCullingRect,
@@ -185,15 +185,31 @@ void SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& Ag
 				FLinearColor::White);
 		}
 	}
+	return CurrentLayer;
 }
 
 FText SPedestrianAgentMeshWidget::CreateUITextFromAgentData(const FAgentMeshViewer& AgentData) const
 {
 	
 	return FText::Format(
-		NSLOCTEXT("PedestrianAgentMeshWidget", "AgentInfoFormat", "Pedestrian Info\nID: {0}\nSpeed: {1} m/s\nHeight: {2} cm"),
-		FText::AsNumber(AgentData.AgentID),
-		FText::AsNumber(AgentData.AgentSpeed),
-		FText::AsNumber(AgentData.AgentHeight));
-	
+			NSLOCTEXT("PedestrianAgentMeshWidget", "AgentInfoFormat",
+					  "ID: {0}\n"
+					  "Name: {1}\n"
+					  "Gender: {2}\n"
+					  "Demographic: {3}\n"
+					  "Speed: {4} m/s\n"
+					  "Gait Speed: {5} m/s\n"
+					  "Height: {6} cm\n"
+					  "Position: X={7}, Y={8}, Z={9}"),
+			FText::AsNumber(AgentData.AgentID),
+			AgentData.AgentName,
+			AgentData.Gender,
+			AgentData.Demographic,
+			FText::AsNumber(AgentData.AgentSpeed),
+			FText::AsNumber(AgentData.GaitDirectionalSpeed),
+			FText::AsNumber(AgentData.AgentHeight),
+			FText::AsNumber(AgentData.AgentWorldPosition.X),
+			FText::AsNumber(AgentData.AgentWorldPosition.Y),
+			FText::AsNumber(AgentData.AgentWorldPosition.Z)
+		);
 }

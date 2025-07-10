@@ -26,7 +26,7 @@ public:
 	 *
 	 * @param AgentData An array of FAgentMeshViewer objects containing data to update the current PedestrianAgentData.
 	 */
-	void UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData);
+	void UpdateAgentInfoMeshData();
 	
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")

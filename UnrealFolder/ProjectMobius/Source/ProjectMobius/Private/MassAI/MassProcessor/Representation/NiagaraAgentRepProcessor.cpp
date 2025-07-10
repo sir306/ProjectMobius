@@ -43,7 +43,7 @@
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
-
+#include "Subsystems/StatisticSubsystem.h"
 
 
 UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
@@ -69,6 +69,7 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 	/* Add subsystem requirements */
 	// Representation subsystem
 	EntityQuery.AddSubsystemRequirement<UMRS_RepresentationSubsystem>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddSubsystemRequirement<UStatisticSubsystem>(EMassFragmentAccess::ReadWrite);
 
 	// Required Query Tags
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None);
@@ -139,6 +140,11 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 
+	// get the statistic subsystem
+	UStatisticSubsystem* StatisticSubsystem = Context.GetMutableSubsystem<UStatisticSubsystem>();
+	// place holder for mesh viewer data
+	TArray<FAgentMeshViewer> AgentData;
+
 	auto Entities = Context.GetEntities();
 		
 	for (int i = 0; i < Entities.Num(); i++)
@@ -178,7 +184,42 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 			}
 		}
+		// we only want to add the agent data if it is set to render
+		if (EntityRendering.bRenderAgent)
+		{
+			// make text based on agent gender
+			FString AgentGenderText = EntityRendering.bIsMale ? "Male" : "Female";
+			// make text based on agent age demographic
+			FString AgentAgeText;
+			if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
+			{
+				AgentAgeText = "Child";
+			}
+			else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
+			{
+				AgentAgeText = "Elderly";
+			}
+			else
+			{
+				AgentAgeText = "Adult";
+			}
+
+			// make new agent data
+			FAgentMeshViewer NewAgentData;
+			NewAgentData.AgentID = EntityRendering.EntityID;
+			NewAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
+			NewAgentData.Demographic = FText::FromString(AgentAgeText);
+			NewAgentData.Gender = FText::FromString(AgentGenderText);
+			NewAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
+			NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
+			NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
+			NewAgentData.AgentHeight = 180.0f;//TODO:work out height later
+			AgentData.Add(NewAgentData);
+		}
 	}
+
+	// Update mesh info data
+	StatisticSubsystem->UpdateAgentInfoMeshData(AgentData);
 	
 }
 

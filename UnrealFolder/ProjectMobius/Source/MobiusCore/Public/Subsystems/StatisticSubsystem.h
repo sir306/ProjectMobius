@@ -25,13 +25,31 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MassEntitySubsystem.h"
+#include "EnumsAndStructs/AgentMeshViewer.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "StatisticSubsystem.generated.h"
 
+class UStatisticSubsystem;
 /**
  * Delegates to broadcast information changes
  */
+DECLARE_MULTICAST_DELEGATE(FOnAgentInfoChanged);
 
+/*
+ * The TMassExternalSubsystemTraits is required for this subsystem so it can be used with mass entity
+ * i.e. the representation processor that calls on this subsystem
+ */
+template<>
+struct TMassExternalSubsystemTraits<UStatisticSubsystem> final
+{
+	enum
+	{
+		ThreadSafeRead = true,
+		ThreadSafeWrite = false,
+		GameThreadOnly = true, // needs to be game thread as we calling rendering api
+	};
+};
 
 /** TODO: this will be used to pull logic from the heatmap subsystem and the floor stats widget so only one subsystem is used
  * and provide a way to break one of the circular dependencies
@@ -46,7 +64,17 @@ public:
 	UStatisticSubsystem();
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	
+	virtual void Deinitialize() override;
 
 	/**  */
+	void UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData);
 
+	/**  */
+	TArray<FAgentMeshViewer> GetAgentInfoMeshData();
+
+	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes
+
+private:
+	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>(); // Holds the current agent data for the mesh viewer
 };

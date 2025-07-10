@@ -14,3 +14,20 @@ void UStatisticSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	
 	Super::Initialize(Collection);
 }
+
+void UStatisticSubsystem::Deinitialize()
+{
+	Super::Deinitialize();
+}
+
+void UStatisticSubsystem::UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData)
+{
+	PedestrianAgentData = AgentData;
+	// Notify listeners that the agent info has changed
+	OnAgentInfoChanged.Broadcast();
+}
+
+TArray<FAgentMeshViewer> UStatisticSubsystem::GetAgentInfoMeshData()
+{
+	return PedestrianAgentData;
+}

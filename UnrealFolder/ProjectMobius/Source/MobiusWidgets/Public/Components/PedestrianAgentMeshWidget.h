@@ -35,7 +35,7 @@ protected:
 
 private:
 	/**  */
-	void BuildUIFromAgentData(
+	int32 BuildUIFromAgentData(
 		const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32 CurrentLayer,
 		FVector2D& ScreenPosition, float& SizeScale,const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,
