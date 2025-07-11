@@ -295,6 +295,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();
 	PedestrianTemplateData.AddFragment<FEntityMovementFragment>();
 	PedestrianTemplateData.AddFragment<FEntityRenderingFragment>();
+	PedestrianTemplateData.AddFragment<FEntityCollisionFragment>();
 
 	// ensure a new fragment is created as not to get clashes
 	auto SimulationFragment = FSimulationFragment();

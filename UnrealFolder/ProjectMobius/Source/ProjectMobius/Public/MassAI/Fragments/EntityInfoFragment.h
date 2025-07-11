@@ -146,3 +146,18 @@ struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
 	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
 	bool bAnimationChanged = false;
 };
+
+/**
+ * Collision Fragment, this tells the system whether the entity has collided with something, and if so what or
+ * to provide useable events such as: clicks, hover, etc.
+ */
+USTRUCT()
+struct PROJECTMOBIUS_API FEntityCollisionFragment: public FMassFragment //TODO: this may want to be a FObjectWrapperFragment ?? TBD
+{
+	GENERATED_BODY()
+
+	/**
+	 * 
+	 */
+	TWeakObjectPtr<class UCapsuleComponent> Capsule = nullptr;
+};

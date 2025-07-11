@@ -39,6 +39,8 @@
 #include "MassAI/Tags/MassAITags.h"
 // Other includes
 #include <Kismet/KismetMathLibrary.h>
+
+#include "Components/CapsuleComponent.h"
 #include "Dom/JsonObject.h"
 
 #include "Subsystems/HeatmapSubsystem.h"
@@ -62,6 +64,7 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 	EntityQuery.AddRequirement<FEntityInfoFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FEntityCollisionFragment>(EMassFragmentAccess::ReadWrite);
 
 	// Register the entity query with the processor
 	EntityQuery.RegisterWithProcessor(*this);
@@ -129,6 +132,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		TArray<FSimMovementSample> AllAgentMovementSamples = SharedAgentMovement.SimulationData[CurrentTimeStep];
 
 		auto Entities = Context.GetEntities();
+		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
 
 		//TODO: We have two methods that rely on the agent subsystem we should assign it to a variable and use it
 		for (int i = 0; i < Entities.Num(); i++)
@@ -163,6 +167,19 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			{
 				UniqueZValues.Add(ZValue);
 			}
+
+			// Initialize the collision fragment
+			FVector SpawnLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
+			//FRotator SpawnRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
+			EntityCollisions[i].Capsule = NewObject<UCapsuleComponent>();
+			EntityCollisions[i].Capsule->SetCapsuleHalfHeight(95.0f);
+			EntityCollisions[i].Capsule->SetCapsuleRadius(40.0f);
+			EntityCollisions[i].Capsule->SetCollisionProfileName(TEXT("Pawn"));
+			SpawnLocation.Z = SpawnLocation.Z + 95.0f;
+			EntityCollisions[i].Capsule->SetWorldLocation(SpawnLocation);
+			EntityCollisions[i].Capsule->SetGenerateOverlapEvents(true);
+			
+			EntityCollisions[i].Capsule->RegisterComponentWithWorld(GetWorld());
 			
 			EntityIndexOffset++;
 		}
