@@ -204,22 +204,23 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 				AgentAgeText = "Adult";
 			}
 
-			// make new agent data
-			FAgentMeshViewer NewAgentData;
-			NewAgentData.AgentID = EntityRendering.EntityID;
-			NewAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
-			NewAgentData.Demographic = FText::FromString(AgentAgeText);
-			NewAgentData.Gender = FText::FromString(AgentGenderText);
-			NewAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
-			NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
-			NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
-			NewAgentData.AgentHeight = 180.0f;//TODO:work out height later
-			AgentData.Add(NewAgentData);
+			//TODO: Moving away from the agent mesh viewer, we will need to update this to use the new system ->once we have collisions
+			// // make new agent data
+			// FAgentMeshViewer NewAgentData;
+			// NewAgentData.AgentID = EntityRendering.EntityID;
+			// NewAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
+			// NewAgentData.Demographic = FText::FromString(AgentAgeText);
+			// NewAgentData.Gender = FText::FromString(AgentGenderText);
+			// NewAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
+			// NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
+			// NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
+			// NewAgentData.AgentHeight = 180.0f;//TODO:work out height later
+			// AgentData.Add(NewAgentData);
 		}
 	}
 
 	// Update mesh info data
-	StatisticSubsystem->UpdateAgentInfoMeshData(AgentData);
+	//StatisticSubsystem->UpdateAgentInfoMeshData(AgentData);
 	
 }
 

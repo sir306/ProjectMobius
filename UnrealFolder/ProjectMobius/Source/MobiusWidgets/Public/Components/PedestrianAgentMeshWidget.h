@@ -35,13 +35,13 @@ protected:
 
 private:
 	/**  */
-	int32 BuildUIFromAgentData(
-		const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32 CurrentLayer,
+	void BuildUIFromAgentData(
+		const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32& CurrentLayer,
 		FVector2D& ScreenPosition, float& SizeScale,const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,
 		const FSlateRect& MyCullingRect,
 		FSlateWindowElementList& OutDrawElements,
-		int32 LayerId,
+		int32& LayerId,
 		const FWidgetStyle& InWidgetStyle,
 		bool bParentEnabled) const;
 

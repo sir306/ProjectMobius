@@ -27,10 +27,13 @@ UAgentInfoDisplay::UAgentInfoDisplay(): WidgetMeshViewerID(0)
 
 	if (auto World = GetWorld())
 	{
-		World->GetSubsystem<UStatisticSubsystem>()->UpdateAgentInfoMeshData(PedestrianAgentData);
+		if (World->GetSubsystem<UStatisticSubsystem>())
+		{
+			World->GetSubsystem<UStatisticSubsystem>()->UpdateAgentInfoMeshData(PedestrianAgentData);
 
-		// Bind delegate to trigger an update when the agent data changes
-		World->GetSubsystem<UStatisticSubsystem>()->OnAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
+			// Bind delegate to trigger an update when the agent data changes
+			World->GetSubsystem<UStatisticSubsystem>()->OnAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
+		}
 	}
 }
 

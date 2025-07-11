@@ -34,6 +34,7 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 		Args, AllottedGeometry, MyCullingRect,
 		OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	
+	
 	if (MeshId == -1 || PedestrianAgentData.Num() == 0)
 	{
 		// No mesh to render
@@ -42,11 +43,13 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 
 	// Create a buffer to hold the per-instance data
 	FSlateInstanceBufferData PerInstanceUpdate;
-	
-	// loop through the agent data and update the mesh instance data
-	for (FAgentMeshViewer AgentData : PedestrianAgentData)
+	//FSlateElementBatcher* Batcher = ICustomSlateElement::
+	//Batcher.AddTextElement
+	// loop through the agent data and update the mesh instance data in reverse order
+	for (int32 i = PedestrianAgentData.Num() - 1; i >= 0; --i)
 	{
-		//FVector2D ScreenPosition = FVector2D::ZeroVector; // fallback
+		FAgentMeshViewer AgentData = PedestrianAgentData[i];
+
 		FVector2D ScreenPosition = AllottedGeometry.GetAbsolutePositionAtCoordinates(FVector2f(0.5f, 0.5f));
 		float SizeScale = ParentWidget->BaseSize / ParentWidget->ReferenceDistance;
 
@@ -55,57 +58,53 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 
 		if (PlayerController && PlayerController->PlayerCameraManager)
 		{
-			FVector WorldLocation(AgentData.AgentWorldPosition);
+			FVector WorldLocation = AgentData.AgentWorldPosition;
 			// as our world location is at the feet of the agent we need to offset it by the height of the agent
 			WorldLocation.Z += AgentData.AgentHeight;
-			
+
 			const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
 			const float Distance = FVector::Dist(CameraLocation, WorldLocation);
 
 			bProjected = UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
 				PlayerController, WorldLocation, ScreenPosition, false);
+
 			FVector2D ProjectedPosition = ScreenPosition;
+
 			if (bProjected && Distance > KINDA_SMALL_NUMBER)
 			{
-				// SizeScale = FMath::Clamp(
-				// 	ParentWidget->ReferenceDistance / Distance,
-				// 	0.1f, 1.0f);
-
 				SizeScale = FMath::Clamp(ParentWidget->ReferenceDistance / Distance, 0.0f, 5.0f);
 
-				// Get widget top-left in absolute coords
 				FVector2D TopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
 
-				// Apply screen position offset properly
 				ScreenPosition.Y = TopLeft.Y + FVector2D(ProjectedPosition * AllottedGeometry.Scale).Y;
-				// We also need to offset the Y position based on the size of the mesh
 				ScreenPosition.Y -= (ParentWidget->BaseSize * SizeScale) * 0.75f; // Offset to float above the mesh
-			
-				//ScreenPosition.X = ProjectedPosition.X - TopLeft.X;
+
 				ScreenPosition.X = FVector2D(ProjectedPosition.X * AllottedGeometry.Scale).X;
 			}
-			
-			CurrentLayer = BuildUIFromAgentData(
+
+			BuildUIFromAgentData(
 				AgentData, PerInstanceUpdate, CurrentLayer,
 				ScreenPosition, SizeScale, Args,
 				AllottedGeometry, MyCullingRect,
 				OutDrawElements, LayerId,
 				InWidgetStyle, bParentEnabled);
-			
 		}
-		
 	}
 
+
 	const_cast<SPedestrianAgentMeshWidget*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
+	SMeshWidget::OnPaint(
+				Args, AllottedGeometry, MyCullingRect,
+				OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	return CurrentLayer;
 }
 
-int32 SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32 CurrentLayer,
+void SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32& CurrentLayer,
                                                       FVector2D& ScreenPosition, float& SizeScale,const FPaintArgs& Args,
                                                       const FGeometry& AllottedGeometry,
                                                       const FSlateRect& MyCullingRect,
                                                       FSlateWindowElementList& OutDrawElements,
-                                                      int32 LayerId,
+                                                      int32& LayerId,
                                                       const FWidgetStyle& InWidgetStyle,
                                                       bool bParentEnabled) const
 {
@@ -147,9 +146,9 @@ int32 SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& A
 				TArray<UE::Math::TVector4<float>>::ElementType(InstanceData.GetData()));
 		
 
-			CurrentLayer = SMeshWidget::OnPaint(
-				Args, AllottedGeometry, MyCullingRect,
-				OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+			// SMeshWidget::OnPaint(
+			// 	Args, AllottedGeometry, MyCullingRect,
+			// 	OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 		
 			FontInfo.Size = FinalFontSize;
 
@@ -174,10 +173,12 @@ int32 SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& A
 				TextPosition,
 				false
 			);
+			
 		
 			FSlateDrawElement::MakeText(
 				OutDrawElements,
-				++CurrentLayer,
+				1 + LayerId,
+				//++CurrentLayer,
 				PaintGeometry,
 				AgentText,
 				FontInfo,
@@ -185,7 +186,6 @@ int32 SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& A
 				FLinearColor::White);
 		}
 	}
-	return CurrentLayer;
 }
 
 FText SPedestrianAgentMeshWidget::CreateUITextFromAgentData(const FAgentMeshViewer& AgentData) const
