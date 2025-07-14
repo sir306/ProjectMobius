@@ -163,5 +163,6 @@ struct PROJECTMOBIUS_API FEntityCollisionFragment: public FMassFragment //TODO: 
 	/**
 	 * 
 	 */
+	UPROPERTY(Transient)
 	TWeakObjectPtr<class UCapsuleComponent> Capsule = nullptr;
 };

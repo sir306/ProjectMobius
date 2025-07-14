@@ -45,6 +45,7 @@
 #include "MassExecutionContext.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "Components/CapsuleComponent.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 
 class UTimeDilationSubSystem;
@@ -225,9 +226,20 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
+	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
+	// capsule components are cleared and marked for destruction so that we don't have memory leaks
+	for (auto& EntityHandle : SpawnedEntityPedestrianHandles)
+	{
+		FEntityCollisionFragment Fragment = EntityManager->GetFragmentDataChecked<FEntityCollisionFragment>(EntityHandle);
+		Fragment.Capsule->DestroyComponent();
+	}
+	
 	// Destroy any existing spawned pedestrians and clear the Niagara simulation
 	DestroyAllSpawnedPedestrians();
 	ClearNiagaraSim();
+
+	// Empty out the handles array
+	SpawnedEntityPedestrianHandles.Empty();
 	
 	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
 	// data is created
