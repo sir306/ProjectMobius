@@ -22,11 +22,13 @@
  * IN THE SOFTWARE.
  */
 
-#include "MobiusController.h"
+#include "Controller/MobiusController.h"
 
 #include "ImageUtils.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
+#include "Subsystems/MobiusControllerSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
+
 
 AMobiusController::AMobiusController()
 {
@@ -50,6 +52,16 @@ void AMobiusController::BeginPlay()
 
 	// Bind to the screenshot request captured delegate
 	UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &AMobiusController::OnScreenShotCaptured);
+
+	// send this to the Mobius Controller Subsystem to set the current player controller
+	if (UMobiusControllerSubsystem* MobiusControllerSubsystem = GetWorld()->GetSubsystem<UMobiusControllerSubsystem>())
+	{
+		MobiusControllerSubsystem->SetCurrentPlayerController(this);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Mobius Controller Subsystem is not valid"));
+	}
 }
 
 void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)

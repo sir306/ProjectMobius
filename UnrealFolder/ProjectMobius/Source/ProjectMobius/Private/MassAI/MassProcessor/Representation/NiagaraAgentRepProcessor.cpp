@@ -73,7 +73,7 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 
 	// Required Query Tags
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None);
-
+	EntityQuery.AddTagRequirement<FDisplayEntityDetailsTag>(EMassFragmentPresence::Optional);
 	EntityQuery.AddTagRequirement<FMassEntityRepresentationTag>(EMassFragmentPresence::All); // If all entities have tag, do process
 
 	// Register the entity query with the processor
@@ -140,11 +140,6 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 
-	// get the statistic subsystem
-	UStatisticSubsystem* StatisticSubsystem = Context.GetMutableSubsystem<UStatisticSubsystem>();
-	// place holder for mesh viewer data
-	TArray<FAgentMeshViewer> AgentData;
-
 	auto Entities = Context.GetEntities();
 		
 	for (int i = 0; i < Entities.Num(); i++)
@@ -184,44 +179,7 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 			}
 		}
-		// we only want to add the agent data if it is set to render
-		if (EntityRendering.bRenderAgent)
-		{
-			// make text based on agent gender
-			FString AgentGenderText = EntityRendering.bIsMale ? "Male" : "Female";
-			// make text based on agent age demographic
-			FString AgentAgeText;
-			if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
-			{
-				AgentAgeText = "Child";
-			}
-			else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
-			{
-				AgentAgeText = "Elderly";
-			}
-			else
-			{
-				AgentAgeText = "Adult";
-			}
-
-			//TODO: Moving away from the agent mesh viewer, we will need to update this to use the new system ->once we have collisions
-			// // make new agent data
-			// FAgentMeshViewer NewAgentData;
-			// NewAgentData.AgentID = EntityRendering.EntityID;
-			// NewAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
-			// NewAgentData.Demographic = FText::FromString(AgentAgeText);
-			// NewAgentData.Gender = FText::FromString(AgentGenderText);
-			// NewAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
-			// NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
-			// NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
-			// NewAgentData.AgentHeight = 180.0f;//TODO:work out height later
-			// AgentData.Add(NewAgentData);
-		}
-	}
-
-	// Update mesh info data
-	//StatisticSubsystem->UpdateAgentInfoMeshData(AgentData);
-	
+	}	
 }
 
 void UNiagaraAgentRepProcessor::SetAgentData(int32 Index, const FEntityMovementFragment EntityMovementFragment, FEntityRenderingFragment& EntityRenderingFragment, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates)

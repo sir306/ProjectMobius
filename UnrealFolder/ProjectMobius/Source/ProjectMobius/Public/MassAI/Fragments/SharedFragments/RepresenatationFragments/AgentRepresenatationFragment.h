@@ -141,3 +141,12 @@ public:
 
 #pragma endregion PROPERTIES
 };
+
+/**
+ * Tag fragment to indicate that we want to display an entity's details in UI
+ */
+USTRUCT()
+struct PROJECTMOBIUS_API FDisplayEntityDetailsTag : public FMassTag
+{
+	GENERATED_BODY()
+};

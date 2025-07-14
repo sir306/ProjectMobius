@@ -145,6 +145,10 @@ struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
 	/** Animation Changed */
 	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
 	bool bAnimationChanged = false;
+
+	/** show this pedestrian details */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	uint8 showPedestrianStats = 0;// 0 = don't show, 1 = show, TODO: 2 = show and highlight
 };
 
 /**
