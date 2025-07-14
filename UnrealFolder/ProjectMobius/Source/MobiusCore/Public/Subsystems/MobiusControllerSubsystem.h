@@ -74,6 +74,19 @@ public:
 	 */
 	bool LineTraceFromMousePosition(FHitResult& OutHitResult, UCapsuleComponent*& OutCapsuleComponent) const;
 
+	/**
+	 * When a user wants to select an agent in the world, we call this method to perform the line trace and set the variable if one is found, otherwise it will set the variable to nullptr
+	 */
+	UFUNCTION(BlueprintCallable, Category="MobiusControllerSubsystem|UserPedestrianSelection")
+	void SelectPedestrianFromMousePosition();
+
+	/**
+	 * Getter for the LastSelectedPedestrianCapsuleComponent, this will return the last selected pedestrian capsule
+	 * component or nullptr if none was selected, so caution should be taken when using this method
+	 * 
+	 * @return Will return the last selected pedestrian capsule component, or nullptr if none was selected
+	 */
+	UCapsuleComponent* GetCapsuleComponent() const;
 	
 	/**TODO: TBD if we can or want to use interfaces with mass ai entities, if so then we can use this method to perform a line trace
 	 * Perform line trace from the player controller's camera to the mouse position in the world, this line trace will only seacrh for actors that implement the IClickable interface
@@ -84,4 +97,8 @@ private:
 	/** A ptr to the player controller */
 	UPROPERTY()
 	TObjectPtr<APlayerController> CurrentPlayerController;
+
+	/** Stores the last found pedestrian from a user selection */
+	UPROPERTY()
+	TObjectPtr<UCapsuleComponent> LastSelectedPedestrianCapsuleComponent;
 };

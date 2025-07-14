@@ -122,3 +122,18 @@ bool UMobiusControllerSubsystem::LineTraceFromMousePosition(FHitResult& OutHitRe
 		return false; // Player controller is null
 	}
 }
+
+void UMobiusControllerSubsystem::SelectPedestrianFromMousePosition()
+{
+	FHitResult HitResult;
+	UCapsuleComponent* CapsuleComponent = nullptr;
+
+	LineTraceFromMousePosition(HitResult, CapsuleComponent);
+
+	LastSelectedPedestrianCapsuleComponent = CapsuleComponent;
+}
+
+UCapsuleComponent* UMobiusControllerSubsystem::GetCapsuleComponent() const
+{
+	return LastSelectedPedestrianCapsuleComponent;
+}

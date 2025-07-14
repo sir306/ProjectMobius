@@ -450,6 +450,49 @@ void USimulationPlayBar::UpdatePlayBarStepSize(float NewTimeBetweenData)
 	}
 }
 
+void USimulationPlayBar::UserSelectingAgentFromMousePosition(bool bIsSelecting)
+{
+	// bIsSelecting is true if the user is selecting an agent, false if they are not selecting an agent
+	if (bIsSelecting)
+	{
+		// if simulation is paused then we can select an agent otherwise we need to pause the simulation
+		if (!SimulationPaused)
+		{
+			// Pause the simulation
+			TimeDilationSubsystem->bIsPaused = true;
+	
+			// Check if the simulation is already paused
+			if(SimulationPaused)
+			{
+				PreviouslyPaused = 1;
+			}
+			else
+			{
+				PreviouslyPaused = 0;
+		
+				// Set the simulation paused to true
+				SimulationPaused = 1;
+			}
+		}
+		
+		// Disable the play button and playbar
+		PlayPauseButton->SetIsEnabled(false);
+		PlaybackSlider->SetIsEnabled(false);
+	}
+	else
+	{
+		if(!PreviouslyPaused)
+		{
+			// Set the simulation paused to false
+			SimulationPaused = 0;
+			TimeDilationSubsystem->bIsPaused = false; // Unpause the simulation
+		}
+		// Enable the play button and playbar
+		PlayPauseButton->SetIsEnabled(true);
+		PlaybackSlider->SetIsEnabled(true);
+	}
+}
+
 void USimulationPlayBar::PauseSimulationAndUpdateTimeBegin()
 {
 	// pause the actual game

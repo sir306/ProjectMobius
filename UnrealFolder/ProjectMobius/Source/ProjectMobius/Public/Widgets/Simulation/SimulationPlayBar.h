@@ -181,6 +181,9 @@ protected:
 	 */
 	UFUNCTION(BlueprintCallable, Category="SimulationPlayBar|Design")
 	void UpdatePlayBarStepSize(float NewTimeBetweenData);
+
+	UFUNCTION(BlueprintCallable, Category="SimulationPlayBar|AgentSelection")
+	void UserSelectingAgentFromMousePosition(bool bIsSelecting);
 	
 private:
 	void PauseSimulationAndUpdateTimeBegin();
@@ -228,14 +231,14 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SimProperties", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UTimeDilationSubSystem> TimeDilationSubsystem;
 
-private:
 	/** Value to represent if the simulation is paused or not */
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SimProperties")
 	uint8 SimulationPaused : 1 = 1;
+private:
 
 	/** As the slider movement may occur when already paused to prevent un pausing another variable is used to calculate this */
 	UPROPERTY()
-	uint8 PreviouslyPaused : 1 = 0;
+	uint8 PreviouslyPaused : 1 = 1;// This needs to be set true as the simulation starts paused
 
 	/** Value to represent if hours is needed in simulation time text or not */
 	UPROPERTY()
