@@ -122,10 +122,6 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 
 			if (EntityCollision.Capsule.Get() == CapsuleComponent)
 			{
-				// // We have a hit on the capsule component, we can now update the collision fragment and movement fragment
-				// EntityCollision.bIsColliding = true;
-				// EntityCollision.CollisionHitResult = HitResult;
-
 				// Log the collision
 				//UE_LOG(LogTemp, Warning, TEXT("Collision detected for Entity ID: %d"), Entity.Index);
 				EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity

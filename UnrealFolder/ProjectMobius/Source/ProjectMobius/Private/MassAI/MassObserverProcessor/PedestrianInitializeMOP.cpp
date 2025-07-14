@@ -175,6 +175,12 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			EntityCollisions[i].Capsule->SetCapsuleHalfHeight(95.0f);
 			EntityCollisions[i].Capsule->SetCapsuleRadius(40.0f);
 			EntityCollisions[i].Capsule->SetCollisionProfileName(TEXT("Pawn"));
+			// Set the capsule to only block on the ECC_GameTraceChannel1 channel and ignore all others
+			EntityCollisions[i].Capsule->SetCollisionResponseToAllChannels(ECR_Ignore);
+			EntityCollisions[i].Capsule->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Block);
+			EntityCollisions[i].Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+
+			
 			SpawnLocation.Z = SpawnLocation.Z + 95.0f;
 			EntityCollisions[i].Capsule->SetWorldLocation(SpawnLocation);
 			EntityCollisions[i].Capsule->SetGenerateOverlapEvents(true);

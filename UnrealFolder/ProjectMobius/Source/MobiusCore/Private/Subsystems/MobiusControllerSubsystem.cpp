@@ -87,9 +87,14 @@ bool UMobiusControllerSubsystem::LineTraceFromMousePosition(FHitResult& OutHitRe
 
 			// bool bHit = CurrentPlayerController->GetWorld()->LineTraceSingleByChannel(
 			// 	OutHitResult, MouseWorldPosition, MouseWorldPosition + (WorldDirection * 10000.0f), ECC_Visibility, CollisionParams);
-			bool bHit = CurrentPlayerController->GetWorld()->LineTraceSingleByProfile(OutHitResult,
-				MouseWorldPosition, MouseWorldPosition + (WorldDirection * 10000.0f), FName("Pawn"), CollisionParams);
+			// bool bHit = CurrentPlayerController->GetWorld()->LineTraceSingleByProfile(OutHitResult,
+			// 	MouseWorldPosition, MouseWorldPosition + (WorldDirection * 10000.0f), FName("Pawn"), CollisionParams);
 
+			// ECCollisionChannel TraceChannel = ECC_GameTraceChannel1; // Assuming ECC_GameTraceChannel1 is set for capsule components
+			
+			bool bHit = CurrentPlayerController->GetWorld()->LineTraceSingleByChannel(
+				OutHitResult, MouseWorldPosition, MouseWorldPosition + (WorldDirection * 10000.0f), ECC_GameTraceChannel1, CollisionParams);
+			
 			if (bHit && OutHitResult.GetComponent()->IsA<UCapsuleComponent>())
 			{
 				OutCapsuleComponent = Cast<UCapsuleComponent>(OutHitResult.GetComponent());
