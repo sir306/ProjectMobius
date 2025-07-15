@@ -123,8 +123,16 @@ bool UMobiusControllerSubsystem::LineTraceFromMousePosition(FHitResult& OutHitRe
 	}
 }
 
-void UMobiusControllerSubsystem::SelectPedestrianFromMousePosition()
+void UMobiusControllerSubsystem::SelectPedestrianFromMousePosition(uint8 EnableCollision)
 {
+	// Broadcast we want collisions enabled
+	OnPedestrianCollisionSettingChanged.Broadcast(EnableCollision);
+	OnPedestrianCollisionSettingChanged2.Broadcast(EnableCollision ? true : false);
+	if (EnableCollision == 0)
+	{
+		return; // No need to proceed if collisions are disabled
+	}
+	
 	FHitResult HitResult;
 	UCapsuleComponent* CapsuleComponent = nullptr;
 

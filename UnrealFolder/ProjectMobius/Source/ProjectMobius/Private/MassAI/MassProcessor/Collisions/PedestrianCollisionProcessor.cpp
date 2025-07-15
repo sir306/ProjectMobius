@@ -7,6 +7,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
 #include "MassAI/Tags/MassAITags.h"
@@ -45,6 +46,8 @@ void UPedestrianCollisionProcessor::ConfigureQueries()
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None);
 	//TODO: add tag for when we do toggle logic if we want to toggle the collision processor on and off
 	EntityQuery.AddTagRequirement<FDisplayEntityDetailsTag>(EMassFragmentPresence::Optional);
+	EntityQuery.AddTagRequirement<FPedestrianCollisionsEnabled>(EMassFragmentPresence::Any); // If any entities have tag, do process
+	EntityQuery.AddTagRequirement<FPedestrianCollisionsDisabled>(EMassFragmentPresence::None);// When disabled we don't want to process collisions
 	// Register the entity query with the processor
 	EntityQuery.RegisterWithProcessor(*this);
 }
@@ -58,6 +61,9 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 	bool bDeprojected = GetWorld()->GetFirstPlayerController()->DeprojectMousePositionToWorld(MouseWorldPosition, WorldDirection);
 
 	auto MobiusControllerSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMobiusControllerSubsystem>();
+
+	// log the processor execution
+	UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute"));
 	
 	
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)

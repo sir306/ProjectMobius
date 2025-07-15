@@ -47,6 +47,7 @@
 #include "NiagaraSystem.h"
 #include "Components/CapsuleComponent.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+#include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 
 class UTimeDilationSubSystem;
 
@@ -112,6 +113,12 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
 
 	//TODO: We dont want to simulate time till this is done, also we need a better way to build shared fragment and update the archetype on data changes
 	EntityManager->BatchCreateEntities(PedestrianArchetypeHandle, ArchetypeSharedFragmentValues, NumberOfPedestriansToSpawn, SpawnedEntityPedestrianHandles);
+	
+	// Get the pedestrian signal subsystem and add the entities to it
+	if (const auto PedestrianSignalSubsystem = GetWorld()->GetSubsystem<UPedestrianSignalSubsystem>())
+	{
+		PedestrianSignalSubsystem->AssignEntitysToSignal(SpawnedEntityPedestrianHandles);
+	}
 }
 
 void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
@@ -240,6 +247,12 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 
 	// Empty out the handles array
 	SpawnedEntityPedestrianHandles.Empty();
+
+	// Get the pedestrian signal subsystem and clear the entities from it
+	if (const auto PedestrianSignalSubsystem = GetWorld()->GetSubsystem<UPedestrianSignalSubsystem>())
+	{
+		PedestrianSignalSubsystem->ClearEntitiesToSignal();
+	}
 	
 	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
 	// data is created

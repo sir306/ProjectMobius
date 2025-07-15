@@ -71,7 +71,8 @@ void UPedestrianMovementProcessor::ConfigureQueries()
 
 	//
 }
-
+// TODO: This processor needs breaking up into smaller processors as it is doing too much at once
+// one should read new data and apply it and the other should modify the data
 void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
 	// Check if the subsystems are setup

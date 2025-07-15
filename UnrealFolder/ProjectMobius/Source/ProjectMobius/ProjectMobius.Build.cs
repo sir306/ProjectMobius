@@ -21,6 +21,7 @@ public class ProjectMobius : ModuleRules
             "ProceduralMeshComponent",
             // Physics -- following modules are required for PhysicsParallelFor
             "Chaos", 
+            "MassSignals"
         });
 
         // The following modules are required for the MASS system to run with a couple of added modules for convenience
@@ -32,7 +33,6 @@ public class ProjectMobius : ModuleRules
             "MassActors",
             "MassSpawner",
             "MassGameplayDebug",
-            "MassSignals",
             "MassCrowd",
             "MassActors",
             "MassRepresentation",

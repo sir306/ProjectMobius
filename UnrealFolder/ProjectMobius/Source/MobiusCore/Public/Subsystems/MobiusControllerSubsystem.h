@@ -7,22 +7,15 @@
 #include "MassEntitySubsystem.h"
 #include "MobiusControllerSubsystem.generated.h"
 
+// Forward declarations
 class UCapsuleComponent;
-class UMobiusControllerSubsystem;
-/*
- * The TMassExternalSubsystemTraits is required for this subsystem so it can be used with mass entity
- * i.e. the representation processor that calls on this subsystem
+
+/**
+ * Delegates for the Mobius Controller Subsystem
  */
-template<>
-struct TMassExternalSubsystemTraits<UMobiusControllerSubsystem> final
-{
-	enum
-	{
-		ThreadSafeRead = true,
-		ThreadSafeWrite = false,
-		GameThreadOnly = true, // needs to be game thread as we calling rendering api
-	};
-};
+/** When we want want to broadcast that we want collisions enabled or disabled */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPedestrianSelectionChanged, uint8, EnableDisable/* 0 = Disable, 1 = Enable */);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPedestrianSelectionChanged2, bool, EnableDisable/* 0 = Disable, 1 = Enable */);
 
 /**
  * 
@@ -78,7 +71,7 @@ public:
 	 * When a user wants to select an agent in the world, we call this method to perform the line trace and set the variable if one is found, otherwise it will set the variable to nullptr
 	 */
 	UFUNCTION(BlueprintCallable, Category="MobiusControllerSubsystem|UserPedestrianSelection")
-	void SelectPedestrianFromMousePosition();
+	void SelectPedestrianFromMousePosition(uint8 EnableCollision = 1/* 0 = Disable, 1 = Enable */);
 
 	/**
 	 * Getter for the LastSelectedPedestrianCapsuleComponent, this will return the last selected pedestrian capsule
@@ -92,6 +85,10 @@ public:
 	 * Perform line trace from the player controller's camera to the mouse position in the world, this line trace will only seacrh for actors that implement the IClickable interface
 	 */
 
+	/** Delegate to broadcast when we want to enable disable collision requests */
+	UPROPERTY()
+	FOnPedestrianSelectionChanged OnPedestrianCollisionSettingChanged;
+	FOnPedestrianSelectionChanged2 OnPedestrianCollisionSettingChanged2;
 
 private:
 	/** A ptr to the player controller */
@@ -101,4 +98,19 @@ private:
 	/** Stores the last found pedestrian from a user selection */
 	UPROPERTY()
 	TObjectPtr<UCapsuleComponent> LastSelectedPedestrianCapsuleComponent;
+};
+
+/*
+ * The TMassExternalSubsystemTraits is required for this subsystem so it can be used with mass entity
+ * i.e. the representation processor that calls on this subsystem
+ */
+template<>
+struct TMassExternalSubsystemTraits<UMobiusControllerSubsystem> final
+{
+	enum
+	{
+		ThreadSafeRead = true,
+		ThreadSafeWrite = false,
+		GameThreadOnly = true, // needs to be game thread as we calling rendering api
+	};
 };
