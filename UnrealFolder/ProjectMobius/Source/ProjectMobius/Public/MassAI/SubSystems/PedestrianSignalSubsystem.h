@@ -25,36 +25,18 @@ class PROJECTMOBIUS_API UPedestrianSignalSubsystem : public UMassSubsystemBase
 public:
 	UPedestrianSignalSubsystem();
 
-	UFUNCTION()
-	void CollisionsSettingChanged(uint8 EnableDisable/* 0 = Disable, 1 = Enable */);
 	UFUNCTION(BlueprintCallable)
-	void CollisionsSettingChanged2(bool EnableDisable/* 0 = Disable, 1 = Enable */);
-
+	void CollisionsSettingChanged(uint8 EnableDisable/* 0 = Disable, 1 = Enable */);
+	
 	void ActivateCollisions();
 	void DeactivateCollisions();
-
-	void AssignEntitysToSignal(const TArray<FMassEntityHandle>& Entities)
-	{
-		EntitiesToSignal.Append(Entities);
-	}
-
-	void ClearEntitiesToSignal()
-	{ 
-		EntitiesToSignal.Empty(); 
-	}
 
 protected:
 	// USubsystem implementation Begin
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 	// USubsystem implementation End
-
-private:
-	/**
-	 * 
-	 */
-	UPROPERTY()
-	TArray<FMassEntityHandle> EntitiesToSignal;
+	
 };
 
 

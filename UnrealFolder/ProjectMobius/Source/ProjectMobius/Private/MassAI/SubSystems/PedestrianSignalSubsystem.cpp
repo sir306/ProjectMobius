@@ -29,32 +29,18 @@ void UPedestrianSignalSubsystem::CollisionsSettingChanged(uint8 EnableDisable)
 	}
 }
 
-void UPedestrianSignalSubsystem::CollisionsSettingChanged2(bool EnableDisable)
-{
-	UE_LOG(LogTemp, Display, TEXT("Pedestrian CollisionsSettingChanged"));
-	if (EnableDisable == 0)
-	{
-		DeactivateCollisions();
-	}
-	else if (EnableDisable == 1)
-	{
-		ActivateCollisions();
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Pedestrian Signal Subsystem: Invalid EnableDisable value %d"), EnableDisable);
-	}
-}
-
 void UPedestrianSignalSubsystem::ActivateCollisions()
 {
-	auto SignalSubsystem =GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	// entities might be getting mutated and not working correctly
-	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>(); //TODO: convert to a pointer that we can use to avoid multiple calls to GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>()
+
+	TArray<FMassEntityHandle> EntitiesToSignal;
+
 	if (spawnSub)
 	{
 		EntitiesToSignal = spawnSub->SpawnedEntityPedestrianHandles;
 	}
+	
+	auto SignalSubsystem =GetWorld()->GetSubsystem<UMassSignalSubsystem>();
 	
 	if (EntitiesToSignal.Num() == 0)
 	{
@@ -72,11 +58,17 @@ void UPedestrianSignalSubsystem::ActivateCollisions()
 
 void UPedestrianSignalSubsystem::DeactivateCollisions()
 {
-	auto SignalSubsystem =GetWorld()->GetSubsystem<UMassSignalSubsystem>();
-	if (EntitiesToSignal.Num() == 0)
+	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+	
+	TArray<FMassEntityHandle> EntitiesToSignal;
+	
+	if (spawnSub)
 	{
-		return;// No entities to signal, return early
+		EntitiesToSignal = spawnSub->SpawnedEntityPedestrianHandles;
 	}
+	
+	auto SignalSubsystem =GetWorld()->GetSubsystem<UMassSignalSubsystem>();
+	
 	if (SignalSubsystem)
 	{
 		SignalSubsystem->SignalEntities(PedestrianDataSignals::Signals::DeactivateCollisions, EntitiesToSignal);
@@ -89,29 +81,10 @@ void UPedestrianSignalSubsystem::DeactivateCollisions()
 
 void UPedestrianSignalSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	auto MobiusControllerSubsystem = GetWorld()->GetSubsystem<UMobiusControllerSubsystem>();
-	if (MobiusControllerSubsystem)
-	{
-		// Subscribe to the collision setting changed delegate
-		MobiusControllerSubsystem->OnPedestrianCollisionSettingChanged.AddDynamic(this, &UPedestrianSignalSubsystem::CollisionsSettingChanged);
-		MobiusControllerSubsystem->OnPedestrianCollisionSettingChanged2.AddDynamic(this, &UPedestrianSignalSubsystem::CollisionsSettingChanged2);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("MobiusControllerSubsystem is not valid"));
-	}
-	
 	Super::Initialize(Collection);
 }
 
 void UPedestrianSignalSubsystem::Deinitialize()
 {
-	// Unsubscribe from the collision setting changed delegate
-	auto MobiusControllerSubsystem = GetWorld()->GetSubsystem<UMobiusControllerSubsystem>();
-	if (MobiusControllerSubsystem)
-	{
-		MobiusControllerSubsystem->OnPedestrianCollisionSettingChanged.RemoveDynamic(this, &UPedestrianSignalSubsystem::CollisionsSettingChanged);
-	}
-	
 	Super::Deinitialize();
 }

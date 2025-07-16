@@ -54,16 +54,10 @@ void UPedestrianCollisionProcessor::ConfigureQueries()
 
 void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-
-	// get the mouse position in the world
-	FVector MouseWorldPosition;
-	FVector WorldDirection;
-	bool bDeprojected = GetWorld()->GetFirstPlayerController()->DeprojectMousePositionToWorld(MouseWorldPosition, WorldDirection);
-
-	auto MobiusControllerSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMobiusControllerSubsystem>();
+	
 
 	// log the processor execution
-	UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute"));
+	//UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute"));
 	
 	
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
@@ -72,6 +66,8 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
 		const TArrayView<FEntityMovementFragment>& EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 
+		// log number of entities
+		UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute NumEntities: %d"), Entities.Num());
 	
 		// FVector2D ScreenPosition;
 		// GetWorld()->GetFirstLocalPlayerFromController()->ViewportClient->GetMousePosition(ScreenPosition);
@@ -97,35 +93,32 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 		}
 	}));
 
-	bool bLineTraceHit = false;
-	FHitResult HitResult;
-	UCapsuleComponent* HoveredCapsuleComponent = nullptr;
-	UCapsuleComponent* UserSelectedCapsuleComponent = nullptr;
-
-	if (MobiusControllerSubsystem)
-	{
-		bLineTraceHit = MobiusControllerSubsystem->LineTraceFromMousePosition(HitResult, HoveredCapsuleComponent);
-		UserSelectedCapsuleComponent = MobiusControllerSubsystem->GetCapsuleComponent();
-	}
-
-	// TODO: need to clear if not hovering over anyone, so we don't lock the last hovered capsule component but make sure to maintain the
-	// // last selected capsule component if the user has selected one, we also want to set a flag to only update capsules
-	// while trigger is active as the current implementation of collisions, is not scalable and won't perform well with large numbers
-	// of entities and updates, need to refine this at a later date once other systems that are in demand are implemented,
-	// the other item is to convert our ui for selected agent to be a screen widget so we can display stats for the selected agent,
-	// in a manner that is more UX friendly and less intrusive to the user experience, this will also allow us to drop widget space updates and scaling for this particular widget
 	
-	// We do another EntityQuery for each chunk to check for collisions with updated capsule components locations, provided that our line trace is successful
-	if (!bLineTraceHit && !HoveredCapsuleComponent && !UserSelectedCapsuleComponent) // all need to be false to return early -> TBD we should store selection changes instead of checking every time
+	//TODO: below the query needs to be optimized so its scalable - current implementation is not scalable and is a hack together prototype
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
-		// If no capsule components were hit, we can return early
-		// This will prevent unnecessary processing and ensure we only process entities that are relevant to the current mouse position
-		//UE_LOG(LogTemp, Warning, TEXT("No capsule components hit or not valid"));
-		return;
-	}
+		bool bLineTraceHit = false;
+		FHitResult HitResult;
+		UCapsuleComponent* HoveredCapsuleComponent = nullptr;
+		UCapsuleComponent* UserSelectedCapsuleComponent = nullptr;
 	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, HitResult, HoveredCapsuleComponent, UserSelectedCapsuleComponent](FMassExecutionContext& Context)
-	{
+		auto MobiusControllerSubsystem = Context.GetWorld()->GetSubsystem<UMobiusControllerSubsystem>();
+	
+		if (MobiusControllerSubsystem)
+		{
+			bLineTraceHit = MobiusControllerSubsystem->LineTraceFromMousePosition(HitResult, HoveredCapsuleComponent);
+			UserSelectedCapsuleComponent = MobiusControllerSubsystem->GetCapsuleComponent();
+		}
+		
+		// Check to see if we need to process entities
+		if (!bLineTraceHit && !HoveredCapsuleComponent && !UserSelectedCapsuleComponent) // all need to be false to return early -> TBD we should store selection changes instead of checking every time
+		{
+			// If no capsule components were hit, we can return early
+			// This will prevent unnecessary processing and ensure we only process entities that are relevant to the current mouse position
+			//UE_LOG(LogTemp, Warning, TEXT("No capsule components hit or not valid"));
+			return;
+		}
+		
 		auto Entities = Context.GetEntities();
 		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragments = Context.GetMutableFragmentView<FEntityRenderingFragment>();

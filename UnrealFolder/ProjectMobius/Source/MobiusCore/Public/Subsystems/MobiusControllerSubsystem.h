@@ -13,9 +13,6 @@ class UCapsuleComponent;
 /**
  * Delegates for the Mobius Controller Subsystem
  */
-/** When we want want to broadcast that we want collisions enabled or disabled */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPedestrianSelectionChanged, uint8, EnableDisable/* 0 = Disable, 1 = Enable */);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPedestrianSelectionChanged2, bool, EnableDisable/* 0 = Disable, 1 = Enable */);
 
 /**
  * 
@@ -71,7 +68,7 @@ public:
 	 * When a user wants to select an agent in the world, we call this method to perform the line trace and set the variable if one is found, otherwise it will set the variable to nullptr
 	 */
 	UFUNCTION(BlueprintCallable, Category="MobiusControllerSubsystem|UserPedestrianSelection")
-	void SelectPedestrianFromMousePosition(uint8 EnableCollision = 1/* 0 = Disable, 1 = Enable */);
+	void SelectPedestrianFromMousePosition();
 
 	/**
 	 * Getter for the LastSelectedPedestrianCapsuleComponent, this will return the last selected pedestrian capsule
@@ -84,11 +81,6 @@ public:
 	/**TODO: TBD if we can or want to use interfaces with mass ai entities, if so then we can use this method to perform a line trace
 	 * Perform line trace from the player controller's camera to the mouse position in the world, this line trace will only seacrh for actors that implement the IClickable interface
 	 */
-
-	/** Delegate to broadcast when we want to enable disable collision requests */
-	UPROPERTY()
-	FOnPedestrianSelectionChanged OnPedestrianCollisionSettingChanged;
-	FOnPedestrianSelectionChanged2 OnPedestrianCollisionSettingChanged2;
 
 private:
 	/** A ptr to the player controller */

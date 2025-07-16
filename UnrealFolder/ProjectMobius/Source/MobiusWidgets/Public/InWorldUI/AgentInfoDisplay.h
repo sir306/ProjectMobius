@@ -7,6 +7,7 @@
 #include "EnumsAndStructs/AgentMeshViewer.h"
 #include "AgentInfoDisplay.generated.h"
 
+class USelectedAgentDisplay;
 class USlateVectorArtData;
 class SPedestrianAgentMeshWidget;
 /**
@@ -48,5 +49,5 @@ protected:
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
-	TSharedPtr<class SPedestrianAgentMeshWidget> DisplayWidget;
+	TSharedPtr<SPedestrianAgentMeshWidget> DisplayWidget;
 };

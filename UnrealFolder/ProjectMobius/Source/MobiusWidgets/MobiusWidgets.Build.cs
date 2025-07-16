@@ -11,7 +11,7 @@ public class MobiusWidgets : ModuleRules
             {
                 "Core",
                 "UMG", 
-                "Synthesis",// Required for the synth2d component
+                "Synthesis", // Required for the synth2d component
             }
         );
 
