@@ -166,13 +166,15 @@ void SPedestrianAgentHoverMeshWidget::BuildUIFromAgentData(const FAgentMeshViewe
 			// Re-measure at new font size if needed
 			TextSize = FontMeasureService->Measure(AgentText, FontInfo);
 
-			float VerticalOffset = BoxHeight / 2.0f;
+			float VerticalOffset = BoxHeight * 0.5f;
+			//float VerticalOffset = BoxHeight / 2.0f;
 
 			// Center text horizontally
 			FVector2D TextPosition = ScreenPosition;
-			TextPosition.X -= TextSize.X * 0.5f;
-			TextPosition.Y -= -(TextSize.Y * 0.5f) + VerticalOffset; // if you want above the box
-
+			//TextPosition.X -= TextSize.X * 0.5f;
+			//TextPosition.Y -= (TextSize.Y * 0.5f); 
+			TextPosition -= TextSize * 0.5f; 
+			
 			// Now draw with PaintGeometry (no scale in LayoutTransform!)
 			FSlateLayoutTransform LayoutTransform(TextPosition);
 
@@ -211,7 +213,7 @@ FText SPedestrianAgentHoverMeshWidget::CreateUITextFromAgentData(const FAgentMes
 					  "Speed: {4} m/s\n"
 					  "Gait Speed: {5} m/s\n"
 					  "Height: {6} cm\n"
-					  "Position: X={7}, Y={8}, Z={9}"),
+					  "Position: {7}, {8}, {9}"),
 			FText::AsNumber(AgentData.AgentID),
 			AgentData.AgentName,
 			AgentData.Gender,

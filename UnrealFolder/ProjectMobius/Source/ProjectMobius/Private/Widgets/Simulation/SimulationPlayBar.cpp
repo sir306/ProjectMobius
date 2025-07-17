@@ -173,7 +173,7 @@ void USimulationPlayBar::StartSimulation()
 
 void USimulationPlayBar::OnPlayPauseButtonClicked()
 {
-	if(SimulationPaused)
+	if(SimulationPaused == 1)
 	{
 		// Set the simulation paused to false
 		SimulationPaused = 0;
@@ -413,6 +413,9 @@ void USimulationPlayBar::FileChanging()
 	// Set the simulation paused to false
 	SimulationPaused = 1;
 
+	// set previously paused to true
+	PreviouslyPaused = 1;
+
 	// Unpause the simulation
 	TimeDilationSubsystem->bIsPaused = true;
 	
@@ -462,7 +465,7 @@ void USimulationPlayBar::UserSelectingAgentFromMousePosition(bool bIsSelecting)
 			TimeDilationSubsystem->bIsPaused = true;
 	
 			// Check if the simulation is already paused
-			if(SimulationPaused)
+			if(SimulationPaused == 1)
 			{
 				PreviouslyPaused = 1;
 			}
@@ -481,7 +484,7 @@ void USimulationPlayBar::UserSelectingAgentFromMousePosition(bool bIsSelecting)
 	}
 	else
 	{
-		if(!PreviouslyPaused)
+		if(PreviouslyPaused == 0)
 		{
 			// Set the simulation paused to false
 			SimulationPaused = 0;
@@ -491,6 +494,7 @@ void USimulationPlayBar::UserSelectingAgentFromMousePosition(bool bIsSelecting)
 		PlayPauseButton->SetIsEnabled(true);
 		PlaybackSlider->SetIsEnabled(true);
 	}
+	//SetPlayButtonStyle();
 }
 
 void USimulationPlayBar::PauseSimulationAndUpdateTimeBegin()
@@ -505,7 +509,7 @@ void USimulationPlayBar::PauseSimulationAndUpdateTimeBegin()
 	TimeDilationSubsystem->OnNewCurrentTime.RemoveDynamic(this, &USimulationPlayBar::UpdateCurrentTime);
 	
 	// Check if the simulation is already paused
-	if(SimulationPaused)
+	if(SimulationPaused == 1)
 	{
 		PreviouslyPaused = 1;
 	}
@@ -530,7 +534,7 @@ void USimulationPlayBar::PauseSimulationAndUpdateTimeEnd()
 	TimeDilationSubsystem->OverrideCurrentTime(PlaybackSlider->GetValue(), PreviouslyPaused);
 	
 	// Check if the simulation is already paused and un pause if it was not paused before
-	if(!PreviouslyPaused)
+	if(PreviouslyPaused == 0)
 	{
 		// Set the simulation paused to false
 		SimulationPaused = 0;

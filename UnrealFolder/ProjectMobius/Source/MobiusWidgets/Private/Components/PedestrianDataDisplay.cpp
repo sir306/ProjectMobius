@@ -170,9 +170,20 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 
 	auto LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->SelectedAgentData;
 
-	if (LastUpdatedAgentMeshViewerData.AgentID == -1) // Check if no agent is selected
+	if (LastUpdatedAgentMeshViewerData.AgentID == -1 || LastUpdatedAgentMeshViewerData.AgentID == -2) // Check if no agent is selected or agent has completed sim
 	{
-		// need to hide the widgets if no agent is selected
+		// We had an agent that was selected but now it is not selected
+		if (TitleFieldWidget1 && TitleFieldWidget1->FieldText.EqualTo(FText::AsNumber(-1)))
+		{
+			// no agent selected need to collapse this widget 
+		}
+		else // Agent has left sim
+		{
+			UpdateIfChanged(TitleFieldWidget5, FText::FromString("N/A"));
+			UpdateIfChanged(TitleFieldWidget6, FText::FromString("N/A"));
+			UpdateIfChanged(TitleFieldWidget8, FText::FromString("N/A"));
+		}
+		
 	}
 	else
 	{

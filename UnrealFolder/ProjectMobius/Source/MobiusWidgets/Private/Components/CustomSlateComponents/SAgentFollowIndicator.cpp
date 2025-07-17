@@ -38,7 +38,8 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	// Create a buffer to hold the per-instance data
 	FSlateInstanceBufferData PerInstanceUpdate;
 
-	if (PedestrianAgentData.AgentID != -1)
+	// If the agent ID is valid, we will render the mesh -> -1 is a special case for no agent selected, -2 is a special case for completed agents
+	if (PedestrianAgentData.AgentID != -1 && PedestrianAgentData.AgentID != -2)
 	{
 		FVector2D ScreenPosition = AllottedGeometry.GetAbsolutePositionAtCoordinates(FVector2f(0.5f, 0.5f));
 		float SizeScale = ParentWidget->BaseSize / ParentWidget->ReferenceDistance;

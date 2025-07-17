@@ -8,6 +8,7 @@
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "MassAI/Tags/MassAITags.h"
+#include "Subsystems/MobiusControllerSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 
@@ -41,14 +42,28 @@ void UDisplayAgentUIStatsProcessor::ConfigureQueries()
 	// Register requirements for the processor
 	ProcessorRequirements.AddSubsystemRequirement<UMRS_RepresentationSubsystem>(EMassFragmentAccess::ReadOnly);
 	ProcessorRequirements.AddSubsystemRequirement<UStatisticSubsystem>(EMassFragmentAccess::ReadWrite);
+	ProcessorRequirements.AddSubsystemRequirement<UMobiusControllerSubsystem>(EMassFragmentAccess::ReadOnly);
 	
 }
 
 void UDisplayAgentUIStatsProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
 	auto StatisticSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UStatisticSubsystem>();
+	auto MobiusControllerSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMobiusControllerSubsystem>();
 	AgentData.Empty();
-	SelectedAgentData.AgentID = -1; // hack to reset display data for related widgets
+
+	
+	if (MobiusControllerSubsystem && MobiusControllerSubsystem->GetCapsuleComponent() != nullptr)
+	{
+		SelectedAgentData.AgentID = -2; // Set this to -2 to indicate agent completed sim
+	}
+	else
+	{
+		SelectedAgentData.AgentID = -1; // Set this to -1 to indicate no agent selected
+	}
+	
+	
+	
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 		{
 			// Get the entity info fragment

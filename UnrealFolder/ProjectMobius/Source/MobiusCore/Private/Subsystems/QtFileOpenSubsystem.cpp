@@ -227,7 +227,7 @@ void UQtFileOpenSubsystem::RequestQuitQtApp()
 
     Request->OnProcessRequestComplete().BindLambda([this](FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess)
     {
-        if (bSuccess && Response.IsValid())
+        if (bSuccess && Response.IsValid() && QtProcessHandle.IsValid() && FPlatformProcess::IsProcRunning(QtProcessHandle))
         {
             UE_LOG(LogTemp, Log, TEXT("Qt app shutdown request successful: %s"), *Response->GetContentAsString());
             
