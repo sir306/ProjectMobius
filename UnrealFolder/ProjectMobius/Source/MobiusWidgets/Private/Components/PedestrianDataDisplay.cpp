@@ -81,14 +81,22 @@ void UPedestrianDataDisplay::ConfigureTextBlockStyles() const
 		}
 	};
 
-	SetTextBlockAlignment(TitleFieldWidget1, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget2, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget3, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget4, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget5, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget6, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget7, HAlign_Center, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget8, HAlign_Center, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget1, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget2, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget3, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget4, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget5, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget6, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget7, HAlign_Fill, VAlign_Center);
+	SetTextBlockAlignment(TitleFieldWidget8, HAlign_Fill, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget1, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget2, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget3, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget4, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget5, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget6, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget7, HAlign_Center, VAlign_Center);
+	// SetTextBlockAlignment(TitleFieldWidget8, HAlign_Center, VAlign_Center);
 }
 
 void UPedestrianDataDisplay::SetupTextBlockTitles() const
@@ -152,7 +160,7 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		if (!Widget) return;
 
 		FText NewText = FText::FromString(
-			FString::Printf(TEXT("X=%.2f Y=%.2f Z=%.2f"), Vec.X, Vec.Y, Vec.Z));
+			FString::Printf(TEXT("%.2f, %.2f, %.2f"), Vec.X, Vec.Y, Vec.Z));
 
 		if (!Widget->FieldText.EqualTo(NewText))
 		{

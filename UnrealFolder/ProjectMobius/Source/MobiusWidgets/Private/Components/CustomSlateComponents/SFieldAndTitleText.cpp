@@ -17,12 +17,12 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 	// Title Text
 	SAssignNew(TitleTextBlock, STextBlock)
 		.Text(InArgs._TitleText)
-		.Justification(ETextJustify::Center);
+		.Justification(InArgs._VerticalStacking.Get() ? ETextJustify::Center : ETextJustify::Left);
 	
 	// Field Text
 	SAssignNew(FieldTextBlock, STextBlock)
 		.Text(InArgs._FieldText)
-		.Justification(ETextJustify::Center);
+		.Justification(InArgs._VerticalStacking.Get() ? ETextJustify::Center : ETextJustify::Left);
 
 	TitleTextBlock->SetTextStyle(InArgs._TitleTextStyle);
 	FieldTextBlock->SetTextStyle(InArgs._FieldTextStyle);
@@ -61,15 +61,17 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 			FieldTextBlock.ToSharedRef()
 		];
 
-		GridPanel->SetColumnFill(0, 0.5f);
-		GridPanel->SetColumnFill(1, 0.5f);
+		GridPanel->SetColumnFill(0, 0.4f);
+		GridPanel->SetColumnFill(1, 0.6f);
 		GridPanel->SetRowFill(0, 1.0f);
+		GridPanel->Slot(0,0).Padding(FMargin(5.0f, 0.0f, 5.0f, 0.0f));
+		GridPanel->Slot(1,0).Padding(FMargin(5.0f, 0.0f, 5.0f, 0.0f));
 
 		// Align the text blocks in the center
 		GridPanel->Slot(0,0).HAlign(HAlign_Center);
 		GridPanel->Slot(1,0).HAlign(HAlign_Center);
-		GridPanel->Slot(0,0).VAlign(VAlign_Center);
-		GridPanel->Slot(1,0).VAlign(VAlign_Center);
+		GridPanel->Slot(0,0).VAlign(VAlign_Fill);
+		GridPanel->Slot(1,0).VAlign(VAlign_Fill);
 	}
 	
 	ChildSlot
