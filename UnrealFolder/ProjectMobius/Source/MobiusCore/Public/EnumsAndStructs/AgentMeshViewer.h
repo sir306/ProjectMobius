@@ -11,7 +11,7 @@ public:
 	AgentSpeed(InAgentSpeed), GaitDirectionalSpeed(InGaitDirectionalSpeed), AgentHeight(InAgentHeight)
 	{}
 	
-	int32 AgentID = 0; // Unique identifier for the agent
+	int32 AgentID = -1; // Unique identifier for the agent - -1 indicates no agent or invalid data
 	FText AgentName = FText::FromString("Default"); // Name of the agent, can be used for debugging or display purposes
 	FText Gender = FText::FromString("Unknown");
 	FText Demographic = FText::FromString("Adult"); // Demographic information, e.g., Adult, Child, Elderly

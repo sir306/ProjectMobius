@@ -7,9 +7,10 @@
 #include "EnumsAndStructs/AgentMeshViewer.h"
 #include "AgentInfoDisplay.generated.h"
 
-class USelectedAgentDisplay;
+class SAgentFollowIndicator;
+class UPedestrianDataDisplay;
 class USlateVectorArtData;
-class SPedestrianAgentMeshWidget;
+class SPedestrianAgentHoverMeshWidget;
 /**
  * 
  */
@@ -39,15 +40,27 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
 	TObjectPtr<USlateVectorArtData> AgentInfoMeshAsset;
 
-	int32 WidgetMeshViewerID;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
+	TObjectPtr<USlateVectorArtData> AgentFollowIndicatorMeshAsset;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
+	int32 HoverWidgetMeshViewerID;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
+	int32 SelectedFollowWidgetMeshViewerID;
+
+	// TODO: should remove storing data from the widget and instead use a subsystem to manage this data
 
 	/** To avoid constant rebuilds, we use this array to hold current information that will be used in OnPaint call */
-	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>();
+	TArray<FAgentMeshViewer> PedestrianHoverAgentData = TArray<FAgentMeshViewer>();
+
+	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer();
 
 protected:
 	virtual void SynchronizeProperties() override;
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
-	TSharedPtr<SPedestrianAgentMeshWidget> DisplayWidget;
+	TSharedPtr<SPedestrianAgentHoverMeshWidget> DisplayWidget;
+	TSharedPtr<SAgentFollowIndicator> FollowIndicatorWidget;
 };

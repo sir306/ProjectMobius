@@ -24,8 +24,8 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 		.Text(InArgs._FieldText)
 		.Justification(ETextJustify::Center);
 
-	TitleTextBlock->SetTextStyle(InArgs._TextStyle);
-	FieldTextBlock->SetTextStyle(InArgs._TextStyle);
+	TitleTextBlock->SetTextStyle(InArgs._TitleTextStyle);
+	FieldTextBlock->SetTextStyle(InArgs._FieldTextStyle);
 	
 	if (InArgs._VerticalStacking.Get())
 	{

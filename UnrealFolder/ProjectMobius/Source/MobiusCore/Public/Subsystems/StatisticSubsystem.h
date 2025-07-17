@@ -35,6 +35,7 @@ class UStatisticSubsystem;
  * Delegates to broadcast information changes
  */
 DECLARE_MULTICAST_DELEGATE(FOnAgentInfoChanged);
+DECLARE_MULTICAST_DELEGATE(FOnSelectedAgentInfoChanged);
 
 /*
  * The TMassExternalSubsystemTraits is required for this subsystem so it can be used with mass entity
@@ -70,11 +71,18 @@ public:
 	/**  */
 	void UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData);
 
+	void UpdateSelectedAgentData(const FAgentMeshViewer& AgentData);
+	
+
 	/**  */
 	TArray<FAgentMeshViewer> GetAgentInfoMeshData();
+	FAgentMeshViewer GetSelectedAgentInfoMeshData();
 
 	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes
+	FOnSelectedAgentInfoChanged OnSelectedAgentInfoChanged; // Delegate to notify when selected agent info changes
 
 private:
 	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>(); // Holds the current agent data for the mesh viewer
+	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
+	
 };

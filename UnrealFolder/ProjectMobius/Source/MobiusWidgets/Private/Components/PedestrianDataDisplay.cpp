@@ -1,13 +1,15 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Components/SelectedAgentDisplay.h"
+#include "Components/PedestrianDataDisplay.h"
 
 #include "Components/GridSlot.h"
 #include "Components/TextBlock.h"
 #include "Components/CustomSlateWidgets/FieldAndTextWidget.h"
+#include "InWorldUI/AgentInfoDisplay.h"
+#include "Subsystems/StatisticSubsystem.h"
 
-void USelectedAgentDisplay::SynchronizeProperties()
+void UPedestrianDataDisplay::SynchronizeProperties()
 {
 
 	
@@ -18,7 +20,7 @@ void USelectedAgentDisplay::SynchronizeProperties()
 	UpdateFieldTextBlocks();
 }
 
-void USelectedAgentDisplay::NativePreConstruct()
+void UPedestrianDataDisplay::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 	ConfigureTextBlockStyles();
@@ -29,14 +31,24 @@ void USelectedAgentDisplay::NativePreConstruct()
 	UpdateFieldTextBlocks();
 }
 
-void USelectedAgentDisplay::NativeConstruct()
+void UPedestrianDataDisplay::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	// bind to the stats subsystem to update the data display
+	if (auto World = GetWorld())
+	{
+		if (auto StatSub = World->GetSubsystem<UStatisticSubsystem>())
+		{
+			StatSub->OnSelectedAgentInfoChanged.AddUObject(this, &UPedestrianDataDisplay::UpdateFieldTextBlocks);
+			// todo: make sure to cleanup delegates
+		}
+	}
 }
 
 
 
-void USelectedAgentDisplay::ConfigureTextBlockStyles() const
+void UPedestrianDataDisplay::ConfigureTextBlockStyles() const
 {
 	// TODO: move this to a utility function or class for better reusability
 	auto SetTextBlockAlignment = [](UFieldAndTextWidget* TitleFieldWidget, EHorizontalAlignment HAlign, EVerticalAlignment VAlign)
@@ -79,7 +91,7 @@ void USelectedAgentDisplay::ConfigureTextBlockStyles() const
 	SetTextBlockAlignment(TitleFieldWidget8, HAlign_Center, VAlign_Center);
 }
 
-void USelectedAgentDisplay::SetupTextBlockTitles() const
+void UPedestrianDataDisplay::SetupTextBlockTitles() const
 {
 	const TArray<TPair<UFieldAndTextWidget*, FString>> FieldTitles = {
 		{ TitleFieldWidget1, TEXT("Agent ID") },
@@ -101,7 +113,7 @@ void USelectedAgentDisplay::SetupTextBlockTitles() const
 	}
 }
 //TODO:Move these lambdas to the text utility helper interface/class
-void USelectedAgentDisplay::UpdateFieldTextBlocks() const
+void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 {
 	auto UpdateIfChanged = [](UFieldAndTextWidget* Widget, const FText& NewText)
 	{
@@ -148,15 +160,22 @@ void USelectedAgentDisplay::UpdateFieldTextBlocks() const
 		}
 	};
 
-	// Now actually update your widgets
+	auto LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->SelectedAgentData;
 
-	UpdateIfChangedNumber(TitleFieldWidget1, LastUpdatedAgentMeshViewerData.AgentID);
-	UpdateIfChanged(TitleFieldWidget2, LastUpdatedAgentMeshViewerData.AgentName);
-	UpdateIfChanged(TitleFieldWidget3, LastUpdatedAgentMeshViewerData.Gender);
-	UpdateIfChanged(TitleFieldWidget4, LastUpdatedAgentMeshViewerData.Demographic);
-	UpdateIfChangedFloat(TitleFieldWidget5, LastUpdatedAgentMeshViewerData.AgentSpeed);
-	UpdateIfChangedFloat(TitleFieldWidget6, LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
-	UpdateIfChangedFloat(TitleFieldWidget7, LastUpdatedAgentMeshViewerData.AgentHeight);
-	UpdateIfChangedVector(TitleFieldWidget8, LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+	if (LastUpdatedAgentMeshViewerData.AgentID == -1) // Check if no agent is selected
+	{
+		// need to hide the widgets if no agent is selected
+	}
+	else
+	{
+		UpdateIfChangedNumber(TitleFieldWidget1, LastUpdatedAgentMeshViewerData.AgentID);
+		UpdateIfChanged(TitleFieldWidget2, LastUpdatedAgentMeshViewerData.AgentName);
+		UpdateIfChanged(TitleFieldWidget3, LastUpdatedAgentMeshViewerData.Gender);
+		UpdateIfChanged(TitleFieldWidget4, LastUpdatedAgentMeshViewerData.Demographic);
+		UpdateIfChangedFloat(TitleFieldWidget5, LastUpdatedAgentMeshViewerData.AgentSpeed);
+		UpdateIfChangedFloat(TitleFieldWidget6, LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
+		UpdateIfChangedFloat(TitleFieldWidget7, LastUpdatedAgentMeshViewerData.AgentHeight);
+		UpdateIfChangedVector(TitleFieldWidget8, LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+	}
 }
 

@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "EnumsAndStructs/AgentMeshViewer.h"
-#include "SelectedAgentDisplay.generated.h"
+#include "PedestrianDataDisplay.generated.h"
 
 class UAgentInfoDisplay;
 class UFieldAndTextWidget;
@@ -15,7 +15,7 @@ class UGridPanel;
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API USelectedAgentDisplay : public UUserWidget
+class MOBIUSWIDGETS_API UPedestrianDataDisplay : public UUserWidget
 {
 	GENERATED_BODY()
 
@@ -62,8 +62,4 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UAgentInfoDisplay> InWorldSMeshDisplay;
-
-	
-	/** Struct that holds the last updated change of the widget for the current agent */
-	FAgentMeshViewer LastUpdatedAgentMeshViewerData = FAgentMeshViewer();
 };

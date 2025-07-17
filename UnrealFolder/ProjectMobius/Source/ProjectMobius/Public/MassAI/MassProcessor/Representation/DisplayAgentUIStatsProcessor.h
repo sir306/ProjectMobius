@@ -33,4 +33,6 @@ private:
 
 	// holder for mesh viewer data
 	TArray<FAgentMeshViewer> AgentData;
+
+	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 };

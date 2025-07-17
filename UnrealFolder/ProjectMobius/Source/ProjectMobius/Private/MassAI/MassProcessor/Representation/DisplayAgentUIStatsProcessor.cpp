@@ -48,75 +48,108 @@ void UDisplayAgentUIStatsProcessor::Execute(FMassEntityManager& EntityManager, F
 {
 	auto StatisticSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UStatisticSubsystem>();
 	AgentData.Empty();
+	SelectedAgentData.AgentID = -1; // hack to reset display data for related widgets
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
-	{
-		// Get the entity info fragment
-		const TConstArrayView<FEntityInfoFragment> EntityInfoFragments = Context.GetFragmentView<FEntityInfoFragment>();
-
-		// Get the entity movement fragment
-		const TConstArrayView<FEntityMovementFragment> EntityMovements = Context.GetFragmentView<FEntityMovementFragment>();
-
-		// Get the entity rendering fragment
-		const TConstArrayView<FEntityRenderingFragment> EntityRenderingFragments = Context.GetFragmentView<FEntityRenderingFragment>();
-
-		for (int32 i = 0; i < EntityInfoFragments.Num(); ++i)
 		{
-			const FEntityInfoFragment& EntityInfo = EntityInfoFragments[i];
-			const FEntityRenderingFragment& EntityRendering = EntityRenderingFragments[i];
-			const FEntityMovementFragment& EntityMovement = EntityMovements[i];
+			// Get the entity info fragment
+			const TConstArrayView<FEntityInfoFragment> EntityInfoFragments = Context.GetFragmentView<FEntityInfoFragment>();
 
-			if (EntityRendering.showPedestrianStats == 1)
+			// Get the entity movement fragment
+			const TConstArrayView<FEntityMovementFragment> EntityMovements = Context.GetFragmentView<FEntityMovementFragment>();
+
+			// Get the entity rendering fragment
+			const TConstArrayView<FEntityRenderingFragment> EntityRenderingFragments = Context.GetFragmentView<FEntityRenderingFragment>();
+
+			for (int32 i = 0; i < EntityInfoFragments.Num(); ++i)
 			{
-				// Update the UI stats with the entity info
-				UpdateUIStats(EntityInfo, EntityMovement, EntityRendering);
+				const FEntityInfoFragment& EntityInfo = EntityInfoFragments[i];
+				const FEntityRenderingFragment& EntityRendering = EntityRenderingFragments[i];
+				const FEntityMovementFragment& EntityMovement = EntityMovements[i];
+
+				if (EntityRendering.showPedestrianStats == 1)
+				{
+					// Update the UI stats with the entity info
+					UpdateUIStats(EntityInfo, EntityMovement, EntityRendering);
+				}
+				else if (EntityRendering.showPedestrianStats == 2)
+				{
+					// we only want to add the agent data if it is set to render
+					if (EntityRendering.bRenderAgent)
+					{
+						// make text based on agent gender
+						FString AgentGenderText = EntityRendering.bIsMale ? "Male" : "Female";
+						// make text based on agent age demographic
+						FString AgentAgeText;
+						if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
+						{
+							AgentAgeText = "Child";
+						}
+						else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
+						{
+							AgentAgeText = "Elderly";
+						}
+						else
+						{
+							AgentAgeText = "Adult";
+						}
+						
+						SelectedAgentData.AgentID = EntityRendering.EntityID;
+						SelectedAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
+						SelectedAgentData.Demographic = FText::FromString(AgentAgeText);
+						SelectedAgentData.Gender = FText::FromString(AgentGenderText);
+						SelectedAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
+						SelectedAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
+						SelectedAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;// todo: no gait speed implemented yet
+						SelectedAgentData.AgentHeight = 180.0f;//TODO:work out height later
+					}
+				}
 			}
-		}
-		
-	}));
+			}));
 
-	if (StatisticSubsystem)
-	{
-		// Update mesh info data
-		StatisticSubsystem->UpdateAgentInfoMeshData(AgentData);
-	}
+			if (StatisticSubsystem)
+			{
+				// Update mesh info data
+				StatisticSubsystem->UpdateAgentInfoMeshData(AgentData);
+				StatisticSubsystem->UpdateSelectedAgentData(SelectedAgentData);
+			}
 	
-}
+		}
 
-void UDisplayAgentUIStatsProcessor::UpdateUIStats(const FEntityInfoFragment& EntityInfo,
-	const FEntityMovementFragment& EntityMovement, const FEntityRenderingFragment& EntityRendering)
-{
-
-	// we only want to add the agent data if it is set to render
-	if (EntityRendering.bRenderAgent)
+	void UDisplayAgentUIStatsProcessor::UpdateUIStats(const FEntityInfoFragment& EntityInfo,
+	                                                  const FEntityMovementFragment& EntityMovement, const FEntityRenderingFragment& EntityRendering)
 	{
-		// make text based on agent gender
-		FString AgentGenderText = EntityRendering.bIsMale ? "Male" : "Female";
-		// make text based on agent age demographic
-		FString AgentAgeText;
-		if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
-		{
-			AgentAgeText = "Child";
-		}
-		else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
-		{
-			AgentAgeText = "Elderly";
-		}
-		else
-		{
-			AgentAgeText = "Adult";
-		}
-		//TODO: Moving away from the agent mesh viewer, we will need to update this to use the new system ->once we have collisions
-		// make new agent data
-		FAgentMeshViewer NewAgentData;
-		NewAgentData.AgentID = EntityRendering.EntityID;
-		NewAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
-		NewAgentData.Demographic = FText::FromString(AgentAgeText);
-		NewAgentData.Gender = FText::FromString(AgentGenderText);
-		NewAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
-		NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
-		NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
-		NewAgentData.AgentHeight = 180.0f;//TODO:work out height later
-		AgentData.Add(NewAgentData);
 
+		// we only want to add the agent data if it is set to render
+		if (EntityRendering.bRenderAgent)
+		{
+			// make text based on agent gender
+			FString AgentGenderText = EntityRendering.bIsMale ? "Male" : "Female";
+			// make text based on agent age demographic
+			FString AgentAgeText;
+			if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
+			{
+				AgentAgeText = "Child";
+			}
+			else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
+			{
+				AgentAgeText = "Elderly";
+			}
+			else
+			{
+				AgentAgeText = "Adult";
+			}
+			//TODO: Moving away from the agent mesh viewer, we will need to update this to use the new system ->once we have collisions
+			// make new agent data
+			FAgentMeshViewer NewAgentData;
+			NewAgentData.AgentID = EntityRendering.EntityID;
+			NewAgentData.AgentName = FText::FromString(FString::Printf(TEXT("Agent %d"), EntityRendering.EntityID));//TODO:getNAME details
+			NewAgentData.Demographic = FText::FromString(AgentAgeText);
+			NewAgentData.Gender = FText::FromString(AgentGenderText);
+			NewAgentData.AgentWorldPosition = FVector(EntityMovement.CurrentLocation.X, EntityMovement.CurrentLocation.Y, EntityMovement.CurrentLocation.Z);
+			NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
+			NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
+			NewAgentData.AgentHeight = 180.0f;//TODO:work out height later
+			AgentData.Add(NewAgentData);
+
+		}
 	}
-}

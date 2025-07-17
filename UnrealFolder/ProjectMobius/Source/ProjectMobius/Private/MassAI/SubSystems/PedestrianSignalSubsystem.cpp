@@ -66,6 +66,10 @@ void UPedestrianSignalSubsystem::DeactivateCollisions()
 	{
 		EntitiesToSignal = spawnSub->SpawnedEntityPedestrianHandles;
 	}
+	if (EntitiesToSignal.Num() == 0)
+	{
+		return;// No entities to signal, return early
+	}
 	
 	auto SignalSubsystem =GetWorld()->GetSubsystem<UMassSignalSubsystem>();
 	

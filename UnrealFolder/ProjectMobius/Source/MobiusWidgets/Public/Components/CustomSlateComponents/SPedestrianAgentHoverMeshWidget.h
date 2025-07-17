@@ -5,16 +5,15 @@
 #include "CoreMinimal.h"
 #include "Slate/SMeshWidget.h"
 #include "EnumsAndStructs/AgentMeshViewer.h"
-#include "Components/PedestrianAgentMeshWidget.h"
 
 class UAgentInfoDisplay;
 /**
  * 
  */
-class MOBIUSWIDGETS_API SPedestrianAgentMeshWidget final : public SMeshWidget
+class MOBIUSWIDGETS_API SPedestrianAgentHoverMeshWidget final : public SMeshWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SPedestrianAgentMeshWidget)
+	SLATE_BEGIN_ARGS(SPedestrianAgentHoverMeshWidget)
 			:
 			_Text()
 		{

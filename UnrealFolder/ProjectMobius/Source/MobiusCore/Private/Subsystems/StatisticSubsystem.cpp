@@ -27,7 +27,18 @@ void UStatisticSubsystem::UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>
 	OnAgentInfoChanged.Broadcast();
 }
 
+void UStatisticSubsystem::UpdateSelectedAgentData(const FAgentMeshViewer& AgentData)
+{
+	SelectedAgentData = AgentData;
+	OnSelectedAgentInfoChanged.Broadcast();
+}
+
 TArray<FAgentMeshViewer> UStatisticSubsystem::GetAgentInfoMeshData()
 {
 	return PedestrianAgentData;
+}
+
+FAgentMeshViewer UStatisticSubsystem::GetSelectedAgentInfoMeshData()
+{
+	return SelectedAgentData;
 }

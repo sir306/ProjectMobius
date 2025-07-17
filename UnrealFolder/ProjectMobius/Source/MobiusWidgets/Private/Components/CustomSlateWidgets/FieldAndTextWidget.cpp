@@ -10,7 +10,8 @@ TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 		.FieldText(FieldText)
 		.TitleText(TitleText)
 		.VerticalStacking(bIsTitleAboveField)
-		.TextStyle(TextStyle ? TextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"));
+		.TitleTextStyle(TitleTextStyle ? TitleTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+		.FieldTextStyle(FieldTextStyle ? FieldTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"));
 	
 	return FieldAndTextWidget.ToSharedRef();
 }

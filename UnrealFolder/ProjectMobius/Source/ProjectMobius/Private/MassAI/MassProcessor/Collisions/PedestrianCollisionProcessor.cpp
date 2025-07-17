@@ -134,10 +134,20 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			//
 			if (HoveredCapsuleComponent != nullptr && UserSelectedCapsuleComponent != nullptr)
 			{
-				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent ||
-					EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
+				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent &&
+					EntityCollision.Capsule.Get() != UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
+
+					// check if the entity has the tag, if not add it
+					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+					{
+						Context.Defer().AddTag<FDisplayEntityDetailsTag>(Entity); // Mark the collection with stats tag
+					}
+				}
+				else if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
+				{
+					EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
 
 					// check if the entity has the tag, if not add it
 					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
@@ -159,7 +169,7 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			{
 				if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
 				{
-					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
+					EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
 
 					// check if the entity has the tag, if not add it
 					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())

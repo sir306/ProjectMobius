@@ -1,19 +1,19 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Components/PedestrianAgentMeshWidget.h"
+#include "Components/CustomSlateComponents/SPedestrianAgentHoverMeshWidget.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Fonts/FontMeasure.h"
 #include "InWorldUI/AgentInfoDisplay.h"
 #include "Slate/SlateVectorArtInstanceData.h"
 
-void SPedestrianAgentMeshWidget::Construct(const FArguments& InArgs, UAgentInfoDisplay& InThis)
+void SPedestrianAgentHoverMeshWidget::Construct(const FArguments& InArgs, UAgentInfoDisplay& InThis)
 {
 	ParentWidget = &InThis;
 	Text = InArgs._Text;
 }
 
-int32 SPedestrianAgentMeshWidget::OnPaint(
+int32 SPedestrianAgentHoverMeshWidget::OnPaint(
 	const FPaintArgs& Args,
 	const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect,
@@ -24,18 +24,18 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 {
 	//TODO: need to nullptr check for ParentWidget->this shouldn't happen as it is a child widget of the parent but improper removal may lead to this
 	
-	const int32 MeshId = ParentWidget->WidgetMeshViewerID;
+	const int32 MeshId = ParentWidget->HoverWidgetMeshViewerID;
 
 	// Get all the pedestrian agent data from the parent widget that we need for rendering
-	const TArray<FAgentMeshViewer> PedestrianAgentData = ParentWidget->PedestrianAgentData;//This may not be thread safe, and may need to be protected with a mutex or similar if accessed from multiple threads
+	const TArray<FAgentMeshViewer> PedestrianAgentData = ParentWidget->PedestrianHoverAgentData;//This may not be thread safe, and may need to be protected with a mutex or similar if accessed from multiple threads
 
 	// first create an empty layer
 	int32 CurrentLayer = SMeshWidget::OnPaint(
 		Args, AllottedGeometry, MyCullingRect,
 		OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	
-	
-	if (MeshId == -1 || PedestrianAgentData.Num() == 0)
+
+	if (MeshId == -1)
 	{
 		// No mesh to render
 		return CurrentLayer;
@@ -45,61 +45,72 @@ int32 SPedestrianAgentMeshWidget::OnPaint(
 	FSlateInstanceBufferData PerInstanceUpdate;
 	//FSlateElementBatcher* Batcher = ICustomSlateElement::
 	//Batcher.AddTextElement
-	// loop through the agent data and update the mesh instance data in reverse order
-	for (int32 i = PedestrianAgentData.Num() - 1; i >= 0; --i)
+
+	if (PedestrianAgentData.Num() != 0)
 	{
-		FAgentMeshViewer AgentData = PedestrianAgentData[i];
-
-		FVector2D ScreenPosition = AllottedGeometry.GetAbsolutePositionAtCoordinates(FVector2f(0.5f, 0.5f));
-		float SizeScale = ParentWidget->BaseSize / ParentWidget->ReferenceDistance;
-
-		APlayerController* PlayerController = ParentWidget->GetOwningPlayer();
-		bool bProjected = false;
-
-		if (PlayerController && PlayerController->PlayerCameraManager)
+		// loop through the agent data and update the mesh instance data in reverse order
+		for (int32 i = PedestrianAgentData.Num() - 1; i >= 0; --i)
 		{
-			FVector WorldLocation = AgentData.AgentWorldPosition;
-			// as our world location is at the feet of the agent we need to offset it by the height of the agent
-			WorldLocation.Z += AgentData.AgentHeight;
+			FAgentMeshViewer AgentData = PedestrianAgentData[i];
 
-			const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
-			const float Distance = FVector::Dist(CameraLocation, WorldLocation);
-
-			bProjected = UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-				PlayerController, WorldLocation, ScreenPosition, false);
-
-			FVector2D ProjectedPosition = ScreenPosition;
-
-			if (bProjected && Distance > KINDA_SMALL_NUMBER)
+			if (ParentWidget->SelectedAgentData.AgentID == AgentData.AgentID)
 			{
-				SizeScale = FMath::Clamp(ParentWidget->ReferenceDistance / Distance, 0.0f, 5.0f);
-
-				FVector2D TopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
-
-				ScreenPosition.Y = TopLeft.Y + FVector2D(ProjectedPosition * AllottedGeometry.Scale).Y;
-				ScreenPosition.Y -= (ParentWidget->BaseSize * SizeScale) * 0.75f; // Offset to float above the mesh
-
-				ScreenPosition.X = FVector2D(ProjectedPosition.X * AllottedGeometry.Scale).X;
+				// If this is the selected agent, we want to draw the follow indicator
+				// This will be handled by the SAgentFollowIndicator widget
+				continue;
 			}
 
-			BuildUIFromAgentData(
-				AgentData, PerInstanceUpdate, CurrentLayer,
-				ScreenPosition, SizeScale, Args,
-				AllottedGeometry, MyCullingRect,
-				OutDrawElements, LayerId,
-				InWidgetStyle, bParentEnabled);
+			FVector2D ScreenPosition = AllottedGeometry.GetAbsolutePositionAtCoordinates(FVector2f(0.5f, 0.5f));
+			float SizeScale = ParentWidget->BaseSize / ParentWidget->ReferenceDistance;
+
+			APlayerController* PlayerController = ParentWidget->GetOwningPlayer();
+			bool bProjected = false;
+
+			if (PlayerController && PlayerController->PlayerCameraManager)
+			{
+				FVector WorldLocation = AgentData.AgentWorldPosition;
+				// as our world location is at the feet of the agent we need to offset it by the height of the agent
+				WorldLocation.Z += AgentData.AgentHeight;
+
+				const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
+				const float Distance = FVector::Dist(CameraLocation, WorldLocation);
+
+				bProjected = UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+					PlayerController, WorldLocation, ScreenPosition, false);
+
+				FVector2D ProjectedPosition = ScreenPosition;
+
+				if (bProjected && Distance > KINDA_SMALL_NUMBER)
+				{
+					SizeScale = FMath::Clamp(ParentWidget->ReferenceDistance / Distance, 0.0f, 5.0f);
+
+					FVector2D TopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
+
+					ScreenPosition.Y = TopLeft.Y + FVector2D(ProjectedPosition * AllottedGeometry.Scale).Y;
+					ScreenPosition.Y -= (ParentWidget->BaseSize * SizeScale) * 0.75f; // Offset to float above the mesh
+
+					ScreenPosition.X = TopLeft.X + ProjectedPosition.X * AllottedGeometry.Scale;
+				}
+
+				BuildUIFromAgentData(
+					AgentData, PerInstanceUpdate, CurrentLayer,
+					ScreenPosition, SizeScale, Args,
+					AllottedGeometry, MyCullingRect,
+					OutDrawElements, LayerId,
+					InWidgetStyle, bParentEnabled);
+			}
 		}
 	}
 
 
-	const_cast<SPedestrianAgentMeshWidget*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
+	const_cast<SPedestrianAgentHoverMeshWidget*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
 	SMeshWidget::OnPaint(
 				Args, AllottedGeometry, MyCullingRect,
 				OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	return CurrentLayer;
 }
 
-void SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32& CurrentLayer,
+void SPedestrianAgentHoverMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& AgentData, FSlateInstanceBufferData& PerInstanceUpdate, int32& CurrentLayer,
                                                       FVector2D& ScreenPosition, float& SizeScale,const FPaintArgs& Args,
                                                       const FGeometry& AllottedGeometry,
                                                       const FSlateRect& MyCullingRect,
@@ -188,7 +199,7 @@ void SPedestrianAgentMeshWidget::BuildUIFromAgentData(const FAgentMeshViewer& Ag
 	}
 }
 
-FText SPedestrianAgentMeshWidget::CreateUITextFromAgentData(const FAgentMeshViewer& AgentData) const
+FText SPedestrianAgentHoverMeshWidget::CreateUITextFromAgentData(const FAgentMeshViewer& AgentData) const
 {
 	
 	return FText::Format(

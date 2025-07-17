@@ -28,9 +28,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
 	bool bIsTitleAboveField = true;
 
-	/** Slate Text Style sheet */
+	/** Slate Title Text Style sheet */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
-	TObjectPtr<USlateWidgetStyleAsset> TextStyle;
+	TObjectPtr<USlateWidgetStyleAsset> TitleTextStyle;
+
+	/** Slate Field Text Style sheet */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
+	TObjectPtr<USlateWidgetStyleAsset> FieldTextStyle;
 
 protected:
 	TSharedPtr<SFieldAndTitleText> FieldAndTextWidget;

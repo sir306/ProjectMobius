@@ -3,11 +3,14 @@
 
 #include "InWorldUI/AgentInfoDisplay.h"
 
-#include "Components/PedestrianAgentMeshWidget.h"
+#include "Components/CustomSlateComponents/SAgentFollowIndicator.h"
+#include "Components/CustomSlateComponents/SPedestrianAgentHoverMeshWidget.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 
-UAgentInfoDisplay::UAgentInfoDisplay(): WidgetMeshViewerID(0)
+UAgentInfoDisplay::UAgentInfoDisplay():
+	HoverWidgetMeshViewerID(0),
+	SelectedFollowWidgetMeshViewerID(0)
 {
 	// TODO: Remove following Debug Code
 	FAgentMeshViewer DebugData1 = FAgentMeshViewer();
@@ -22,17 +25,22 @@ UAgentInfoDisplay::UAgentInfoDisplay(): WidgetMeshViewerID(0)
 	DebugData2.AgentSpeed = 3.0f;
 	DebugData2.AgentHeight = 175.0f; // Default height in cm	
 	
-	PedestrianAgentData.Add(DebugData1);
-	PedestrianAgentData.Add(DebugData2);
+	PedestrianHoverAgentData.Add(DebugData1);
+	PedestrianHoverAgentData.Add(DebugData2);
+
+	SelectedAgentData = DebugData1; // Set a default hovered agent for testing
 
 	if (auto World = GetWorld())
 	{
-		if (World->GetSubsystem<UStatisticSubsystem>())
+		if (auto StatSub = World->GetSubsystem<UStatisticSubsystem>())
 		{
-			World->GetSubsystem<UStatisticSubsystem>()->UpdateAgentInfoMeshData(PedestrianAgentData);
+			StatSub->UpdateAgentInfoMeshData(PedestrianHoverAgentData);
+			StatSub->UpdateSelectedAgentData(SelectedAgentData);
+			
 
-			// Bind delegate to trigger an update when the agent data changes
+			// Bind delegates to trigger an update when the agent data changes
 			World->GetSubsystem<UStatisticSubsystem>()->OnAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
+			World->GetSubsystem<UStatisticSubsystem>()->OnSelectedAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
 		}
 	}
 }
@@ -41,7 +49,8 @@ void UAgentInfoDisplay::UpdateAgentInfoMeshData()
 {
 	if (auto World = GetWorld())
 	{
-		PedestrianAgentData = World->GetSubsystem<UStatisticSubsystem>()->GetAgentInfoMeshData();
+		PedestrianHoverAgentData = World->GetSubsystem<UStatisticSubsystem>()->GetAgentInfoMeshData();
+		SelectedAgentData = World->GetSubsystem<UStatisticSubsystem>()->GetSelectedAgentInfoMeshData();
 	}
 	// May need to invalidate the widget to update the display
 	if (DisplayWidget.IsValid())
@@ -56,8 +65,13 @@ void UAgentInfoDisplay::SynchronizeProperties()
 
 	if (AgentInfoMeshAsset)
 	{
-		WidgetMeshViewerID = DisplayWidget->AddMesh(*AgentInfoMeshAsset);
-		DisplayWidget->EnableInstancing(WidgetMeshViewerID, BaseSize);
+		HoverWidgetMeshViewerID = DisplayWidget->AddMesh(*AgentInfoMeshAsset);
+		DisplayWidget->EnableInstancing(HoverWidgetMeshViewerID, BaseSize);
+	}
+	if (AgentFollowIndicatorMeshAsset)
+	{
+		SelectedFollowWidgetMeshViewerID = FollowIndicatorWidget->AddMesh(*AgentFollowIndicatorMeshAsset);
+		FollowIndicatorWidget->EnableInstancing(SelectedFollowWidgetMeshViewerID, 1);
 	}
 }
 
@@ -66,12 +80,30 @@ void UAgentInfoDisplay::ReleaseSlateResources(bool bReleaseChildren)
 	Super::ReleaseSlateResources(bReleaseChildren);
 
 	DisplayWidget.Reset();
+	FollowIndicatorWidget.Reset();
 }
 
 TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
-{	
-	DisplayWidget = SNew(SPedestrianAgentMeshWidget, *this)
-    .Text(FText::FromString(TEXT("Agent Info Display\nID:12345\nSpeed: 10.0m/s")));
-	
-	return DisplayWidget.ToSharedRef();
+{
+	// Create the children
+	DisplayWidget = SNew(SPedestrianAgentHoverMeshWidget, *this)
+		.Text(FText::FromString(TEXT("Agent Info Display\nID:12345\nSpeed: 10.0m/s")));
+
+	FollowIndicatorWidget = SNew(SAgentFollowIndicator, *this);
+
+	// Create the overlay
+	TSharedRef<SOverlay> Overlay = SNew(SOverlay)
+
+	+ SOverlay::Slot()
+	[
+		DisplayWidget.ToSharedRef()
+	]
+
+	+ SOverlay::Slot()
+	[
+		FollowIndicatorWidget.ToSharedRef()
+	];
+
+	return Overlay;
+	//return FollowIndicatorWidget.ToSharedRef();
 }
