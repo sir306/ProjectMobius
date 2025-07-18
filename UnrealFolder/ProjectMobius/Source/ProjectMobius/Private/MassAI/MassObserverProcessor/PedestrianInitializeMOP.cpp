@@ -51,7 +51,7 @@ UPedestrianInitializeMOP::UPedestrianInitializeMOP()
 	ObservedType = FEntityInfoFragment::StaticStruct();
 	Operation = EMassObservedOperation::Add;
 
-	bRequiresGameThreadExecution = false;
+	bRequiresGameThreadExecution = true;
 }
 
 void UPedestrianInitializeMOP::ConfigureQueries()

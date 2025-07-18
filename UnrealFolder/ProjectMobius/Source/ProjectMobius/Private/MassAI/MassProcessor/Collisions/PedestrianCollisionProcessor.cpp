@@ -82,11 +82,40 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			auto& EntityCollision = EntityCollisions[i];
 
 			FVector CurrentLocation = CurrentEntityMovementFragment.CurrentLocation;
-			CurrentLocation.Z += EntityCollision.Capsule.Get()->GetScaledCapsuleHalfHeight(); // Adjust the Z offset for the capsule collision
 
+			// null check capsule and log
+			if (EntityCollision.Capsule == nullptr)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is null"), Entity.Index);
+				continue; // Skip this entity if the capsule is null
+			}
+			if (!EntityCollision.Capsule->IsValidLowLevel())
+			{
+				UE_LOG(LogTemp, Error, TEXT("Capsule is invalid!"));
+				return;
+			}
+
+			if (!EntityCollision.Capsule->IsRegistered())
+			{
+				UE_LOG(LogTemp, Error, TEXT("Capsule is not registered with the world!"));
+				return;
+			}
+
+			if (!EntityCollision.Capsule->GetOwner())
+			{
+				UE_LOG(LogTemp, Error, TEXT("Capsule has no owning Actor!"));
+				return;
+			}
+
+			UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is valid1"), Entity.Index);
+			
+			CurrentLocation.Z += EntityCollision.Capsule->GetScaledCapsuleHalfHeight(); // Adjust the Z offset for the capsule collision
+
+			UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is valid2"), Entity.Index);
 			// update the collision fragment with the current location and rotation
-			EntityCollision.Capsule.Get()->SetWorldLocation(CurrentLocation);
-			EntityCollision.Capsule.Get()->SetWorldRotation(CurrentEntityMovementFragment.CurrentRotation);
+			EntityCollision.Capsule->SetWorldLocation(CurrentLocation);
+			UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is valid3"), Entity.Index);
+			//EntityCollision.Capsule.Get()->SetWorldRotation(CurrentEntityMovementFragment.CurrentRotation);
 		}
 	}));
 
@@ -121,8 +150,8 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			//
 			if (HoveredCapsuleComponent != nullptr && UserSelectedCapsuleComponent != nullptr)
 			{
-				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent &&
-					EntityCollision.Capsule.Get() != UserSelectedCapsuleComponent)
+				if (EntityCollision.Capsule == HoveredCapsuleComponent &&
+					EntityCollision.Capsule != UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
 
@@ -132,7 +161,7 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 						Context.Defer().AddTag<FDisplayEntityDetailsTag>(Entity); // Mark the collection with stats tag
 					}
 				}
-				else if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
+				else if (EntityCollision.Capsule == UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
 
@@ -154,7 +183,7 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			}
 			else if (UserSelectedCapsuleComponent != nullptr && HoveredCapsuleComponent == nullptr)
 			{
-				if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
+				if (EntityCollision.Capsule == UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
 
@@ -176,7 +205,7 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			}
 			else if (HoveredCapsuleComponent && UserSelectedCapsuleComponent == nullptr)
 			{
-				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent)
+				if (EntityCollision.Capsule == HoveredCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
 
