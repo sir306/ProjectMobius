@@ -87,17 +87,13 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			// update the collision fragment with the current location and rotation
 			EntityCollision.Capsule.Get()->SetWorldLocation(CurrentLocation);
 			EntityCollision.Capsule.Get()->SetWorldRotation(CurrentEntityMovementFragment.CurrentRotation);
-
-
-			
 		}
 	}));
 
-	
+	UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Query 1 complete"));
 	//TODO: below the query needs to be optimized so its scalable - current implementation is not scalable and is a hack together prototype
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
-		bool bLineTraceHit = false;
 		FHitResult HitResult;
 		UCapsuleComponent* HoveredCapsuleComponent = nullptr;
 		UCapsuleComponent* UserSelectedCapsuleComponent = nullptr;
@@ -106,17 +102,8 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 	
 		if (MobiusControllerSubsystem)
 		{
-			bLineTraceHit = MobiusControllerSubsystem->LineTraceFromMousePosition(HitResult, HoveredCapsuleComponent);
+			MobiusControllerSubsystem->LineTraceFromMousePosition(HitResult, HoveredCapsuleComponent);
 			UserSelectedCapsuleComponent = MobiusControllerSubsystem->GetCapsuleComponent();
-		}
-		
-		// Check to see if we need to process entities
-		if (!bLineTraceHit && !HoveredCapsuleComponent && !UserSelectedCapsuleComponent) // all need to be false to return early -> TBD we should store selection changes instead of checking every time
-		{
-			// If no capsule components were hit, we can return early
-			// This will prevent unnecessary processing and ensure we only process entities that are relevant to the current mouse position
-			//UE_LOG(LogTemp, Warning, TEXT("No capsule components hit or not valid"));
-			return;
 		}
 		
 		auto Entities = Context.GetEntities();
@@ -209,9 +196,14 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 					}
 				}
 			}
-			else
+			else // no hover or selected -> clear stats
 			{
-				// this method should never fire here as should always have a capsule component to check against
+				EntityRenderingFragments[i].showPedestrianStats = 0; // Hide the stats for this entity
+					// If no collisions were detected on this handle, we need to remove the tag from this context
+					if (Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+					{
+						Context.Defer().RemoveTag<FDisplayEntityDetailsTag>(Entity);
+					}
 			}
 
 			
@@ -219,4 +211,6 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 
 		Context.FlushDeferred();
 	}));
+
+	UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Query 2 complete"));
 }

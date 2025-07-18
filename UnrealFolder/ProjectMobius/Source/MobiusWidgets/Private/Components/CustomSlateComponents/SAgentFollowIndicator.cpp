@@ -81,6 +81,38 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 			TArray<UE::Math::TVector4<float>>::ElementType(InstanceData.GetData()));
 	}
 
+	//TODO: need to do this once, likely store a variable and check for nullptr
+	auto MatInst = const_cast<SAgentFollowIndicator*>(this)->ConvertToMID(MeshId);
+
+	if (MatInst)
+	{
+		// there is 6 colour bands for a given agent flux speed
+		// Colour bands are the same as fruins LOS -> blue to red
+		if (PedestrianAgentData.AgentSpeedFlux >= 0.8335f) // fastest band
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 0.0f, 1.0f, 1.0f)); // Blue
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.6668f) // second fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 1.0f, 1.0f)); // Cyan
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.5001f) // third fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 0.0f, 1.0f)); // Green
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.3334f) // fourth fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 1.0f, 0.0f, 1.0f)); // Yellow
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.1667f) // fifth fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.25f, 0.0f, 1.0f)); // Orange
+		}
+		else // slowest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.0f, 0.0f, 1.0f)); // Red
+		}
+	}
 
 	const_cast<SAgentFollowIndicator*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
 	SMeshWidget::OnPaint(

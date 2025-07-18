@@ -22,6 +22,11 @@ void UStatisticSubsystem::Deinitialize()
 
 void UStatisticSubsystem::UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData)
 {
+	if (AgentData.Num() == 0 && PedestrianAgentData.Num() == 0)
+	{
+		// No data to update, return early
+		return;
+	}
 	PedestrianAgentData = AgentData;
 	// Notify listeners that the agent info has changed
 	OnAgentInfoChanged.Broadcast();

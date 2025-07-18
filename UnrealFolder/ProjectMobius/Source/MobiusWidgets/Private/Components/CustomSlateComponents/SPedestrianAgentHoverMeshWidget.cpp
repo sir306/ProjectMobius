@@ -33,7 +33,6 @@ int32 SPedestrianAgentHoverMeshWidget::OnPaint(
 	int32 CurrentLayer = SMeshWidget::OnPaint(
 		Args, AllottedGeometry, MyCullingRect,
 		OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-	
 
 	if (MeshId == -1)
 	{
@@ -101,8 +100,7 @@ int32 SPedestrianAgentHoverMeshWidget::OnPaint(
 			}
 		}
 	}
-
-
+	
 	const_cast<SPedestrianAgentHoverMeshWidget*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
 	SMeshWidget::OnPaint(
 				Args, AllottedGeometry, MyCullingRect,
@@ -144,18 +142,24 @@ void SPedestrianAgentHoverMeshWidget::BuildUIFromAgentData(const FAgentMeshViewe
 		float UniformScale = FMath::Min(ScaleX, ScaleY);
 
 		// Adjust font size
-		int32 FinalFontSize = FMath::Clamp(FMath::FloorToInt(DefaultFontSize * UniformScale), 1, 64);
+		int32 FinalFontSize = FMath::Clamp(FMath::FloorToInt(DefaultFontSize * UniformScale), 0, 64);
 
-		// if the font is below 6, then we don't want to draw the mesh or the text
+		// Update Mesh Instance
+		FSlateVectorArtInstanceData InstanceData;
+		InstanceData.SetPosition(ScreenPosition);
+		InstanceData.SetScale(SizeScale);
+		PerInstanceUpdate.Add(
+			TArray<UE::Math::TVector4<float>>::ElementType(InstanceData.GetData()));
+
+		// TODO: we should add small white placeholder text like ---
+		// to indicate the fields but at the font size of 1-5 it wont be readable
+		
+		
+		// if the font is below 6, -> we won't be able to read it but if its below 6 we should at least render the box
+		// to give some visual feedback to the user
 		if (FinalFontSize >= 6)
 		{
-			// Update Mesh Instance
-			FSlateVectorArtInstanceData InstanceData;
-			InstanceData.SetPosition(ScreenPosition);
-			InstanceData.SetScale(SizeScale);
-			PerInstanceUpdate.Add(
-				TArray<UE::Math::TVector4<float>>::ElementType(InstanceData.GetData()));
-		
+			
 
 			// SMeshWidget::OnPaint(
 			// 	Args, AllottedGeometry, MyCullingRect,

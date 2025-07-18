@@ -116,6 +116,7 @@ void UDisplayAgentUIStatsProcessor::Execute(FMassEntityManager& EntityManager, F
 						SelectedAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
 						SelectedAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;// todo: no gait speed implemented yet
 						SelectedAgentData.AgentHeight = 180.0f;//TODO:work out height later
+						SelectedAgentData.AgentSpeedFlux = EntityMovement.CurrentSpeed / EntityInfo.EntityMaxSpeed;
 					}
 				}
 			}

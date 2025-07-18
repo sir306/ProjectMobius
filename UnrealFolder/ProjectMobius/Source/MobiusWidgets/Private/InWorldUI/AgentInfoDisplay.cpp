@@ -91,6 +91,8 @@ TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
 
 	FollowIndicatorWidget = SNew(SAgentFollowIndicator, *this);
 
+	
+
 	// Create the overlay
 	TSharedRef<SOverlay> Overlay = SNew(SOverlay)
 

@@ -3,6 +3,7 @@
 
 #include "Components/PedestrianDataDisplay.h"
 
+#include "Components/GridPanel.h"
 #include "Components/GridSlot.h"
 #include "Components/TextBlock.h"
 #include "Components/CustomSlateWidgets/FieldAndTextWidget.h"
@@ -167,15 +168,28 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 			Widget->SetFieldText(NewText);
 		}
 	};
-
+	
 	auto LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->SelectedAgentData;
 
 	if (LastUpdatedAgentMeshViewerData.AgentID == -1 || LastUpdatedAgentMeshViewerData.AgentID == -2) // Check if no agent is selected or agent has completed sim
 	{
 		// We had an agent that was selected but now it is not selected
-		if (TitleFieldWidget1 && TitleFieldWidget1->FieldText.EqualTo(FText::AsNumber(-1)))
+		if (TitleFieldWidget1 && LastUpdatedAgentMeshViewerData.AgentID == -1)
 		{
-			// no agent selected need to collapse this widget 
+			// collapse the header grid panel - only if it is visible
+			if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() != ESlateVisibility::Collapsed)
+			{
+				// Hide the grid panel if no agent is selected and clear old fields
+				UpdateIfChangedNumber(TitleFieldWidget1, -1);
+				UpdateIfChanged(TitleFieldWidget2, FText::FromString("N/A"));
+				UpdateIfChanged(TitleFieldWidget3, FText::FromString("N/A"));
+				UpdateIfChanged(TitleFieldWidget4, FText::FromString("N/A"));
+				UpdateIfChanged(TitleFieldWidget5, FText::FromString("N/A"));
+				UpdateIfChanged(TitleFieldWidget6, FText::FromString("N/A"));
+				UpdateIfChanged(TitleFieldWidget7, FText::FromString("N/A"));
+				UpdateIfChanged(TitleFieldWidget8, FText::FromString("N/A"));
+				WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Collapsed);
+			}
 		}
 		else // Agent has left sim
 		{
@@ -187,6 +201,13 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 	}
 	else
 	{
+		// if the widget is collapsed and we have selected an agent, with a new ID we should show the grid panel
+		if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() == ESlateVisibility::Collapsed
+			&& !TitleFieldWidget1->FieldText.EqualTo(FText::AsNumber(LastUpdatedAgentMeshViewerData.AgentID)))
+		{
+			WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Visible);// should change to visible but self not hit testable -> TODO: update BP logic to handle this
+		}
+		
 		UpdateIfChangedNumber(TitleFieldWidget1, LastUpdatedAgentMeshViewerData.AgentID);
 		UpdateIfChanged(TitleFieldWidget2, LastUpdatedAgentMeshViewerData.AgentName);
 		UpdateIfChanged(TitleFieldWidget3, LastUpdatedAgentMeshViewerData.Gender);
@@ -195,6 +216,7 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		UpdateIfChangedFloat(TitleFieldWidget6, LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
 		UpdateIfChangedFloat(TitleFieldWidget7, LastUpdatedAgentMeshViewerData.AgentHeight);
 		UpdateIfChangedVector(TitleFieldWidget8, LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+		
 	}
 }
 

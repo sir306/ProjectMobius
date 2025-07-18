@@ -47,7 +47,7 @@ public:
 	int32 HoverWidgetMeshViewerID;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
-	int32 SelectedFollowWidgetMeshViewerID;
+	int32 SelectedFollowWidgetMeshViewerID = -1;
 
 	// TODO: should remove storing data from the widget and instead use a subsystem to manage this data
 
