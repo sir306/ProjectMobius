@@ -38,6 +38,12 @@ void UStatisticSubsystem::UpdateSelectedAgentData(const FAgentMeshViewer& AgentD
 	OnSelectedAgentInfoChanged.Broadcast();
 }
 
+void UStatisticSubsystem::UpdateHoveredAgentData(const FAgentMeshViewer& AgentData)
+{
+	HoveredAgentData = AgentData;
+	OnSelectedAgentInfoChanged.Broadcast();
+}
+
 TArray<FAgentMeshViewer> UStatisticSubsystem::GetAgentInfoMeshData()
 {
 	return PedestrianAgentData;
@@ -46,4 +52,9 @@ TArray<FAgentMeshViewer> UStatisticSubsystem::GetAgentInfoMeshData()
 FAgentMeshViewer UStatisticSubsystem::GetSelectedAgentInfoMeshData()
 {
 	return SelectedAgentData;
+}
+
+FAgentMeshViewer UStatisticSubsystem::GetHoveredAgentInfoMeshData()
+{
+	return MoveTemp(HoveredAgentData);
 }

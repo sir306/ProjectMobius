@@ -120,6 +120,13 @@ void UPedestrianDataDisplay::SetupTextBlockTitles() const
 			Pair.Key->SetTitleText(FText::FromString(Pair.Value));
 		}
 	}
+
+	// TODO: for now widget field 6 will be collapsed and not used as the gait speed is not yet implemented
+	// NOTE: the grid panel for this row has been set to 0 so will need updating to the correct value when we implement the gait speed
+	if (TitleFieldWidget6)
+	{
+		TitleFieldWidget6->SetVisibility(ESlateVisibility::Collapsed);
+	}
 }
 //TODO:Move these lambdas to the text utility helper interface/class
 void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
@@ -168,8 +175,13 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 			Widget->SetFieldText(NewText);
 		}
 	};
-	
+
 	auto LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->SelectedAgentData;
+
+	if (InWorldSMeshDisplay->HoveredAgentData.AgentID != -1 && InWorldSMeshDisplay->HoveredAgentData.AgentID != -2)
+	{
+		LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->HoveredAgentData;
+	}
 
 	if (LastUpdatedAgentMeshViewerData.AgentID == -1 || LastUpdatedAgentMeshViewerData.AgentID == -2) // Check if no agent is selected or agent has completed sim
 	{

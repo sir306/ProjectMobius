@@ -35,4 +35,5 @@ private:
 	TArray<FAgentMeshViewer> AgentData;
 
 	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
+	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 };

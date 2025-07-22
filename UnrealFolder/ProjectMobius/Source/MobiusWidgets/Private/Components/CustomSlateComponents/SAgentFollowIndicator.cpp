@@ -10,18 +10,31 @@
 void SAgentFollowIndicator::Construct(const FArguments& InArgs, UAgentInfoDisplay& InThis)
 {
 	ParentWidget = &InThis;
+	FollowIndicator = InArgs._FollowIndicator.Get();
+
+	if (FollowIndicator)
+	{
+		// Load Follow Texture from asset
+		IconTexture = LoadObject<UTexture2D>(nullptr, TEXT("/Script/Engine.Texture2D'/Game/01_Dev/Widgets/WidgetMaterials/Textures/T_DownArrow.T_DownArrow'"));
+	}
+	else
+	{
+		// Load Hover Texture from asset
+		IconTexture = LoadObject<UTexture2D>(nullptr, TEXT("/Script/Engine.Texture2D'/Game/01_Dev/Widgets/WidgetMaterials/Textures/T_QuestionIcon.T_QuestionIcon'"));
+	}
 }
 
 int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
-	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+                                     const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+                                     const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
 	//TODO: need to nullptr check for ParentWidget->this shouldn't happen as it is a child widget of the parent but improper removal may lead to this
 	
 	const int32 MeshId = ParentWidget->HoverWidgetMeshViewerID;
 
 	// Get all the pedestrian agent data from the parent widget that we need for rendering
-	const FAgentMeshViewer PedestrianAgentData = ParentWidget->SelectedAgentData;//This may not be thread safe, and may need to be protected with a mutex or similar if accessed from multiple threads
+	FAgentMeshViewer PedestrianAgentData = ParentWidget->SelectedAgentData;//This may not be thread safe, and may need to be protected with a mutex or similar if accessed from multiple threads
+	const FAgentMeshViewer HoveredAgentData = ParentWidget->HoveredAgentData;
 
 	// first create an empty layer
 	int32 CurrentLayer = SMeshWidget::OnPaint(
@@ -34,10 +47,87 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 		// No mesh to render
 		return CurrentLayer;
 	}
-
+	
 	// Create a buffer to hold the per-instance data
 	FSlateInstanceBufferData PerInstanceUpdate;
+	if (!this->FollowIndicator)
+	{
+		if (HoveredAgentData.AgentID != PedestrianAgentData.AgentID)
+		{
+			// Different data
+			PedestrianAgentData = HoveredAgentData;
+		}
+	}
 
+	CreateRenderMeshData(PedestrianAgentData, AllottedGeometry, PerInstanceUpdate);
+
+	//TODO: need to do this once, likely store a variable and check for nullptr
+	auto MatInst = const_cast<SAgentFollowIndicator*>(this)->ConvertToMID(MeshId);
+
+	if (MatInst)
+	{
+		// If hover widget, then we need to override the texture for the hover texture
+		if (!FollowIndicator)
+		{
+			if (PedestrianAgentData.AgentID != HoveredAgentData.AgentID)
+			{
+				
+				// If they are different we need to update the texture for the hovered agent
+				MatInst->SetTextureParameterValue(FName(TEXT("AgentTexture")), IconTexture);
+			}
+		}
+		
+		// there is 6 colour bands for a given agent flux speed
+		// Colour bands are the same as fruins LOS -> blue to red
+		if (PedestrianAgentData.AgentSpeedFlux >= 0.8335f) // fastest band
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 0.0f, 1.0f, 1.0f)); // Blue
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.6668f) // second fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 1.0f, 1.0f)); // Cyan
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.5001f) // third fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 0.0f, 1.0f)); // Green
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.3334f) // fourth fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 1.0f, 0.0f, 1.0f)); // Yellow
+		}
+		else if (PedestrianAgentData.AgentSpeedFlux >= 0.1667f) // fifth fastest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.25f, 0.0f, 1.0f)); // Orange
+		}
+		else // slowest
+		{
+			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.0f, 0.0f, 1.0f)); // Red
+		}
+
+		
+
+		// TODO: we can improve this to be the only SMeshWidget, we just need to figure out how to handle the different textures for each instance
+		
+		// if (HoveredAgentData.AgentID != PedestrianAgentData.AgentID)
+		// {
+		// 	// if they are different we need to update the texture for the hovered agent
+		// }
+		// else if (HoveredAgentData.AgentID == PedestrianAgentData.AgentID)
+		// {
+		// 	// hover same as selected so no change needed to texture
+		// }
+	}
+
+	const_cast<SAgentFollowIndicator*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
+	SMeshWidget::OnPaint(
+				Args, AllottedGeometry, MyCullingRect,
+				OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+
+	return CurrentLayer;
+}
+
+void SAgentFollowIndicator::CreateRenderMeshData(const FAgentMeshViewer& PedestrianAgentData, const FGeometry& AllottedGeometry, FSlateInstanceBufferData& PerInstanceUpdate) const
+{
 	// If the agent ID is valid, we will render the mesh -> -1 is a special case for no agent selected, -2 is a special case for completed agents
 	if (PedestrianAgentData.AgentID != -1 && PedestrianAgentData.AgentID != -2)
 	{
@@ -80,44 +170,4 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 		PerInstanceUpdate.Add(
 			TArray<UE::Math::TVector4<float>>::ElementType(InstanceData.GetData()));
 	}
-
-	//TODO: need to do this once, likely store a variable and check for nullptr
-	auto MatInst = const_cast<SAgentFollowIndicator*>(this)->ConvertToMID(MeshId);
-
-	if (MatInst)
-	{
-		// there is 6 colour bands for a given agent flux speed
-		// Colour bands are the same as fruins LOS -> blue to red
-		if (PedestrianAgentData.AgentSpeedFlux >= 0.8335f) // fastest band
-		{
-			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 0.0f, 1.0f, 1.0f)); // Blue
-		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.6668f) // second fastest
-		{
-			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 1.0f, 1.0f)); // Cyan
-		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.5001f) // third fastest
-		{
-			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 0.0f, 1.0f)); // Green
-		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.3334f) // fourth fastest
-		{
-			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 1.0f, 0.0f, 1.0f)); // Yellow
-		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.1667f) // fifth fastest
-		{
-			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.25f, 0.0f, 1.0f)); // Orange
-		}
-		else // slowest
-		{
-			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.0f, 0.0f, 1.0f)); // Red
-		}
-	}
-
-	const_cast<SAgentFollowIndicator*>(this)->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
-	SMeshWidget::OnPaint(
-				Args, AllottedGeometry, MyCullingRect,
-				OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-
-	return CurrentLayer;
 }

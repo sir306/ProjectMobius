@@ -72,11 +72,13 @@ public:
 	void UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData);
 
 	void UpdateSelectedAgentData(const FAgentMeshViewer& AgentData);
+	void UpdateHoveredAgentData(const FAgentMeshViewer& AgentData);
 	
 
 	/**  */
 	TArray<FAgentMeshViewer> GetAgentInfoMeshData();
 	FAgentMeshViewer GetSelectedAgentInfoMeshData();
+	FAgentMeshViewer GetHoveredAgentInfoMeshData();
 
 	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes
 	FOnSelectedAgentInfoChanged OnSelectedAgentInfoChanged; // Delegate to notify when selected agent info changes
@@ -84,5 +86,6 @@ public:
 private:
 	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>(); // Holds the current agent data for the mesh viewer
 	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
+	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 	
 };

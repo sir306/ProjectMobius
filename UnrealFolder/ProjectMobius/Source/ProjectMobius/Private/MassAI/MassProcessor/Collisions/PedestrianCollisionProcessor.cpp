@@ -65,9 +65,7 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 		auto Entities = Context.GetEntities();
 		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
 		const TArrayView<FEntityMovementFragment>& EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
-
-		// log number of entities
-		UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute NumEntities: %d"), Entities.Num());
+		
 	
 		// FVector2D ScreenPosition;
 		// GetWorld()->GetFirstLocalPlayerFromController()->ViewportClient->GetMousePosition(ScreenPosition);
@@ -84,42 +82,22 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			FVector CurrentLocation = CurrentEntityMovementFragment.CurrentLocation;
 
 			// null check capsule and log
-			if (EntityCollision.Capsule == nullptr)
+			if (EntityCollision.Capsule.Get() == nullptr)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is null"), Entity.Index);
 				continue; // Skip this entity if the capsule is null
 			}
-			if (!EntityCollision.Capsule->IsValidLowLevel())
-			{
-				UE_LOG(LogTemp, Error, TEXT("Capsule is invalid!"));
-				return;
-			}
-
-			if (!EntityCollision.Capsule->IsRegistered())
-			{
-				UE_LOG(LogTemp, Error, TEXT("Capsule is not registered with the world!"));
-				return;
-			}
-
-			if (!EntityCollision.Capsule->GetOwner())
-			{
-				UE_LOG(LogTemp, Error, TEXT("Capsule has no owning Actor!"));
-				return;
-			}
-
-			UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is valid1"), Entity.Index);
 			
-			CurrentLocation.Z += EntityCollision.Capsule->GetScaledCapsuleHalfHeight(); // Adjust the Z offset for the capsule collision
-
-			UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is valid2"), Entity.Index);
+			
+			CurrentLocation.Z += EntityCollision.Capsule.Get()->GetScaledCapsuleHalfHeight(); // Adjust the Z offset for the capsule collision
+			
 			// update the collision fragment with the current location and rotation
-			EntityCollision.Capsule->SetWorldLocation(CurrentLocation);
-			UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Entity %d Capsule is valid3"), Entity.Index);
+			EntityCollision.Capsule.Get()->SetWorldLocation(CurrentLocation);
+
 			//EntityCollision.Capsule.Get()->SetWorldRotation(CurrentEntityMovementFragment.CurrentRotation);
 		}
 	}));
 
-	UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Query 1 complete"));
 	//TODO: below the query needs to be optimized so its scalable - current implementation is not scalable and is a hack together prototype
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
@@ -147,24 +125,90 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			//auto CurrentEntityMovementFragment = EntityMovementFragment[i];
 			auto& EntityCollision = EntityCollisions[i];
 
+			// if (HoveredCapsuleComponent != nullptr)
+			// {
+			// 	if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent && UserSelectedCapsuleComponent == nullptr)
+			// 	{
+			// 		EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
 			//
+			// 		// check if the entity has the tag, if not add it
+			// 		if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+			// 		{
+			// 			Context.Defer().AddTag<FDisplayEntityDetailsTag>(Entity); // Mark the collection with stats tag
+			// 		}
+			// 	}
+			// 	else if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent && UserSelectedCapsuleComponent != nullptr && UserSelectedCapsuleComponent != HoveredCapsuleComponent)
+			// 	{
+			// 		EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
+			//
+			// 		// check if the entity has the tag, if not add it
+			// 		if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+			// 		{
+			// 			Context.Defer().AddTag<FDisplayEntityDetailsTag>(Entity); // Mark the collection with stats tag
+			// 		}
+			// 	}
+			// 	else
+			// 	{
+			// 		EntityRenderingFragments[i].showPedestrianStats = 0; // Show the stats for this entity
+			// 		// If no collisions were detected on this handle, we need to remove the tag from this context
+			// 		if (Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+			// 		{
+			// 			Context.Defer().RemoveTag<FDisplayEntityDetailsTag>(Entity);
+			// 		}
+			// 	}
+			// }
+			// else if (UserSelectedCapsuleComponent != nullptr)
+			// {
+			// 	if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
+			// 	{
+			// 		EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
+			//
+			// 		// check if the entity has the tag, if not add it
+			// 		if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+			// 		{
+			// 			Context.Defer().AddTag<FDisplayEntityDetailsTag>(Entity); // Mark the collection with stats tag
+			// 		}
+			// 	}
+			// 	else
+			// 	{
+			// 		EntityRenderingFragments[i].showPedestrianStats = 0; // Show the stats for this entity
+			// 		// If no collisions were detected on this handle, we need to remove the tag from this context
+			// 		if (Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+			// 		{
+			// 			Context.Defer().RemoveTag<FDisplayEntityDetailsTag>(Entity);
+			// 		}
+			// 	}
+			// }
+			// else
+			// {
+			//
+			// 		EntityRenderingFragments[i].showPedestrianStats = 0; // Show the stats for this entity
+			// 		// If no collisions were detected on this handle, we need to remove the tag from this context
+			// 		if (Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
+			// 		{
+			// 			Context.Defer().RemoveTag<FDisplayEntityDetailsTag>(Entity);
+			// 		}
+			// 	
+			// }
+
+			
 			if (HoveredCapsuleComponent != nullptr && UserSelectedCapsuleComponent != nullptr)
 			{
-				if (EntityCollision.Capsule == HoveredCapsuleComponent &&
-					EntityCollision.Capsule != UserSelectedCapsuleComponent)
+				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent &&
+					EntityCollision.Capsule.Get() != UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
-
+			
 					// check if the entity has the tag, if not add it
 					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
 					{
 						Context.Defer().AddTag<FDisplayEntityDetailsTag>(Entity); // Mark the collection with stats tag
 					}
 				}
-				else if (EntityCollision.Capsule == UserSelectedCapsuleComponent)
+				else if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
-
+			
 					// check if the entity has the tag, if not add it
 					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
 					{
@@ -183,10 +227,10 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			}
 			else if (UserSelectedCapsuleComponent != nullptr && HoveredCapsuleComponent == nullptr)
 			{
-				if (EntityCollision.Capsule == UserSelectedCapsuleComponent)
+				if (EntityCollision.Capsule.Get() == UserSelectedCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 2; // Show the stats for this entity
-
+			
 					// check if the entity has the tag, if not add it
 					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
 					{
@@ -205,10 +249,10 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			}
 			else if (HoveredCapsuleComponent && UserSelectedCapsuleComponent == nullptr)
 			{
-				if (EntityCollision.Capsule == HoveredCapsuleComponent)
+				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent)
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
-
+			
 					// check if the entity has the tag, if not add it
 					if (!Context.DoesArchetypeHaveTag<FDisplayEntityDetailsTag>())
 					{
@@ -241,5 +285,4 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 		Context.FlushDeferred();
 	}));
 
-	UE_LOG(LogTemp, Warning, TEXT("PedestrianCollisionProcessor::Execute Query 2 complete"));
 }

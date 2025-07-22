@@ -38,7 +38,7 @@ public:
 	float ReferenceDistance = 1000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
-	TObjectPtr<USlateVectorArtData> AgentInfoMeshAsset;
+	TObjectPtr<USlateVectorArtData> AgentHoverMeshAsset;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Info")
 	TObjectPtr<USlateVectorArtData> AgentFollowIndicatorMeshAsset;
@@ -55,12 +55,13 @@ public:
 	TArray<FAgentMeshViewer> PedestrianHoverAgentData = TArray<FAgentMeshViewer>();
 
 	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer();
+	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer();
 
 protected:
 	virtual void SynchronizeProperties() override;
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
-	TSharedPtr<SPedestrianAgentHoverMeshWidget> DisplayWidget;
+	TSharedPtr<SAgentFollowIndicator> HoverWidget;
 	TSharedPtr<SAgentFollowIndicator> FollowIndicatorWidget;
 };
