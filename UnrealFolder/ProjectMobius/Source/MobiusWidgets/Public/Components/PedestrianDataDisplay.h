@@ -69,5 +69,5 @@ public:
 	TObjectPtr<UAgentInfoDisplay> InWorldSMeshDisplay;
 
 	UPROPERTY(EditAnywhere, BlueprintAssignable)
-	FOnSelectedAgentComponentVisibilityChanged OnSelectedAgentComponentVisibilityChanged;
+	FOnSelectedAgentComponentVisibilityChanged OnSelectedAgentComponentNowVisible;
 };
