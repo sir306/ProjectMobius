@@ -12,32 +12,10 @@ UAgentInfoDisplay::UAgentInfoDisplay():
 	HoverWidgetMeshViewerID(0),
 	SelectedFollowWidgetMeshViewerID(0)
 {
-	// TODO: Remove following Debug Code
-	FAgentMeshViewer DebugData1 = FAgentMeshViewer();
-	DebugData1.AgentID = 1;
-	DebugData1.AgentWorldPosition = FVector(100, 200, 300);
-	DebugData1.AgentSpeed = 5.0f;
-	DebugData1.AgentHeight = 180.0f; // Default height in cm
-	
-	FAgentMeshViewer DebugData2 = FAgentMeshViewer();
-	DebugData2.AgentID = 2;
-	DebugData2.AgentWorldPosition = FVector(0, 0, 0);
-	DebugData2.AgentSpeed = 3.0f;
-	DebugData2.AgentHeight = 175.0f; // Default height in cm	
-	
-	PedestrianHoverAgentData.Add(DebugData1);
-	PedestrianHoverAgentData.Add(DebugData2);
-
-	SelectedAgentData = DebugData1; // Set a default hovered agent for testing
-
 	if (auto World = GetWorld())
 	{
 		if (auto StatSub = World->GetSubsystem<UStatisticSubsystem>())
 		{
-			StatSub->UpdateAgentInfoMeshData(PedestrianHoverAgentData);
-			StatSub->UpdateSelectedAgentData(SelectedAgentData);
-			
-
 			// Bind delegates to trigger an update when the agent data changes
 			World->GetSubsystem<UStatisticSubsystem>()->OnAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
 			World->GetSubsystem<UStatisticSubsystem>()->OnSelectedAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);

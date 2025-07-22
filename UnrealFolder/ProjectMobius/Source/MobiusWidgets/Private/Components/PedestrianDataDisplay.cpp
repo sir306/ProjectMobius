@@ -189,6 +189,9 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 				UpdateIfChanged(TitleFieldWidget7, FText::FromString("N/A"));
 				UpdateIfChanged(TitleFieldWidget8, FText::FromString("N/A"));
 				WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Collapsed);
+
+				// Notify any listeners that the visibility has changed
+				OnSelectedAgentComponentVisibilityChanged.Broadcast(false);
 			}
 		}
 		else // Agent has left sim
@@ -206,6 +209,9 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 			&& !TitleFieldWidget1->FieldText.EqualTo(FText::AsNumber(LastUpdatedAgentMeshViewerData.AgentID)))
 		{
 			WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Visible);// should change to visible but self not hit testable -> TODO: update BP logic to handle this
+
+			// Notify any listeners that the visibility has changed
+			OnSelectedAgentComponentVisibilityChanged.Broadcast(true);
 		}
 		
 		UpdateIfChangedNumber(TitleFieldWidget1, LastUpdatedAgentMeshViewerData.AgentID);

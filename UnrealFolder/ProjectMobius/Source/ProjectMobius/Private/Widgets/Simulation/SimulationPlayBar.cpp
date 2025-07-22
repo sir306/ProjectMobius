@@ -178,6 +178,9 @@ void USimulationPlayBar::OnPlayPauseButtonClicked()
 		// Set the simulation paused to false
 		SimulationPaused = 0;
 
+		// Set the previous pause state to false
+		PreviouslyPaused = 0;
+
 		// Unpause the simulation
 		TimeDilationSubsystem->bIsPaused = false;
 	}
@@ -185,6 +188,9 @@ void USimulationPlayBar::OnPlayPauseButtonClicked()
 	{
 		// Set the simulation paused to true
 		SimulationPaused = 1;
+
+		// Set the previous pause state to true
+		PreviouslyPaused = 1;
 		
 		// Pause the simulation
 		TimeDilationSubsystem->bIsPaused = true;

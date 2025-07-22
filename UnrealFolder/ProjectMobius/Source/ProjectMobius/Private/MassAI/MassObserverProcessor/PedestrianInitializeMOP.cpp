@@ -42,6 +42,8 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Dom/JsonObject.h"
+#include "Kismet/GameplayStatics.h"
+#include "MassAI/Actors/PedestrianCollisionHolder.h"
 
 #include "Subsystems/HeatmapSubsystem.h"
 
@@ -168,10 +170,22 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 				UniqueZValues.Add(ZValue);
 			}
 
+			// Get or spawn the pedestrian collision holder actor
+			auto PedestrianCollisionHolder = Cast<APedestrianCollisionHolder>(UGameplayStatics::GetActorOfClass(GetWorld(), APedestrianCollisionHolder::StaticClass()));
+			// If the holder is not found, we can spawn it
+			if (!PedestrianCollisionHolder)
+			{
+				// Spawn the PedestrianCollisionHolder actor
+				FActorSpawnParameters SpawnParams;
+				SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+				PedestrianCollisionHolder = GetWorld()->SpawnActor<APedestrianCollisionHolder>(APedestrianCollisionHolder::StaticClass(),
+					FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+			}
+
 			// Initialize the collision fragment
 			FVector SpawnLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
 			//FRotator SpawnRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
-			EntityCollisions[i].Capsule = NewObject<UCapsuleComponent>(GetWorld());
+			EntityCollisions[i].Capsule = NewObject<UCapsuleComponent>(PedestrianCollisionHolder);
 			EntityCollisions[i].Capsule->SetCapsuleHalfHeight(95.0f);
 			EntityCollisions[i].Capsule->SetCapsuleRadius(40.0f);
 			//EntityCollisions[i].Capsule->SetCollisionProfileName(TEXT("Pawn"));
@@ -181,11 +195,16 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			EntityCollisions[i].Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
 			
+			
+			EntityCollisions[i].Capsule->SetGenerateOverlapEvents(true);
+
+			// Add the component to the PedestrianCollisionHolder actor
+			EntityCollisions[i].Capsule->AttachToComponent(PedestrianCollisionHolder->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+			EntityCollisions[i].Capsule->RegisterComponent();
+
+			// Set the transform of the capsule component
 			SpawnLocation.Z = SpawnLocation.Z + 95.0f;
 			EntityCollisions[i].Capsule->SetWorldLocation(SpawnLocation);
-			EntityCollisions[i].Capsule->SetGenerateOverlapEvents(true);
-			
-			EntityCollisions[i].Capsule->RegisterComponentWithWorld(GetWorld());
 			
 			EntityIndexOffset++;
 		}
