@@ -19,6 +19,8 @@ void UPedestrianDataDisplay::SynchronizeProperties()
 	SetupTextBlockTitles();
 	// Update the text blocks with the last updated agent data
 	UpdateFieldTextBlocks();
+	// Auto setup font sizes for all title fields -> this method will auto scale our text blocks based on the size of the parent widget
+	SetupTitleFieldWidgetFontSize();
 }
 
 void UPedestrianDataDisplay::NativePreConstruct()
@@ -30,6 +32,8 @@ void UPedestrianDataDisplay::NativePreConstruct()
 	SetupTextBlockTitles();
 	// Update the text blocks with the last updated agent data
 	UpdateFieldTextBlocks();
+	// Auto setup font sizes for all title fields 
+	SetupTitleFieldWidgetFontSize();
 }
 
 void UPedestrianDataDisplay::NativeConstruct()
@@ -224,7 +228,9 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 
 			// Notify any listeners that the visibility has changed
 			OnSelectedAgentComponentNowVisible.Broadcast(true);
+			
 		}
+		
 		
 		UpdateIfChangedNumber(TitleFieldWidget1, LastUpdatedAgentMeshViewerData.AgentID);
 		UpdateIfChanged(TitleFieldWidget2, LastUpdatedAgentMeshViewerData.AgentName);
@@ -235,6 +241,75 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		UpdateIfChangedFloat(TitleFieldWidget7, LastUpdatedAgentMeshViewerData.AgentHeight);
 		UpdateIfChangedVector(TitleFieldWidget8, LastUpdatedAgentMeshViewerData.AgentWorldPosition);
 		
+	}
+	SetupTitleFieldWidgetFontSize();
+}
+
+void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
+{
+	// Array of all title field widgets
+	TArray<UFieldAndTextWidget*> TitleFieldWidgets = {
+		TitleFieldWidget1, TitleFieldWidget2, TitleFieldWidget3,
+		TitleFieldWidget4, TitleFieldWidget5, TitleFieldWidget6,
+		TitleFieldWidget7, TitleFieldWidget8
+	};
+	FVector2D TextSize(0.0f, 0.0f);
+	
+	// loop through all the title field widgets and get the largest text measurement size
+	for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+	{
+		if (Widget)
+		{
+			FVector2D CurrentTextSize = Widget->GetTextSize();
+			TextSize.X = FMath::Max(TextSize.X, CurrentTextSize.X);
+			TextSize.Y = FMath::Max(TextSize.Y, CurrentTextSize.Y);
+		}
+	}
+
+	float DefaultFontSize = TitleFieldWidgets[0]->GetFontSize(); // Get the default font size from the first widget
+	//TODO: this is not right?? maybe being called before the widget is fully constructed? or a prepass has been completed
+	// Calculate the box width from the grid panel
+	FVector2D BoxSize = WidgetHeadGridPanel->GetDesiredSize();// Desired size may not be the value we want
+
+	// 0.13 is slot width percent for screen 0.18 is the slot height percent
+
+	BoxSize = WidgetHeadGridPanel->GetPaintSpaceGeometry().GetAbsoluteSize();
+
+	if (BoxSize == FVector2D::ZeroVector)
+	{
+		BoxSize = WidgetHeadGridPanel->GetPaintSpaceGeometry().GetRenderBoundingRect().GetSize();
+		// log fallback size
+		UE_LOG(LogTemp, Warning, TEXT("BoxSize is zero, using bounding rect size: %s"), *BoxSize.ToString());
+		return;
+	}
+
+	BoxSize *= 0.5f; // each text slot takes up 50% of the box size, so we scale down to fit
+	
+	// Compute scale factor to fit in box (maintain aspect ratio)
+	float ScaleX = (BoxSize.X / TextSize.X) ? BoxSize.X / TextSize.X : 0.0f; // Avoid division by zero
+	float ScaleY = (BoxSize.Y / TextSize.Y) ? BoxSize.Y / TextSize.Y : 0.0f; // Avoid division by zero
+	float UniformScale = FMath::Min( FMath::Clamp(ScaleX, 0, ScaleX),  FMath::Clamp(ScaleY, 0, ScaleY)); // Ensure scale is non-negative and min val of 0
+
+	
+	// log the scaleX, ScaleY, and UniformScale and box size
+	UE_LOG(LogTemp, Log, TEXT("Box Size: %s, Text Size: %s, ScaleX: %.2f, ScaleY: %.2f, UniformScale: %.2f"),
+		*BoxSize.ToString(), *TextSize.ToString(), ScaleX, ScaleY, UniformScale);
+	
+	// Adjust font size
+	int32 FinalFontSize = FMath::Clamp((DefaultFontSize * UniformScale), 1, 64);
+
+	// Log the final font size
+	UE_LOG(LogTemp, Log, TEXT("Final Font Size: %d, Orig Font Size: %f"), FinalFontSize, DefaultFontSize);
+
+	// TODO: if font size is going to be less than 10 then we need to size the grid panel to be wider to accommodate the text
+
+	// Set the font size for each title field widget
+	for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+	{
+		if (Widget)
+		{
+			Widget->SetFontSize(FinalFontSize);
+		}
 	}
 }
 

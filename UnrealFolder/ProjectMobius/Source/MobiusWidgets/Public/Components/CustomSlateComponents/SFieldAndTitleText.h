@@ -44,6 +44,15 @@ public:
 	void Construct(const FArguments& InArgs);
 	void SetTitleText(FText InTitleText);
 	void SetFieldText(FText InFieldText);
+	void SetFontSize(float InFontSize) const;
+	/**
+	 * Gets the size of the text in this widget, used for layout calculations
+	 * 
+	 * @return The size of the field and title text combined
+	 */
+	FVector2D GetTextSize() const;
+
+	
 
 	/** Paints this widget in the game viewport
  * @param Args The paint arguments
@@ -58,9 +67,12 @@ public:
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
 	                      FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
 	                      bool bParentEnabled) const override;
+	float GetFontSize();
 
-	
+
 private:
 	TSharedPtr<STextBlock> TitleTextBlock;
 	TSharedPtr<STextBlock> FieldTextBlock;
+
+	bool bVerticalStacking = false; // Whether the title is above the field or to the left
 };

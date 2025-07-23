@@ -36,6 +36,8 @@ protected:
 	void SetupTextBlockTitles() const;
 
 	void UpdateFieldTextBlocks() const;
+
+	void SetupTitleFieldWidgetFontSize() const;
 public:
 	/** Grid Panel to arrange items */
 	UPROPERTY(EditAnywhere,BlueprintReadWrite, meta = (BindWidget))

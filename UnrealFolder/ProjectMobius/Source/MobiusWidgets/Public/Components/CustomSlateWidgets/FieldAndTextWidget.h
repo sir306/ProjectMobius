@@ -47,9 +47,22 @@ public:
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	void SetTitleText(FText InTitleText);
 	void SetFieldText(FText InFieldText);
+	/**
+	 * Gets the size of the text in this widget, used for layout calculations
+	 * 
+	 * @return The size of the field and title text combined
+	 */
+	FVector2D GetTextSize() const;
+
+	/**
+	 * Set the font size for both the title and field text -> Potentially we can use a float for more flexibility but int32 is more consistent with Unreal's text rendering
+	 * @param[int32] InFontSize The font size to set for both texts
+	 */
+	void SetFontSize(float InFontSize) const;
 
 	// Optional getters if you want to bind attributes rather than call setters
 	FText GetTitleText() const   { return TitleText; }
 	FText GetFieldText() const   { return FieldText; }
 	bool  GetIsTitleAboveField() const { return bIsTitleAboveField; }
+	float GetFontSize();
 };

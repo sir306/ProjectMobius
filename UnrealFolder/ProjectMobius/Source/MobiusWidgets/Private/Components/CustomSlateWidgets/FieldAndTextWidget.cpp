@@ -60,3 +60,18 @@ void UFieldAndTextWidget::SetFieldText(FText InFieldText)
 	FieldText = InFieldText;
 	FieldAndTextWidget->SetFieldText(FieldText);
 }
+
+FVector2D UFieldAndTextWidget::GetTextSize() const
+{
+	return FieldAndTextWidget->GetTextSize();
+}
+
+void UFieldAndTextWidget::SetFontSize(float InFontSize) const
+{
+	FieldAndTextWidget->SetFontSize(InFontSize);
+}
+
+float UFieldAndTextWidget::GetFontSize()
+{
+	return FieldAndTextWidget->GetFontSize();
+}
