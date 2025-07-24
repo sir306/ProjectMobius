@@ -145,11 +145,6 @@ FVector2D SFieldAndTitleText::GetTextSize() const
 
 	// TODO: add in padding if needed
 	
-	// log the combined measurement for debugging purposes
-	UE_LOG(LogTemp, Log, TEXT("SFieldAndTitleText::GetTextSize - Combined Measurement: %s"), *CombinedMeasurement.ToString());
-	// log the combined text to identify the widget
-	UE_LOG(LogTemp, Log, TEXT("SFieldAndTitleText::GetTextSize - Title Text: %s, Field Text: %s"),
-		   *TitleTextBlock->GetText().ToString(), *FieldTextBlock->GetText().ToString());
 	return CombinedMeasurement;
 }
 

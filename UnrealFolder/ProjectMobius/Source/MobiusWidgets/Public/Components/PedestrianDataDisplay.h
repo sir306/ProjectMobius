@@ -37,8 +37,18 @@ protected:
 
 	void UpdateFieldTextBlocks() const;
 
+	void ResizeGridPanelParentSlotToFitLargeText(FVector2D& InTextSize) const;
+
+	void ResizeScreenGridToDefaultSize() const;
+
+	void GetScreenGridCoefficients(int32 Col, int32 Row, float& OutWidthCoefficient, float& OutHeightCoefficient) const;
+	
 	void SetupTitleFieldWidgetFontSize() const;
 public:
+	/** Grid Panel to arrange sizing for the whole screen */
+	UPROPERTY(EditAnywhere,BlueprintReadWrite, meta = (BindWidget))
+	TObjectPtr<UGridPanel> ScreenGrid;
+
 	/** Grid Panel to arrange items */
 	UPROPERTY(EditAnywhere,BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UGridPanel> WidgetHeadGridPanel;

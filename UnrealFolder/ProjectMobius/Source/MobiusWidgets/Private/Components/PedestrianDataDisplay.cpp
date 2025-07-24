@@ -245,8 +245,101 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 	SetupTitleFieldWidgetFontSize();
 }
 
+void UPedestrianDataDisplay::ResizeGridPanelParentSlotToFitLargeText(FVector2D& InTextSize) const
+{
+	// The Header Grid Panel is allocated to ScreenGrid panel slot column 1 row 2 -> need to resize the parent slot to fit the text
+	// row is allocated 0.18 fill and column is allocated 0.13 fill
+
+	if (ScreenGrid == nullptr)
+	{
+		// Do not proceed if ScreenGrid is not set -> this will cause nullptr access crashes
+		return;
+	}
+
+	// Calculate the grid size
+	FVector2D BoxSize = ScreenGrid->GetDesiredSize();// Desired size may not be the value we want
+
+	// 0.13 is slot width percent for screen 0.18 is the slot height percent
+
+	BoxSize = ScreenGrid->GetPaintSpaceGeometry().GetAbsoluteSize();
+
+	if (BoxSize == FVector2D::ZeroVector)
+	{
+		BoxSize = ScreenGrid->GetPaintSpaceGeometry().GetRenderBoundingRect().GetSize();
+	}
+
+	// calculate the required size for the TitleFieldWidgets to fit the text and what the coefficient will be for the row and column
+	float RequiredWidth = InTextSize.X *2 / BoxSize.X; // This will be the coefficient for the column
+	float RequiredHeight = InTextSize.Y *1.5f * 8 / BoxSize.Y; // This will be the coefficient for the row
+
+	// Check if the the required width and height are not the same as the current coefficients -> TODO: add a tolerance check here so we don't resize if the values are very close
+	if (ScreenGrid->ColumnFill.Num() > 1 && ScreenGrid->RowFill.Num() > 2)
+	{
+		float CurrentWidthCoefficient = ScreenGrid->ColumnFill[1];
+		float CurrentHeightCoefficient = ScreenGrid->RowFill[2];
+
+		if (FMath::IsNearlyEqual(CurrentWidthCoefficient, RequiredWidth, 0.01f) &&
+			FMath::IsNearlyEqual(CurrentHeightCoefficient, RequiredHeight, 0.01f))
+		{
+			return; // No need to resize if the coefficients are already set
+		}
+	}
+	
+	// Apply the new coefficient to the grid panel slot
+	ScreenGrid->SetColumnFill(1, RequiredWidth);
+	ScreenGrid->SetRowFill(2, RequiredHeight);
+
+	// Our spacer panel coefficients are set to 0.86 and 0.715 respectively and need to be set to fit the new size
+	float SpacerColumnCoefficient = 0.99f - RequiredWidth;// 0.99f is the default spacer and header grid fill so minus the required width
+	ScreenGrid->SetColumnFill(0, SpacerColumnCoefficient); // Set the spacer column fill to the new coefficient
+
+	float SpacerRowCoefficient = 0.895f - RequiredHeight; // 0.895f is the default spacer and header grid fill so minus the required height
+	ScreenGrid->SetRowFill(1, SpacerRowCoefficient);
+}
+
+void UPedestrianDataDisplay::ResizeScreenGridToDefaultSize() const
+{
+	
+	if (ScreenGrid)
+	{
+		// Our default panel size for the header grid
+		ScreenGrid->SetColumnFill(1, 0.13f); // Column 1 is the header column
+		ScreenGrid->SetRowFill(2, 0.18f); // Row 2 is the header row
+
+		// reset the spacer panel coefficients
+		ScreenGrid->SetColumnFill(0, 0.86f); 
+		ScreenGrid->SetRowFill(1, 0.715f);
+	}
+}
+
+void UPedestrianDataDisplay::GetScreenGridCoefficients(int32 Col, int32 Row, float& OutWidthCoefficient,
+                                                       float& OutHeightCoefficient) const
+{
+	/* The Assumption is if a fill is not set then the coefficient is 0.0f @note: this isn't technically true though
+	 * as the default fill is 0.0f, but we know that this widget never has a fill of 0.0f */
+	
+	// Set the out coefficients to 0.0f by default -> this will be used if the row or column is invalid
+	OutWidthCoefficient = 0.0f;
+	OutHeightCoefficient = 0.0f;
+	
+	// valid row
+	if (ScreenGrid && ScreenGrid->RowFill.Num() > Row)
+	{
+		OutWidthCoefficient = ScreenGrid->RowFill[Row];
+	}
+	// valid column
+	if (ScreenGrid && ScreenGrid->ColumnFill.Num() > Col)
+	{
+		OutHeightCoefficient = ScreenGrid->ColumnFill[Col];	
+	}
+
+}
+
 void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 {
+	// // Reset Grid Panel to default size
+	// ResizeScreenGridToDefaultSize();
+	
 	// Array of all title field widgets
 	TArray<UFieldAndTextWidget*> TitleFieldWidgets = {
 		TitleFieldWidget1, TitleFieldWidget2, TitleFieldWidget3,
@@ -289,27 +382,37 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 	float ScaleX = (BoxSize.X / TextSize.X) ? BoxSize.X / TextSize.X : 0.0f; // Avoid division by zero
 	float ScaleY = (BoxSize.Y / TextSize.Y) ? BoxSize.Y / TextSize.Y : 0.0f; // Avoid division by zero
 	float UniformScale = FMath::Min( FMath::Clamp(ScaleX, 0, ScaleX),  FMath::Clamp(ScaleY, 0, ScaleY)); // Ensure scale is non-negative and min val of 0
-
-	
-	// log the scaleX, ScaleY, and UniformScale and box size
-	UE_LOG(LogTemp, Log, TEXT("Box Size: %s, Text Size: %s, ScaleX: %.2f, ScaleY: %.2f, UniformScale: %.2f"),
-		*BoxSize.ToString(), *TextSize.ToString(), ScaleX, ScaleY, UniformScale);
 	
 	// Adjust font size
-	int32 FinalFontSize = FMath::Clamp((DefaultFontSize * UniformScale), 1, 64);
-
-	// Log the final font size
-	UE_LOG(LogTemp, Log, TEXT("Final Font Size: %d, Orig Font Size: %f"), FinalFontSize, DefaultFontSize);
-
-	// TODO: if font size is going to be less than 10 then we need to size the grid panel to be wider to accommodate the text
-
-	// Set the font size for each title field widget
-	for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+	float FinalFontSize = FMath::Clamp((DefaultFontSize * UniformScale), 1, 14); // Text should never be allowed to be bigger than 14
+	
+	if (FinalFontSize < 10)
 	{
-		if (Widget)
+		// Recalculate Text size for a font size of 10
+		// loop through all the title field widgets and get the largest text measurement size
+		for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
 		{
-			Widget->SetFontSize(FinalFontSize);
+			if (Widget)
+			{
+				Widget->SetFontSize(10);
+				FVector2D CurrentTextSize = Widget->GetTextSize();
+				TextSize.X = FMath::Max(TextSize.X, CurrentTextSize.X);
+				TextSize.Y = FMath::Max(TextSize.Y, CurrentTextSize.Y);
+			}
 		}
 	}
+	else
+	{
+		// Set the font size for each title field widget
+		for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+		{
+			if (Widget)
+			{
+				Widget->SetFontSize(FinalFontSize);
+			}
+		}
+	}
+	
+	ResizeGridPanelParentSlotToFitLargeText(TextSize);
+	
 }
-
