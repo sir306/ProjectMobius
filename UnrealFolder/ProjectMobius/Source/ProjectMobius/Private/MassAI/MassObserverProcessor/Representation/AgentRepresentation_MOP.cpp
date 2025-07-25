@@ -103,13 +103,21 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 	{
 		bHasSpawned = false;
 	}
+
+	ANiagaraAgentRepActor* NiagaraAgentRepActor;
+
+	// Get the Niagara actor
+	NiagaraAgentRepActor = GetOrCreateNiagaraRepActor(GetWorld());
+
+	// Get the MRS subsystem
+	UMRS_RepresentationSubsystem* MRSSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
 	
 	//EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, &AgentRepresentationInstanceComp](FMassExecutionContext& Context)
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this](FMassExecutionContext& Context)
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, NiagaraAgentRepActor,MRSSubsystem](FMassExecutionContext& Context)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("UAgentRepresentation_MOP::Execute"));
 		
-               // Get the entity movement and rendering fragments
+		// Get the entity movement and rendering fragments
 		TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 
@@ -135,11 +143,6 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		// to avoid spawning multiple ISMs check that it has not already been spawned
 		if (bHasSpawned)
 		{
-			ANiagaraAgentRepActor* NiagaraAgentRepActor;
-
-			// Get the Niagara actor
-			NiagaraAgentRepActor = GetOrCreateNiagaraRepActor(GetWorld());
-			
 			// Set the shared actor component in the shared fragment
 			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
 
@@ -174,11 +177,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			// TEST update effect to use low spec effect
 			//AgentRepresentationFragment.bUseLowSpecAgentRenderEffect = true;
 			
-			// Spawn the Niagara actor
-			ANiagaraAgentRepActor* NiagaraAgentRepActor = Context.GetWorld()->SpawnActor<ANiagaraAgentRepActor>(FVector(0, 0, 0), FRotator(0, 0, 0));
-
-			// Get the MRS subsystem
-			UMRS_RepresentationSubsystem* MRSSubsystem = Context.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
+			
 
 			// Check if the Niagara Stats frag matches the render effect type
 			if (MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec() != AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect)
