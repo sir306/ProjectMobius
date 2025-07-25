@@ -59,4 +59,14 @@ public:
          * Update widget text with a vector formatted to two decimals only if different
          */
         static void UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec);
+
+	
+	/**
+	 * Set alignment for a FieldAndTextWidget's grid slot
+	 *
+	 * @param[UFieldAndTextWidget] Widget Widget whose slot alignment will be set
+	 * @param[EHorizontalAlignment] HAlign Desired horizontal alignment
+	 * @param[EVerticalAlignment] VAlign Desired vertical alignment
+	 */
+	static void SetGridSlotAlignment(UFieldAndTextWidget* Widget, EHorizontalAlignment HAlign, EVerticalAlignment VAlign);
 };

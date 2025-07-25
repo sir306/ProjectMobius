@@ -4,6 +4,7 @@
 #include "Util/WidgetUtilHelpers.h"
 
 #include "Components/ComboBoxString.h"
+#include "Components/GridSlot.h"
 #include "Components/CustomSlateWidgets/FieldAndTextWidget.h"
 
 
@@ -106,4 +107,26 @@ void WidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const
         {
                 Widget->SetFieldText(NewText);
         }
+}
+
+void WidgetUtilHelpers::SetGridSlotAlignment(UFieldAndTextWidget* Widget, EHorizontalAlignment HAlign,
+	EVerticalAlignment VAlign)
+{
+	if (!Widget)
+	{
+		return;
+	}
+
+	if (UPanelSlot* Slot = Widget->Slot)
+	{
+		if (UGridSlot* GridSlot = Cast<UGridSlot>(Slot))
+		{
+			GridSlot->SetHorizontalAlignment(HAlign);
+			GridSlot->SetVerticalAlignment(VAlign);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Unsupported slot type for text block %s"), *Widget->GetName());
+		}
+	}
 }
