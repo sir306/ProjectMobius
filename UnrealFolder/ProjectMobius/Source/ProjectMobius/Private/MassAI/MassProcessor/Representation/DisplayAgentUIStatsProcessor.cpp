@@ -70,7 +70,7 @@ void UDisplayAgentUIStatsProcessor::Execute(FMassEntityManager& EntityManager, F
 	
 	HoveredAgentData = FAgentMeshViewer(); // Reset the hovered agent data
 	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
 		// Get the entity info fragment
 		const TConstArrayView<FEntityInfoFragment> EntityInfoFragments = Context.GetFragmentView<FEntityInfoFragment>();

@@ -338,7 +338,7 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 	float UniformScale = FMath::Min( FMath::Clamp(ScaleX, 0, ScaleX),  FMath::Clamp(ScaleY, 0, ScaleY)); // Ensure scale is non-negative and min val of 0
 	
 	// Adjust font size
-	float FinalFontSize = FMath::Clamp((DefaultFontSize * UniformScale), 1, 14); // Text should never be allowed to be bigger than 14
+	float FinalFontSize = FMath::Clamp((DefaultFontSize * UniformScale), 1, 12); // Text should never be allowed to be bigger than 14
 	
 	if (FinalFontSize < 10)
 	{

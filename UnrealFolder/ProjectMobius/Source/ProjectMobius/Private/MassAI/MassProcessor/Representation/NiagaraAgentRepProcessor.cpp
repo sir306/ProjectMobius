@@ -89,7 +89,32 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 
 void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	//TODO: Make flag for this so no constant gets etc
+
+	if (!NiagaraAgentRepActor->IsValidLowLevelFast())
+	{
+			
+		// Get the agent representation actor //TODO: this works but it could be better
+		NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
+	}
+	
+	if (TimeDilationSubSystem == nullptr || RepresentationSubsystem == nullptr)
+	{
+		// Get the Time Dilation Subsystem
+		TimeDilationSubSystem = ExecutionContext.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
+
+		// Get the representation subsystem
+		RepresentationSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
+	}
+	
+	// check we got the subsystems -> if not then we need to return
+	if (TimeDilationSubSystem == nullptr || RepresentationSubsystem == nullptr ||
+		NiagaraAgentRepActor == nullptr)
+	{
+		return;
+	}
+	
+	EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
 		//TODO: need to look at mass ai signals and how to use them -> this should be the equivalent to delegates and events -> and the reloading the shared fragments should only occur then
 		// Get the Niagara agent representation frag for the system
@@ -269,24 +294,8 @@ void UNiagaraAgentRepProcessor::RegisterProperties(FMassExecutionContext& Contex
 	// Get the children animation states
 	ChildrenAnimationStates = AgentNiagaraRepSharedFrag.ChildrenAnimationStates;
 
-	// Get the agent representation actor //TODO: this works but it could be better
-	NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
-
-	// Get the Time Dilation Subsystem
-	TimeDilationSubSystem = Context.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
-
-	// Get the representation subsystem
-	RepresentationSubsystem = Context.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
-
 	// Map the agent count to the array
 	MapAgentCountToArray(Context.GetMutableSharedFragment<FNiagaraStatsFragment>());
-
-	// check we got the subsystems -> if not then we need to return and not update the register flag
-	if (TimeDilationSubSystem == nullptr || RepresentationSubsystem == nullptr ||
-		NiagaraAgentRepActor == nullptr)
-	{
-		return;
-	}
 
 	bRegisteredProperties = true;
 }
