@@ -4,6 +4,7 @@
 #include "Util/WidgetUtilHelpers.h"
 
 #include "Components/ComboBoxString.h"
+#include "Components/CustomSlateWidgets/FieldAndTextWidget.h"
 
 
 WidgetUtilHelpers::WidgetUtilHelpers()
@@ -52,13 +53,57 @@ void WidgetUtilHelpers::UpdateComboBoxOptions(TObjectPtr<UComboBoxString> ComboB
 }
 
 void WidgetUtilHelpers::FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option,
-	bool bSetSelection)
+        bool bSetSelection)
 {
-	if (ComboBox->IsValidLowLevel() && ComboBox->FindOptionIndex(Option) != INDEX_NONE)
-	{
-		if (bSetSelection)
-		{
-			ComboBox->SetSelectedOption(Option);
-		}
-	}
+        if (ComboBox->IsValidLowLevel() && ComboBox->FindOptionIndex(Option) != INDEX_NONE)
+        {
+                if (bSetSelection)
+                {
+                        ComboBox->SetSelectedOption(Option);
+                }
+        }
+}
+
+void WidgetUtilHelpers::UpdateTextIfChanged(UFieldAndTextWidget* Widget, const FText& NewText)
+{
+        if (!Widget) return;
+
+        if (!Widget->FieldText.EqualTo(NewText))
+        {
+                Widget->SetFieldText(NewText);
+        }
+}
+
+void WidgetUtilHelpers::UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32 NewNumber)
+{
+        if (!Widget) return;
+
+        FText NewText = FText::AsNumber(NewNumber);
+        if (!Widget->FieldText.EqualTo(NewText))
+        {
+                Widget->SetFieldText(NewText);
+        }
+}
+
+void WidgetUtilHelpers::UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float NewFloat)
+{
+        if (!Widget) return;
+
+        FText NewText = FText::FromString(FString::Printf(TEXT("%.2f"), NewFloat));
+        if (!Widget->FieldText.EqualTo(NewText))
+        {
+                Widget->SetFieldText(NewText);
+        }
+}
+
+void WidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec)
+{
+        if (!Widget) return;
+
+        FText NewText = FText::FromString(FString::Printf(TEXT("%.2f, %.2f, %.2f"), Vec.X, Vec.Y, Vec.Z));
+
+        if (!Widget->FieldText.EqualTo(NewText))
+        {
+                Widget->SetFieldText(NewText);
+        }
 }

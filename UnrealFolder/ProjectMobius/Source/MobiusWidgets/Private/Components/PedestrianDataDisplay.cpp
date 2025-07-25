@@ -7,6 +7,7 @@
 #include "Components/GridSlot.h"
 #include "Components/TextBlock.h"
 #include "Components/CustomSlateWidgets/FieldAndTextWidget.h"
+#include "Util/WidgetUtilHelpers.h"
 #include "InWorldUI/AgentInfoDisplay.h"
 #include "Subsystems/StatisticSubsystem.h"
 
@@ -131,53 +132,8 @@ void UPedestrianDataDisplay::SetupTextBlockTitles() const
 		TitleFieldWidget6->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
-//TODO:Move these lambdas to the text utility helper interface/class
 void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 {
-	auto UpdateIfChanged = [](UFieldAndTextWidget* Widget, const FText& NewText)
-	{
-		if (!Widget) return;
-
-		if (!Widget->FieldText.EqualTo(NewText))
-		{
-			Widget->SetFieldText(NewText);
-		}
-	};
-
-	auto UpdateIfChangedNumber = [](UFieldAndTextWidget* Widget, int32 NewNumber)
-	{
-		if (!Widget) return;
-
-		FText NewText = FText::AsNumber(NewNumber);
-		if (!Widget->FieldText.EqualTo(NewText))
-		{
-			Widget->SetFieldText(NewText);
-		}
-	};
-
-	auto UpdateIfChangedFloat = [](UFieldAndTextWidget* Widget, float NewFloat)
-	{
-		if (!Widget) return;
-
-		FText NewText = FText::FromString(FString::Printf(TEXT("%.2f"), NewFloat));
-		if (!Widget->FieldText.EqualTo(NewText))
-		{
-			Widget->SetFieldText(NewText);
-		}
-	};
-
-	auto UpdateIfChangedVector = [](UFieldAndTextWidget* Widget, const FVector& Vec)
-	{
-		if (!Widget) return;
-
-		FText NewText = FText::FromString(
-			FString::Printf(TEXT("%.2f, %.2f, %.2f"), Vec.X, Vec.Y, Vec.Z));
-
-		if (!Widget->FieldText.EqualTo(NewText))
-		{
-			Widget->SetFieldText(NewText);
-		}
-	};
 
 	auto LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->SelectedAgentData;
 
@@ -195,10 +151,10 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
                        if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() != ESlateVisibility::Collapsed)
                        {
                                // Hide the grid panel if no agent is selected and clear old fields
-                               UpdateIfChangedNumber(TitleFieldWidgets[0], -1);
+                               WidgetUtilHelpers::UpdateNumberIfChanged(TitleFieldWidgets[0], -1);
                                for (int32 i = 1; i < TitleFieldWidgets.Num(); ++i)
                                {
-                                       UpdateIfChanged(TitleFieldWidgets[i], FText::FromString(TEXT("N/A")));
+                                       WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[i], FText::FromString(TEXT("N/A"))); 
                                }
                                WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Collapsed);
 
@@ -210,9 +166,9 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
                {
                        if (TitleFieldWidgets.Num() >= 8)
                        {
-                               UpdateIfChanged(TitleFieldWidgets[4], FText::FromString(TEXT("N/A")));
-                               UpdateIfChanged(TitleFieldWidgets[5], FText::FromString(TEXT("N/A")));
-                               UpdateIfChanged(TitleFieldWidgets[7], FText::FromString(TEXT("N/A")));
+                               WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[4], FText::FromString(TEXT("N/A")));
+                               WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[5], FText::FromString(TEXT("N/A")));
+                               WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[7], FText::FromString(TEXT("N/A")));
                        }
                }
 		
@@ -233,14 +189,14 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		
                if (TitleFieldWidgets.Num() >= 8)
                {
-                       UpdateIfChangedNumber(TitleFieldWidgets[0], LastUpdatedAgentMeshViewerData.AgentID);
-                       UpdateIfChanged(TitleFieldWidgets[1], LastUpdatedAgentMeshViewerData.AgentName);
-                       UpdateIfChanged(TitleFieldWidgets[2], LastUpdatedAgentMeshViewerData.Gender);
-                       UpdateIfChanged(TitleFieldWidgets[3], LastUpdatedAgentMeshViewerData.Demographic);
-                       UpdateIfChangedFloat(TitleFieldWidgets[4], LastUpdatedAgentMeshViewerData.AgentSpeed);
-                       UpdateIfChangedFloat(TitleFieldWidgets[5], LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
-                       UpdateIfChangedFloat(TitleFieldWidgets[6], LastUpdatedAgentMeshViewerData.AgentHeight);
-                       UpdateIfChangedVector(TitleFieldWidgets[7], LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+                       WidgetUtilHelpers::UpdateNumberIfChanged(TitleFieldWidgets[0], LastUpdatedAgentMeshViewerData.AgentID);
+                       WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[1], LastUpdatedAgentMeshViewerData.AgentName);
+                       WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[2], LastUpdatedAgentMeshViewerData.Gender);
+                       WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[3], LastUpdatedAgentMeshViewerData.Demographic);
+                       WidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[4], LastUpdatedAgentMeshViewerData.AgentSpeed);
+                       WidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[5], LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
+                       WidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[6], LastUpdatedAgentMeshViewerData.AgentHeight);
+                       WidgetUtilHelpers::UpdateVectorIfChanged(TitleFieldWidgets[7], LastUpdatedAgentMeshViewerData.AgentWorldPosition);
                }
 		
 	}
