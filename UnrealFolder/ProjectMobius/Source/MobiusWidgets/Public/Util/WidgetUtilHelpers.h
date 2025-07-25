@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 
+class UWidget;
 class UComboBoxString;
 class UFieldAndTextWidget;
 /**
@@ -68,5 +69,5 @@ public:
 	 * @param[EHorizontalAlignment] HAlign Desired horizontal alignment
 	 * @param[EVerticalAlignment] VAlign Desired vertical alignment
 	 */
-	static void SetGridSlotAlignment(UFieldAndTextWidget* Widget, EHorizontalAlignment HAlign, EVerticalAlignment VAlign);
+	static void SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign, EVerticalAlignment VAlign);
 };

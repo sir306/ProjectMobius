@@ -109,7 +109,7 @@ void WidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const
         }
 }
 
-void WidgetUtilHelpers::SetGridSlotAlignment(UFieldAndTextWidget* Widget, EHorizontalAlignment HAlign,
+void WidgetUtilHelpers::SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign,
 	EVerticalAlignment VAlign)
 {
 	if (!Widget)
