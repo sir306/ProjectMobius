@@ -14,7 +14,10 @@ void UPedestrianDataDisplay::SynchronizeProperties()
 {
 
 	
-	Super::SynchronizeProperties();
+        Super::SynchronizeProperties();
+       TitleFieldWidgets = {TitleFieldWidget1, TitleFieldWidget2, TitleFieldWidget3,
+                               TitleFieldWidget4, TitleFieldWidget5, TitleFieldWidget6,
+                               TitleFieldWidget7, TitleFieldWidget8};
 	// Set up the titles for the text blocks
 	SetupTextBlockTitles();
 	// Update the text blocks with the last updated agent data
@@ -25,8 +28,11 @@ void UPedestrianDataDisplay::SynchronizeProperties()
 
 void UPedestrianDataDisplay::NativePreConstruct()
 {
-	Super::NativePreConstruct();
-	ConfigureTextBlockStyles();
+        Super::NativePreConstruct();
+       TitleFieldWidgets = {TitleFieldWidget1, TitleFieldWidget2, TitleFieldWidget3,
+                               TitleFieldWidget4, TitleFieldWidget5, TitleFieldWidget6,
+                               TitleFieldWidget7, TitleFieldWidget8};
+        ConfigureTextBlockStyles();
 
 	// Set up the titles for the text blocks
 	SetupTextBlockTitles();
@@ -38,7 +44,10 @@ void UPedestrianDataDisplay::NativePreConstruct()
 
 void UPedestrianDataDisplay::NativeConstruct()
 {
-	Super::NativeConstruct();
+        Super::NativeConstruct();
+       TitleFieldWidgets = {TitleFieldWidget1, TitleFieldWidget2, TitleFieldWidget3,
+                               TitleFieldWidget4, TitleFieldWidget5, TitleFieldWidget6,
+                               TitleFieldWidget7, TitleFieldWidget8};
 
 	// bind to the stats subsystem to update the data display
 	if (auto World = GetWorld())
@@ -86,14 +95,10 @@ void UPedestrianDataDisplay::ConfigureTextBlockStyles() const
 		}
 	};
 
-	SetTextBlockAlignment(TitleFieldWidget1, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget2, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget3, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget4, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget5, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget6, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget7, HAlign_Fill, VAlign_Center);
-	SetTextBlockAlignment(TitleFieldWidget8, HAlign_Fill, VAlign_Center);
+       for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+       {
+               SetTextBlockAlignment(Widget, HAlign_Fill, VAlign_Center);
+       }
 	// SetTextBlockAlignment(TitleFieldWidget1, HAlign_Center, VAlign_Center);
 	// SetTextBlockAlignment(TitleFieldWidget2, HAlign_Center, VAlign_Center);
 	// SetTextBlockAlignment(TitleFieldWidget3, HAlign_Center, VAlign_Center);
@@ -106,24 +111,18 @@ void UPedestrianDataDisplay::ConfigureTextBlockStyles() const
 
 void UPedestrianDataDisplay::SetupTextBlockTitles() const
 {
-	const TArray<TPair<UFieldAndTextWidget*, FString>> FieldTitles = {
-		{ TitleFieldWidget1, TEXT("Agent ID") },
-		{ TitleFieldWidget2, TEXT("Name") },
-		{ TitleFieldWidget3, TEXT("Gender") },
-		{ TitleFieldWidget4, TEXT("Demographic") },
-		{ TitleFieldWidget5, TEXT("Speed") },
-		{ TitleFieldWidget6, TEXT("Gait Speed") },
-		{ TitleFieldWidget7, TEXT("Height") },
-		{ TitleFieldWidget8, TEXT("Position") }
-	};
+       const TArray<FString> FieldTitles = {
+               TEXT("Agent ID"), TEXT("Name"), TEXT("Gender"), TEXT("Demographic"),
+               TEXT("Speed"), TEXT("Gait Speed"), TEXT("Height"), TEXT("Position")
+       };
 
-	for (const TPair<UFieldAndTextWidget*, FString>& Pair : FieldTitles)
-	{
-		if (Pair.Key)
-		{
-			Pair.Key->SetTitleText(FText::FromString(Pair.Value));
-		}
-	}
+       for (int32 Index = 0; Index < TitleFieldWidgets.Num(); ++Index)
+       {
+               if (TitleFieldWidgets[Index])
+               {
+                       TitleFieldWidgets[Index]->SetTitleText(FText::FromString(FieldTitles[Index]));
+               }
+       }
 
 	// TODO: for now widget field 6 will be collapsed and not used as the gait speed is not yet implemented
 	// NOTE: the grid panel for this row has been set to 0 so will need updating to the correct value when we implement the gait speed
@@ -187,43 +186,43 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		LastUpdatedAgentMeshViewerData = InWorldSMeshDisplay->HoveredAgentData;
 	}
 
-	if (LastUpdatedAgentMeshViewerData.AgentID == -1 || LastUpdatedAgentMeshViewerData.AgentID == -2) // Check if no agent is selected or agent has completed sim
-	{
-		// We had an agent that was selected but now it is not selected
-		if (TitleFieldWidget1 && LastUpdatedAgentMeshViewerData.AgentID == -1)
-		{
-			// collapse the header grid panel - only if it is visible
-			if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() != ESlateVisibility::Collapsed)
-			{
-				// Hide the grid panel if no agent is selected and clear old fields
-				UpdateIfChangedNumber(TitleFieldWidget1, -1);
-				UpdateIfChanged(TitleFieldWidget2, FText::FromString("N/A"));
-				UpdateIfChanged(TitleFieldWidget3, FText::FromString("N/A"));
-				UpdateIfChanged(TitleFieldWidget4, FText::FromString("N/A"));
-				UpdateIfChanged(TitleFieldWidget5, FText::FromString("N/A"));
-				UpdateIfChanged(TitleFieldWidget6, FText::FromString("N/A"));
-				UpdateIfChanged(TitleFieldWidget7, FText::FromString("N/A"));
-				UpdateIfChanged(TitleFieldWidget8, FText::FromString("N/A"));
-				WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Collapsed);
+       if (LastUpdatedAgentMeshViewerData.AgentID == -1 || LastUpdatedAgentMeshViewerData.AgentID == -2) // Check if no agent is selected or agent has completed sim
+       {
+               // We had an agent that was selected but now it is not selected
+               if (TitleFieldWidgets.IsValidIndex(0) && LastUpdatedAgentMeshViewerData.AgentID == -1)
+               {
+                       // collapse the header grid panel - only if it is visible
+                       if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() != ESlateVisibility::Collapsed)
+                       {
+                               // Hide the grid panel if no agent is selected and clear old fields
+                               UpdateIfChangedNumber(TitleFieldWidgets[0], -1);
+                               for (int32 i = 1; i < TitleFieldWidgets.Num(); ++i)
+                               {
+                                       UpdateIfChanged(TitleFieldWidgets[i], FText::FromString(TEXT("N/A")));
+                               }
+                               WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Collapsed);
 
 				// Notify any listeners that the visibility has changed
 				OnSelectedAgentComponentNowVisible.Broadcast(false);
 			}
 		}
-		else // Agent has left sim
-		{
-			UpdateIfChanged(TitleFieldWidget5, FText::FromString("N/A"));
-			UpdateIfChanged(TitleFieldWidget6, FText::FromString("N/A"));
-			UpdateIfChanged(TitleFieldWidget8, FText::FromString("N/A"));
-		}
+               else // Agent has left sim
+               {
+                       if (TitleFieldWidgets.Num() >= 8)
+                       {
+                               UpdateIfChanged(TitleFieldWidgets[4], FText::FromString(TEXT("N/A")));
+                               UpdateIfChanged(TitleFieldWidgets[5], FText::FromString(TEXT("N/A")));
+                               UpdateIfChanged(TitleFieldWidgets[7], FText::FromString(TEXT("N/A")));
+                       }
+               }
 		
 	}
 	else
 	{
 		// if the widget is collapsed and we have selected an agent, with a new ID we should show the grid panel
-		if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() == ESlateVisibility::Collapsed
-			&& !TitleFieldWidget1->FieldText.EqualTo(FText::AsNumber(LastUpdatedAgentMeshViewerData.AgentID)))
-		{
+               if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() == ESlateVisibility::Collapsed
+                       && TitleFieldWidgets.IsValidIndex(0) && !TitleFieldWidgets[0]->FieldText.EqualTo(FText::AsNumber(LastUpdatedAgentMeshViewerData.AgentID)))
+               {
 			WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Visible);// should change to visible but self not hit testable -> TODO: update BP logic to handle this
 
 			// Notify any listeners that the visibility has changed
@@ -232,14 +231,17 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		}
 		
 		
-		UpdateIfChangedNumber(TitleFieldWidget1, LastUpdatedAgentMeshViewerData.AgentID);
-		UpdateIfChanged(TitleFieldWidget2, LastUpdatedAgentMeshViewerData.AgentName);
-		UpdateIfChanged(TitleFieldWidget3, LastUpdatedAgentMeshViewerData.Gender);
-		UpdateIfChanged(TitleFieldWidget4, LastUpdatedAgentMeshViewerData.Demographic);
-		UpdateIfChangedFloat(TitleFieldWidget5, LastUpdatedAgentMeshViewerData.AgentSpeed);
-		UpdateIfChangedFloat(TitleFieldWidget6, LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
-		UpdateIfChangedFloat(TitleFieldWidget7, LastUpdatedAgentMeshViewerData.AgentHeight);
-		UpdateIfChangedVector(TitleFieldWidget8, LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+               if (TitleFieldWidgets.Num() >= 8)
+               {
+                       UpdateIfChangedNumber(TitleFieldWidgets[0], LastUpdatedAgentMeshViewerData.AgentID);
+                       UpdateIfChanged(TitleFieldWidgets[1], LastUpdatedAgentMeshViewerData.AgentName);
+                       UpdateIfChanged(TitleFieldWidgets[2], LastUpdatedAgentMeshViewerData.Gender);
+                       UpdateIfChanged(TitleFieldWidgets[3], LastUpdatedAgentMeshViewerData.Demographic);
+                       UpdateIfChangedFloat(TitleFieldWidgets[4], LastUpdatedAgentMeshViewerData.AgentSpeed);
+                       UpdateIfChangedFloat(TitleFieldWidgets[5], LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
+                       UpdateIfChangedFloat(TitleFieldWidgets[6], LastUpdatedAgentMeshViewerData.AgentHeight);
+                       UpdateIfChangedVector(TitleFieldWidgets[7], LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+               }
 		
 	}
 	SetupTitleFieldWidgetFontSize();
@@ -340,16 +342,12 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 	// // Reset Grid Panel to default size
 	// ResizeScreenGridToDefaultSize();
 	
-	// Array of all title field widgets
-	TArray<UFieldAndTextWidget*> TitleFieldWidgets = {
-		TitleFieldWidget1, TitleFieldWidget2, TitleFieldWidget3,
-		TitleFieldWidget4, TitleFieldWidget5, TitleFieldWidget6,
-		TitleFieldWidget7, TitleFieldWidget8
-	};
-	FVector2D TextSize(0.0f, 0.0f);
+       // Array of all title field widgets
+       const TArray<UFieldAndTextWidget*> LocalWidgets = TitleFieldWidgets;
+       FVector2D TextSize(0.0f, 0.0f);
 	
 	// loop through all the title field widgets and get the largest text measurement size
-	for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+       for (UFieldAndTextWidget* Widget : LocalWidgets)
 	{
 		if (Widget)
 		{
@@ -359,7 +357,7 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 		}
 	}
 
-	float DefaultFontSize = TitleFieldWidgets[0]->GetFontSize(); // Get the default font size from the first widget
+       float DefaultFontSize = LocalWidgets[0] ? LocalWidgets[0]->GetFontSize() : 10.f; // Get the default font size from the first widget
 	//TODO: this is not right?? maybe being called before the widget is fully constructed? or a prepass has been completed
 	// Calculate the box width from the grid panel
 	FVector2D BoxSize = WidgetHeadGridPanel->GetDesiredSize();// Desired size may not be the value we want
@@ -390,7 +388,7 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 	{
 		// Recalculate Text size for a font size of 10
 		// loop through all the title field widgets and get the largest text measurement size
-		for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+               for (UFieldAndTextWidget* Widget : LocalWidgets)
 		{
 			if (Widget)
 			{
@@ -404,7 +402,7 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 	else
 	{
 		// Set the font size for each title field widget
-		for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
+               for (UFieldAndTextWidget* Widget : LocalWidgets)
 		{
 			if (Widget)
 			{

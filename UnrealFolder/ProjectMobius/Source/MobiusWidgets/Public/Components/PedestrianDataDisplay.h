@@ -53,29 +53,33 @@ public:
 	UPROPERTY(EditAnywhere,BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UGridPanel> WidgetHeadGridPanel;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget1;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget2;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget2;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget3;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget3;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget4;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget4;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget5;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget5;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget6;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget6;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget7;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget7;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
-	TObjectPtr<UFieldAndTextWidget> TitleFieldWidget8;
+       UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
+       TObjectPtr<UFieldAndTextWidget> TitleFieldWidget8;
+
+       /** Convenience array holding all title field widgets for iteration */
+       UPROPERTY(Transient)
+       TArray<TObjectPtr<UFieldAndTextWidget>> TitleFieldWidgets;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UAgentInfoDisplay> InWorldSMeshDisplay;
