@@ -219,97 +219,144 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			//TODO: REFACTOR THIS LOOP, too much code in here and it is not readable and has repetitive code
 			auto Entities = Context.GetEntities();
 
-			// loop through the entity info fragment and update the location and rotation
-			ParallelFor(Entities.Num(), [&](int32 i)
+			// // loop through the entity info fragment and update the location and rotation
+			// ParallelFor(Entities.Num(), [&](int32 i)
+			// {
+			// 	EntityRenderingFragment[i].bRenderAgent = false;
+			// 	int32 LookupIndex = EntityMovementFragment[i].EntityID;
+			// 	// if current and next movement samples are the same we dont need to interpolate or look at both
+			// 	if (bSamplesTheSame)
+			// 	{
+			// 		// find if this entity is in current lookup table
+			// 		if (EntityIDToCurrentMovementSampleIndexMap.Contains(LookupIndex))
+			// 		{
+			// 			// Get the value from the lookup table
+			// 			int32 LookupVal = EntityIDToCurrentMovementSampleIndexMap[LookupIndex];
+			// 			
+			// 			// if it is then we can update the location and rotation
+			// 			EntityMovementFragment[i].CurrentLocation = CurrentMovementSamples[LookupVal].Position;
+			// 			EntityMovementFragment[i].CurrentRotation = CurrentMovementSamples[LookupVal].Rotation;
+			// 			EntityRenderingFragment[i].bRenderAgent = true;
+			// 			EntityRenderingFragment[i].bReadyToDestroy = false;
+			// 			EntityMovementFragment[i].CurrentSpeed = CurrentMovementSamples[LookupVal].Speed;
+			// 			// did the animation bracket change
+			// 			EntityRenderingFragment[i].bAnimationChanged = static_cast<EPedestrianMovementBracket>(EntityMovementFragment[i].CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(CurrentMovementSamples[LookupVal].MovementBracket);
+			// 				
+			// 			EntityMovementFragment[i].CurrentMovementBracket = CurrentMovementSamples[LookupVal].MovementBracket;
+			// 		}
+			// 		else
+			// 		{
+			// 			EntityRenderingFragment[i].bRenderAgent = false;
+			// 			EntityRenderingFragment[i].bReadyToDestroy = true;
+			// 		}
+			// 	}
+			// 	else
+			// 	{
+			// 		// find if this entity is in current lookup table
+			// 		if (EntityIDToCurrentMovementSampleIndexMap.Contains(EntityMovementFragment[i].EntityID))
+			// 		{
+			// 			// Found a match in current see if it is in next
+			// 			if (EntityIDToNextMovementSampleIndexMap.Contains(EntityMovementFragment[i].EntityID))
+			// 			{
+			// 				// found a match in next so interpolate
+			// 				int32 CurrentLookupVal = EntityIDToCurrentMovementSampleIndexMap[EntityMovementFragment[i].EntityID];
+			// 				int32 NextLookupVal = EntityIDToNextMovementSampleIndexMap[EntityMovementFragment[i].EntityID];
+			// 				// Get the samples // TODO: Better to not store index and use once just while debugging
+			// 				const FSimMovementSample& CurrentMovementSample = CurrentMovementSamples[CurrentLookupVal];
+			// 				const FSimMovementSample& NextMovementSample = NextMovementSamples[NextLookupVal];
+			//
+			// 				FVector StartLocation = CurrentMovementSample.Position;
+			// 				FVector EndLocation = NextMovementSample.Position;
+			// 				FRotator StartRotation = CurrentMovementSample.Rotation;
+			// 				FRotator EndRotation = NextMovementSample.Rotation;
+			//
+			// 				TPair<FVector, FRotator> InterpolatedValues = LinearInterpolate(StartLocation, EndLocation, StartRotation, EndRotation);
+			// 				UpdateEntityInfoFragment(EntityMovementFragment[i], EntityRenderingFragment[i], InterpolatedValues.Key, InterpolatedValues.Value, true);
+			// 				EntityRenderingFragment[i].bReadyToDestroy = false;
+			//
+			// 				// Update the current speed
+			// 				EntityMovementFragment[i].CurrentSpeed = FMath::Lerp(CurrentMovementSample.Speed, NextMovementSample.Speed, TimeStepPercentage);
+			//
+			// 				// did the animation bracket change
+			// 				EntityRenderingFragment[i].bAnimationChanged = static_cast<EPedestrianMovementBracket>(EntityMovementFragment[i].CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(NextMovementSample.MovementBracket);
+			//
+			// 				// Update the anim bracket to be the current one
+			// 				EntityMovementFragment[i].CurrentMovementBracket = CurrentMovementSample.MovementBracket;
+			// 			}
+			// 			else
+			// 			{
+			// 				// Get the value from the lookup table
+			// 				int32 LookupVal = EntityIDToCurrentMovementSampleIndexMap[LookupIndex];
+			// 			
+			// 				// if it is then we can update the location and rotation
+			// 				EntityMovementFragment[i].CurrentLocation = CurrentMovementSamples[LookupVal].Position;
+			// 				EntityMovementFragment[i].CurrentRotation = CurrentMovementSamples[LookupVal].Rotation;
+			// 				EntityRenderingFragment[i].bRenderAgent = true;
+			// 				EntityRenderingFragment[i].bReadyToDestroy = false;
+			// 				EntityMovementFragment[i].CurrentSpeed = CurrentMovementSamples[LookupVal].Speed;
+			// 				// did the animation bracket change
+			// 				EntityRenderingFragment[i].bAnimationChanged = static_cast<EPedestrianMovementBracket>(EntityMovementFragment[i].CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(CurrentMovementSamples[LookupVal].MovementBracket);
+			// 				
+			// 				EntityMovementFragment[i].CurrentMovementBracket = CurrentMovementSamples[LookupVal].MovementBracket;
+			// 			}
+			// 			
+			// 			
+			// 		}
+			// 		else
+			// 		{
+			// 			EntityRenderingFragment[i].bRenderAgent = false;
+			// 			EntityRenderingFragment[i].bReadyToDestroy = true;
+			// 		}
+			// 	}
+			// });
+			//
+
+
+// [2] Main loop
+ParallelFor(Entities.Num(), [&](int32 i)
+{
+	FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
+	FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
+	RenderFrag.bRenderAgent = false;
+
+	const int32 EntityID = MoveFrag.EntityID;
+
+	if (bSamplesTheSame)
+	{
+		if (int32* SampleIndex = EntityIDToCurrentMovementSampleIndexMap.Find(EntityID))
+		{
+			AssignFromSample(MoveFrag, RenderFrag, CurrentMovementSamples[*SampleIndex], true);
+		}
+		else
+		{
+			RenderFrag.bReadyToDestroy = true;
+		}
+	}
+	else
+	{
+		const int32* CurIndex = EntityIDToCurrentMovementSampleIndexMap.Find(EntityID);
+		const int32* NextIndex = EntityIDToNextMovementSampleIndexMap.Find(EntityID);
+
+		if (CurIndex)
+		{
+			if (NextIndex)
 			{
-				EntityRenderingFragment[i].bRenderAgent = false;
-				int32 LookupIndex = EntityMovementFragment[i].EntityID;
-				// if current and next movement samples are the same we dont need to interpolate or look at both
-				if (bSamplesTheSame)
-				{
-					// find if this entity is in current lookup table
-					if (EntityIDToCurrentMovementSampleIndexMap.Contains(LookupIndex))
-					{
-						// Get the value from the lookup table
-						int32 LookupVal = EntityIDToCurrentMovementSampleIndexMap[LookupIndex];
-						
-						// if it is then we can update the location and rotation
-						EntityMovementFragment[i].CurrentLocation = CurrentMovementSamples[LookupVal].Position;
-						EntityMovementFragment[i].CurrentRotation = CurrentMovementSamples[LookupVal].Rotation;
-						EntityRenderingFragment[i].bRenderAgent = true;
-						EntityRenderingFragment[i].bReadyToDestroy = false;
-						EntityMovementFragment[i].CurrentSpeed = CurrentMovementSamples[LookupVal].Speed;
-						// did the animation bracket change
-						EntityRenderingFragment[i].bAnimationChanged = static_cast<EPedestrianMovementBracket>(EntityMovementFragment[i].CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(CurrentMovementSamples[LookupVal].MovementBracket);
-							
-						EntityMovementFragment[i].CurrentMovementBracket = CurrentMovementSamples[LookupVal].MovementBracket;
-					}
-					else
-					{
-						EntityRenderingFragment[i].bRenderAgent = false;
-						EntityRenderingFragment[i].bReadyToDestroy = true;
-					}
-				}
-				else
-				{
-					// find if this entity is in current lookup table
-					if (EntityIDToCurrentMovementSampleIndexMap.Contains(EntityMovementFragment[i].EntityID))
-					{
-						// Found a match in current see if it is in next
-						if (EntityIDToNextMovementSampleIndexMap.Contains(EntityMovementFragment[i].EntityID))
-						{
-							// found a match in next so interpolate
-							int32 CurrentLookupVal = EntityIDToCurrentMovementSampleIndexMap[EntityMovementFragment[i].EntityID];
-							int32 NextLookupVal = EntityIDToNextMovementSampleIndexMap[EntityMovementFragment[i].EntityID];
-							// Get the samples // TODO: Better to not store index and use once just while debugging
-							const FSimMovementSample& CurrentMovementSample = CurrentMovementSamples[CurrentLookupVal];
-							const FSimMovementSample& NextMovementSample = NextMovementSamples[NextLookupVal];
+				const FSimMovementSample& CurSample = CurrentMovementSamples[*CurIndex];
+				const FSimMovementSample& NextSample = NextMovementSamples[*NextIndex];
 
-							FVector StartLocation = CurrentMovementSample.Position;
-							FVector EndLocation = NextMovementSample.Position;
-							FRotator StartRotation = CurrentMovementSample.Rotation;
-							FRotator EndRotation = NextMovementSample.Rotation;
-
-							TPair<FVector, FRotator> InterpolatedValues = LinearInterpolate(StartLocation, EndLocation, StartRotation, EndRotation);
-							UpdateEntityInfoFragment(EntityMovementFragment[i], EntityRenderingFragment[i], InterpolatedValues.Key, InterpolatedValues.Value, true);
-							EntityRenderingFragment[i].bReadyToDestroy = false;
-
-							// Update the current speed
-							EntityMovementFragment[i].CurrentSpeed = FMath::Lerp(CurrentMovementSample.Speed, NextMovementSample.Speed, TimeStepPercentage);
-
-							// did the animation bracket change
-							EntityRenderingFragment[i].bAnimationChanged = static_cast<EPedestrianMovementBracket>(EntityMovementFragment[i].CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(NextMovementSample.MovementBracket);
-
-							// Update the anim bracket to be the current one
-							EntityMovementFragment[i].CurrentMovementBracket = CurrentMovementSample.MovementBracket;
-						}
-						else
-						{
-							// Get the value from the lookup table
-							int32 LookupVal = EntityIDToCurrentMovementSampleIndexMap[LookupIndex];
-						
-							// if it is then we can update the location and rotation
-							EntityMovementFragment[i].CurrentLocation = CurrentMovementSamples[LookupVal].Position;
-							EntityMovementFragment[i].CurrentRotation = CurrentMovementSamples[LookupVal].Rotation;
-							EntityRenderingFragment[i].bRenderAgent = true;
-							EntityRenderingFragment[i].bReadyToDestroy = false;
-							EntityMovementFragment[i].CurrentSpeed = CurrentMovementSamples[LookupVal].Speed;
-							// did the animation bracket change
-							EntityRenderingFragment[i].bAnimationChanged = static_cast<EPedestrianMovementBracket>(EntityMovementFragment[i].CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(CurrentMovementSamples[LookupVal].MovementBracket);
-							
-							EntityMovementFragment[i].CurrentMovementBracket = CurrentMovementSamples[LookupVal].MovementBracket;
-						}
-						
-						
-					}
-					else
-					{
-						EntityRenderingFragment[i].bRenderAgent = false;
-						EntityRenderingFragment[i].bReadyToDestroy = true;
-					}
-				}
-			});
-			
+				InterpolateAndAssign(MoveFrag, RenderFrag, CurSample, NextSample, TimeStepPercentage);
+			}
+			else
+			{
+				AssignFromSample(MoveFrag, RenderFrag, CurrentMovementSamples[*CurIndex], true);
+			}
+		}
+		else
+		{
+			RenderFrag.bReadyToDestroy = true;
+		}
+	}
+});
 
 			
 			{// TArray<int32> EntitiesToDestroy;
@@ -395,6 +442,34 @@ TPair<FVector, FRotator> UPedestrianMovementProcessor::LinearInterpolate(const F
 	FRotator NewRotation = FMath::Lerp(StartRotation, EndRotation, TimeStepPercentage);
 	// Return the new location and rotation
 	return TPair<FVector, FRotator>(NewLocation, NewRotation);
+}
+
+void UPedestrianMovementProcessor::AssignFromSample(FEntityMovementFragment& MoveFrag,
+	FEntityRenderingFragment& RenderFrag, const FSimMovementSample& Sample, bool bEnableRender)
+{
+	MoveFrag.CurrentLocation = Sample.Position;
+	MoveFrag.CurrentRotation = Sample.Rotation;
+	MoveFrag.CurrentSpeed = Sample.Speed;
+
+	RenderFrag.bRenderAgent = bEnableRender;
+	RenderFrag.bReadyToDestroy = !bEnableRender;
+	RenderFrag.bAnimationChanged = static_cast<EPedestrianMovementBracket>(MoveFrag.CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(Sample.MovementBracket);
+
+	MoveFrag.CurrentMovementBracket = Sample.MovementBracket;
+}
+
+void UPedestrianMovementProcessor::InterpolateAndAssign(FEntityMovementFragment& MoveFrag,
+                                                        FEntityRenderingFragment& RenderFrag, const FSimMovementSample& Current, const FSimMovementSample& Next,
+                                                        float LerpAlpha)
+{
+	const TPair<FVector, FRotator> Interp = LinearInterpolate(Current.Position, Next.Position, Current.Rotation, Next.Rotation);
+	UpdateEntityInfoFragment(MoveFrag, RenderFrag, Interp.Key, Interp.Value, true);
+
+	RenderFrag.bReadyToDestroy = false;
+	MoveFrag.CurrentSpeed = FMath::Lerp(Current.Speed, Next.Speed, LerpAlpha);
+
+	RenderFrag.bAnimationChanged = static_cast<EPedestrianMovementBracket>(MoveFrag.CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(Next.MovementBracket);
+	MoveFrag.CurrentMovementBracket = Current.MovementBracket;
 }
 
 bool UPedestrianMovementProcessor::IsThereDataToProcess(const FMassExecutionContext& ExecutionContext) const

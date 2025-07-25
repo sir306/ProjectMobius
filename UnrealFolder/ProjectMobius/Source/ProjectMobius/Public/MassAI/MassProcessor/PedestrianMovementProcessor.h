@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "MassProcessor.h"
+#include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "PedestrianMovementProcessor.generated.h"
 
 
@@ -109,6 +110,20 @@ protected:
 	 * @return[TPair<FVector, FRotator>]: The interpolated location and rotation
 	 */
 	TPair<FVector,FRotator> LinearInterpolate(const FVector& StartLocation, const FVector& EndLocation, const FRotator& StartRotation, const FRotator& EndRotation) const;
+	// [1] Helpers
+	inline void AssignFromSample(
+		FEntityMovementFragment& MoveFrag, 
+		FEntityRenderingFragment& RenderFrag, 
+		const FSimMovementSample& Sample, 
+		bool bEnableRender);
+
+	inline void InterpolateAndAssign(
+		FEntityMovementFragment& MoveFrag, 
+		FEntityRenderingFragment& RenderFrag, 
+		const FSimMovementSample& Current, 
+		const FSimMovementSample& Next, 
+		float LerpAlpha);
+	
 	
 #pragma  endregion PROTECTED_METHODS
 	
