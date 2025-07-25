@@ -86,6 +86,15 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 
 	// reuse the array storage instead of reallocating
 	HeatmapLocations.Reset();
+
+	if (!bRegisteredProperties)
+	{
+		RegisterProperties(ExecutionContext);
+		if (!bRegisteredProperties)
+		{
+			return; // if properties are not registered, we cannot proceed
+		}
+	}
 	
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
@@ -165,15 +174,6 @@ void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 
 void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 {
-	if (!bRegisteredProperties)
-	{
-		RegisterProperties(Context);
-		if (!bRegisteredProperties)
-		{
-			return;
-		}
-	}
-
 	if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
 	{
 		ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
