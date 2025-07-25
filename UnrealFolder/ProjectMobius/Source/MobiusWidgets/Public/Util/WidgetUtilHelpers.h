@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 
 class UComboBoxString;
+class UFieldAndTextWidget;
 /**
  * 
  */
@@ -37,5 +38,25 @@ public:
 	 * @param[FString] Option The option to check for in the combo box
 	 * @param[bool] bSetSelection If true, will set the combo box to the option if it exists
 	 */
-	static void FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option, bool bSetSelection = true);
+        static void FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option, bool bSetSelection = true);
+
+        /**
+         * Update widget text only if it differs from the new value
+         */
+        static void UpdateTextIfChanged(UFieldAndTextWidget* Widget, const FText& NewText);
+
+        /**
+         * Update widget text with a number only if it differs from the new value
+         */
+        static void UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32 NewNumber);
+
+        /**
+         * Update widget text with a float formatted to two decimals only if different
+         */
+        static void UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float NewFloat);
+
+        /**
+         * Update widget text with a vector formatted to two decimals only if different
+         */
+        static void UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec);
 };
