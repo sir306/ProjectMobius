@@ -895,8 +895,13 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	      {
 		      AsyncTask(ENamedThreads::GameThread, [this]()
 		      {
+		      	RuntimeHeatmapMeshComponent->bUseComplexAsSimpleCollision = true;
+		      	RuntimeHeatmapMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				RuntimeHeatmapMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
+		      	RuntimeHeatmapMeshComponent->SetSimulatePhysics(false);
 			      // Generate the mesh section
-			      RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
+			      RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), true);
+		      	
 		      });
 	      });
 	
