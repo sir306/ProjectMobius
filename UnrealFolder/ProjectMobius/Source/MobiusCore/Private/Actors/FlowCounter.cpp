@@ -47,7 +47,7 @@ AFlowCounter::AFlowCounter()
 	// Set up the box component for flow counter trigger area
 	FlowCounterTriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("FlowCounterTriggerBox"));
 	FlowCounterTriggerBox->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
-	FlowCounterTriggerBox->SetBoxExtent(FVector(100.0f, 50.0f, 100.0f)); // Set the size of the box
+	UpdateFlowCounterTriggerBox();
 	
 
 	RootComponent->UpdateChildTransforms();
@@ -64,5 +64,47 @@ void AFlowCounter::BeginPlay()
 void AFlowCounter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+void AFlowCounter::ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation) const
+{
+	// if the pillars are not valid, return
+	if (!FlowCounterPillarMesh1 || !FlowCounterPillarMesh2)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FlowCounter Pillar Meshes are not valid!"));
+		return;
+	}
+
+	OutDistanceBetweenPillars = FVector::Dist(FlowCounterPillarMesh1->GetComponentLocation(), FlowCounterPillarMesh2->GetComponentLocation());
+
+	if (OutDistanceBetweenPillars <= 0.0f)
+	{
+		OutDistanceBetweenPillars = FVector::Dist(FlowCounterPillarMesh1->GetRelativeLocation(), FlowCounterPillarMesh2->GetRelativeLocation());
+	}
+
+	// center location is the average of the two pillar locations
+	OutCenterLocation = (FlowCounterPillarMesh1->GetComponentLocation() + FlowCounterPillarMesh2->GetComponentLocation()) / 2.0f;
+}
+
+void AFlowCounter::ResizeFlowCounterTriggerBoxExtent(const FVector& NewExtent)
+{
+}
+
+void AFlowCounter::UpdateFlowCounterTriggerBoxLocation(const FVector& NewLocation)
+{
+}
+
+void AFlowCounter::UpdateFlowCounterTriggerBox()
+{
+	if (FlowCounterTriggerBox == nullptr)
+	{
+		return;// Early exit if the trigger box is not valid
+	}
+	float DistanceBetweenPillars;
+	FVector CenterLocation;
+	ResizeFlowCounterTriggerBox(DistanceBetweenPillars, CenterLocation);
+	FlowCounterTriggerBox->SetBoxExtent(FVector(DistanceBetweenPillars / 2.0f, 50.0f, 100.0f));
+	FlowCounterTriggerBox->SetWorldLocation(CenterLocation);
+	// todo:need to work out the rotation of the box to match the pillars
 }
 

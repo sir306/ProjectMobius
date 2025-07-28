@@ -26,6 +26,34 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 #pragma region METHODS
+	/**
+	 * To Resize the trigger box for the flow counter, we need to get the distance between the two pillar meshes
+	 * @param[float] OutDistanceBetweenPillars The distance between the two pillar meshes
+	 * @param[FVector] OutCenterLocation The center location of two pillar meshes
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation) const;
+
+	/**
+	 * Resize extent of trigger box
+	 * @param[const FVector&] NewExtent The new extent of the trigger box
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void ResizeFlowCounterTriggerBoxExtent(const FVector& NewExtent);
+	
+	/**
+	 * Update location of trigger box
+	 * @param[const FVector&] NewLocation The new location of the trigger box
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void UpdateFlowCounterTriggerBoxLocation(const FVector& NewLocation);
+	
+	/**
+	 * Update trigger box a method to call when pillar placement changes/or when user confirms placement
+	 * or when the flow counter is placed in the world for the first time
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void UpdateFlowCounterTriggerBox();
 
 #pragma endregion METHODS 
 
@@ -43,7 +71,7 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Visuals", meta = (AllowPrivateAccess = "true"))
 	UStaticMeshComponent* FlowCounterPillarMesh2;
 	
-
+	// may want a reference to a widget for the flow counter to display the number of agents passing through
 	
 #pragma endregion PROPERTIES 
 };
