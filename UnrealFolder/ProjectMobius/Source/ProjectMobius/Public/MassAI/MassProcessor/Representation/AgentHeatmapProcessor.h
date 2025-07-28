@@ -112,6 +112,11 @@ private:
 	UPROPERTY()
 	TArray<FVector> HeatmapLocations;
 
+	/** Thread-safe queue container for heatmap locations */
+	UE::TConsumeAllMpmcQueue<FVector> LocationQueue; //TODO: Need to handle garbage collection of this queue
+	
+	TAtomic<int32> LastProcessedEntityCount = 0;
+
 	/** Active Number of heatmaps */
 	UPROPERTY()
 	int32 ActiveHeatmapCount = 0;

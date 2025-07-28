@@ -217,9 +217,37 @@ void UHeatmapSubsystem::UpdateHeatmaps(const FVector& AgentLocation)
 	}
 }
 
+void UHeatmapSubsystem::UpdateHeatmapsWithLocations_Mpmc(UE::TConsumeAllMpmcQueue<FVector>& LocationQueue)
+{
+	//BroadcastTotalAgentCount(LocationArray.Num());
+
+	if (Heatmaps.Num() <= 0)
+		return;
+
+	TArray<TArray<FVector>> ValidHeatmapLocations;
+	TArray<TArray<FVector>> BetweenValidHeatmapLocations;
+
+	// Drain queue only once
+	TArray<FVector> DrainedLocations;
+	LocationQueue.ConsumeAllLifo([&](const FVector& Loc)
+	{
+		DrainedLocations.Add(Loc);
+	});
+
+	//BroadcastTotalAgentCount(DrainedLocations.Num()); // If using a queue, we can broadcast the total count directly from the drained locations
+
+	//ComputeValidHeatmapLocations_Mpmc(LocationQueue, ValidHeatmapLocations, BetweenValidHeatmapLocations);
+	//ComputeValidHeatmapLocations_Mpmc(LocationQueue, ValidHeatmapLocations, BetweenValidHeatmapLocations, DrainedLocations);
+	
+	ComputeValidHeatmapLocations(DrainedLocations, ValidHeatmapLocations, BetweenValidHeatmapLocations);
+	BroadcastAgentCounts(ValidHeatmapLocations, BetweenValidHeatmapLocations);
+	//RunAsyncHeatmapUpdate_Mpmc(ValidHeatmapLocations, DrainedLocations);
+	RunAsyncHeatmapUpdate(DrainedLocations, ValidHeatmapLocations);
+}
+
 void UHeatmapSubsystem::UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray)
 {
-	BroadcastTotalAgentCount(LocationArray.Num());
+	//BroadcastTotalAgentCount(LocationArray.Num());
 
 	if (Heatmaps.Num() <= 0)
 		return;
@@ -364,10 +392,59 @@ void UHeatmapSubsystem::ProcessHeatmapGeneration()
 	GetWorld()->GetTimerManager().ClearTimer(HeatmapGenerationTimerHandle);
 }
 
+void UHeatmapSubsystem::ComputeValidHeatmapLocations_Mpmc(
+	UE::TConsumeAllMpmcQueue<FVector>& LocationQueue,
+	TArray<TArray<FVector>>& OutValidLocations,
+	TArray<TArray<FVector>>& OutBetweenLocations,
+	TArray<FVector>& DequeuedData) const
+{
+	OutValidLocations.Empty();
+	OutValidLocations.SetNum(Heatmaps.Num());
+
+	OutBetweenLocations.Empty();
+	if (Heatmaps.Num() > 1)
+	{
+		OutBetweenLocations.SetNum(Heatmaps.Num() - 1);
+	}
+
+	LocationQueue.ConsumeAllFifo([&](FVector AgentLocation)
+	{
+		DequeuedData.Add(AgentLocation);
+		for (int32 i = 0; i < Heatmaps.Num(); ++i)
+		{
+			AHeatmapPixelTextureVisualizer* BottomHeatmap = Heatmaps[i];
+			if (!BottomHeatmap) continue;
+
+			if (Heatmaps.IsValidIndex(i + 1))
+			{
+				AHeatmapPixelTextureVisualizer* TopHeatmap = Heatmaps[i + 1];
+
+				if (BottomHeatmap->CheckHeatmapAndLocationValid(AgentLocation))
+				{
+					OutValidLocations[i].Add(AgentLocation);
+				}
+				else if (AgentLocation.Z > BottomHeatmap->MeshOriginLocation.Z + BottomHeatmap->MaxAddHeight &&
+						 TopHeatmap->MeshOriginLocation.Z > AgentLocation.Z)
+				{
+					OutBetweenLocations[i].Add(AgentLocation);
+				}
+			}
+			else
+			{
+				if (BottomHeatmap->CheckHeatmapAndLocationValid(AgentLocation))
+				{
+					OutValidLocations[i].Add(AgentLocation);
+				}
+			}
+		}
+	});
+}
+
 void UHeatmapSubsystem::ComputeValidHeatmapLocations(const TArray<FVector>& LocationArray,
                                                     TArray<TArray<FVector>>& OutValidLocations,
                                                     TArray<TArray<FVector>>& OutBetweenLocations) const
 {
+	//TRACE_CPUPROFILER_EVENT_SCOPE("ComputeValidHeatmapLocations");
         OutValidLocations.Empty();
         OutValidLocations.SetNum(Heatmaps.Num());
 
@@ -417,6 +494,7 @@ void UHeatmapSubsystem::ComputeValidHeatmapLocations(const TArray<FVector>& Loca
 void UHeatmapSubsystem::BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
                                              const TArray<TArray<FVector>>& BetweenLocations) const
 {
+	//TRACE_CPUPROFILER_EVENT_SCOPE("BroadcastAgentCounts");
         for (int32 i = 0; i < BetweenLocations.Num(); ++i)
         {
                 OnUpdateBetweenFloorStatCount.Broadcast(i, BetweenLocations[i].Num());
@@ -428,16 +506,57 @@ void UHeatmapSubsystem::BroadcastAgentCounts(const TArray<TArray<FVector>>& Vali
         }
 }
 
+void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(
+	const TArray<TArray<FVector>>& ValidLocations,
+	const TArray<FVector>& FallbackLocations)
+{
+	//TRACE_CPUPROFILER_EVENT_SCOPE("RunAsyncHeatmapUpdate_Mpmc");
+	TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
+	Async(EAsyncExecution::Thread, [WeakSelf, ValidLocations, FallbackLocations]()
+	{
+		if (!WeakSelf.IsValid()) return;
+		UHeatmapSubsystem* Self = WeakSelf.Get();
+		//TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+
+		ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
+		{
+			if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
+			{
+				Self->Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
+			}
+			else if (Self->Heatmaps[i])
+			{
+				Self->Heatmaps[i]->UpdateHeatmapAgentCount(FallbackLocations);
+			}
+		});
+	},
+	[WeakSelf]()
+	{
+		if (!WeakSelf.IsValid()) return;
+		UHeatmapSubsystem* Self = WeakSelf.Get();
+		ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
+		{
+			if (Self->Heatmaps[i])
+			{
+				Self->Heatmaps[i]->UpdateHeatmapTextureRender();
+			}
+		});
+	});
+}
+
+// TODO: THis method causing a small performance hit, need to investigate, likely due to the way task is executed and requiring game thread for some operations
 void UHeatmapSubsystem::RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArray,
                                               const TArray<TArray<FVector>>& ValidLocations)
 {
+	///TRACE_CPUPROFILER_EVENT_SCOPE("RunAsyncHeatmapUpdate");
         TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
         Async(EAsyncExecution::Thread, [WeakSelf, LocationArray, ValidLocations]()
               {
                       if (!WeakSelf.IsValid())
                               return;
                       UHeatmapSubsystem* Self = WeakSelf.Get();
-                      TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+                      //TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+        	
                       ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
                       {
                               if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())

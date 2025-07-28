@@ -123,10 +123,13 @@ public:
 	void RemoveHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor);
 
 	void UpdateHeatmaps(const FVector& AgentLocation);
-        void UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray);
+	
+	void UpdateHeatmapsWithLocations_Mpmc(UE::TConsumeAllMpmcQueue<FVector>& LocationQueue);
+	
+	void UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray);
 
 
-        void UpdateHeatmapTextureRender();
+	void UpdateHeatmapTextureRender();
 
 	void ClearEmptyHeatmaps();
 
@@ -161,23 +164,33 @@ private:
 	void ScheduleHeatmapGeneration();
 	
 	/** Process Heatmap Generation */
-        void ProcessHeatmapGeneration();
+	void ProcessHeatmapGeneration();
 
-        /**
-         * Build arrays of valid agent locations for each heatmap and locations
-         * between floors.
-         */
-        void ComputeValidHeatmapLocations(const TArray<FVector>& LocationArray,
-                                          TArray<TArray<FVector>>& OutValidLocations,
-                                          TArray<TArray<FVector>>& OutBetweenLocations) const;
+	void ComputeValidHeatmapLocations_Mpmc(
+		UE::TConsumeAllMpmcQueue<FVector>& LocationQueue,
+		TArray<TArray<FVector>>& OutValidLocations,
+		TArray<TArray<FVector>>& OutBetweenLocations,
+		TArray<FVector>& DequeuedData) const;
 
-        /** Broadcast agent counts for each floor and between floors */
-        void BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
-                                 const TArray<TArray<FVector>>& BetweenLocations) const;
+	/**
+	 * Build arrays of valid agent locations for each heatmap and locations
+	 * between floors.
+	 */
+	void ComputeValidHeatmapLocations(const TArray<FVector>& LocationArray,
+	                                  TArray<TArray<FVector>>& OutValidLocations,
+	                                  TArray<TArray<FVector>>& OutBetweenLocations) const;
 
-        /** Run the asynchronous heatmap update using the provided locations */
-        void RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArray,
-                                   const TArray<TArray<FVector>>& ValidLocations);
+	/** Broadcast agent counts for each floor and between floors */
+	void BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
+	                          const TArray<TArray<FVector>>& BetweenLocations) const;
+
+	void RunAsyncHeatmapUpdate_Mpmc(
+	const TArray<TArray<FVector>>& ValidLocations,
+	const TArray<FVector>& FallbackLocations);
+	
+	/** Run the asynchronous heatmap update using the provided locations */
+	void RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArray,
+	                           const TArray<TArray<FVector>>& ValidLocations);
 
 #pragma endregion METHODS
 	

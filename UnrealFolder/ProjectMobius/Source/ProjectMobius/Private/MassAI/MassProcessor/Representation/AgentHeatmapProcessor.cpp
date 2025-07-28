@@ -46,7 +46,7 @@ UAgentHeatmapProcessor::UAgentHeatmapProcessor():
 	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::Avoidance);
 
-	bRequiresGameThreadExecution = true;
+	bRequiresGameThreadExecution = false;
 
 	// set the variable ptrs to null
 	TimeDilationSubSystem = nullptr;
@@ -60,7 +60,7 @@ void UAgentHeatmapProcessor::ConfigureQueries()
 
 	/* Add subsystem requirements */
 	// Heatmap module subsystem
-	EntityQuery.AddSubsystemRequirement<UHeatmapSubsystem>(EMassFragmentAccess::ReadWrite);
+	//EntityQuery.AddSubsystemRequirement<UHeatmapSubsystem>(EMassFragmentAccess::ReadWrite);
 
 	// Required Query Tags
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None);
@@ -70,11 +70,14 @@ void UAgentHeatmapProcessor::ConfigureQueries()
 
 	// Time Dilation Subsystem
 	ProcessorRequirements.AddSubsystemRequirement<UTimeDilationSubSystem>(EMassFragmentAccess::ReadOnly);
+	ProcessorRequirements.AddSubsystemRequirement<UHeatmapSubsystem>(EMassFragmentAccess::ReadWrite);
 }
 
 void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-	if (!EnsureTimeSubsystem(ExecutionContext))
+	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_Execute);
+	// Check if we have any entities to process and if the time subsystem is available
+	if(!EntityQuery.HasMatchingEntities(EntityManager) || !EnsureTimeSubsystem(ExecutionContext))
 	{
 		return;
 	}
@@ -85,7 +88,13 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 	UpdateHeatmapInterval();
 
 	// reuse the array storage instead of reallocating
-	HeatmapLocations.Reset();
+	//HeatmapLocations.Reset();
+
+	// Clear the location queue
+	LocationQueue.ConsumeAllLifo([](const FVector&){}); // No IsEmpty() check -> IsEmpty will traverse the whole queue and then ConsumeAllLifo will traverse it again, so we just clear it directly
+
+
+	LastProcessedEntityCount = 0;
 
 	if (!bRegisteredProperties)
 	{
@@ -95,8 +104,14 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 			return; // if properties are not registered, we cannot proceed
 		}
 	}
+
+	if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
+	{
+		ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
+		bLastPauseLoop = false;
+	}
 	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
 		ProcessChunk(Context);
 	}));
@@ -139,84 +154,110 @@ bool UAgentHeatmapProcessor::EnsureTimeSubsystem(FMassExecutionContext& Context)
 
 void UAgentHeatmapProcessor::UpdateTimeStepAndPause()
 {
-	if (CurrentTimeStep != TimeDilationSubSystem->CurrentTimeStep)
+	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_UpdateTimeStepAndPause);
+	const float NewTimeStep = TimeDilationSubSystem->CurrentTimeStep;
+	const bool NewPauseState = TimeDilationSubSystem->bIsPaused;
+
+	if (CurrentTimeStep != NewTimeStep || bIsPaused != NewPauseState)
 	{
-		CurrentTimeStep = TimeDilationSubSystem->CurrentTimeStep;
-		bIsPaused = TimeDilationSubSystem->bIsPaused;
-	}
-	else if (bIsPaused != TimeDilationSubSystem->bIsPaused)
-	{
-		bIsPaused = TimeDilationSubSystem->bIsPaused;
+		CurrentTimeStep = NewTimeStep;
+		bIsPaused = NewPauseState;
 	}
 }
 
 void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 {
-	if (TimeDilationSubSystem->GetCurrentSimTime() < LastUpdatedCurrentTime)
+	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_UpdateHeatmapInterval);
+	const float CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
+	
+	if (CurrentSimTime < LastUpdatedCurrentTime)
 	{
-		LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
+		LastUpdatedCurrentTime = CurrentSimTime;
 		bUpdateHeatmap = true;
+		return;
 	}
-	else if (LastUpdatedCurrentTime != TimeDilationSubSystem->GetCurrentSimTime() || LastUpdatedCurrentTime == 0.0f)
+	
+	if (LastUpdatedCurrentTime != CurrentSimTime || LastUpdatedCurrentTime == 0.0f)
 	{
-		float TimeDifference = TimeDilationSubSystem->GetCurrentSimTime() - LastUpdatedCurrentTime;
-		if (TimeDifference < 0.1f && LastUpdatedCurrentTime != 0.0f)
-		{
-			bUpdateHeatmap = false;
-		}
-		else
+		float TimeDifference = CurrentSimTime - LastUpdatedCurrentTime;
+		if (TimeDifference >= 0.1f || LastUpdatedCurrentTime == 0.0f)
 		{
 			bUpdateHeatmap = true;
-			LastUpdatedCurrentTime = TimeDilationSubSystem->GetCurrentSimTime();
+			LastUpdatedCurrentTime = CurrentSimTime;
+			return;
 		}
 	}
+	bUpdateHeatmap = false;
 }
 
 void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 {
-	if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
-	{
-		ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
-		bLastPauseLoop = false;
-	}
-
-	// TODO: add comments to explain the purpose of this function and what it does
+	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ProcessChunk);
+	// Get the required fragments and entities from the context
 	const TConstArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetFragmentView<FEntityRenderingFragment>();
 	const TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 	auto Entities = Context.GetEntities();
 
 	// reserve array space to avoid reallocations as entities are added
-	HeatmapLocations.Reserve((HeatmapLocations.Num() + Entities.Num()));
+	//HeatmapLocations.Reserve((HeatmapLocations.Num() + Entities.Num()));
+
+	//int32 ChunkSize = HeatmapLocations.Num() == 0 ? 0 : HeatmapLocations.Num() - 1;
 	
-	// TODO: this loop is not parallelized, implement ParallelFor for performance and a threadsafe container for HeatmapLocations for simplicity
-	for (int i = 0; i < Entities.Num(); i++)
+	//HeatmapLocations.SetNumUninitialized((HeatmapLocations.Num() + Entities.Num()));
+
+	//LastProcessedEntityCount += Entities.Num();
+
+	ParallelFor(Entities.Num(), [&](int32 i)
 	{
-		auto EntityMovement = EntityMovementFragment[i];
-		auto& EntityRendering = EntityRenderingFragment[i];
-		
+		TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ParallelFor);
+		const auto& EntityMovement = EntityMovementFragment[i];
+		const auto& EntityRendering = EntityRenderingFragment[i];
+
 		if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
 		{
-			continue;
+			return;
 		}
-		HeatmapLocations.Add(EntityMovement.CurrentLocation);
-	}
+
+		LocationQueue.ProduceItem(EntityMovement.CurrentLocation);
+		++LastProcessedEntityCount;
+	});
+	
+	
+	// TODO: this loop is not parallelized, implement ParallelFor for performance and a threadsafe container for HeatmapLocations for simplicity
+	// for (int i = 0; i < Entities.Num(); i++)
+	// {
+	// 	auto EntityMovement = EntityMovementFragment[i];
+	// 	auto& EntityRendering = EntityRenderingFragment[i];
+	// 	
+	// 	if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
+	// 	{
+	// 		continue;
+	// 	}
+	// 	//HeatmapLocations.Add(EntityMovement.CurrentLocation);
+	// 	HeatmapLocations[(ChunkSize + i)] = EntityMovement.CurrentLocation;
+	// }
 }
 
 void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 {
-	if (!HeatmapLocations.IsEmpty())
+	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ApplyHeatmapUpdates);
+	if (!LocationQueue.IsEmpty())
 	{
+		HeatmapSubsystem->BroadcastTotalAgentCount(LastProcessedEntityCount.Load());
+		
 		if (bUpdateHeatmap && !bLastPauseLoop)
 		{
-			HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
+			//HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
+
+			HeatmapSubsystem->UpdateHeatmapsWithLocations_Mpmc(LocationQueue);
 		}
 
 		if (!HeatmapSubsystem->AnyHeatmapsActive())
 		{
-			bLastPauseLoop = false;
-			HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
-			HeatmapLocations.Empty();
+			bLastPauseLoop = false;// reset to false if no heatmaps are active - this will allow heatmaps to be updated again when they are active
+			
 		}
+		//HeatmapLocations.Empty();
 	}
 	else
 	{
