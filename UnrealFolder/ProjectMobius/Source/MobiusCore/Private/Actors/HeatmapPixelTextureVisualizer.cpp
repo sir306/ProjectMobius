@@ -896,7 +896,7 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 		      AsyncTask(ENamedThreads::GameThread, [this]()
 		      {
 		      	RuntimeHeatmapMeshComponent->bUseComplexAsSimpleCollision = true;
-		      	RuntimeHeatmapMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		      	RuntimeHeatmapMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 				RuntimeHeatmapMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
 		      	RuntimeHeatmapMeshComponent->SetSimulatePhysics(false);
 			      // Generate the mesh section
