@@ -350,6 +350,11 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 		*/
 		return;
 	}
+	// Enable collisions so we can perform click interactions for flow counters
+	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = true;
+	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	MobiusProceduralMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
+	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
 
 	
 	// A mesh section should only be created if successful
@@ -359,7 +364,7 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	                                                             AsyncAssimpLoader->MeshLoaderRunnable->UV,
 	                                                             TArray<FLinearColor>(),
 	                                                             TArray<FProcMeshTangent>(),
-	                                                             false);
+	                                                             true/*set to true so we can use collisions - at a small cost of performance*/);
 
 	// The loader is no longer needed so we can stop the thread
 	AsyncAssimpLoader->MeshLoaderRunnable->Stop();
