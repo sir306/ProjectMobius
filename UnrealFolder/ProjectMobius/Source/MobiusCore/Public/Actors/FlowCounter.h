@@ -3,9 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EnumsAndStructs/FlowCounterStructs.h"
 #include "GameFramework/Actor.h"
 #include "FlowCounter.generated.h"
 
+class UStatisticSubsystem;
 class UBoxComponent;
 
 UCLASS()
@@ -26,6 +28,10 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 #pragma region METHODS
+	/** */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void MoveGatePillarMeshToLocation(int32 PillarIndex, const FVector& NewLocation);
+	
 	/**
 	 * To Resize the trigger box for the flow counter, we need to get the distance between the two pillar meshes
 	 * @param[float] OutDistanceBetweenPillars The distance between the two pillar meshes
@@ -55,14 +61,52 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
 	void UpdateFlowCounterTriggerBox();
 
+	/** */
+	void NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData);
+
+	/** */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void NotifyStatisticSubsystemOfFlowCounterUpdate();
+
 #pragma endregion METHODS 
 
 	
 #pragma region PROPERTIES
 public:
 	/** Box Collision component to track agents in the trigger area and calculate if their vector pass through the gate */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Visuals", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	UBoxComponent* FlowCounterTriggerBox;
+
+	/** */
+	FFlowCounterZSearchLimits FlowCounterZSearchLimits = FFlowCounterZSearchLimits(0.0f, 100.0f);
+
+	/** */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	FVector FlowCounterLineStartLocation = FVector(0.0f, 0.0f, 0.0f);
+
+	/** */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	FVector FlowCounterLineEndLocation = FVector(0.0f, 0.0f, 0.0f);
+
+protected:
+	/** */
+	TAtomic<int32> FlowCounterCount = 0;// using TAtomic to ensure thread safety when incrementing the count
+	
+	/**
+	 * Stores the previous tracked locations of agents, where each agent is identified by an integer ID
+	 * and their corresponding location is stored as an FVector.
+	 * @key[int32] The unique ID of an agent.
+	 * @value[FVector] The last known location of the corresponding agent.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	TMap<int32, FVector> PreviousTrackedAgentLocations;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	TSet<int32> AgentsPassedThroughCounter;
+
+	/** */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	TObjectPtr<UStatisticSubsystem> StatisticSubsystem;
 	
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Visuals", meta = (AllowPrivateAccess = "true"))

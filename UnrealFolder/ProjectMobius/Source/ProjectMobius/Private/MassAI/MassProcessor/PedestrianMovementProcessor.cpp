@@ -39,8 +39,12 @@
 #include "Subsystems/HeatmapSubsystem.h"
 #include "MassEntityView.h"
 #include "Async/ParallelFor.h"
+#include "EnumsAndStructs/FlowCounterStructs.h"
 #include "HAL/CriticalSection.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
+#include "Subsystems/StatisticSubsystem.h"
+
+class UStatisticSubsystem;
 
 UPedestrianMovementProcessor::UPedestrianMovementProcessor():
 	TimeDilationSubSystem(nullptr)
@@ -159,6 +163,11 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 
 			auto Entities = Context.GetEntities();
+
+			/// DEBUG ///
+			/// Get statistic subsystem to process the data
+			auto StatisticSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>();
+			UE::TConsumeAllMpmcQueue<FFlowCounterData> FlowDataQueue;
 			
 			if (bSamplesTheSame)
 			{
@@ -184,6 +193,13 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					{
 						// Sample missing — mark for destruction
 						RenderFrag.bReadyToDestroy = true;
+					}
+
+					bool bInBand = StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation);
+					if (bInBand)
+					{
+						FlowDataQueue.ProduceItem(FFlowCounterData(MoveFrag.EntityID, MoveFrag.CurrentLocation));
+					
 					}
 				});
 			}
@@ -225,8 +241,17 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 						// Current sample missing — mark for destruction
 						RenderFrag.bReadyToDestroy = true;
 					}
+
+					bool bInBand = StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation);
+					if (bInBand)
+					{
+						FlowDataQueue.ProduceItem(FFlowCounterData(MoveFrag.EntityID, MoveFrag.CurrentLocation));
+					
+					}
 				});
 			}
+
+			StatisticSubsystem->SendDataToFlowCounter(FlowDataQueue, 0);
 		}
 	}));
 	//TODO: ****** when destroying respawning back this should only be called when needed not every execute ******
