@@ -147,9 +147,12 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	ResizeFlowCounterTriggerBox(DistanceBetweenPillars, CenterLocation);
 	FlowCounterTriggerBox->SetBoxExtent(FVector(DistanceBetweenPillars / 2.0f, 50.0f, 100.0f));
 
+	// Offset Center location to be minus 10 - to ensure we capture all agents that pass through the flow counter line
+	// this is due to the sensitivity of the line intersection check and the fact that agents may not be exactly on the lower z if offset by a few units
+	CenterLocation.Z -= 10.0f;
+	
 	// We may want to offset the box location in Z 
 	FlowCounterTriggerBox->SetWorldLocation(CenterLocation);
-	
 
 	// Update the Z search limits based on the trigger box location and Z box extents
 	FlowCounterZSearchLimits.MinZBounds = CenterLocation.Z - (FlowCounterTriggerBox->GetScaledBoxExtent().Z );

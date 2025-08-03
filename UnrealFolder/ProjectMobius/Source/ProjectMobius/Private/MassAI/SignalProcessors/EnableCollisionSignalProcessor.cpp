@@ -63,7 +63,7 @@ void UDisableCollisionSignalProcessor::Initialize(UObject& Owner)
 {
 	// Subscribe to the signals we want to handle in this processor
 	UMassSignalSubsystem* SignalSubsystem = UWorld::GetSubsystem<UMassSignalSubsystem>(Owner.GetWorld());
-	SubscribeToSignal(*SignalSubsystem, PedestrianDataSignals::Signals::ActivateCollisions);
+	SubscribeToSignal(*SignalSubsystem, PedestrianDataSignals::Signals::ActivateCollisions);// check that this is needed feels wrong
 	SubscribeToSignal(*SignalSubsystem, PedestrianDataSignals::Signals::DeactivateCollisions);
 	Super::Initialize(Owner);
 }
