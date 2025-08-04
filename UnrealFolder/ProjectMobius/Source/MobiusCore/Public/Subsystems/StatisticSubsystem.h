@@ -125,10 +125,8 @@ public:
 	FAgentMeshViewer GetHoveredAgentInfoMeshData();
 
 	/** */
-	void AddFlowCounter(AFlowCounter* FlowCounter);
-	
-	/** */
-	void RemoveFlowCounter(AFlowCounter* FlowCounter);
+	UFUNCTION()
+	void UpdateFlowCounters();
 
 	/**  */
 	bool IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation) const;

@@ -297,8 +297,12 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 	{
 		BoxSize = WidgetHeadGridPanel->GetPaintSpaceGeometry().GetRenderBoundingRect().GetSize();
 		// log fallback size
-		UE_LOG(LogTemp, Warning, TEXT("BoxSize is zero, using bounding rect size: %s"), *BoxSize.ToString());
-		return;
+		//UE_LOG(LogTemp, Warning, TEXT("BoxSize is zero, using bounding rect size: %s"), *BoxSize.ToString());
+
+		if (BoxSize == FVector2D::ZeroVector)
+		{
+			BoxSize = FVector2D(50.0f, 50.0f); // Fallback size if the bounding rect is also zero
+		}
 	}
 
 	BoxSize *= 0.5f; // each text slot takes up 50% of the box size, so we scale down to fit

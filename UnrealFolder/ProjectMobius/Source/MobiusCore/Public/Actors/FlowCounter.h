@@ -19,6 +19,8 @@ public:
 	// Sets default values for this actor's properties
 	AFlowCounter();
 
+	~AFlowCounter();
+	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -57,17 +59,17 @@ public:
 	/**
 	 * Update trigger box a method to call when pillar placement changes/or when user confirms placement
 	 * or when the flow counter is placed in the world for the first time
-	 * @param[bool] bIsInConstruction If true, this is called during construction, otherwise it is called at runtime
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
-	void UpdateFlowCounterTriggerBox(bool bIsInConstruction = false);
+	void UpdateFlowCounterTriggerBox();
 
 	/** */
 	void NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData);
 
 	/** */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
-	void NotifyStatisticSubsystemOfFlowCounterUpdate();
+	void AddFlowCounterToSubsystem();
+	void RemoveFlowCounterToSubsystem();
 
 #pragma endregion METHODS 
 

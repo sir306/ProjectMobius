@@ -4,6 +4,7 @@
 #include "Actors/FlowCounter.h"
 
 #include "Components/BoxComponent.h"
+#include "Subsystems/StatisticActorManagementSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 
@@ -52,7 +53,9 @@ AFlowCounter::AFlowCounter()
 	FlowCounterTriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("FlowCounterTriggerBox"));
 	//FlowCounterTriggerBox->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 	FlowCounterTriggerBox->SetupAttachment(RootComponent);
-	UpdateFlowCounterTriggerBox(true);// in constructor so shouldn't be talking to the subsystem
+	
+	UpdateFlowCounterTriggerBox();
+	
 	// As the trigger box is only used to check whether a location is within the flow counter area, we can set the collision to none
 	FlowCounterTriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FlowCounterTriggerBox->SetCollisionObjectType(ECC_WorldDynamic);
@@ -66,13 +69,18 @@ AFlowCounter::AFlowCounter()
 	RootComponent->UpdateChildTransforms();
 }
 
+AFlowCounter::~AFlowCounter()
+{
+	RemoveFlowCounterToSubsystem();
+}
+
 // Called when the game starts or when spawned
 void AFlowCounter::BeginPlay()
 {
 	Super::BeginPlay();
 
 	// Here we need to tell the statistic subsystem that this flow counter exists and is in the world
-	NotifyStatisticSubsystemOfFlowCounterUpdate();
+	AddFlowCounterToSubsystem();
 }
 
 // Called every frame
@@ -109,7 +117,7 @@ void AFlowCounter::MoveGatePillarMeshToLocation(int32 PillarIndex, const FVector
 	// TODO: depending on mass ai logic we may want to reset the agents passed through counter as well
 
 	// Communicate to the statistic subsystem that the flow counter has been updated
-	NotifyStatisticSubsystemOfFlowCounterUpdate();
+	AddFlowCounterToSubsystem();
 }
 
 void AFlowCounter::ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation) const
@@ -140,7 +148,7 @@ void AFlowCounter::UpdateFlowCounterTriggerBoxLocation(const FVector& NewLocatio
 {
 }
 
-void AFlowCounter::UpdateFlowCounterTriggerBox(bool bIsInConstruction)
+void AFlowCounter::UpdateFlowCounterTriggerBox()
 {
 	if (FlowCounterTriggerBox == nullptr)
 	{
@@ -176,11 +184,6 @@ void AFlowCounter::UpdateFlowCounterTriggerBox(bool bIsInConstruction)
 
 	// Root component should be updated to reflect the same orientation as the trigger box
 	RootComponent->SetWorldRotation(BoxRotation);
-
-	if (!bIsInConstruction)
-	{
-		NotifyStatisticSubsystemOfFlowCounterUpdate();
-	}
 }
 
 void AFlowCounter::NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData)
@@ -265,25 +268,26 @@ void AFlowCounter::NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewA
 	UE_LOG(LogTemp, Warning, TEXT("Flow Counter Count: %d"), FlowCounterCount.Load());//just log output till we get a UI to display the count
 }
 
-void AFlowCounter::NotifyStatisticSubsystemOfFlowCounterUpdate()
+void AFlowCounter::AddFlowCounterToSubsystem()
 {
 	if (GetWorld() == nullptr){return;}  
 	// We want to notify the statistic subsystem of the flow counter update passing through the upper and lower limits and a ptr to this
 	
-	// if the statistic subsystem is valid, we can notify it of the flow counter update otherwise we need to get it from the world
-	if (StatisticSubsystem != nullptr)
+	auto* StatActorManagerSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>();
+	if (StatActorManagerSubsystem != nullptr)
 	{
-		StatisticSubsystem->AddFlowCounter(this);
+		StatActorManagerSubsystem->AddFlowCounter(this);		
 	}
-	else
-	{
-		
-		StatisticSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>();
+}
 
-		// double check if the statistic subsystem is valid - if not we can log an error 
-		if (StatisticSubsystem != nullptr)
-		{
-			StatisticSubsystem->AddFlowCounter(this);
-		}
+void AFlowCounter::RemoveFlowCounterToSubsystem()
+{
+	if (GetWorld() == nullptr){return;}  
+	// We want to notify the statistic subsystem of the flow counter update passing through the upper and lower limits and a ptr to this
+	
+	auto* StatActorManagerSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>();
+	if (StatActorManagerSubsystem != nullptr)
+	{
+		StatActorManagerSubsystem->RemoveFlowCounter(this);		
 	}
 }

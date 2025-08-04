@@ -5,6 +5,7 @@
 
 #include "Actors/FlowCounter.h"
 #include "Kismet/GameplayStatics.h"
+#include "Subsystems/StatisticActorManagementSubsystem.h"
 
 UStatisticSubsystem::UStatisticSubsystem()
 {
@@ -12,15 +13,28 @@ UStatisticSubsystem::UStatisticSubsystem()
 
 void UStatisticSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	// add any subsystem dependencies here
+	// add the statistic actor management subsystem to the collection
+	Collection.InitializeDependency<UStatisticActorManagementSubsystem>();
 
 	
 	Super::Initialize(Collection);
+
+	// bind to the flow counters changed delegate
+	if (UStatisticActorManagementSubsystem* StatisticActorManagementSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>())
+	{
+		StatisticActorManagementSubsystem->OnFlowCountersChanged.BindDynamic(this, &UStatisticSubsystem::UpdateFlowCounters);
+	}
 }
 
 void UStatisticSubsystem::Deinitialize()
 {
 	Super::Deinitialize();
+	
+	// unbind to the flow counters changed delegate
+	if (UStatisticActorManagementSubsystem* StatisticActorManagementSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>())
+	{
+		StatisticActorManagementSubsystem->OnFlowCountersChanged.Unbind();
+	}
 }
 
 void UStatisticSubsystem::OnWorldBeginPlay(UWorld& InWorld)
@@ -70,32 +84,18 @@ FAgentMeshViewer UStatisticSubsystem::GetHoveredAgentInfoMeshData()
 	return MoveTemp(HoveredAgentData);
 }
 
-void UStatisticSubsystem::AddFlowCounter(AFlowCounter* FlowCounter)
+void UStatisticSubsystem::UpdateFlowCounters()
 {
-	if (!FlowCounter)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("FlowCounter is null! Cannot add to StatisticSubsystem."));
-		return;
-	}
-	// if not null we need to check if the flow counter is already in the list as this would mean a resize
-	if (!FlowCounters.Contains(FlowCounter) || FlowCounters.Num() == 0)
-	{
-		FlowCounters.Add(FlowCounter); // when multi-threaded is added we will need to use a lock or similar to ensure thread safety
-	}
+	if (!GetWorld()){return;}
 	
-	// Now we should notify to the listeners that a flow counter has been added/updated
-	
-}
+	UStatisticActorManagementSubsystem* StatisticActorManagementSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>();
 
-void UStatisticSubsystem::RemoveFlowCounter(AFlowCounter* FlowCounter)
-{
-	// if not null we need to check if the flow counter is already in the list as this would mean a resize
-	if (FlowCounter && !FlowCounters.Contains(FlowCounter))
+	if (StatisticActorManagementSubsystem)
 	{
-		FlowCounters.Remove(FlowCounter); // when multi-threaded is added we will need to use a lock or similar to ensure thread safety
+		// TODO: not really efficient to clear and re-add the flow counters every time this is called but for now it is fine
+		FlowCounters.Empty();
+		FlowCounters = StatisticActorManagementSubsystem->FlowCounters;
 	}
-
-	// if we have none left we need to notify the listeners that we have no flow counters left no need to process data
 }
 
 //TODO: we are going to need to expand this functionality when we increase the number of flow counters and their Z bounds
@@ -130,40 +130,40 @@ void UStatisticSubsystem::SendDataToFlowCounter(UE::TConsumeAllMpmcQueue<FFlowCo
                                                 int32 FlowCounterIndex)
 {
 	// Check if the flow counters array is empty - it should never be empty as this can only be called from the FlowCounterProcessor
-	if (FlowCounters.Num() == 0)
-	{
-		// attempt to get the flow counters from the world if they are not set
-		if (GetWorld())
-		{
-			
-
-			// As this can be called from outside of the game thread(ParallelFor), we need to get the flow counters from the world in a thread-safe manner.
-			AsyncTask(ENamedThreads::GameThread, [this]()
-			{
-				TArray<AActor*> FoundActors;
-				UWorld* World = GetWorld();
-				UGameplayStatics::GetAllActorsOfClass(World, AFlowCounter::StaticClass(), FoundActors);
-				if (FoundActors.Num() > 0)
-				{
-					for (AActor* Actor : FoundActors)
-					{
-						if (AFlowCounter* FlowCounter = Cast<AFlowCounter>(Actor))
-						{
-							// Add the flow counter to the array
-							FlowCounters.Add(FlowCounter);
-						}
-						else
-						{
-							UE_LOG(LogTemp, Warning, TEXT("Found actor is not a FlowCounter: %s"), *Actor->GetName());
-						}
-					}
-				}
-			});
-			//UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFlowCounter::StaticClass(), FoundActors);
-			// if we found any flow counters, we can add them to the FlowCounters array
-			
-		}
-	}
+	// if (FlowCounters.Num() == 0)
+	// {
+	// 	// attempt to get the flow counters from the world if they are not set
+	// 	if (GetWorld())
+	// 	{
+	// 		
+	//
+	// 		// As this can be called from outside of the game thread(ParallelFor), we need to get the flow counters from the world in a thread-safe manner.
+	// 		AsyncTask(ENamedThreads::GameThread, [this]()
+	// 		{
+	// 			TArray<AActor*> FoundActors;
+	// 			UWorld* World = GetWorld();
+	// 			UGameplayStatics::GetAllActorsOfClass(World, AFlowCounter::StaticClass(), FoundActors);
+	// 			if (FoundActors.Num() > 0)
+	// 			{
+	// 				for (AActor* Actor : FoundActors)
+	// 				{
+	// 					if (AFlowCounter* FlowCounter = Cast<AFlowCounter>(Actor))
+	// 					{
+	// 						// Add the flow counter to the array
+	// 						FlowCounters.Add(FlowCounter);
+	// 					}
+	// 					else
+	// 					{
+	// 						UE_LOG(LogTemp, Warning, TEXT("Found actor is not a FlowCounter: %s"), *Actor->GetName());
+	// 					}
+	// 				}
+	// 			}
+	// 		});
+	// 		//UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFlowCounter::StaticClass(), FoundActors);
+	// 		// if we found any flow counters, we can add them to the FlowCounters array
+	// 		
+	// 	}
+	// }
 	
 	// Check if the flow counter index is valid
 	if (FlowCounterIndex < 0 || FlowCounterIndex >= FlowCounters.Num())
