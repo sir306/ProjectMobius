@@ -145,7 +145,7 @@ private:
 	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 
 	/** Reference to the FlowCounter actor, if needed for statistics gathering */
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StatisticSubsystem|FlowCounter", meta = (AllowPrivateAccess = "true"))
 	TArray<TObjectPtr<AFlowCounter>> FlowCounters = TArray<TObjectPtr<AFlowCounter>>();
 
 public:

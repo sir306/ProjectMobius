@@ -16,7 +16,7 @@ UFlowCounterProcessor::UFlowCounterProcessor()
 	ExecutionFlags = (int32)EProcessorExecutionFlags::All;
 	ProcessingPhase = EMassProcessingPhase::PrePhysics;
 	ExecutionOrder.ExecuteBefore.Add(UE::Mass::ProcessorGroupNames::Avoidance);
-	bRequiresGameThreadExecution = false;
+	bRequiresGameThreadExecution = true;
 }
 
 void UFlowCounterProcessor::ConfigureQueries()
@@ -38,7 +38,7 @@ void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 	if (StatisticSubsystem == nullptr)
 	{
 		// Get the StatisticSubsystem from the world
-		StatisticSubsystem = Context.GetWorld()->GetSubsystem<UStatisticSubsystem>();
+		StatisticSubsystem = ToObjectPtr(Context.GetWorld()->GetSubsystem<UStatisticSubsystem>());
 		if (StatisticSubsystem == nullptr)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("StatisticSubsystem is null! Cannot execute FlowCounterProcessor."));

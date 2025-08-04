@@ -24,6 +24,6 @@ protected:
 	UPROPERTY(EditAnywhere)
 	FMassEntityQuery EntityQuery;
 
-	UPROPERTY(EditAnywhere, Category="FlowCounter|Subsystems")
+	UPROPERTY()
 	TObjectPtr<UStatisticSubsystem> StatisticSubsystem;
 };

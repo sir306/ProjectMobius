@@ -20,11 +20,14 @@ AFlowCounter::AFlowCounter()
 
 	// Create pillar mesh components
 	FlowCounterPillarMesh1 = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FlowCounterPillarMesh1"));
-	FlowCounterPillarMesh1->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	FlowCounterPillarMesh1->SetupAttachment(RootComponent);
 	FlowCounterPillarMesh1->SetVisibility(true);
+	// As we use world space, we need to set the pillars to use world space
+	
+	
 
 	FlowCounterPillarMesh2 = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FlowCounterPillarMesh2"));
-	FlowCounterPillarMesh2->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	FlowCounterPillarMesh2->SetupAttachment(RootComponent);
 	FlowCounterPillarMesh2->SetVisibility(true);
 	
 
@@ -33,12 +36,12 @@ AFlowCounter::AFlowCounter()
 	if (DefaultMesh.Succeeded())
 	{
 		FlowCounterPillarMesh1->SetStaticMesh(DefaultMesh.Object);
-		FlowCounterPillarMesh1->SetRelativeLocation(FVector(50.0f, 0.0f, 0.0f)); // Offset for ease of development
-		FlowCounterPillarMesh1->SetRelativeScale3D(FVector(0.1f,0.1f,1.0f)); // Scale down the pillar for better visibility
+		FlowCounterPillarMesh1->SetWorldLocation(FVector(50.0f, 0.0f, 0.0f)); // Offset for ease of development
+		FlowCounterPillarMesh1->SetWorldScale3D(FVector(0.1f,0.1f,1.0f)); // Scale down the pillar for better visibility
 			
 		FlowCounterPillarMesh2->SetStaticMesh(DefaultMesh.Object);
-		FlowCounterPillarMesh2->SetRelativeLocation(FVector(-50.0f, 0.0f, 0.0f)); // Offset for ease of development
-		FlowCounterPillarMesh2->SetRelativeScale3D(FVector(0.1f,0.1f,1.0f)); // Scale down the pillar for better visibility
+		FlowCounterPillarMesh2->SetWorldLocation(FVector(-50.0f, 0.0f, 0.0f)); // Offset for ease of development
+		FlowCounterPillarMesh2->SetWorldScale3D(FVector(0.1f,0.1f,1.0f)); // Scale down the pillar for better visibility
 	}
 	else
 	{
@@ -47,8 +50,9 @@ AFlowCounter::AFlowCounter()
 
 	// Set up the box component for flow counter trigger area
 	FlowCounterTriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("FlowCounterTriggerBox"));
-	FlowCounterTriggerBox->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
-	UpdateFlowCounterTriggerBox();
+	//FlowCounterTriggerBox->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+	FlowCounterTriggerBox->SetupAttachment(RootComponent);
+	UpdateFlowCounterTriggerBox(true);// in constructor so shouldn't be talking to the subsystem
 	// As the trigger box is only used to check whether a location is within the flow counter area, we can set the collision to none
 	FlowCounterTriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FlowCounterTriggerBox->SetCollisionObjectType(ECC_WorldDynamic);
@@ -136,7 +140,7 @@ void AFlowCounter::UpdateFlowCounterTriggerBoxLocation(const FVector& NewLocatio
 {
 }
 
-void AFlowCounter::UpdateFlowCounterTriggerBox()
+void AFlowCounter::UpdateFlowCounterTriggerBox(bool bIsInConstruction)
 {
 	if (FlowCounterTriggerBox == nullptr)
 	{
@@ -145,6 +149,10 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	float DistanceBetweenPillars;
 	FVector CenterLocation;
 	ResizeFlowCounterTriggerBox(DistanceBetweenPillars, CenterLocation);
+
+	// Center Location should also be the root components location, that way child objects that aren't dynamic can update with it
+	RootComponent->SetWorldLocation(CenterLocation);
+	
 	FlowCounterTriggerBox->SetBoxExtent(FVector(DistanceBetweenPillars / 2.0f, 50.0f, 100.0f));
 
 	// Offset Center location to be minus 10 - to ensure we capture all agents that pass through the flow counter line
@@ -166,7 +174,13 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	FRotator BoxRotation = (FlowCounterLineEndLocation - FlowCounterLineStartLocation).Rotation();
 	FlowCounterTriggerBox->SetWorldRotation(BoxRotation);
 
-	NotifyStatisticSubsystemOfFlowCounterUpdate();
+	// Root component should be updated to reflect the same orientation as the trigger box
+	RootComponent->SetWorldRotation(BoxRotation);
+
+	if (!bIsInConstruction)
+	{
+		NotifyStatisticSubsystemOfFlowCounterUpdate();
+	}
 }
 
 void AFlowCounter::NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData)

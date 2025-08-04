@@ -57,9 +57,10 @@ public:
 	/**
 	 * Update trigger box a method to call when pillar placement changes/or when user confirms placement
 	 * or when the flow counter is placed in the world for the first time
+	 * @param[bool] bIsInConstruction If true, this is called during construction, otherwise it is called at runtime
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
-	void UpdateFlowCounterTriggerBox();
+	void UpdateFlowCounterTriggerBox(bool bIsInConstruction = false);
 
 	/** */
 	void NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData);
@@ -117,5 +118,12 @@ private:
 	
 	// may want a reference to a widget for the flow counter to display the number of agents passing through
 	
-#pragma endregion PROPERTIES 
+#pragma endregion PROPERTIES
+
+public:
+	// GETTERS AND SETTERS
+
+	/** Get the current flow counter count */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Getters")
+	FORCEINLINE int32 GetFlowCounterCount() const { return FlowCounterCount.Load(); }
 };
