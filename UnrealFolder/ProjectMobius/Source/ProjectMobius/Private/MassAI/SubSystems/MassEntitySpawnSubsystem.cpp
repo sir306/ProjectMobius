@@ -305,6 +305,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	{
 		AgentDataSubsystem->JsonDataRunnable->Stop();
 	}
+
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
 	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();
 	PedestrianTemplateData.AddFragment<FEntityMovementFragment>();

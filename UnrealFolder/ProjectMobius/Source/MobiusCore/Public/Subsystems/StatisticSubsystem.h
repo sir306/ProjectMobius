@@ -129,7 +129,7 @@ public:
 	void UpdateFlowCounters();
 
 	/**  */
-	bool IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation) const;
+	bool IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const;
 
 	/** */
 	void SendDataToFlowCounter(UE::TConsumeAllMpmcQueue<FFlowCounterData>& FlowData, int32 FlowCounterIndex = 0);

@@ -46,27 +46,37 @@ void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 		}
 	}
 
+	//TODO: check if paused -> don't want to keep executing if not needed
+
 	EntityQuery.ParallelForEachEntityChunk(EntityManager, Context, ([this](FMassExecutionContext& QueryContext)
 	{
 		// Get the required fragments and entities from the query context
 		const TConstArrayView<FEntityMovementFragment> EntityMovementFragment = QueryContext.GetFragmentView<FEntityMovementFragment>();
 		const TConstArrayView<FMassEntityHandle> Entities = QueryContext.GetEntities();
 
-		// The potential data to send to the StatisticSubsystem
-		UE::TConsumeAllMpmcQueue<FFlowCounterData> FlowDataQueue;
+		auto FlowCounters = StatisticSubsystem->GetFlowCounters().Num();
 
-		ParallelFor(Entities.Num(), [&](int32 i)
+		for (int32 i = 0; i < FlowCounters; ++i)
 		{
-			// Get the current entity movement fragment
-			const FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
-			
-			bool bInBand = StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation);
-			if (bInBand)
+			int32 FlowCounterID = i;
+			// The potential data to send to the StatisticSubsystem
+			UE::TConsumeAllMpmcQueue<FFlowCounterData> FlowDataQueue;
+
+			ParallelFor(Entities.Num(), [&](int32 j)
 			{
-				FlowDataQueue.ProduceItem(FFlowCounterData(MoveFrag.EntityID, MoveFrag.CurrentLocation));
+				// Get the current entity movement fragment
+				const FEntityMovementFragment& MoveFrag = EntityMovementFragment[j];
+			
+				bool bInBand = StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation, FlowCounterID);
+				if (bInBand)
+				{
+					FlowDataQueue.ProduceItem(FFlowCounterData(MoveFrag.EntityID, MoveFrag.CurrentLocation));
 					
-			}
-		});
-		StatisticSubsystem->SendDataToFlowCounter(FlowDataQueue, 0);
+				}
+			});
+			StatisticSubsystem->SendDataToFlowCounter(FlowDataQueue, FlowCounterID);
+		}
+		
+		
 	}));
 }

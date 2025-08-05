@@ -4,6 +4,7 @@
 #include "Subsystems/StatisticSubsystem.h"
 
 #include "Actors/FlowCounter.h"
+#include "Components/BoxComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/StatisticActorManagementSubsystem.h"
 
@@ -102,28 +103,35 @@ void UStatisticSubsystem::UpdateFlowCounters()
 // as it will become taxing on performance to loop through all flow counters every time we check if an agent is in a flow counter band
 // will require a spatial hash or similar to quickly check if an agent is in a flow counter band,
 // which should be a larger unrotated 2D plane that represents min max XY for agents to be considered in a flow counter band check
-bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation) const
+bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const
 {
-	// we only return a bool because it is possible to have multiple flow counters that could share valid Z bounds
-	bool bIsInBounds = false;
-	// loop through counters and check if the agent location is within the bounds of any flow counter
-	for (const AFlowCounter* FlowCounter : FlowCounters)
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
+	if (!FlowCounter)
 	{
-		// null check
-		if (FlowCounter)
-		{
-			bIsInBounds = FlowCounter->FlowCounterZSearchLimits.IsInZBounds(AgentLocation.Z);
-
-			if (bIsInBounds)
-			{
-				// we found one so we can break out of the loop
-				return true;
-			}
-		}
+		return false;
 	}
 
-	return bIsInBounds;
+	// First check: is the agent's Z coordinate within this counter's Z bounds?
+	if (!FlowCounter->FlowCounterZSearchLimits.IsInZBounds(AgentLocation.Z))
+	{
+		return false;
+	}
+
+	// // Get an expanded XY bounding box around the FlowCounter's trigger volume to allow leniency in horizontal proximity
+	// const UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox().ExpandBy(FVector(500.0f, 500.0f, 0.0f));
+	//
+	// // Measure the 3D distance between the agent and the FlowCounter
+	// const float DistanceToFlowCounter = FVector::Dist(FlowCounter->GetActorLocation(), AgentLocation);
+	//
+	// // If the agent is too far away (> 500 units), skip further checks for performance unless inside expanded box
+	// if (DistanceToFlowCounter > 500.0f && !FMath::PointBoxIntersection(AgentLocation, FlowCounterBox))
+	// {
+	// 	continue;
+	// }
+	
+	return true;
 }
+
 
 //TODO: this should be private method that we call after filtered in to correspond flowcounter groups - but prototype only using one so direct call to this is fine
 void UStatisticSubsystem::SendDataToFlowCounter(UE::TConsumeAllMpmcQueue<FFlowCounterData>& FlowData,

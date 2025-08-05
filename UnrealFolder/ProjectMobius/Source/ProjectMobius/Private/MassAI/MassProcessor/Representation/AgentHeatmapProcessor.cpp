@@ -46,7 +46,7 @@ UAgentHeatmapProcessor::UAgentHeatmapProcessor():
 	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::Avoidance);
 
-	bRequiresGameThreadExecution = false;
+	bRequiresGameThreadExecution = true;
 
 	// set the variable ptrs to null
 	TimeDilationSubSystem = nullptr;
@@ -110,8 +110,10 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 		ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
 		bLastPauseLoop = false;
 	}
-	
-	EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+
+	// TODO: Getting mallocs and realloc collisions with parallel -> maybe need to look at null check or something
+	//EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
 		ProcessChunk(Context);
 	}));
