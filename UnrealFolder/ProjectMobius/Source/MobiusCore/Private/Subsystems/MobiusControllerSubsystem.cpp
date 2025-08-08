@@ -3,7 +3,11 @@
 
 #include "Subsystems/MobiusControllerSubsystem.h"
 
+#include "KismetProceduralMeshLibrary.h"
+#include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "Components/CapsuleComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 UMobiusControllerSubsystem::UMobiusControllerSubsystem()
 {
@@ -73,7 +77,7 @@ bool UMobiusControllerSubsystem::ProjectMouseScreenToWorld(FVector& OutMouseWorl
 }
 
 bool UMobiusControllerSubsystem::LineTraceFromMousePosition(FHitResult& OutHitResult,
-	UCapsuleComponent*& OutCapsuleComponent) const
+	UCapsuleComponent*& OutCapsuleComponent)
 {
 	// Check if the current player controller is valid
 	if (CurrentPlayerController)
@@ -84,6 +88,18 @@ bool UMobiusControllerSubsystem::LineTraceFromMousePosition(FHitResult& OutHitRe
 			// Perform a line trace from the mouse position in the world
 			FCollisionQueryParams CollisionParams;
 			CollisionParams.AddIgnoredActor(CurrentPlayerController->GetPawn()); // Ignore the player pawn
+
+			// Get the runtime mesh generator actor and ignore it
+			if (RuntimeMeshGeneratorActor.Get())
+			{
+				// Ignore the runtime mesh generator actor
+				CollisionParams.AddIgnoredActor(RuntimeMeshGeneratorActor.Get());
+			}
+			else
+			{
+				// if hasn't been set, then attempt to set again
+				GetRuntimeMeshBuilderFromWorld();
+			}
 
 			// bool bHit = CurrentPlayerController->GetWorld()->LineTraceSingleByChannel(
 			// 	OutHitResult, MouseWorldPosition, MouseWorldPosition + (WorldDirection * 10000.0f), ECC_Visibility, CollisionParams);
@@ -136,4 +152,18 @@ void UMobiusControllerSubsystem::SelectPedestrianFromMousePosition()
 UCapsuleComponent* UMobiusControllerSubsystem::GetCapsuleComponent() const
 {
 	return LastSelectedPedestrianCapsuleComponent;
+}
+
+void UMobiusControllerSubsystem::GetRuntimeMeshBuilderFromWorld()
+{
+	// Get the runtime mesh generator actor and ignore it
+	AActor* FoundActor = UGameplayStatics::GetActorOfClass(GetWorld(), ARuntimeMeshBuilder::StaticClass());
+	if (auto CastedActor = Cast<ARuntimeMeshBuilder>(FoundActor))
+	{
+		RuntimeMeshGeneratorActor = CastedActor;
+	}
+	else
+	{
+		RuntimeMeshGeneratorActor = nullptr; // No runtime mesh generator actor found
+	}
 }
