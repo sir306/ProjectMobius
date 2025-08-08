@@ -138,7 +138,7 @@ public:
 	void SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex = 0);
 
 	/** */
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	void ResetFlowCounters();
 
 	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes

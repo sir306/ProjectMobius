@@ -164,6 +164,8 @@ void UAgentHeatmapProcessor::UpdateTimeStepAndPause()
 	{
 		CurrentTimeStep = NewTimeStep;
 		bIsPaused = NewPauseState;
+		
+		bLastPauseLoop = false;// Either the pause or time step has changed, so we reset the last pause loop flag
 	}
 }
 
