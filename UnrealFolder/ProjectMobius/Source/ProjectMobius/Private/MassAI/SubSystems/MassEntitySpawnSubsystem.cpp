@@ -49,6 +49,7 @@
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
+#include "Subsystems/StatisticSubsystem.h"
 
 class UTimeDilationSubSystem;
 
@@ -110,6 +111,12 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
 	if (!ArchetypeSharedFragmentValues.IsSorted())
 	{
 		ArchetypeSharedFragmentValues.Sort();
+	}
+
+	// TODO: this reset for flow needs better implementation but will work for now
+	if (auto StatSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>())
+	{
+		StatSubsystem->ResetFlowCounters();
 	}
 
 	//TODO: We dont want to simulate time till this is done, also we need a better way to build shared fragment and update the archetype on data changes

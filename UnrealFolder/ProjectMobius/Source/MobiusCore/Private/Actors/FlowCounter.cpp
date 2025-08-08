@@ -109,10 +109,9 @@ void AFlowCounter::MoveGatePillarMeshToLocation(int32 PillarIndex, const FVector
 
 	// After moving the pillar mesh, we need to update the trigger box to match the new pillar locations
 	UpdateFlowCounterTriggerBox();
-	
-	// When a pillar is moved, we also need to reset the previous tracked agent locations and reset the flow counter count to 0
-	PreviousTrackedAgentLocations.Empty();
-	FlowCounterCount.Exchange(0); // Reset the flow counter count to 0
+
+	// Reset the flow counter count and agents passed through counter
+	ResetFlowCounterTrackingData();
 
 	// TODO: depending on mass ai logic we may want to reset the agents passed through counter as well
 
@@ -186,67 +185,27 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	RootComponent->SetWorldRotation(BoxRotation);
 }
 
-void AFlowCounter::NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData)
+bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 {
-	/* We want to process the new agent data and check if the agent is within the flow counter trigger box
-	 * - the data passed here is expected to be within the Z bounds of the flow counter trigger box
-	 * (this is due to the potential amount of agent data passed and multiple flow counters may be present).
-	 */
-
+	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
+	AFlowCounter* FlowCounter = WeakThis.Get();\
+	if (FlowCounter == nullptr) { return false; }
 	
+	// Get the flow counter trigger box so we can check if the agent is within the box
+	UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox();
 
-	TWeakObjectPtr<AFlowCounter> WeakThis(this);
-	
-	// dequeue the new agent data
-	NewAgentData.ConsumeAllFifo([WeakThis](const FFlowCounterData& Data)
+	// check if new agent is already been added to the completed agent set - if so we can skip it
+	if (FlowCounter->AgentsPassedThroughCounter.Contains(Data.AgentID))
 	{
-		if (!WeakThis.IsValid()) return;
+		// Agent has already been processed, skip it
+		return true;
+	}
 
-		AFlowCounter* FlowCounter = WeakThis.Get();
-
-		// Get the flow counter trigger box so we can check if the agent is within the box
-		UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox();
-		// check if new agent is already been added to the completed agent set - if so we can skip it
-		if (!FlowCounter->AgentsPassedThroughCounter.Contains(Data.AgentID))
-		{
-			// Agent has already been processed, skip it
-			return;
-		}
-
-		// check if the agent is within the flow counter trigger box
-		if (FMath::PointBoxIntersection(Data.Location, FlowCounterBox))
-		{
-			// check if the agent is already tracked
-			if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID))
-			{
-				FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
-				// perform line intersection check to see if the agent has crossed the flow counter line
-				FVector IntersectionLocation;
-				FVector CurrentLocation = Data.Location;
-
-				bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
-				                                                  FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
-
-				// if we intersect, then add it to the completed agent set and increment the flow counter
-				if (bAgentCrossed)
-				{
-					FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
-					FlowCounter->FlowCounterCount.AddExchange(1);
-				}
-				else
-				{
-					// Agent has not crossed the line, update the previous tracked agent location with the new location
-					FlowCounter->PreviousTrackedAgentLocations[Data.AgentID] = Data.Location;
-				}
-			}
-			else
-			{
-				// Agent is not tracked, add it 
-				FlowCounter->PreviousTrackedAgentLocations.Add(Data.AgentID, Data.Location);
-			}
-		}
-		// check that we weren't already tracking the agent in case movement extends pass the trigger box
-		else if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID)) // TODO: check if we actually want to check if intersected or disregard 
+	// check if the agent is within the flow counter trigger box
+	if (FMath::PointBoxIntersection(Data.Location, FlowCounterBox))
+	{
+		// check if the agent is already tracked
+		if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID))
 		{
 			FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
 			// perform line intersection check to see if the agent has crossed the flow counter line
@@ -262,16 +221,75 @@ void AFlowCounter::NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewA
 				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
 				FlowCounter->FlowCounterCount.AddExchange(1);
 			}
-
-			// if we intersect or not we want to remove it from the previous tracked agent locations as we are no longer tracking it and likely moving away from the flow counter
-			FlowCounter->PreviousTrackedAgentLocations.Remove(Data.AgentID);
+			else
+			{
+				// Agent has not crossed the line, update the previous tracked agent location with the new location
+				FlowCounter->PreviousTrackedAgentLocations[Data.AgentID] = Data.Location;
+			}
 		}
 		else
 		{
-			return; // Agent is not within the flow counter trigger box, skip it
+			// Agent is not tracked, add it 
+			FlowCounter->PreviousTrackedAgentLocations.Add(Data.AgentID, Data.Location);
 		}
+	}
+	// check that we weren't already tracking the agent in case movement extends pass the trigger box
+	else if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID)) // TODO: check if we actually want to check if intersected or disregard 
+	{
+		FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+		// perform line intersection check to see if the agent has crossed the flow counter line
+		FVector IntersectionLocation;
+		FVector CurrentLocation = Data.Location;
+
+		bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
+		                                                  FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
+
+		// if we intersect, then add it to the completed agent set and increment the flow counter
+		if (bAgentCrossed)
+		{
+			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
+			FlowCounter->FlowCounterCount.AddExchange(1);
+		}
+
+		// if we intersect or not we want to remove it from the previous tracked agent locations as we are no longer tracking it and likely moving away from the flow counter
+		FlowCounter->PreviousTrackedAgentLocations.Remove(Data.AgentID);
+	}
+	else
+	{
+		return true; // Agent is not within the flow counter trigger box, skip it
+	}
+	return false;
+}
+
+bool AFlowCounter::HasAgentAlreadyPassedThrough(int32 AgentID) const
+{
+	if (AgentsPassedThroughCounter.Contains(AgentID))
+	{
+		// Agent has already passed through the flow counter
+		return true;
+	}
+	else
+	{
+		// Agent has not passed through the flow counter
+		return false;
+	}
+}
+
+void AFlowCounter::NewAgentData(TArray<FFlowCounterData>& NewAgentData)
+{
+	/* We want to process the new agent data and check if the agent is within the flow counter trigger box
+	 * - the data passed here is expected to be within the Z bounds of the flow counter trigger box
+	 * (this is due to the potential amount of agent data passed and multiple flow counters may be present).
+	 */
+
+	
+	for (FFlowCounterData& Data : NewAgentData)
+	{
 		
-	});
+
+		if (ProcessAgentFlowCrossing(Data)) return;
+		
+	};
 
 	// DEBUG
 	//UE_LOG(LogTemp, Warning, TEXT("Flow Counter Count: %d"), FlowCounterCount.Load());//just log output till we get a UI to display the count
@@ -299,4 +317,14 @@ void AFlowCounter::RemoveFlowCounterToSubsystem()
 	{
 		StatActorManagerSubsystem->RemoveFlowCounter(this);		
 	}
+}
+
+void AFlowCounter::ResetFlowCounterTrackingData()
+{
+	// Reset the flow counter count to 0
+	FlowCounterCount.Exchange(0);
+	// Clear the previous tracked agent locations
+	PreviousTrackedAgentLocations.Empty();
+	// Clear the agents passed through counter
+	AgentsPassedThroughCounter.Empty();
 }

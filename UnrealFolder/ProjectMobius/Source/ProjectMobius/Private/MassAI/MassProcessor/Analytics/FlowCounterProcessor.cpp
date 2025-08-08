@@ -47,35 +47,47 @@ void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 	}
 
 	//TODO: check if paused -> don't want to keep executing if not needed
+	
 
-	EntityQuery.ParallelForEachEntityChunk(EntityManager, Context, ([this](FMassExecutionContext& QueryContext)
+	EntityQuery.ForEachEntityChunk(EntityManager, Context, ([this](FMassExecutionContext& QueryContext)
 	{
 		// Get the required fragments and entities from the query context
 		const TConstArrayView<FEntityMovementFragment> EntityMovementFragment = QueryContext.GetFragmentView<FEntityMovementFragment>();
-		const TConstArrayView<FMassEntityHandle> Entities = QueryContext.GetEntities();
+		const int32 NumEntities = QueryContext.GetEntities().Num();
 
-		auto FlowCounters = StatisticSubsystem->GetFlowCounters().Num();
+		//auto FlowCounters = StatisticSubsystem->GetFlowCounters().Num();
 
-		for (int32 i = 0; i < FlowCounters; ++i)
+		for (int32 i = 0; i < NumEntities; ++i)
 		{
-			int32 FlowCounterID = i;
-			// The potential data to send to the StatisticSubsystem
-			UE::TConsumeAllMpmcQueue<FFlowCounterData> FlowDataQueue;
-
-			ParallelFor(Entities.Num(), [&](int32 j)
-			{
-				// Get the current entity movement fragment
-				const FEntityMovementFragment& MoveFrag = EntityMovementFragment[j];
+			// Get the current entity movement fragment
+			const FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 			
-				bool bInBand = StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation, FlowCounterID);
-				if (bInBand)
+			for (int32 j = 0; j < StatisticSubsystem->GetFlowCounters().Num(); ++j)
+			{
+				int32 AgentID = MoveFrag.EntityID;
+				// check to see if in band and not already been processed
+				if (!StatisticSubsystem->HasAgentBeenCountedInFlowCounter(AgentID, j) && StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation, j))
 				{
-					FlowDataQueue.ProduceItem(FFlowCounterData(MoveFrag.EntityID, MoveFrag.CurrentLocation));
-					
+					const FFlowCounterData MoveData(AgentID, MoveFrag.CurrentLocation);
+					StatisticSubsystem->SendDataToFlowCounter(MoveData, j);
 				}
-			});
-			StatisticSubsystem->SendDataToFlowCounter(FlowDataQueue, FlowCounterID);
+			}
 		}
+		
+		// ParallelFor(Entities.Num(), [&](int32 j)
+		// {
+		// 	// Get the current entity movement fragment
+		// 	const FEntityMovementFragment& MoveFrag = EntityMovementFragment[j];
+		//
+		// 	bool bInBand = StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation, FlowCounterID);
+		// 	if (bInBand)
+		// 	{
+		// 		FlowDataQueues[i].ProduceItem(FFlowCounterData(MoveFrag.EntityID, MoveFrag.CurrentLocation));
+		// 		
+		// 	}
+		// });
+			
+		
 		
 		
 	}));

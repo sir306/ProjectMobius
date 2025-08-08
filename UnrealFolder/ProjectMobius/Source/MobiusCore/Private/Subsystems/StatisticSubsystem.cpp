@@ -132,9 +132,21 @@ bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& Agent
 	return true;
 }
 
+bool UStatisticSubsystem::HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const
+{
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
+	if (!FlowCounter)
+	{
+		return false;
+	}
+
+	// Check if the agent has already been counted in this flow counter
+	return FlowCounter->HasAgentAlreadyPassedThrough(AgentID);
+}
+
 
 //TODO: this should be private method that we call after filtered in to correspond flowcounter groups - but prototype only using one so direct call to this is fine
-void UStatisticSubsystem::SendDataToFlowCounter(UE::TConsumeAllMpmcQueue<FFlowCounterData>& FlowData,
+void UStatisticSubsystem::SendArrayDataToFlowCounter(TArray<FFlowCounterData>& FlowData,
                                                 int32 FlowCounterIndex)
 {
 	// Check if the flow counters array is empty - it should never be empty as this can only be called from the FlowCounterProcessor
@@ -185,5 +197,37 @@ void UStatisticSubsystem::SendDataToFlowCounter(UE::TConsumeAllMpmcQueue<FFlowCo
 	if (FlowCounter)
 	{
 		FlowCounter->NewAgentData(FlowData);
+	}
+}
+
+void UStatisticSubsystem::SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex)
+{
+	// Check if the flow counter index is valid
+	if (FlowCounterIndex < 0 || FlowCounterIndex >= FlowCounters.Num())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid FlowCounterIndex: %d"), FlowCounterIndex);
+		return;
+	}
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterIndex];
+
+	// we may have found a valid index but we can still have a null pointer
+	if (FlowCounter)
+	{
+		FlowCounter->ProcessAgentFlowCrossing(FlowData);
+	}
+}
+
+void UStatisticSubsystem::ResetFlowCounters()
+{
+	for (AFlowCounter* FlowCounter : FlowCounters)
+	{
+		if (FlowCounter)
+		{
+			FlowCounter->ResetFlowCounterTrackingData();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FlowCounter is null"));
+		}
 	}
 }

@@ -88,10 +88,10 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 	UpdateHeatmapInterval();
 
 	// reuse the array storage instead of reallocating
-	//HeatmapLocations.Reset();
+	HeatmapLocations.Reset();
 
 	// Clear the location queue
-	LocationQueue.ConsumeAllLifo([](const FVector&){}); // No IsEmpty() check -> IsEmpty will traverse the whole queue and then ConsumeAllLifo will traverse it again, so we just clear it directly
+	//LocationQueue.ConsumeAllLifo([](const FVector&){}); // No IsEmpty() check -> IsEmpty will traverse the whole queue and then ConsumeAllLifo will traverse it again, so we just clear it directly
 
 
 	LastProcessedEntityCount = 0;
@@ -200,58 +200,59 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 	const TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 	auto Entities = Context.GetEntities();
 
+	int32 ChunkSize = HeatmapLocations.Num() == 0 ? 0 : HeatmapLocations.Num() - 1;
+	
 	// reserve array space to avoid reallocations as entities are added
-	//HeatmapLocations.Reserve((HeatmapLocations.Num() + Entities.Num()));
+	HeatmapLocations.Reserve((HeatmapLocations.Num() + Entities.Num()));
 
-	//int32 ChunkSize = HeatmapLocations.Num() == 0 ? 0 : HeatmapLocations.Num() - 1;
 	
 	//HeatmapLocations.SetNumUninitialized((HeatmapLocations.Num() + Entities.Num()));
 
 	//LastProcessedEntityCount += Entities.Num();
 
-	ParallelFor(Entities.Num(), [&](int32 i)
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ParallelFor);
-		const auto& EntityMovement = EntityMovementFragment[i];
-		const auto& EntityRendering = EntityRenderingFragment[i];
-
-		if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
-		{
-			return;
-		}
-
-		LocationQueue.ProduceItem(EntityMovement.CurrentLocation);
-		++LastProcessedEntityCount;
-	});
+	// ParallelFor(Entities.Num(), [&](int32 i)
+	// {
+	// 	TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ParallelFor);
+	// 	const auto& EntityMovement = EntityMovementFragment[i];
+	// 	const auto& EntityRendering = EntityRenderingFragment[i];
+	//
+	// 	if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
+	// 	{
+	// 		return;
+	// 	}
+	//
+	// 	LocationQueue.ProduceItem(EntityMovement.CurrentLocation);
+	// 	++LastProcessedEntityCount;
+	// });
 	
 	
 	// TODO: this loop is not parallelized, implement ParallelFor for performance and a threadsafe container for HeatmapLocations for simplicity
-	// for (int i = 0; i < Entities.Num(); i++)
-	// {
-	// 	auto EntityMovement = EntityMovementFragment[i];
-	// 	auto& EntityRendering = EntityRenderingFragment[i];
-	// 	
-	// 	if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
-	// 	{
-	// 		continue;
-	// 	}
-	// 	//HeatmapLocations.Add(EntityMovement.CurrentLocation);
-	// 	HeatmapLocations[(ChunkSize + i)] = EntityMovement.CurrentLocation;
-	// }
+	for (int i = 0; i < Entities.Num(); i++)
+	{
+		auto EntityMovement = EntityMovementFragment[i];
+		auto& EntityRendering = EntityRenderingFragment[i];
+		
+		if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
+		{
+			continue;
+		}
+		HeatmapLocations.Add(EntityMovement.CurrentLocation);
+		//HeatmapLocations[(ChunkSize + i)] = EntityMovement.CurrentLocation;
+	}
 }
 
 void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 {
 	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ApplyHeatmapUpdates);
-	if (!LocationQueue.IsEmpty())
+	if (!HeatmapLocations.IsEmpty())
 	{
-		HeatmapSubsystem->BroadcastTotalAgentCount(LastProcessedEntityCount.Load());
+		HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());
 		
 		if (bUpdateHeatmap && !bLastPauseLoop)
 		{
-			//HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
+			HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
 
-			HeatmapSubsystem->UpdateHeatmapsWithLocations_Mpmc(LocationQueue);
+			//HeatmapSubsystem->UpdateHeatmapsWithLocations_Mpmc(LocationQueue);
 		}
 
 		if (!HeatmapSubsystem->AnyHeatmapsActive())

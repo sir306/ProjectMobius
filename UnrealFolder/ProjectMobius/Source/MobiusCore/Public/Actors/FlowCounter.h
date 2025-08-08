@@ -62,14 +62,23 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
 	void UpdateFlowCounterTriggerBox();
+	bool ProcessAgentFlowCrossing(const FFlowCounterData& Data);
+	bool HasAgentAlreadyPassedThrough(int32 AgentID) const;
 
 	/** */
-	void NewAgentData(UE::TConsumeAllMpmcQueue<FFlowCounterData>& NewAgentData);
+	void NewAgentData(TArray<FFlowCounterData>& NewAgentData);
 
-	/** */
+	/**
+	 * Notifies the statistic subsystem that the flow counter exists in the world or has been updated.
+	 * This function communicates with the UStatisticActorManagementSubsystem to register or update
+	 * this flow counter, ensuring the subsystem is aware of the current state of the flow counter.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
 	void AddFlowCounterToSubsystem();
 	void RemoveFlowCounterToSubsystem();
+
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void ResetFlowCounterTrackingData();
 
 #pragma endregion METHODS 
 

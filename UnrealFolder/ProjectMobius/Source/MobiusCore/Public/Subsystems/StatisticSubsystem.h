@@ -130,9 +130,16 @@ public:
 
 	/**  */
 	bool IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const;
+	
+	bool HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const;
 
 	/** */
-	void SendDataToFlowCounter(UE::TConsumeAllMpmcQueue<FFlowCounterData>& FlowData, int32 FlowCounterIndex = 0);
+	void SendArrayDataToFlowCounter(TArray<FFlowCounterData>& FlowData, int32 FlowCounterIndex = 0);
+	void SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex = 0);
+
+	/** */
+	UFUNCTION()
+	void ResetFlowCounters();
 
 	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes
 	FOnSelectedAgentInfoChanged OnSelectedAgentInfoChanged; // Delegate to notify when selected agent info changes
