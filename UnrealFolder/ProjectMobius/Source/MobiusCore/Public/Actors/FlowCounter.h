@@ -83,6 +83,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
 	void ResetFlowCounterTrackingData();
 
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void NewSimTime(float UpdatedTime);
 
 	// Call these from code or Blueprints to move vertices
 	UFUNCTION(BlueprintCallable)
@@ -126,7 +128,7 @@ protected:
 	TMap<int32, FVector> PreviousTrackedAgentLocations;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
-	TSet<int32> AgentsPassedThroughCounter;
+	TMap<int32, float> AgentsPassedThroughCounter;
 
 	/** */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
@@ -149,6 +151,11 @@ private:
 	FTimerHandle FlowColorResetHandle;   // store so we can clear/restart
 	
 	const FName FlowColorParam = TEXT("FlowBarrierColour");
+
+	UPROPERTY(Transient)
+	float CurrentSimTime = 0.0f; // Used to track the current simulation time for the flow counter
+
+	mutable FCriticalSection FlowStateCS;
 	
 	// may want a reference to a widget for the flow counter to display the number of agents passing through
 	

@@ -7,6 +7,7 @@
 #include "Components/DeformableQuadComponent.h"
 #include "Subsystems/StatisticActorManagementSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 
 
 // Sets default values
@@ -93,6 +94,17 @@ AFlowCounter::AFlowCounter()
 AFlowCounter::~AFlowCounter()
 {
 	RemoveFlowCounterToSubsystem();
+
+	if (GetWorld() == nullptr){return;}  
+	// we need to unbind to the time dilation subsystem delegate for current simulation time
+	if (UTimeDilationSubSystem* TimeDilationSub = GetWorld()->GetSubsystem<UTimeDilationSubSystem>())
+	{
+		TimeDilationSub->OnNewCurrentTime.RemoveDynamic(this, &AFlowCounter::NewSimTime);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: Time Dilation Subsystem not found!"));
+	}
 }
 
 void AFlowCounter::PostInitializeComponents()
@@ -125,6 +137,16 @@ void AFlowCounter::BeginPlay()
 
 	// Here we need to tell the statistic subsystem that this flow counter exists and is in the world
 	AddFlowCounterToSubsystem();
+
+	// we need to bind to the time dilation subsystem to get the current simulation time
+	if (UTimeDilationSubSystem* TimeDilationSub = GetWorld()->GetSubsystem<UTimeDilationSubSystem>())
+	{
+		TimeDilationSub->OnNewCurrentTime.AddDynamic(this, &AFlowCounter::NewSimTime);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: Time Dilation Subsystem not found!"));
+	}
 }
 
 // Called every frame
@@ -279,8 +301,8 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			// if we intersect, then add it to the completed agent set and increment the flow counter
 			if (bAgentCrossed)
 			{
-				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
-				FlowCounter->FlowCounterCount.AddExchange(1);
+				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FlowCounter->CurrentSimTime);
+				FlowCounter->FlowCounterCount.Store(FlowCounter->AgentsPassedThroughCounter.Num());
 				
 				AsyncTask(ENamedThreads::GameThread, [WeakThis]()
 				{
@@ -316,8 +338,8 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		// if we intersect, then add it to the completed agent set and increment the flow counter
 		if (bAgentCrossed)
 		{
-			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
-			FlowCounter->FlowCounterCount.AddExchange(1);
+			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FlowCounter->CurrentSimTime);
+			FlowCounter->FlowCounterCount.Store(FlowCounter->AgentsPassedThroughCounter.Num());
 
 			AsyncTask(ENamedThreads::GameThread, [WeakThis]()
 			{
@@ -406,6 +428,38 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 	PreviousTrackedAgentLocations.Empty();
 	// Clear the agents passed through counter
 	AgentsPassedThroughCounter.Empty();
+}
+
+void AFlowCounter::NewSimTime(float UpdatedTime)
+{
+	// TODO: this is test to see if it fixes crash, if it does we need to change time implementation as to not lock every tick
+	// if it doesnt see if we lock on the new agent data call
+	FScopeLock _(&FlowStateCS);
+	if (CurrentSimTime < UpdatedTime)
+	{
+		CurrentSimTime = UpdatedTime;
+	}
+	else
+	{
+		
+		CurrentSimTime = UpdatedTime;
+		// Remove the tracked agents that would of not yet passed through the flow counter
+		// Correct remove-while-iterating pattern for TMap
+		for (auto It = AgentsPassedThroughCounter.CreateIterator(); It; /* no ++ here */)
+		{
+			const float Time = It.Value();               // or: const float Time = It->Value;
+			if (Time > CurrentSimTime)                   // “not yet passed” -> drop it
+			{
+				It.RemoveCurrent();                      // advances the iterator for us
+				continue;                                // DON'T ++It after RemoveCurrent()
+			}
+			++It;
+		}
+		PreviousTrackedAgentLocations.Reset();        // simplest + safest for scrubbing 
+		// Keep the counter authoritative
+		FlowCounterCount.Store(AgentsPassedThroughCounter.Num());
+		//FlowCounterCount.Exchange(AgentsPassedThroughCounter.Num());
+	}
 }
 
 void AFlowCounter::SetCorners(const FVector& A, const FVector& B, const FVector& C, const FVector& D)

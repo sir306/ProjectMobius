@@ -27,7 +27,7 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void RemoveFlowCounter(AFlowCounter* FlowCounter);
-
+	
 	UPROPERTY(EditAnywhere)
 	FOnFlowCountersChanged OnFlowCountersChanged;
 
