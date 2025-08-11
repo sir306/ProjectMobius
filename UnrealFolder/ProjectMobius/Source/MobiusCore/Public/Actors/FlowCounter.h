@@ -7,6 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "FlowCounter.generated.h"
 
+class UDeformableQuadComponent;
 class UStatisticSubsystem;
 class UBoxComponent;
 
@@ -19,8 +20,10 @@ public:
 	// Sets default values for this actor's properties
 	AFlowCounter();
 
-	~AFlowCounter();
+	virtual ~AFlowCounter() override;
 	
+	virtual void PostInitializeComponents() override;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -80,6 +83,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
 	void ResetFlowCounterTrackingData();
 
+
+	// Call these from code or Blueprints to move vertices
+	UFUNCTION(BlueprintCallable)
+	void SetCorners(const FVector& A, const FVector& B, const FVector& C, const FVector& D);
+
+	UFUNCTION(BlueprintCallable)
+	void SetSize(float Width, float Height);   // convenience wrapper
+
+	void FlashBarrierColor();
 #pragma endregion METHODS 
 
 	
@@ -126,6 +138,17 @@ private:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Visuals", meta = (AllowPrivateAccess = "true"))
 	UStaticMeshComponent* FlowCounterPillarMesh2;
+
+	UPROPERTY(VisibleAnywhere)
+	UDeformableQuadComponent* CounterBarrierVisualMesh;
+
+	UPROPERTY(Transient)
+	UMaterialInstanceDynamic* CounterBarrierVisualMID;
+
+	UPROPERTY(Transient)
+	FTimerHandle FlowColorResetHandle;   // store so we can clear/restart
+	
+	const FName FlowColorParam = TEXT("FlowBarrierColour");
 	
 	// may want a reference to a widget for the flow counter to display the number of agents passing through
 	

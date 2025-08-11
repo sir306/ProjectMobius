@@ -337,8 +337,11 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		NumOfAgentsPerTimeStep[i] = SimulationFragment.SimulationData[i].Num();
 	}
 
-	// log i 0 for the number of agents per time step
-	UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
+	if (NumOfAgentsPerTimeStep.IsValidIndex(0))
+	{
+		// log i 0 for the number of agents per time step
+		UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
+	}
 
 	// Set the json object on the agent data subsystem
 	AgentDataSubsystem->JSONObject = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);

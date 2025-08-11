@@ -4,6 +4,7 @@
 #include "Actors/FlowCounter.h"
 
 #include "Components/BoxComponent.h"
+#include "Components/DeformableQuadComponent.h"
 #include "Subsystems/StatisticActorManagementSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 
@@ -53,6 +54,26 @@ AFlowCounter::AFlowCounter()
 	FlowCounterTriggerBox = CreateDefaultSubobject<UBoxComponent>(TEXT("FlowCounterTriggerBox"));
 	//FlowCounterTriggerBox->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 	FlowCounterTriggerBox->SetupAttachment(RootComponent);
+
+	// Create and set as root
+	CounterBarrierVisualMesh = CreateDefaultSubobject<UDeformableQuadComponent>(TEXT("DeformableQuad"));
+	CounterBarrierVisualMesh->SetupAttachment(RootComponent);
+
+	// (Optional) set a starting size before the proxy is created
+	CounterBarrierVisualMesh->Initialize(100.f, 100.f);
+
+	// Hard-reference the material asset and create a MID
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Mat(
+		TEXT("/Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
+	if (Mat.Succeeded())
+	{
+		CounterBarrierVisualMID = UMaterialInstanceDynamic::Create(Mat.Object, this);
+		CounterBarrierVisualMesh->SetMaterial(0, CounterBarrierVisualMID);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FlowPlane: material not found at /Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
+	}	
 	
 	UpdateFlowCounterTriggerBox();
 	
@@ -72,6 +93,29 @@ AFlowCounter::AFlowCounter()
 AFlowCounter::~AFlowCounter()
 {
 	RemoveFlowCounterToSubsystem();
+}
+
+void AFlowCounter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	// Use whatever base material is currently on the quad; if none, load your asset.
+	UMaterialInterface* Base = CounterBarrierVisualMesh->GetMaterial(0);
+	if (!Base)
+	{
+		Base = LoadObject<UMaterialInterface>(nullptr,
+		                                      TEXT("/Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
+	}
+
+	if (Base)
+	{
+		// This both creates the MID and assigns it to slot 0 on the component.
+		CounterBarrierVisualMID = CounterBarrierVisualMesh->CreateDynamicMaterialInstance(0, Base);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FlowPlane base material missing"));
+	}
 }
 
 // Called when the game starts or when spawned
@@ -183,6 +227,23 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 
 	// Root component should be updated to reflect the same orientation as the trigger box
 	RootComponent->SetWorldRotation(BoxRotation);
+
+	const FVector Up = RootComponent->GetUpVector();   // respects the rotation above
+	const float   Height = 100.f;                       // or whatever you want
+
+	const FVector A_w = FlowCounterLineStartLocation - Up * Height;
+	const FVector B_w = FlowCounterLineEndLocation - Up * Height;
+	const FVector D_w = A_w + Up * (Height *2);
+	const FVector C_w = B_w + Up * (Height *2);
+
+	// Transform world → *component local* before calling SetCorners
+	const FTransform ToLocal = CounterBarrierVisualMesh->GetComponentTransform().Inverse();
+	const FVector A_l = ToLocal.TransformPosition(A_w);
+	const FVector B_l = ToLocal.TransformPosition(B_w);
+	const FVector C_l = ToLocal.TransformPosition(C_w);
+	const FVector D_l = ToLocal.TransformPosition(D_w);
+
+	CounterBarrierVisualMesh->SetCorners(A_l, B_l, C_l, D_l);
 }
 
 bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
@@ -220,6 +281,14 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			{
 				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
 				FlowCounter->FlowCounterCount.AddExchange(1);
+				
+				AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+				{
+					if (AFlowCounter* Self = WeakThis.Get())
+					{
+						Self->FlashBarrierColor();
+					}
+				});
 			}
 			else
 			{
@@ -249,6 +318,15 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		{
 			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID);
 			FlowCounter->FlowCounterCount.AddExchange(1);
+
+			AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+			{
+				if (AFlowCounter* Self = WeakThis.Get())
+				{
+					Self->FlashBarrierColor();
+				}
+			});
+			
 		}
 
 		// if we intersect or not we want to remove it from the previous tracked agent locations as we are no longer tracking it and likely moving away from the flow counter
@@ -258,6 +336,7 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 	{
 		return true; // Agent is not within the flow counter trigger box, skip it
 	}
+	
 	return false;
 }
 
@@ -327,4 +406,35 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 	PreviousTrackedAgentLocations.Empty();
 	// Clear the agents passed through counter
 	AgentsPassedThroughCounter.Empty();
+}
+
+void AFlowCounter::SetCorners(const FVector& A, const FVector& B, const FVector& C, const FVector& D)
+{
+	if (!CounterBarrierVisualMesh) return;
+	CounterBarrierVisualMesh->SetCorners(A, B, C, D);      // this updates bounds + pushes verts to GPU (your component handles it)
+}
+
+void AFlowCounter::SetSize(float Width, float Height)
+{
+	if (!CounterBarrierVisualMesh) return;
+	CounterBarrierVisualMesh->Initialize(Width, Height);   // rebuilds the 4 (8 with back-face) verts in local space
+}
+
+void AFlowCounter::FlashBarrierColor()
+{
+	if (!IsValid(CounterBarrierVisualMID)) return;
+
+	// show RED immediately
+	CounterBarrierVisualMID->SetVectorParameterValue(FlowColorParam, FLinearColor::Red);
+
+	// schedule revert to BLUE after 0.3s (restart if already running)
+	FTimerManager& TM = GetWorldTimerManager();
+	TM.ClearTimer(FlowColorResetHandle);
+	TM.SetTimer(FlowColorResetHandle, [this]()
+	{
+		if (IsValid(CounterBarrierVisualMID))
+		{
+			CounterBarrierVisualMID->SetVectorParameterValue(FlowColorParam, FLinearColor::Blue);
+		}
+	}, 0.3f, false);
 }
