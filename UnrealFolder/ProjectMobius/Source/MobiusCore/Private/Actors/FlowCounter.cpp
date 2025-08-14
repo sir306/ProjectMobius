@@ -444,17 +444,19 @@ void AFlowCounter::NewSimTime(float UpdatedTime)
 		
 		CurrentSimTime = UpdatedTime;
 		// Remove the tracked agents that would of not yet passed through the flow counter
-		// Correct remove-while-iterating pattern for TMap
-		for (auto It = AgentsPassedThroughCounter.CreateIterator(); It; /* no ++ here */)
+		decltype(AgentsPassedThroughCounter) Kept;
+		Kept.Reserve(AgentsPassedThroughCounter.Num());
+
+		for (const auto& Kvp : AgentsPassedThroughCounter)
 		{
-			const float Time = It.Value();               // or: const float Time = It->Value;
-			if (Time > CurrentSimTime)                   // “not yet passed” -> drop it
+			if (Kvp.Value <= CurrentSimTime)     // keep only “already passed”
 			{
-				It.RemoveCurrent();                      // advances the iterator for us
-				continue;                                // DON'T ++It after RemoveCurrent()
+				Kept.Add(Kvp.Key, Kvp.Value);
 			}
-			++It;
 		}
+
+		AgentsPassedThroughCounter = MoveTemp(Kept);  // whole-map swap
+		
 		PreviousTrackedAgentLocations.Reset();        // simplest + safest for scrubbing 
 		// Keep the counter authoritative
 		FlowCounterCount.Store(AgentsPassedThroughCounter.Num());

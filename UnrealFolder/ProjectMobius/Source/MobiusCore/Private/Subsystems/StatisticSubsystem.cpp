@@ -105,11 +105,13 @@ void UStatisticSubsystem::UpdateFlowCounters()
 // which should be a larger unrotated 2D plane that represents min max XY for agents to be considered in a flow counter band check
 bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const
 {
-	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
-	if (!FlowCounter)
+	// Dow we have a valid FlowCounterID?
+	if (!FlowCounters.IsValidIndex(FlowCounterID))
 	{
 		return false;
 	}
+	
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
 
 	// First check: is the agent's Z coordinate within this counter's Z bounds?
 	if (!FlowCounter->FlowCounterZSearchLimits.IsInZBounds(AgentLocation.Z))
@@ -134,11 +136,12 @@ bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& Agent
 
 bool UStatisticSubsystem::HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const
 {
-	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
-	if (!FlowCounter)
+	if (!FlowCounters.IsValidIndex(FlowCounterID))
 	{
 		return false;
 	}
+
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
 
 	// Check if the agent has already been counted in this flow counter
 	return FlowCounter->HasAgentAlreadyPassedThrough(AgentID);
@@ -186,7 +189,7 @@ void UStatisticSubsystem::SendArrayDataToFlowCounter(TArray<FFlowCounterData>& F
 	// }
 	
 	// Check if the flow counter index is valid
-	if (FlowCounterIndex < 0 || FlowCounterIndex >= FlowCounters.Num())
+	if (!FlowCounters.IsValidIndex(FlowCounterIndex))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Invalid FlowCounterIndex: %d"), FlowCounterIndex);
 		return;
@@ -203,7 +206,7 @@ void UStatisticSubsystem::SendArrayDataToFlowCounter(TArray<FFlowCounterData>& F
 void UStatisticSubsystem::SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex)
 {
 	// Check if the flow counter index is valid
-	if (FlowCounterIndex < 0 || FlowCounterIndex >= FlowCounters.Num())
+	if (!FlowCounters.IsValidIndex(FlowCounterIndex))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Invalid FlowCounterIndex: %d"), FlowCounterIndex);
 		return;
