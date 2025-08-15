@@ -157,7 +157,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	SetNiagaraAgentData(NiagaraComp, TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 	SetNiagaraAgentData(NiagaraComp, TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 	SetNiagaraAgentData(NiagaraComp, TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
-	
+
 }
 
 void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
@@ -422,9 +422,7 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->ClearSimCache();
 
 	// get the niagara variables for number of agents
-		
-	// Activate the Niagara System
-	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
+	
 
 	// Set the number of agents in the system
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);
@@ -443,4 +441,7 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 
 	// If we are paused then we need to pause the animations and vice versa
 	PauseResumeAnimations(bLastPauseLoop);
+
+	// Activate the Niagara System
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
 }

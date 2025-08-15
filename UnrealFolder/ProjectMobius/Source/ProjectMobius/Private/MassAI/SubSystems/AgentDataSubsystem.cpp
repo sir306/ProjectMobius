@@ -66,6 +66,10 @@ UAgentDataSubsystem::UAgentDataSubsystem() :
 	//AgentMovementInfoData = FSimulationFragment();
 }
 
+UAgentDataSubsystem::~UAgentDataSubsystem()
+{
+}
+
 void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -116,6 +120,29 @@ void UAgentDataSubsystem::Deinitialize()
 		JsonDataRunnable = nullptr;
 	}
 	Super::Deinitialize();
+}
+
+void UAgentDataSubsystem::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	
+	while (ProgressQueue.Dequeue(LoadProgress))
+	{
+		OnLoadSimulationDataProgress.Broadcast(LoadProgress);
+	}
+	
+	while (MaxAgentsQueue.Dequeue(MaxAgents))
+	{
+		OnMaxAgentCount.Broadcast(MaxAgents);
+	}
+
+	if (bIsDataLoaded)
+	{
+		// log this called
+		UE_LOG(LogTemp, Warning, TEXT("OnLoadSimulationDataComplete Broadcasted"));
+		OnLoadSimulationDataComplete.Broadcast();
+		bIsDataLoaded = false; // Reset the flag after broadcasting
+	}
 }
 
 void UAgentDataSubsystem::GetJSONDataFile(FString InJsonDataFile)
@@ -297,9 +324,18 @@ void UAgentDataSubsystem::CreateJsonReaderAndString(FString& OutJsonString, TSha
 	OutJsonReader = TJsonReaderFactory<TCHAR>::Create(OutJsonString);
 }
 
-FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile)
+FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner)
 {
-
+	// Set the owner subsystem if valid
+	if (Owner.IsValid())
+	{
+		OwnerSubsystem = Owner;
+	}
+	else
+	{
+		// Log a warning if the owner subsystem is not valid and implement propper error handling
+		return;
+	}
 	JsonFilePath = InJsonDataFile;
 	// check file actually exists before creating the thread
 	if (!FPaths::FileExists(JsonFilePath))
@@ -608,12 +644,11 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 		// Calculate the current percentage of the data loaded
 		float CurrentPercentage = (float)CurrentDataCount / (float)TargetDataCount;
 
-		// Broadcast the current percentage of the data loaded -- this is done on the game thread
-		AsyncTask(ENamedThreads::GameThread, [this, CurrentPercentage]()
+		// Send to progress queue in subsystem so it can Broadcast the current percentage of the data loaded -- this is done on the game thread
+		if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
 		{
-			// Broadcast the current percentage of the data loaded
-			OnLoadSimulationDataProgress.Broadcast(CurrentPercentage);
-		});
+			Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+		}
 
 		// Increment the current data count
 		CurrentDataCount++;
@@ -622,28 +657,43 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 
 void FJsonDataRunnable::FinalizeProgress()
 {
+	if (bShouldStop)
+	{
+		return;
+	}
 	// Perform Animation Preprocessing data here
 	// Broadcast the current percentage of the data loaded
-	AsyncTask(ENamedThreads::GameThread, [this]()
+	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
 	{
-		// Broadcast the current percentage of the data loaded as 0 this way the ui will show
-		OnLoadSimulationDataProgress.Broadcast(1.0f);
-		OnLoadSimulationDataProgress.Broadcast(0.0f);// NEED to broadcast new load text here
-	});
+		Subsys->ProgressQueue.Enqueue(1.0f);
+		Subsys->ProgressQueue.Enqueue(0.0f);// TODO: NEED to broadcast new load text here
+	}
 
+	if (bShouldStop)
+	{
+		return;
+	}
+	
 	CalcSmoothedStepMovementBrackets(AgentDataArray);
 
 	// let the thread sleep for 0.5 second
 	FPlatformProcess::Sleep(0.5f);
 
-	// Broadcast that the simulation data has been loaded -- this is done on the game thread
-	AsyncTask(ENamedThreads::GameThread, [this]()
+	if (bShouldStop)
 	{
-		// Broadcast the current percentage of the data loaded
-		OnLoadSimulationDataProgress.Broadcast(1.0f);
-		// Broadcast that the simulation data has been loaded
-		OnLoadSimulationDataComplete.Broadcast();
-	});
+		return;
+	}
+
+	// Broadcast that the simulation data has been loaded -- this is done on the game thread
+	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+	{
+		if (bShouldStop)
+		{
+			return;
+		}
+		Subsys->ProgressQueue.Enqueue(1.0f);
+		Subsys->bIsDataLoaded = true; // Set the flag to indicate that the data has been loaded
+	}
 
 	// let the thread sleep for 0.5 second
 	FPlatformProcess::Sleep(0.5f);
@@ -653,11 +703,11 @@ uint32 FJsonDataRunnable:: Run()
 {
 	bIsRunning = true;
 	// Broadcast the current percentage of the data loaded
-	AsyncTask(ENamedThreads::GameThread, [this]()
+	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
 	{
-		// Broadcast the current percentage of the data loaded as 0 this way the ui will show
-		OnLoadSimulationDataProgress.Broadcast(0.0f);
-	});
+		Subsys->ProgressQueue.Enqueue(0.0f);
+	}
+
 
 	if (!LoadFileAndDeserialize())
 	{
@@ -669,17 +719,32 @@ uint32 FJsonDataRunnable:: Run()
 	bool bCalculateMaxTime = true;
 
 	ProcessMetadata(bCalculateTimeBetweenSteps, bCalculateMaxTime);
-
-	AsyncTask(ENamedThreads::GameThread, [this]()
+	
+	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
 	{
-		OnMaxAgentCount.Broadcast(MaxAgents);
-	});
+		Subsys->MaxAgentsQueue.Enqueue(MaxAgents);
+	}
+
+	if (bShouldStop)
+	{
+		return 0;
+	}
 
 	// Size AgentDataArray to the max agents
 	AgentDataArray.SetNum(MaxAgents);
 
+	if (bShouldStop)
+	{
+		return 0;
+	}
+
 	// Run the main simulation loop
 	RunSimulationLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+
+	if (bShouldStop)
+	{
+		return 0;
+	}
 
 	// Send the final progress and completion events
 	FinalizeProgress();
@@ -785,6 +850,7 @@ void FJsonDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> Agen
 				// 		<< recordSpeed << "m/s V(" << tSpan << ")step-pts " << std::endl;
 				// }
 			}
+			if (bShouldStop) break;
 			// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
 			// Note: we increase and decrease tSpan (rough timesteps in a step) depending on the required step duration
 			// 
@@ -835,14 +901,14 @@ void FJsonDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> Agen
 				}
 			}
 
+			if (bShouldStop) break;
 			//Calculate the current percentage of the data loaded
 			float CurrentPercentage = static_cast<float>(a) / static_cast<float>(MaxAgents);
 			// Broadcast the current percentage of the data loaded
-			AsyncTask(ENamedThreads::GameThread, [this, CurrentPercentage]()
+			if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
 			{
-				// Broadcast the current percentage of the data loaded as 0 this way the ui will show
-				OnLoadSimulationDataProgress.Broadcast(CurrentPercentage);
-			});
+				Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+			}
 		
 			// Now: the animation movement brackets are stored in IKVectorSteps::agentsData[nPeople].embAvatarAnims[nTimeSteps]
 		}

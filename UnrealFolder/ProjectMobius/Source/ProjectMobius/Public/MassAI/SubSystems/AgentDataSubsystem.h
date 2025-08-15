@@ -65,7 +65,7 @@ struct FAgentData
  * 
  */
 UCLASS()
-class PROJECTMOBIUS_API UAgentDataSubsystem : public UWorldSubsystem, public IProjectMobiusInterface //public UTickableWorldSubsystem
+class PROJECTMOBIUS_API UAgentDataSubsystem : public UTickableWorldSubsystem, public IProjectMobiusInterface
 {
 	GENERATED_BODY()
 	
@@ -73,11 +73,18 @@ public:
 	/** Constructor */
 	UAgentDataSubsystem();
 
+	/** Destructor */
+	virtual ~UAgentDataSubsystem() override;
+
 	/** Initializer */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
 	/** Deinitializer */
 	virtual void Deinitialize() override;
+
+	virtual void Tick(float DeltaTime) override;
+
+	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UAgentDataSubsystem, STATGROUP_Tickables); }
 
 	/** Get JSON Data File */
 	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
@@ -152,6 +159,25 @@ public:
 	
 	/** JSON Object */
 	TSharedPtr<FJsonObject> JSONObject;
+
+	/** Delegate to broadcast when the simulation data has finished loading */
+	UPROPERTY()
+	FOnLoadSimulationDataComplete OnLoadSimulationDataComplete;
+
+	/** Delegate to broadcast new load percentages */
+	UPROPERTY()
+	FOnLoadSimulationDataProgress OnLoadSimulationDataProgress;
+
+	/** Delegate to broadcast new max agent count */
+	UPROPERTY()
+	FOnMaxAgentCount OnMaxAgentCount;
+
+	UPROPERTY()
+	bool bIsDataLoaded = false; // Flag to indicate if the data has been loaded
+
+	TQueue<float,EQueueMode::Mpsc> ProgressQueue; // Queue to hold progress updates
+	TQueue<int32,EQueueMode::Mpsc> MaxAgentsQueue;
+	
 protected:
 	/** The JSON Data File */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AgentData")
@@ -177,6 +203,11 @@ protected:
 	/** QuadTree Actor this is our visualization helper */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AgentData")
 	class AQuadTree* QuadTreeDataActor;
+
+	UPROPERTY(EditAnywhere)
+	float LoadProgress;
+
+	
 	
 #pragma endregion PROPERTIES
 
@@ -185,6 +216,7 @@ public:
 #pragma region GETTERS_SETTERS
 	/** Get Max Agents */
 	FORCEINLINE int32 GetMaxAgents() const { return MaxAgents; }
+
 
 	/** Get the agent movement sample */
 	//FORCEINLINE FSimulationFragment GetAgentMovementInfoData() const { return AgentMovementInfoData; }
@@ -210,7 +242,7 @@ public:
 	 *
 	 * @param[FString] InJsonDataFile: The JSON data file to load
 	 */
-	explicit FJsonDataRunnable(FString InJsonDataFile);
+	explicit FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner);
 
 	/** Destructor */
 	virtual ~FJsonDataRunnable() override;
@@ -238,15 +270,6 @@ public:
 
 	// Compute the correct step animation parameters for the given speed
 	EPedestrianMovementBracket CalculateStepAnimationParams(float CurrentSpeed, float& StepsPerSecond);
-
-	/** Delegate to broadcast when the simulation data has finished loading */
-	FOnLoadSimulationDataComplete OnLoadSimulationDataComplete;
-
-	/** Delegate to broadcast new load percentages */
-	FOnLoadSimulationDataProgress OnLoadSimulationDataProgress;
-
-	/** Delegate to broadcast new max agent count */
-	FOnMaxAgentCount OnMaxAgentCount;
 
 	/** Stores the Movement data */
 	FSimulationFragment AgentMovementInfoData = FSimulationFragment();
@@ -307,5 +330,7 @@ private:
 
 	/** Send the final progress and completion events */
 	void FinalizeProgress();
-	
+
+	/** Owner Subsystem */
+	TWeakObjectPtr<UAgentDataSubsystem> OwnerSubsystem;
 };

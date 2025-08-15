@@ -102,6 +102,23 @@ void UMassEntitySpawnSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
+void UMassEntitySpawnSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+{
+	Super::OnWorldBeginPlay(InWorld);
+	
+	// Ensure rep actor exists BEFORE Mass creates entities
+	if (UWorld* World = GetWorld())
+	{
+		if (!UGameplayStatics::GetActorOfClass(World, ANiagaraAgentRepActor::StaticClass()))
+		{
+			const FTransform T = FTransform::Identity;
+			ANiagaraAgentRepActor* Rep =
+				World->SpawnActorDeferred<ANiagaraAgentRepActor>(ANiagaraAgentRepActor::StaticClass(), T);
+			UGameplayStatics::FinishSpawningActor(Rep, T);
+		}
+	}
+}
+
 void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestriansToSpawn, FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
 {
 	auto PedestrianArchetypeHandle = CreatePedestrianArchetype();
@@ -121,6 +138,9 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
 
 	//TODO: We dont want to simulate time till this is done, also we need a better way to build shared fragment and update the archetype on data changes
 	EntityManager->BatchCreateEntities(PedestrianArchetypeHandle, ArchetypeSharedFragmentValues, NumberOfPedestriansToSpawn, SpawnedEntityPedestrianHandles);
+
+	// Cleanup any existing runnable to avoid memory leaks
+	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 }
 
 void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
@@ -181,41 +201,27 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 
 void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(FJsonDataRunnable* ToKill)
 {
-	if (ToKill)
-	{
-		// 1) Clear the member now so no one else ever re-uses it
-		AgentDataSubsystem->JsonDataRunnable = nullptr;
+	if (!ToKill) return;
 
-		// 2) Unbind your delegates immediately
-		ToKill->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
-		ToKill->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
-		if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>())
-		{
-			ToKill->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
-		}
-		
+	// 1) Stop on calling thread
+	ToKill->Stop();
 
-		// 3) Schedule deletion of *that* runnable
-		AsyncTask(ENamedThreads::GameThread, [ToKill, this]()
-		{
-			ToKill->Stop();
-			ToKill->Exit();
+	// 2) Join/Exit on calling thread (don’t bounce to GT). Ensure the runnable sets a “finished” flag.
+	ToKill->Exit();
 
-			while (!ToKill->bReadyToDelete)
-			{
-				// wait for the runnable to be ready to delete
-				FPlatformProcess::Sleep(0.01f); // sleep for a short time to avoid busy waiting
-			}
-			delete ToKill;  // safe: destructor will join + free the thread
-			
-			// Reset the template data
-			PedestrianTemplateData = FMassEntityTemplateData();
-
-			// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
-			// data is created
-			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-		});
+	// 3) Now it’s safe to unbind dynamic delegates on the subsystem (they’re not being used by the worker anymore)
+	if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>()) {
+		AgentDataSubsystem->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
 	}
+	AgentDataSubsystem->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
+	//AgentDataSubsystem->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
+
+	// 4) Delete
+	delete ToKill;
+	AgentDataSubsystem->JsonDataRunnable = nullptr;
+
+	// Optional GC
+	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 }
 
 FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
@@ -235,6 +241,9 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
+	// Cleanup any existing runnable to avoid memory leaks
+	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+	
 	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
 	// capsule components are cleared and marked for destruction so that we don't have memory leaks
 	for (auto& EntityHandle : SpawnedEntityPedestrianHandles)
@@ -284,15 +293,15 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
 	// Get the JSON Data File using the FRunnable class to get the data asynchronously
-	AgentDataSubsystem->JsonDataRunnable = new FJsonDataRunnable(JSONDataFile);
-	AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
-	AgentDataSubsystem->JsonDataRunnable->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
+	AgentDataSubsystem->JsonDataRunnable = new FJsonDataRunnable(JSONDataFile, AgentDataSubsystem);
+	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
+	//AgentDataSubsystem->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 		// bind current load percent
-		AgentDataSubsystem->JsonDataRunnable->OnLoadSimulationDataProgress.AddDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
+		AgentDataSubsystem->OnLoadSimulationDataProgress.AddDynamic(LoadingSubsystem, &ULoadingSubsystem::BroadcastNewLoadPercent);
 
 		// get file name from the json data file
 		FString FileName = FPaths::GetCleanFilename(JSONDataFile);
@@ -308,9 +317,17 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 
 void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 {
-	if (AgentDataSubsystem->JsonDataRunnable != nullptr)
+	UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
+
+	FSimulationFragment SimulationFragment;
+	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> JSONObjectLocal;
+	float TimeBetweenStepsLocal = 0.f;
+
+	if (AgentDataSubsystem->JsonDataRunnable)
 	{
-		AgentDataSubsystem->JsonDataRunnable->Stop();
+		SimulationFragment   = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
+		JSONObjectLocal      = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
+		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
@@ -321,12 +338,6 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Add the tag to prevent collision updates
 	PedestrianTemplateData.AddTag<FPedestrianCollisionsDisabled>();
-
-	// ensure a new fragment is created as not to get clashes
-	auto SimulationFragment = FSimulationFragment();
-	
-	// create the shared fragments
-	SimulationFragment = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
 
 	NumOfAgentsPerTimeStep = TArray<int32>();
 	NumOfAgentsPerTimeStep.SetNum(SimulationFragment.SimulationData.Num());
@@ -344,15 +355,14 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	}
 
 	// Set the json object on the agent data subsystem
-	AgentDataSubsystem->JSONObject = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
-
-	float TimeBetweenSteps = MoveTemp(AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps);
+	AgentDataSubsystem->JSONObject = JSONObjectLocal;
+	
 
 	// Get Time Dilation from the ProjectMobius Game Instance
 	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
 
 	// update time between steps
-	TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenSteps);
+	TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenStepsLocal);
 
 	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
 	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
@@ -375,14 +385,9 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Broadcast that the pedestrian data is ready to spawn
 	OnPedestrianDataReadyToSpawn.Broadcast();
-
-	AgentDataSubsystem->JsonDataRunnable->Exit();
 	
 	// At this point data should be ready to spawn
 	SpawnMaxPedestrians(ArchetypeSharedFragmentValues);
-	
-	// Cleanup any existing runnable to avoid memory leaks
-	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 }
 
 void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()

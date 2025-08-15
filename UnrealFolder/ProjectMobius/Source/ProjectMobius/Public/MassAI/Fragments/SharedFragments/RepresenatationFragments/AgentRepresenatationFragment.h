@@ -112,27 +112,27 @@ public:
 #pragma region PROPERTIES
 	/** Actor Class that holds instances that are created */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresentationActor;
+	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresentationActor = nullptr;
 
 	/** Number of Male Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfMaleAdults;
+	int32 NumberOfMaleAdults = 0;
 
 	/** Number of Male Elderly */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfMaleElderly;
+	int32 NumberOfMaleElderly = 0;
 
 	/** Number of Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfFemaleAdults;
+	int32 NumberOfFemaleAdults = 0;
 
 	/** Number of Female Elderly */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfFemaleElderly;
+	int32 NumberOfFemaleElderly = 0;
 
 	/** Number of Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
-	int32 NumberOfChildren;// TODO: Maybe do different genders
+	int32 NumberOfChildren = 0;// TODO: Maybe do different genders
 
 	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
 	/** Using low spec agent render effect? */
