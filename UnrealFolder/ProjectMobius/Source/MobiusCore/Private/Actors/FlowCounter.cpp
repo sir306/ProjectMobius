@@ -63,19 +63,6 @@ AFlowCounter::AFlowCounter()
 	// (Optional) set a starting size before the proxy is created
 	CounterBarrierVisualMesh->Initialize(100.f, 100.f);
 
-	// Hard-reference the material asset and create a MID
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Mat(
-		TEXT("/Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
-	if (Mat.Succeeded())
-	{
-		CounterBarrierVisualMID = UMaterialInstanceDynamic::Create(Mat.Object, this);
-		CounterBarrierVisualMesh->SetMaterial(0, CounterBarrierVisualMID);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("FlowPlane: material not found at /Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
-	}	
-	
 	UpdateFlowCounterTriggerBox();
 	
 	// As the trigger box is only used to check whether a location is within the flow counter area, we can set the collision to none
@@ -121,8 +108,11 @@ void AFlowCounter::PostInitializeComponents()
 
 	if (Base)
 	{
+		// Create a unique MID for this actor
+		FString UniqueName = FString::Printf(TEXT("FlowCounterMID_%s"), *GetName());
+		
 		// This both creates the MID and assigns it to slot 0 on the component.
-		CounterBarrierVisualMID = CounterBarrierVisualMesh->CreateDynamicMaterialInstance(0, Base);
+		CounterBarrierVisualMID = CounterBarrierVisualMesh->CreateDynamicMaterialInstance(0, Base, FName(*UniqueName));
 	}
 	else
 	{
