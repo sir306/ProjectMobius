@@ -89,7 +89,7 @@ void UAgentRepresentation_MOP::ConfigureQueries()
 
 void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
-	//UE_LOG(LogTemp, Display, TEXT("UAgentRepresentation_MOP::Execute()"));
+	UE_LOG(LogTemp, Display, TEXT("UAgentRepresentation_MOP::Execute()"));
 	// check if execution context is in world
 	if (!ExecutionContext.GetWorld())
 	{
@@ -111,6 +111,19 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 	// Get the MRS subsystem
 	UMRS_RepresentationSubsystem* MRSSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
+
+	// Create the Niagara System
+	UNiagaraSystem* NiagaraSystem = MRSSubsystem->LoadNiagaraAgentSystem(MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec());
+
+	if (NiagaraSystem == nullptr)
+	{
+		// Log error if the Niagara System could not be loaded
+		UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
+		return;
+	}
+
+	// Set the Niagara System
+	NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
 	
 	//EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, &AgentRepresentationInstanceComp](FMassExecutionContext& Context)
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, NiagaraAgentRepActor,MRSSubsystem](FMassExecutionContext& Context)
@@ -140,56 +153,12 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>() = AgentNiagaraDataSharedFrag;
 		}
 		
-		// to avoid spawning multiple ISMs check that it has not already been spawned
-		if (bHasSpawned)
+		// Check if the Niagara Stats frag matches the render effect type
+		if (MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec() != AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect)
 		{
-			// Set the shared actor component in the shared fragment
-			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
-
-			// DEACTIVATE THE NIAGARA SYSTEM
-			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
-			
-			// get time dilation subsystem current time step
-			int32 CurrentTimeStep = GetWorld()->GetSubsystem<UTimeDilationSubSystem>()->GetCurrentTimeStep();
-
-
-			auto Entities = Context.GetEntities();
-		
-			for (int i = 0; i < Entities.Num(); i++)
-			{
-				auto Entity = Entities[i];
-
-				// TODO
-				// Get the float value for the agent variation
-				float AgentVariationFloat = FMath::FRandRange(0.0f, 20.0f);
-
-				auto& EntityMovement = EntityMovementFragment[i];
-				auto& EntityRendering = EntityRenderingFragment[i];
-				// Process the entity and set up the corresponding niagara system for the demographic of this entity
-				ProcessEntity(EntityMovement,EntityRendering, AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
-				
-				EntityIndexOffset++;
-			}
-			
-		}
-		else if (!bHasSpawned)
-		{
-			// TEST update effect to use low spec effect
-			//AgentRepresentationFragment.bUseLowSpecAgentRenderEffect = true;
-			
-			
-
-			// Check if the Niagara Stats frag matches the render effect type
-			if (MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec() != AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect)
-			{
-				// If the Niagara Stats frag does not match the render effect type, then set it on the Niagara Stats frag
-				AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect = MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec();
-			}
-			
-			// Create the Niagara System
-			//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
+			// If the Niagara Stats frag does not match the render effect type, then set it on the Niagara Stats frag
+			AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect = MRSSubsystem->IsCurrentPedestrianAvatarTypeLowSpec();
 			UNiagaraSystem* NiagaraSystem = MRSSubsystem->LoadNiagaraAgentSystem(AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect);
-
 			if (NiagaraSystem == nullptr)
 			{
 				// Log error if the Niagara System could not be loaded
@@ -199,56 +168,91 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 			// Set the Niagara System
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
-			
-			// Set the shared actor component in the shared fragment
-			AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
-			
-			// flag to see if the initial spawn has been done
-			bHasSpawned = true;
-
-			auto Entities = Context.GetEntities();
-		
-			for (int i = 0; i < Entities.Num(); i++)
-			{
-				auto Entity = Entities[i];
-
-				// TODO
-				// Get the float value for the agent variation
-				float AgentVariationFloat = FMath::FRandRange(0.0f, 20.0f);
-
-				auto& EntityMovement = EntityMovementFragment[i];
-				auto& EntityRendering = EntityRenderingFragment[i];
-				// Process the entity and set up the corresponding niagara system for the demographic of this entity
-				ProcessEntity(EntityMovement,EntityRendering, AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
-				
-				EntityIndexOffset++;
-			}
+			NiagaraAgentRepActor->GetNiagaraComponent()->SetAutoActivate(false);
 			
 		}
+			
+		// Create the Niagara System
+		//UNiagaraSystem* NiagaraSystem = Cast<UNiagaraSystem>(StaticLoadObject(UNiagaraSystem::StaticClass(), NULL, TEXT("NiagaraSystem'/Game/01_Dev/PedestrianMovement/NiagaraConversion/NS_InstancedPedestrianAgent.NS_InstancedPedestrianAgent'")));
+			
+		// Set the shared actor component in the shared fragment
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
 
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->ClearSimCache();
+		// DEACTIVATE THE NIAGARA SYSTEM
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
+			
+		// get time dilation subsystem current time step
+		int32 CurrentTimeStep = GetWorld()->GetSubsystem<UTimeDilationSubSystem>()->GetCurrentTimeStep();
 
-		// get the niagara variables for number of agents
+
+		auto Entities = Context.GetEntities();
 		
-		// Activate the Niagara System
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
+		for (int i = 0; i < Entities.Num(); i++)
+		{
+			auto Entity = Entities[i];
 
-		// Set the number of agents in the system
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyMaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleElderly);
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults);
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly);
-		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ChildNumberOfAgents"), AgentNiagaraStatsSharedFrag.NumberOfChildren);
-		
+			// TODO
+			// Get the float value for the agent variation
+			float AgentVariationFloat = FMath::FRandRange(0.0f, 20.0f);
 
-		// log the number of agents
-		//UE_LOG(LogTemp, Warning, TEXT("MaleNumberOfAgents: %d"), AgentRepresentationFragment.NumberOfMaleAdults);
-		//UE_LOG(LogTemp, Warning, TEXT("FemaleNumberOfAgents: %d"), AgentRepresentationFragment.NumberOfFemaleAdults);
-		//UE_LOG(LogTemp, Warning, TEXT("ChildNumberOfAgents: %d"), AgentRepresentationFragment.NumberOfChildren);
+			auto& EntityMovement = EntityMovementFragment[i];
+			auto& EntityRendering = EntityRenderingFragment[i];
+			// Process the entity and set up the corresponding niagara system for the demographic of this entity
+			ProcessEntity(EntityMovement,EntityRendering, AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
+				
+			EntityIndexOffset++;
+		}
+
+		UNiagaraComponent* NC = AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent();
+
+		// Make sure we’re not mid-sim and wipe any cached frames
+		NC->DeactivateImmediate();
+		NC->ClearSimCache(true);
+
+		// 1) Push all counts (and arrays) first
+		NC->SetVariableInt(TEXT("MaleAdultAgentNumber"),   AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);
+		NC->SetVariableInt(TEXT("ElderlyMaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleElderly);
+		NC->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults);
+		NC->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly);
+		NC->SetVariableInt(TEXT("ChildNumberOfAgents"),    AgentNiagaraStatsSharedFrag.NumberOfChildren);
+
+		SetNiagaraAgentData(NC, AgentNiagaraDataSharedFrag);
 		
-		//UE_LOG(LogTemp, Warning, TEXT("UAgentRepresentation_MOP::Finished"));
 	});
 	
+	NiagaraAgentRepActor->GetNiagaraComponent()->Activate(true);
+	
+	
+}
+
+void UAgentRepresentation_MOP::SetNiagaraAgentData(UNiagaraComponent* Nc, FAgentNiagaraDataFrag& NiagaraDataFrag)
+{
+	// set the Niagara data from agent data
+	// Male Adult
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(Nc, TEXT("MaleAdultAgentLocationAndScale"), NiagaraDataFrag.MaleAdultAgentLocationAndScales);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("MaleAdultAgentQuatRotations"),   NiagaraDataFrag.MaleAdultAgentRotations);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("MaleAdultAgentAnimationStates"), NiagaraDataFrag.MaleAdultAnimationStates);
+
+	// Elderly Male 
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(Nc, TEXT("ElderlyMaleAgentLocationAndScale"), NiagaraDataFrag.ElderlyMaleAdultAgentLocationAndScales);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("ElderlyMaleAgentQuatRotations"),   NiagaraDataFrag.ElderlyMaleAdultAgentRotations);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("ElderlyMaleAgentAnimationStates"), NiagaraDataFrag.ElderlyMaleAdultAnimationStates);
+
+	// Female Adult
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(Nc, TEXT("FemaleAdultAgentLocationAndScale"), NiagaraDataFrag.FemaleAdultAgentLocationAndScales);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("FemaleAdultAgentQuatRotations"),   NiagaraDataFrag.FemaleAdultAgentRotations);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("FemaleAdultAgentAnimationStates"), NiagaraDataFrag.FemaleAdultAnimationStates);
+
+	// Elderly Female 
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(Nc, TEXT("ElderlyFemaleAgentLocationAndScale"), NiagaraDataFrag.ElderlyFemaleAdultAgentLocationAndScales);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("ElderlyFemaleAgentQuatRotations"),   NiagaraDataFrag.ElderlyFemaleAdultAgentRotations);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("ElderlyFemaleAgentAnimationStates"), NiagaraDataFrag.ElderlyFemaleAdultAnimationStates);
+
+	// Children (System uses "Child*", not "Children*")
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(Nc, TEXT("ChildAgentLocationAndScale"), NiagaraDataFrag.ChildrenAgentLocationAndScales);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("ChildAgentQuatRotations"),   NiagaraDataFrag.ChildrenAgentRotations);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("ChildAgentAnimationStates"), NiagaraDataFrag.ChildrenAnimationStates);
+
 }
 
 // Consume movement and rendering fragments to fill Niagara arrays and update counts.

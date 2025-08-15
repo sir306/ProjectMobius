@@ -46,6 +46,7 @@
 #include "MassAI/Actors/PedestrianCollisionHolder.h"
 
 #include "Subsystems/HeatmapSubsystem.h"
+#include "Subsystems/StatisticSubsystem.h"
 
 UPedestrianInitializeMOP::UPedestrianInitializeMOP()
 {
@@ -211,6 +212,31 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		
 		
 	}));
+
+	//TODO: MOVE INTO OWN OBSERVOR
+	// from world get all flow counters, if we have any then we need to add tags to our entities
+	auto FlowCounters = GetWorld()->GetSubsystem<UStatisticSubsystem>()->GetFlowCounters();
+	bool bValidCounters = false;
+	for (auto FlowCounter : FlowCounters)
+	{
+		if (FlowCounter != nullptr)
+		{
+			bValidCounters = true;
+			break;
+		}
+	}
+
+	if (bValidCounters)
+	{
+		// We have valid flow counters, so we need to add the MassFlowCounterTag to all entities
+		EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context) {
+			const TConstArrayView<FMassEntityHandle> Entities = Context.GetEntities();
+			for (auto Entity : Entities)
+			{
+				Context.Defer().AddTag<FMassFlowCounterTag>(Entity);
+			}
+		}));
+	}
 
 
 	// once all the chunks have been processed we need to set the unique Z values in the heatmap subsystem

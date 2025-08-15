@@ -576,7 +576,7 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArr
                       UHeatmapSubsystem* Self = WeakSelf.Get();
                       ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
                       {
-                              if (Self->Heatmaps[i])
+                              if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
                               {
                                       Self->Heatmaps[i]->UpdateHeatmapTextureRender();
                               }

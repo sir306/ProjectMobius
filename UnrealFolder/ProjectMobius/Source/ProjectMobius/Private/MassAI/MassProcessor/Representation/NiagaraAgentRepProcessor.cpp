@@ -114,7 +114,8 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		return;
 	}
 	
-	EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	//EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
 		//TODO: need to look at mass ai signals and how to use them -> this should be the equivalent to delegates and events -> and the reloading the shared fragments should only occur then
 		// Get the Niagara agent representation frag for the system
@@ -156,7 +157,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	SetNiagaraAgentData(NiagaraComp, TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 	SetNiagaraAgentData(NiagaraComp, TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 	SetNiagaraAgentData(NiagaraComp, TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
-	
+
 }
 
 void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
@@ -421,9 +422,7 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->ClearSimCache();
 
 	// get the niagara variables for number of agents
-		
-	// Activate the Niagara System
-	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
+	
 
 	// Set the number of agents in the system
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);
@@ -442,4 +441,7 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 
 	// If we are paused then we need to pause the animations and vice versa
 	PauseResumeAnimations(bLastPauseLoop);
+
+	// Activate the Niagara System
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
 }

@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "MassObserverProcessor.h"
+#include "NiagaraComponent.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
 #include "AgentRepresentation_MOP.generated.h"
@@ -46,6 +47,8 @@ protected:
 	virtual void ConfigureQueries() override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
 
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext) override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
+
+	void SetNiagaraAgentData(UNiagaraComponent* Nc, FAgentNiagaraDataFrag& NiagaraDataFrag);
 
 	/**
 	 * Process the current entity using its movement and rendering fragments.

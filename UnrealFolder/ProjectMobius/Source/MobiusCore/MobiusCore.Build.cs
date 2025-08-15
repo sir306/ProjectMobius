@@ -32,6 +32,7 @@ public class MobiusCore : ModuleRules
                 "DatasmithRuntime", 
                 "DatasmithCore",
                 "Visualization",
+                "RenderCore",
             }
         );
         

@@ -61,6 +61,8 @@ public:
 	/** Deintialize the subsystem */
 	virtual void Deinitialize() override;
 
+	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+	
 	/**
 	* A method used for spawning our custom archetypes at any point we are in the world not just begin play.
 	* This method can be called from blueprints or code.
@@ -129,7 +131,9 @@ public:
 	* Build the Pedestrian Representation Fragment Data
 	*/
 	void BuildPedestrianRepresentationFragmentData(); // TODO: add inputs to allow for customisation of the pedestrian representation currently hardcoded values
+protected:
 
+public:
 	// The Handle for spawned pedestrians
 	UPROPERTY()
 	TArray<FMassEntityHandle> SpawnedEntityPedestrianHandles;

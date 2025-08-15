@@ -30,6 +30,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "StatisticSubsystem.generated.h"
 
+struct FFlowCounterData;
+class AFlowCounter;
 class UStatisticSubsystem;
 /**
  * Delegates to broadcast information changes
@@ -68,17 +70,76 @@ public:
 	
 	virtual void Deinitialize() override;
 
-	/**  */
+	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+
+	/**
+	 * Updates the internal mesh data with the provided agent information and notifies listeners of changes.
+	 *
+	 * @param AgentData The array of FAgentMeshViewer objects representing the updated agent information,
+	 *                  including details such as position, speed, demographic, and other attributes.
+	 */
 	void UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData);
 
+	/**
+	 * Updates the data of the currently selected agent with the provided agent information
+	 * and broadcasts a notification to listeners about the change.
+	 *
+	 * @param AgentData A reference to an FAgentMeshViewer object containing updated
+	 *                  details about the selected agent, such as position, speed,
+	 *                  demographic information, and other related attributes.
+	 */
 	void UpdateSelectedAgentData(const FAgentMeshViewer& AgentData);
+
+	/**
+	 * Updates the data of the currently hovered agent with the provided agent information
+	 * and broadcasts a notification to listeners about the change.
+	 *
+	 * @param AgentData A reference to an FAgentMeshViewer object containing updated
+	 *                  details about the hovered agent, such as position, speed,
+	 *                  demographic information, and other related attributes.
+	 */
 	void UpdateHoveredAgentData(const FAgentMeshViewer& AgentData);
-	
+
+
+	/**
+	 * Retrieves the mesh data for all agents currently stored within the subsystem.
+	 *
+	 * @return An array of FAgentMeshViewer objects, each representing an agent's information such as position, speed, demographic, and other attributes.
+	 */
+	TArray<FAgentMeshViewer> GetAgentInfoMeshData();
+
+	/**
+	 * Retrieves the mesh data for the currently selected agent.
+	 *
+	 * @return An FAgentMeshViewer object containing information about the currently selected agent, including
+	 *         attributes such as position, speed, demographic, and other relevant details.
+	 */
+	FAgentMeshViewer GetSelectedAgentInfoMeshData();
+
+	/**
+	 * Retrieves the mesh data for the agent that is currently hovered over.
+	 *
+	 * @return An FAgentMeshViewer object containing detailed information about the hovered agent, including attributes
+	 *         such as position, speed, demographic, and other relevant details.
+	 */
+	FAgentMeshViewer GetHoveredAgentInfoMeshData();
+
+	/** */
+	UFUNCTION()
+	void UpdateFlowCounters();
 
 	/**  */
-	TArray<FAgentMeshViewer> GetAgentInfoMeshData();
-	FAgentMeshViewer GetSelectedAgentInfoMeshData();
-	FAgentMeshViewer GetHoveredAgentInfoMeshData();
+	bool IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const;
+	
+	bool HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const;
+
+	/** */
+	void SendArrayDataToFlowCounter(TArray<FFlowCounterData>& FlowData, int32 FlowCounterIndex = 0);
+	void SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex = 0);
+
+	/** */
+	UFUNCTION(BlueprintCallable)
+	void ResetFlowCounters();
 
 	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes
 	FOnSelectedAgentInfoChanged OnSelectedAgentInfoChanged; // Delegate to notify when selected agent info changes
@@ -87,5 +148,18 @@ private:
 	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>(); // Holds the current agent data for the mesh viewer
 	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
+
+	/** Reference to the FlowCounter actor, if needed for statistics gathering */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StatisticSubsystem|FlowCounter", meta = (AllowPrivateAccess = "true"))
+	TArray<TObjectPtr<AFlowCounter>> FlowCounters = TArray<TObjectPtr<AFlowCounter>>();
+
+public:
+	// GETTERS AND SETTERS
+	/**
+	 * Retrieves the reference to the FlowCounter actor associated with the world.
+	 *
+	 * @return A pointer to the AFlowCounter actor if it exists, otherwise nullptr.
+	 */
+	FORCEINLINE TArray<TObjectPtr<AFlowCounter>> GetFlowCounters() { return FlowCounters; }
 	
 };

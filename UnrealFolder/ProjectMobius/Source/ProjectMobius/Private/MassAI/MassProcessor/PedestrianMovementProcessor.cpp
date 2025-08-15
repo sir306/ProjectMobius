@@ -42,6 +42,8 @@
 #include "HAL/CriticalSection.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 
+class UStatisticSubsystem;
+
 UPedestrianMovementProcessor::UPedestrianMovementProcessor():
 	TimeDilationSubSystem(nullptr)
 {
@@ -49,7 +51,6 @@ UPedestrianMovementProcessor::UPedestrianMovementProcessor():
 	ExecutionFlags = (int32)EProcessorExecutionFlags::All;
 	ProcessingPhase = EMassProcessingPhase::PrePhysics;
 	ExecutionOrder.ExecuteBefore.Add(UE::Mass::ProcessorGroupNames::Avoidance);
-	
 }
 
 void UPedestrianMovementProcessor::ConfigureQueries()
@@ -185,6 +186,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 						// Sample missing — mark for destruction
 						RenderFrag.bReadyToDestroy = true;
 					}
+					
 				});
 			}
 			else

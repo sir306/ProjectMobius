@@ -3,21 +3,47 @@
 
 #include "Subsystems/StatisticSubsystem.h"
 
+#include "Actors/FlowCounter.h"
+#include "Components/BoxComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Subsystems/StatisticActorManagementSubsystem.h"
+
 UStatisticSubsystem::UStatisticSubsystem()
 {
 }
 
 void UStatisticSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	// add any subsystem dependencies here
+	// add the statistic actor management subsystem to the collection
+	Collection.InitializeDependency<UStatisticActorManagementSubsystem>();
 
 	
 	Super::Initialize(Collection);
+
+	// bind to the flow counters changed delegate
+	if (UStatisticActorManagementSubsystem* StatisticActorManagementSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>())
+	{
+		StatisticActorManagementSubsystem->OnFlowCountersChanged.BindDynamic(this, &UStatisticSubsystem::UpdateFlowCounters);
+	}
 }
 
 void UStatisticSubsystem::Deinitialize()
 {
 	Super::Deinitialize();
+	
+	// unbind to the flow counters changed delegate
+	if (UStatisticActorManagementSubsystem* StatisticActorManagementSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>())
+	{
+		StatisticActorManagementSubsystem->OnFlowCountersChanged.Unbind();
+	}
+}
+
+void UStatisticSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+{
+	Super::OnWorldBeginPlay(InWorld);
+
+	// Clear the flow counters list at the start of the world
+	FlowCounters.Empty();
 }
 
 void UStatisticSubsystem::UpdateAgentInfoMeshData(const TArray<FAgentMeshViewer>& AgentData)
@@ -57,4 +83,154 @@ FAgentMeshViewer UStatisticSubsystem::GetSelectedAgentInfoMeshData()
 FAgentMeshViewer UStatisticSubsystem::GetHoveredAgentInfoMeshData()
 {
 	return MoveTemp(HoveredAgentData);
+}
+
+void UStatisticSubsystem::UpdateFlowCounters()
+{
+	if (!GetWorld()){return;}
+	
+	UStatisticActorManagementSubsystem* StatisticActorManagementSubsystem = GetWorld()->GetSubsystem<UStatisticActorManagementSubsystem>();
+
+	if (StatisticActorManagementSubsystem)
+	{
+		// TODO: not really efficient to clear and re-add the flow counters every time this is called but for now it is fine
+		FlowCounters.Empty();
+		FlowCounters = StatisticActorManagementSubsystem->FlowCounters;
+	}
+}
+
+//TODO: we are going to need to expand this functionality when we increase the number of flow counters and their Z bounds
+// as it will become taxing on performance to loop through all flow counters every time we check if an agent is in a flow counter band
+// will require a spatial hash or similar to quickly check if an agent is in a flow counter band,
+// which should be a larger unrotated 2D plane that represents min max XY for agents to be considered in a flow counter band check
+bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const
+{
+	// Dow we have a valid FlowCounterID?
+	if (!FlowCounters.IsValidIndex(FlowCounterID))
+	{
+		return false;
+	}
+	
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
+
+	// First check: is the agent's Z coordinate within this counter's Z bounds?
+	if (!FlowCounter->FlowCounterZSearchLimits.IsInZBounds(AgentLocation.Z))
+	{
+		return false;
+	}
+
+	// // Get an expanded XY bounding box around the FlowCounter's trigger volume to allow leniency in horizontal proximity
+	// const UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox().ExpandBy(FVector(500.0f, 500.0f, 0.0f));
+	//
+	// // Measure the 3D distance between the agent and the FlowCounter
+	// const float DistanceToFlowCounter = FVector::Dist(FlowCounter->GetActorLocation(), AgentLocation);
+	//
+	// // If the agent is too far away (> 500 units), skip further checks for performance unless inside expanded box
+	// if (DistanceToFlowCounter > 500.0f && !FMath::PointBoxIntersection(AgentLocation, FlowCounterBox))
+	// {
+	// 	continue;
+	// }
+	
+	return true;
+}
+
+bool UStatisticSubsystem::HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const
+{
+	if (!FlowCounters.IsValidIndex(FlowCounterID))
+	{
+		return false;
+	}
+
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
+
+	// Check if the agent has already been counted in this flow counter
+	return FlowCounter->HasAgentAlreadyPassedThrough(AgentID);
+}
+
+
+//TODO: this should be private method that we call after filtered in to correspond flowcounter groups - but prototype only using one so direct call to this is fine
+void UStatisticSubsystem::SendArrayDataToFlowCounter(TArray<FFlowCounterData>& FlowData,
+                                                int32 FlowCounterIndex)
+{
+	// Check if the flow counters array is empty - it should never be empty as this can only be called from the FlowCounterProcessor
+	// if (FlowCounters.Num() == 0)
+	// {
+	// 	// attempt to get the flow counters from the world if they are not set
+	// 	if (GetWorld())
+	// 	{
+	// 		
+	//
+	// 		// As this can be called from outside of the game thread(ParallelFor), we need to get the flow counters from the world in a thread-safe manner.
+	// 		AsyncTask(ENamedThreads::GameThread, [this]()
+	// 		{
+	// 			TArray<AActor*> FoundActors;
+	// 			UWorld* World = GetWorld();
+	// 			UGameplayStatics::GetAllActorsOfClass(World, AFlowCounter::StaticClass(), FoundActors);
+	// 			if (FoundActors.Num() > 0)
+	// 			{
+	// 				for (AActor* Actor : FoundActors)
+	// 				{
+	// 					if (AFlowCounter* FlowCounter = Cast<AFlowCounter>(Actor))
+	// 					{
+	// 						// Add the flow counter to the array
+	// 						FlowCounters.Add(FlowCounter);
+	// 					}
+	// 					else
+	// 					{
+	// 						UE_LOG(LogTemp, Warning, TEXT("Found actor is not a FlowCounter: %s"), *Actor->GetName());
+	// 					}
+	// 				}
+	// 			}
+	// 		});
+	// 		//UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFlowCounter::StaticClass(), FoundActors);
+	// 		// if we found any flow counters, we can add them to the FlowCounters array
+	// 		
+	// 	}
+	// }
+	
+	// Check if the flow counter index is valid
+	if (!FlowCounters.IsValidIndex(FlowCounterIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid FlowCounterIndex: %d"), FlowCounterIndex);
+		return;
+	}
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterIndex];
+
+	// we may have found a valid index but we can still have a null pointer
+	if (FlowCounter)
+	{
+		FlowCounter->NewAgentData(FlowData);
+	}
+}
+
+void UStatisticSubsystem::SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex)
+{
+	// Check if the flow counter index is valid
+	if (!FlowCounters.IsValidIndex(FlowCounterIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid FlowCounterIndex: %d"), FlowCounterIndex);
+		return;
+	}
+	AFlowCounter* FlowCounter = FlowCounters[FlowCounterIndex];
+
+	// we may have found a valid index but we can still have a null pointer
+	if (FlowCounter)
+	{
+		FlowCounter->ProcessAgentFlowCrossing(FlowData);
+	}
+}
+
+void UStatisticSubsystem::ResetFlowCounters()
+{
+	for (AFlowCounter* FlowCounter : FlowCounters)
+	{
+		if (FlowCounter)
+		{
+			FlowCounter->ResetFlowCounterTrackingData();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FlowCounter is null"));
+		}
+	}
 }

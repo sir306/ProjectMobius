@@ -7,6 +7,7 @@
 #include "MassEntitySubsystem.h"
 #include "MobiusControllerSubsystem.generated.h"
 
+class ARuntimeMeshBuilder;
 // Forward declarations
 class UCapsuleComponent;
 
@@ -62,7 +63,7 @@ public:
 	 * @param[UCapsuleComponent] OutCapsuleComponent The capsule component that was hit, if any
 	 * @return bool returns true if a hit was found, false otherwise
 	 */
-	bool LineTraceFromMousePosition(FHitResult& OutHitResult, UCapsuleComponent*& OutCapsuleComponent) const;
+	bool LineTraceFromMousePosition(FHitResult& OutHitResult, UCapsuleComponent*& OutCapsuleComponent);
 
 	/**
 	 * When a user wants to select an agent in the world, we call this method to perform the line trace and set the variable if one is found, otherwise it will set the variable to nullptr
@@ -77,6 +78,11 @@ public:
 	 * @return Will return the last selected pedestrian capsule component, or nullptr if none was selected
 	 */
 	UCapsuleComponent* GetCapsuleComponent() const;
+
+	/**
+	 * Gets the runtime mesh generator actor and assigns it to a weak pointer, this is used to ignore the runtime mesh generator actor in the line trace
+	 */
+	void GetRuntimeMeshBuilderFromWorld();
 	
 	/**TODO: TBD if we can or want to use interfaces with mass ai entities, if so then we can use this method to perform a line trace
 	 * Perform line trace from the player controller's camera to the mouse position in the world, this line trace will only seacrh for actors that implement the IClickable interface
@@ -90,6 +96,9 @@ private:
 	/** Stores the last found pedestrian from a user selection */
 	UPROPERTY()
 	TObjectPtr<UCapsuleComponent> LastSelectedPedestrianCapsuleComponent;
+
+	UPROPERTY()
+	TWeakObjectPtr<ARuntimeMeshBuilder> RuntimeMeshGeneratorActor;
 };
 
 /*

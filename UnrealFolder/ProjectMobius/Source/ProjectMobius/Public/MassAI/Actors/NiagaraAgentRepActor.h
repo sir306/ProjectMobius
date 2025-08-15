@@ -34,5 +34,5 @@
 UCLASS()
 class PROJECTMOBIUS_API ANiagaraAgentRepActor : public ANiagaraActor
 {
-	GENERATED_BODY()	
+	GENERATED_BODY()
 };

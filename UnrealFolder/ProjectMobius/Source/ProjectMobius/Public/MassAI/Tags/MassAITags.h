@@ -53,3 +53,12 @@ struct PROJECTMOBIUS_API FMassEntityDeleteTag : public FMassTag
 {
 	GENERATED_BODY()
 };
+
+/**
+ * Tag used for flow counter in Mass Entity Framework.
+ */
+USTRUCT(BlueprintType)
+struct FMassFlowCounterTag : public FMassTag
+{
+	GENERATED_BODY()
+};

@@ -530,16 +530,27 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 	// Check if the blur is required
 	if (bIsBlurRequired)		
 	{
+		/*
+		 * @note: The OpenCV UMat class is a GPU accelerated version of the Mat class, it allows for faster processing
+		 * however this has been disabled for now as it is causing crashes, this is stemming from that the this
+		 * method is called from multiple threads and the UMat class is not thread safe. And should be called with a single thread.
+		 * TODO: This needs to be fixed in the future, but for now we will use the Mat class. Potential fixes include OpenCV stream handling
+		 * to ensure that our memory alignment is correct and that the gpu doesn't get over whelmed with too many tasks at once and illegal data entry.
+		 */
 
 		// point Mat at your pixel buffer
-		cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get()).copyTo(SrcMat);
+		//cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get()).copyTo(SrcMat);
+
+		cv::Mat BlurTemp(CVSize, CV_8UC4);
+		cv::Mat(CVSize, CV_8UC4,PixelBuffer.Get()).copyTo(BlurTemp);
 
 		// upload and blur on the GPU
-		SrcMat.copyTo(UBlurMat);
-		cv::GaussianBlur(UBlurMat, UBlurMat, cv::Size(29,29), 0, 0);
+		//SrcMat.copyTo(UBlurMat);
+		//cv::GaussianBlur(UBlurMat, UBlurMat, cv::Size(29,29), 0, 0);
+		cv::GaussianBlur(BlurTemp, SrcMat, cv::Size(29,29), 0, 0);
 
 		// write back into the same host memory
-		UBlurMat.copyTo(SrcMat);
+		//UBlurMat.copyTo(SrcMat);
 
 		// Copy the blurred image back to the pixel buffer
 		FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
