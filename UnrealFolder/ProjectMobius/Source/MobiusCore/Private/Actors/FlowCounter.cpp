@@ -9,6 +9,224 @@
 #include "Subsystems/StatisticSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 
+// TODO: Move these helpers to a utility class - likely will be useful elsewhere
+// Check if Point lies on the line segment AB
+static bool IsPointOnLineSegment(const FVector& A, const FVector& B, const FVector& Point, float Tolerance = KINDA_SMALL_NUMBER)
+{
+	// Vector from A to B
+	const FVector AB = B - A;
+	// Vector from A to Point
+	const FVector AP = Point - A;
+
+	// Project AP onto AB to find where the point lies along the line
+	const float Dot = FVector::DotProduct(AP, AB);
+	const float AB_SquaredLength = AB.SizeSquared();
+
+	// If projection is outside the segment, it's not on the line
+	if (Dot < 0.0f || Dot > AB_SquaredLength)
+	{
+		return false;
+	}
+
+	// Compute the closest point on AB to Point
+	const float T = Dot / AB_SquaredLength;
+	const FVector Closest = A + AB * T;
+
+	// Check if Point is very close to the line (within tolerance)
+	return Point.Equals(Closest, Tolerance);
+}
+
+// Returns true if segment [Prev,Curr] crosses the vertical gate plane through A→B,
+// with the intersection’s Z inside the prism. Outputs:
+//   - OutIntersectionOnLine: the *projection* of the plane hit onto the finite A→B segment
+//   - OutT: normalized [0..1] position along A→B (0=A, 1=B)
+static bool SegmentCrossesGateProjectToLine(
+    const FVector& Prev,
+    const FVector& Curr,
+    const FVector& A,    // gate center-line start (3D)
+    const FVector& B,    // gate center-line end   (3D)
+    const FFlowCounterZSearchLimits& ZLimits, // using MinZBounds/MaxZBounds as ABS Z
+    FVector& OutIntersectionOnLine,
+    float&   OutT,
+    float    XYSearchRadiusTol        = 4.0f, // cm
+    float    ZTolerance               = 1.0f, // cm
+    float    PlaneSignedDistTolerance = 3.0f  // cm
+)
+{
+    // --- INPUTS ---
+    UE_LOG(LogTemp, Warning, TEXT("[FC] Inputs: Prev%s Curr%s A%s B%s  XYTol=%.2f ZTol=%.2f PlaneTol=%.2f  ZWin[%.1f..%.1f]"),
+        *Prev.ToString(), *Curr.ToString(), *A.ToString(), *B.ToString(),
+        XYSearchRadiusTol, ZTolerance, PlaneSignedDistTolerance,
+        ZLimits.MinZBounds.Load(), ZLimits.MaxZBounds.Load());
+
+    OutIntersectionOnLine = FVector::ZeroVector;
+    OutT = 0.0f;
+
+    // 0) Degenerate segment?
+    if (Prev.Equals(Curr, UE_SMALL_NUMBER))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate segment: Prev==Curr (%.3f,%.3f,%.3f)"),
+               Prev.X, Prev.Y, Prev.Z);
+        return false;
+    }
+
+    const FVector AB = B - A;
+    const double  ABLenSq3D = AB.SizeSquared();
+    if (ABLenSq3D <= UE_SMALL_NUMBER)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate gate: A==B"));
+        return false;
+    }
+
+    // 1) Build vertical plane through A->B (three-point form)
+    FPlane GatePlane(A, B, A + FVector::UpVector);
+    FVector N(GatePlane.X, GatePlane.Y, GatePlane.Z);
+    const double NLen = N.Size();
+    if (NLen <= UE_SMALL_NUMBER)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Plane normal invalid (|N|=0)"));
+        return false;
+    }
+    const FVector Nn = N / NLen; // unit normal
+
+    // Signed distances in cm (anchor at A for clarity)
+    const double d0 = FVector::DotProduct(Prev - A, Nn);
+    const double d1 = FVector::DotProduct(Curr - A, Nn);
+    const bool   bDifferentSides = (d0 > 0.0 && d1 < 0.0) || (d0 < 0.0 && d1 > 0.0);
+    const bool   bTouchesPlane   = (FMath::Abs(d0) <= PlaneSignedDistTolerance) ||
+                                   (FMath::Abs(d1) <= PlaneSignedDistTolerance);
+
+    UE_LOG(LogTemp, Warning, TEXT("[FC] Plane N=(%.6f,%.6f,%.6f)  d0=%.3f d1=%.3f  cross=%d touch=%d"),
+           Nn.X, Nn.Y, Nn.Z, d0, d1, bDifferentSides ? 1 : 0, bTouchesPlane ? 1 : 0);
+
+    if (!bDifferentSides && !bTouchesPlane)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No cross and not within plane tolerance."));
+        return false;
+    }
+
+    // 2) Segment-plane intersection (explicit, unit-normal form)
+    FVector Hit = FVector::ZeroVector;
+    bool bHaveHit = false;
+
+    if (bDifferentSides)
+    {
+        const FVector D = Curr - Prev;
+        const double  denom = FVector::DotProduct(Nn, D);
+        // denom can be tiny if segment ~parallel to plane
+        if (FMath::Abs(denom) > SMALL_NUMBER)
+        {
+            const double numer = FVector::DotProduct(Nn, (A - Prev));  // NOTE: avoid GatePlane.W scaling issues
+            const double tLine = numer / denom;                        // param in [0,1] if intersection within segment
+            UE_LOG(LogTemp, Warning, TEXT("[FC] Cross: denom=%.6f numer=%.6f tLine=%.6f"), denom, numer, tLine);
+            if (tLine >= 0.0 && tLine <= 1.0)
+            {
+                Hit = Prev + static_cast<float>(tLine) * D;
+                bHaveHit = true;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but tLine outside [0,1]. Will try touch projection if eligible."));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but denom ~ 0 (parallel). Will try touch projection if eligible."));
+        }
+    }
+
+    if (!bHaveHit)
+    {
+        if (!bTouchesPlane)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No valid intersection and not a touch."));
+            return false;
+        }
+        const bool UsePrev = (FMath::Abs(d0) <= FMath::Abs(d1));
+        const FVector NearPt = UsePrev ? Prev : Curr;
+        Hit = NearPt - FVector::DotProduct(Nn, NearPt - A) * Nn; // project endpoint onto plane
+        UE_LOG(LogTemp, Warning, TEXT("[FC] Touch: projected %s to Hit%s"),
+               UsePrev ? TEXT("Prev") : TEXT("Curr"), *Hit.ToString());
+    }
+
+    // 3) XY-only lateral projection to finite segment
+    const FVector2D Axy(A.X, A.Y);
+    const FVector2D Bxy(B.X, B.Y);
+    const FVector2D Hxy(Hit.X, Hit.Y);
+    const FVector2D ABxy = Bxy - Axy;
+    const double    ABxyLenSq = ABxy.SizeSquared();
+
+    float tXY = 0.0f;
+
+    if (ABxyLenSq <= SMALL_NUMBER)
+    {
+        const float dx = Hxy.X - Axy.X;
+        const float dy = Hxy.Y - Axy.Y;
+        const float distXY = FMath::Sqrt(dx*dx + dy*dy);
+        UE_LOG(LogTemp, Warning, TEXT("[FC] Degenerate XY: dist(HitXY, AXY)=%.3f (tol=%.3f)"), distXY, XYSearchRadiusTol);
+        if (distXY > XYSearchRadiusTol)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] XY distance exceeds tolerance in degenerate XY case."));
+            return false;
+        }
+
+        // Build outputs for t=0
+        OutT = 0.0f;
+        OutIntersectionOnLine = A;
+
+        // Prism check (ABSOLUTE world-Z bounds)
+        const float MinZ = ZLimits.MinZBounds.Load() - ZTolerance;
+        const float MaxZ = ZLimits.MaxZBounds.Load() + ZTolerance;
+        const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
+        UE_LOG(LogTemp, Warning, TEXT("[FC] Prism check (XY-degenerate): HitZ=%.2f in [%.2f..%.2f] -> %d"),
+               Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
+        return passZ;
+    }
+
+    // Compute tXY and lateral distance in XY
+    const double dot = FVector2D::DotProduct(Hxy - Axy, ABxy);
+    const double rawT = dot / ABxyLenSq;
+    tXY = FMath::Clamp(static_cast<float>(rawT), 0.0f, 1.0f);
+
+    const FVector2D Cxy = Axy + ABxy * tXY;
+    const float LateralDistXY = (Hxy - Cxy).Size();
+
+    UE_LOG(LogTemp, Warning, TEXT("[FC] XY: rawT=%.6f tXY=%.6f  LateralDistXY=%.3f (tol=%.3f)"),
+           rawT, (double)tXY, LateralDistXY, XYSearchRadiusTol);
+
+    if (LateralDistXY > XYSearchRadiusTol)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] LateralDistXY exceeds tolerance."));
+        return false;
+    }
+
+    // 4) 3D param for output/bucketing
+    const double rawT3D = FVector::DotProduct(Hit - A, AB) / ABLenSq3D;
+    const float  t3D = FMath::Clamp(static_cast<float>(rawT3D), 0.0f, 1.0f);
+    const FVector CenterPoint = A + AB * t3D;
+
+    UE_LOG(LogTemp, Warning, TEXT("[FC] 3D: rawT3D=%.6f t3D=%.6f  CenterPoint%s"), rawT3D, (double)t3D, *CenterPoint.ToString());
+
+    // 5) Z prism (ABSOLUTE world-Z bounds)
+    const float MinZ = ZLimits.MinZBounds.Load() - ZTolerance;
+    const float MaxZ = ZLimits.MaxZBounds.Load() + ZTolerance;
+    const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
+
+    UE_LOG(LogTemp, Warning, TEXT("[FC] Prism: HitZ=%.2f in [%.2f..%.2f] -> %d"),
+           Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
+
+    if (!passZ)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z prism reject."));
+        return false;
+    }
+
+    // 6) Success
+    OutIntersectionOnLine = CenterPoint; // on center line
+    OutT = t3D;
+    UE_LOG(LogTemp, Warning, TEXT("[FC][OK] OutT=%.6f  OutIntersection%s"), (double)OutT, *OutIntersectionOnLine.ToString());
+    return true;
+}
 
 // Sets default values
 AFlowCounter::AFlowCounter()
@@ -137,12 +355,16 @@ void AFlowCounter::BeginPlay()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: Time Dilation Subsystem not found!"));
 	}
+
+	// Setup the bucket segments based on the number of segments property
+	SetupBucketSegments();
 }
 
 // Called every frame
 void AFlowCounter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	
 }
 
 void AFlowCounter::MoveGatePillarMeshToLocation(int32 PillarIndex, const FVector& NewLocation)
@@ -256,12 +478,15 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	const FVector D_l = ToLocal.TransformPosition(D_w);
 
 	CounterBarrierVisualMesh->SetCorners(A_l, B_l, C_l, D_l);
+
+	// After updating the trigger box, we need to reset the flow counter tracking data
+	SetupBucketSegments();
 }
 
 bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 {
 	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
-	AFlowCounter* FlowCounter = WeakThis.Get();\
+	AFlowCounter* FlowCounter = WeakThis.Get();
 	if (FlowCounter == nullptr) { return false; }
 	
 	// Get the flow counter trigger box so we can check if the agent is within the box
@@ -281,24 +506,43 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID))
 		{
 			FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+
+			// TODO: this is a temporary fix to account for the Z search limits being in world space and the line intersection check being in local space
+			// we need to convert the flow counter line start and end locations to be correct as the pillar mesh origins are center not base
+			//const FVector A = FVector(FlowCounter->FlowCounterLineStartLocation.X, FlowCounter->FlowCounterLineStartLocation.Y, FlowCounter->FlowCounterLineStartLocation.Z - FlowCounterZSearchLimits.MinZBounds);
+			//const FVector B = FVector(FlowCounter->FlowCounterLineEndLocation.X, FlowCounter->FlowCounterLineEndLocation.Y, FlowCounter->FlowCounterLineEndLocation.Z - FlowCounterZSearchLimits.MinZBounds);
+
+			const FVector A = FlowCounter->FlowCounterLineStartLocation;
+			const FVector B = FlowCounter->FlowCounterLineEndLocation;
+			
 			// perform line intersection check to see if the agent has crossed the flow counter line
-			FVector IntersectionLocation;
+			FVector IntersectionLocation = FVector::ZeroVector;
 			FVector CurrentLocation = Data.Location;
 
-			bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
-			                                                  FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
+			FVector IntersectionOnLine = FVector::ZeroVector;
+			float   TOnLine = 0.0f;
+
+			bool bAgentCrossed = SegmentCrossesGateProjectToLine(*PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
+										IntersectionOnLine, TOnLine,
+										/*PlaneLateralTolerance=*/4.0f,
+										/*ZTolerance=*/1.0f);
+			
+
+			// bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
+			//                                                   FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
 
 			// if we intersect, then add it to the completed agent set and increment the flow counter
 			if (bAgentCrossed)
 			{
-				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FlowCounter->CurrentSimTime);
+				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionLocation, TOnLine));
 				FlowCounter->FlowCounterCount.Store(FlowCounter->AgentsPassedThroughCounter.Num());
-				
-				AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+
+				AsyncTask(ENamedThreads::GameThread, [WeakThis, Data, TOnLine]()
 				{
 					if (AFlowCounter* Self = WeakThis.Get())
 					{
 						Self->FlashBarrierColor();
+						Self->AssignAgentToBucketUsingThreshold(Data.AgentID, TOnLine);
 					}
 				});
 			}
@@ -318,27 +562,42 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 	else if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID)) // TODO: check if we actually want to check if intersected or disregard 
 	{
 		FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+
+		// TODO: this is a temporary fix to account for the Z search limits being in world space and the line intersection check being in local space -> also minz may not be correctly set
+		// we need to convert the flow counter line start and end locations to be correct as the pillar mesh origins are center not base
+		const FVector A = FlowCounter->FlowCounterLineStartLocation;
+		const FVector B = FlowCounter->FlowCounterLineEndLocation;
+		
 		// perform line intersection check to see if the agent has crossed the flow counter line
-		FVector IntersectionLocation;
+		FVector IntersectionLocation = FVector::ZeroVector;
 		FVector CurrentLocation = Data.Location;
 
-		bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
-		                                                  FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
+		FVector IntersectionOnLine = FVector::ZeroVector;
+		float   TOnLine = 0.0f;
+
+		bool bAgentCrossed = SegmentCrossesGateProjectToLine(*PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
+									IntersectionOnLine, TOnLine,
+									/*PlaneLateralTolerance=*/4.0f,
+									/*ZTolerance=*/1.0f);
+			
+
+		// bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
+		//                                                   FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
 
 		// if we intersect, then add it to the completed agent set and increment the flow counter
 		if (bAgentCrossed)
 		{
-			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FlowCounter->CurrentSimTime);
+			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionLocation, TOnLine));
 			FlowCounter->FlowCounterCount.Store(FlowCounter->AgentsPassedThroughCounter.Num());
 
-			AsyncTask(ENamedThreads::GameThread, [WeakThis]()
-			{
-				if (AFlowCounter* Self = WeakThis.Get())
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Data, TOnLine]()
 				{
-					Self->FlashBarrierColor();
-				}
-			});
-			
+					if (AFlowCounter* Self = WeakThis.Get())
+					{
+						Self->FlashBarrierColor();
+						Self->AssignAgentToBucketUsingThreshold(Data.AgentID, TOnLine);
+					}
+				});
 		}
 
 		// if we intersect or not we want to remove it from the previous tracked agent locations as we are no longer tracking it and likely moving away from the flow counter
@@ -439,7 +698,7 @@ void AFlowCounter::NewSimTime(float UpdatedTime)
 
 		for (const auto& Kvp : AgentsPassedThroughCounter)
 		{
-			if (Kvp.Value <= CurrentSimTime)     // keep only “already passed”
+			if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)     // keep only “already passed”
 			{
 				Kept.Add(Kvp.Key, Kvp.Value);
 			}
@@ -451,6 +710,9 @@ void AFlowCounter::NewSimTime(float UpdatedTime)
 		// Keep the counter authoritative
 		FlowCounterCount.Store(AgentsPassedThroughCounter.Num());
 		//FlowCounterCount.Exchange(AgentsPassedThroughCounter.Num());
+		
+		// Now we need to update the flow buckets with the current agents that have passed through the counter
+		UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
 	}
 }
 
@@ -483,4 +745,160 @@ void AFlowCounter::FlashBarrierColor()
 			CounterBarrierVisualMID->SetVectorParameterValue(FlowColorParam, FLinearColor::Blue);
 		}
 	}, 0.3f, false);
+}
+
+void AFlowCounter::AssignAgentsToBuckets(TArray<int32> AllAgents)
+{
+	for (int32 AgentID : AllAgents)
+	{
+		AssignAgentToBuckets(AgentID);
+	}
+}
+
+void AFlowCounter::AssignAgentToBuckets(int32 AgentID)
+{
+	// Get the agent's intersection location from the AgentsPassedThroughCounter map
+	FFlowCounterCountedAgentData* AgentData = AgentsPassedThroughCounter.Find(AgentID);
+		
+	// is the data ptr valid ?
+	if (AgentData)
+	{
+		// Find the appropriate bucket for the agent based on their intersection location
+		for (int32 i = 0; i < NumberOfBucketSegments; i++)
+		{
+			// we need to check if the agent's intersection location is within the bucket segment or on the start/end point of the segment
+			// TODO: Review this logic with Pete to ensure this is how we should be checking
+				
+			FFlowCounterBucketData BucketData = FlowCounterBucketData[i];
+				
+			// if (IsPointOnLineSegment(BucketData.SegmentStart, BucketData.SegmentEnd, AgentData->IntersectionLocation))
+			// {
+			// 	// Add the agent to the bucket
+			// 	FlowCounterBucketData[i].AgentIDs.Add(AgentID);
+			// 	FlowCounterBucketData[i].AgentCount = FlowCounterBucketData[i].AgentIDs.Num();
+			// 	break; // Exit the loop once the agent has been assigned to a bucket
+			// }
+
+			float IntersctionThreshold = AgentData->IntersectionThreshold;
+			if (FlowCounterBucketData[i].StartThreshold <= IntersctionThreshold && IntersctionThreshold < FlowCounterBucketData[i].EndThreshold)
+			{
+				// Add the agent to the bucket
+				FlowCounterBucketData[i].AgentIDs.Add(AgentID);
+				FlowCounterBucketData[i].AgentCount = FlowCounterBucketData[i].AgentIDs.Num();
+				break; // Exit the loop once the agent has been assigned to a bucket
+			}
+		}
+	}
+	else
+	{
+		// Agent data not found, skip it -> This shouldn't happen but just in case need to add error handling
+	}
+}
+
+void AFlowCounter::AssignAgentToBucketUsingThreshold(int32 AgentID, float IntersectionThreshold)
+{
+	const int32 N = NumberOfBucketSegments;
+	const int32 BucketIndex = BucketIndex_LeftClosed(IntersectionThreshold, N);
+	
+	if (FlowCounterBucketData.IsValidIndex(BucketIndex))
+	{
+		// Add the agent to the bucket
+		FlowCounterBucketData[BucketIndex].AgentIDs.Add(AgentID);
+		FlowCounterBucketData[BucketIndex].AgentCount = FlowCounterBucketData[BucketIndex].AgentIDs.Num();
+	}
+}
+
+void AFlowCounter::UpdateNumberOfBucketSegments(int32 NewNumberOfSegments)
+{
+	// new number of segments must be at least 1
+	NumberOfBucketSegments = FMath::Max(1, NewNumberOfSegments);
+
+	// Get all the Agent IDs from all the buckets
+	TArray<int32> AllAgents;
+	
+	for (const FFlowCounterBucketData& Bucket : FlowCounterBucketData)
+	{
+		AllAgents.Append(Bucket.AgentIDs);
+	}
+	
+	// Re-setup the bucket segments
+	SetupBucketSegments();
+
+	// Once we have setup the new bucket segments, we need to reassign the agents to the new buckets
+	AssignAgentsToBuckets(AllAgents);
+}
+
+void AFlowCounter::RemoveAgentFromBuckets(int32 AgentID)
+{
+	for (FFlowCounterBucketData& Bucket : FlowCounterBucketData)
+	{
+		if (Bucket.AgentIDs.Contains(AgentID))
+		{
+			Bucket.AgentIDs.Remove(AgentID);
+			Bucket.AgentCount = Bucket.AgentIDs.Num();
+			//TODO: If we store in multiple buckets in the case when start and end locations are the same we may want to remove from all buckets
+			//only if we store in this behaviour - currently we don't
+			break; // Exit the loop once the agent has been removed from a bucket
+		}
+	}
+}
+
+void AFlowCounter::UpdateFlowBucketsWithCurrentAgentsFromTimeChange()
+{
+	// Get all the Agent IDs from the AgentsPassedThroughCounter map
+	TArray<int32> AllAgents;
+	AgentsPassedThroughCounter.GetKeys(AllAgents);
+
+	// Clear all the current bucket data
+	for (FFlowCounterBucketData& Bucket : FlowCounterBucketData)
+	{
+		Bucket.AgentIDs.Empty();
+		Bucket.AgentCount = 0;
+	}
+
+	// Reassign the agents to the buckets based on their intersection locations
+	AssignAgentsToBuckets(AllAgents);
+}
+
+void AFlowCounter::SetupBucketSegments()
+{
+	// Create the number of bucket segments based on the number of segments property
+	FlowCounterBucketData.Empty();
+
+	// Ensure we have at least 1 segment
+	int32 NumSegments = FMath::Max(1, NumberOfBucketSegments);
+
+	// calculate the width of each segment based on the distance between the two pillars
+	float DistanceBetweenPillars = FVector::Dist(FlowCounterLineStartLocation, FlowCounterLineEndLocation);
+	float SegmentWidth = DistanceBetweenPillars / NumSegments;
+
+	// Initialize the bucket data array with the specified number of segments
+	for (int32 i = 0; i < NumSegments; i++)
+	{
+		// Calculate the start and end location of each segment
+		FVector SegmentStartLocation = FlowCounterLineStartLocation + (FlowCounterLineEndLocation - FlowCounterLineStartLocation).GetSafeNormal() * SegmentWidth * i;
+		FVector SegmentEndLocation = FlowCounterLineStartLocation + (FlowCounterLineEndLocation - FlowCounterLineStartLocation).GetSafeNormal() * SegmentWidth * (i + 1);
+
+		// Calculate the start and end threshold for each segment -> used for assigning agents to buckets based on their intersection threshold
+		float StartThreshold = (float)i / (float)NumSegments;
+		float EndThreshold = (float)(i + 1) / (float)NumSegments;
+		
+		FlowCounterBucketData.Add(FFlowCounterBucketData(i, SegmentStartLocation, SegmentEndLocation,StartThreshold,EndThreshold));
+	}
+}
+
+int32 AFlowCounter::BucketIndex_LeftClosed(float T, int32 N, float Eps)
+{
+	if (N <= 0 || !FMath::IsFinite(T)) return 0;
+
+	// Ensure T in [0,1]
+	T = FMath::Clamp(T, 0.0f, 1.0f);
+
+	// Shift by a tiny epsilon so exact boundaries (k/N) fall into the LOWER bucket.
+	// (Except T=0, which clamps to 0 below.)
+	const float Scaled = T * float(N) - Eps;
+
+	// Floor then clamp to [0, N-1]. For T=1.0: Scaled = N - Eps -> floor = N-1.
+	const int32 Idx = FMath::FloorToInt(Scaled);
+	return FMath::Clamp(Idx, 0, N - 1);
 }

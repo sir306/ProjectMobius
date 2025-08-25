@@ -94,6 +94,36 @@ public:
 	void SetSize(float Width, float Height);   // convenience wrapper
 
 	void FlashBarrierColor();
+
+	/**
+	 * Assigns agents to appropriate buckets based on their intersection locations.
+	 *
+	 * @param[TArray<int32>] AllAgents A list of agent IDs to be processed and assigned to buckets.
+	 *
+	 * The method retrieves each agent's intersection location from the internal map and determines
+	 * which bucket segment the agent belongs to. If a matching bucket segment is found, the agent
+	 * is added to the bucket, and the bucket's agent count is updated. Error handling is in place
+	 * to skip agents with missing data.
+	 */
+	void AssignAgentsToBuckets(TArray<int32> AllAgents);
+
+	void AssignAgentToBuckets(int32 AgentID);
+
+	void AssignAgentToBucketUsingThreshold(int32 AgentID, float IntersectionThreshold);
+
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
+	void UpdateNumberOfBucketSegments(int32 NewNumberOfSegments);
+
+	/** */
+	void RemoveAgentFromBuckets(int32 AgentID);
+
+	void UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
+
+private:
+	void SetupBucketSegments();
+	
+	int32 BucketIndex_LeftClosed(float T, int32 N, float Eps = 1e-6f);
+	
 #pragma endregion METHODS 
 
 	
@@ -117,6 +147,14 @@ public:
 protected:
 	/** */
 	TAtomic<int32> FlowCounterCount = 0;// using TAtomic to ensure thread safety when incrementing the count
+
+	/** */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Stats")
+	float FlowRateOverTime = 0.0f; // e.g., agents per minute
+
+	/** */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Stats")
+	TArray<FFlowCounterBucketData> FlowCounterBucketData = TArray<FFlowCounterBucketData>();
 	
 	/**
 	 * Stores the previous tracked locations of agents, where each agent is identified by an integer ID
@@ -128,9 +166,27 @@ protected:
 	TMap<int32, FVector> PreviousTrackedAgentLocations;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
-	TMap<int32, float> AgentsPassedThroughCounter;
+	TMap<int32, FFlowCounterCountedAgentData> AgentsPassedThroughCounter;
 
-	/** */
+	/**
+	 * Represents the number of segments or partitions in the bucket system of the flow counter.
+	 * Used for dividing the counter's area into distinct sections to calculate the number of agents passing
+	 * through each segment.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	int32 NumberOfBucketSegments = 3;//TODO: expose to UI to allow user to set number of segments and reset to default value of 1
+	
+	/** For a bucket system that tells the amount of agents that passed through a
+	 * section of the counter we need to know what a bucket width should be */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	float PassageFlowIncrement = 50.0f;
+
+	/**
+	 * A reference to the statistic subsystem that facilitates communication and integration
+	 * with the broader system managing statistical data within the game or application.
+	 * This subsystem is used to track, update, and register specific statistical elements
+	 * relevant to this class, such as flow counter data or related metrics.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	TObjectPtr<UStatisticSubsystem> StatisticSubsystem;
 	
