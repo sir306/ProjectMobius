@@ -11,6 +11,12 @@ class UDeformableQuadComponent;
 class UStatisticSubsystem;
 class UBoxComponent;
 
+struct FBuckectTempData
+{
+	int32 AgentID = 0;
+	float IntersectionThreshold = 0.0f;
+};
+
 UCLASS()
 class MOBIUSCORE_API AFlowCounter : public AActor
 {
@@ -145,8 +151,11 @@ public:
 	FVector FlowCounterLineEndLocation = FVector(0.0f, 0.0f, 0.0f);
 
 protected:
-	/** */
-	TAtomic<int32> FlowCounterCount = 0;// using TAtomic to ensure thread safety when incrementing the count
+	/**
+	 * An atomic integer used to keep track of the flow counter count.
+	 * Ensures thread-safe operations for incrementing or decrementing the count.
+	 */
+	std::atomic<int32> FlowCounterCount = 0;// using TAtomic to ensure thread safety when incrementing the count
 
 	/** */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Stats")
@@ -212,6 +221,9 @@ private:
 	float CurrentSimTime = 0.0f; // Used to track the current simulation time for the flow counter
 
 	mutable FCriticalSection FlowStateCS;
+
+	/** A thread-safe queue to handle bucket data due to the possibility of bucket mutations on the game thread */
+	TQueue<FBuckectTempData, EQueueMode::Mpsc> ThreadSafeNewAgentDataQueue = TQueue<FBuckectTempData, EQueueMode::Mpsc>();
 	
 	// may want a reference to a widget for the flow counter to display the number of agents passing through
 	
@@ -222,5 +234,5 @@ public:
 
 	/** Get the current flow counter count */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Getters")
-	FORCEINLINE int32 GetFlowCounterCount() const { return FlowCounterCount.Load(); }
+	FORCEINLINE int32 GetFlowCounterCount() const { return FlowCounterCount.load(); }
 };

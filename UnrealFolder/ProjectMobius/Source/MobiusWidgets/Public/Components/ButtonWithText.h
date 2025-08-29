@@ -39,6 +39,8 @@ class MOBIUSWIDGETS_API UButtonWithText : public UBaseButton
 
 	
 public:
+	UButtonWithText();
+	
 	/**
 	 * The SynchronizeProperties function is called when the widget is constructed,
 	 * this is where we can apply our custom style to the button.
@@ -52,13 +54,16 @@ public:
 	virtual void ApplyMobiusButtonStyle() override;
 	
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+
+	UFUNCTION(BlueprintCallable)
+	void SetButtonWithNewText(FText NewButtonText);
 	
 	/**
 	 * To change the style of the button from default to clicked to give the ribbon appearance on the widget,
 	 * we can bind to the on clicked method to flip between the two style sheets */
 	UFUNCTION()
 	void ButtonClickedUpdateStyle();
-	
+
 	/** Text to be set on the button */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
 	FText ButtonTextValue;
@@ -74,4 +79,7 @@ public:
 	/** Toggle property to say if this button should switch the normal with hovered when clicked */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
 	bool bShouldSwitchNormalWithHovered = true;
+
+	/** The slate text block used inside the button */
+	TSharedPtr<STextBlock> MyButtonText;
 };

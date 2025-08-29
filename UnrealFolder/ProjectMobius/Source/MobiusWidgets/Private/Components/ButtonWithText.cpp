@@ -28,6 +28,11 @@
 #include "Slate.h"
 #include "Components/ButtonSlot.h"
 
+UButtonWithText::UButtonWithText()
+{
+	
+}
+
 void UButtonWithText::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
@@ -41,38 +46,56 @@ void UButtonWithText::SynchronizeProperties()
 void UButtonWithText::ApplyMobiusButtonStyle()
 {
 	Super::ApplyMobiusButtonStyle();
-	
 }
 
 TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 {
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		MyButton = SNew(SButton)
-			.Text(ButtonTextValue)
-			.TextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-			.ButtonStyle(ButtonStyleDefault ? ButtonStyleDefault->GetStyle<FButtonStyle>() : &FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button"))
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			.TextShapingMethod(ETextShapingMethod::FullShaping)// Set to full shaping now so when text translations are added, the text will be shaped correctly
-			// Defaults
-			.OnClicked(BIND_UOBJECT_DELEGATE(FOnClicked, SlateHandleClicked))
-			.OnPressed(BIND_UOBJECT_DELEGATE(FSimpleDelegate, SlateHandlePressed))
-			.OnReleased(BIND_UOBJECT_DELEGATE(FSimpleDelegate, SlateHandleReleased))
-			.OnHovered_UObject( this, &ThisClass::SlateHandleHovered )
-			.OnUnhovered_UObject( this, &ThisClass::SlateHandleUnhovered )
-			.ClickMethod(ClickMethod)
-			.TouchMethod(TouchMethod)
-			.PressMethod(PressMethod)
-			.IsFocusable(IsFocusable)
-			;
+	// Custom Button Text
+	MyButtonText =
+		SNew(STextBlock)
+		.Text(ButtonTextValue)
+		.TextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>() 
+			           : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+		.TextShapingMethod(ETextShapingMethod::FullShaping);
+	
+	MyButton = SNew(SButton)
+		.ButtonStyle(ButtonStyleDefault ? ButtonStyleDefault->GetStyle<FButtonStyle>() 
+			             : &FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button"))
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		.ContentPadding(FMargin(4.f, 2.f))
+		[
+			MyButtonText.ToSharedRef()
+		]
+		.OnClicked(BIND_UOBJECT_DELEGATE(FOnClicked, SlateHandleClicked))
+		.OnPressed(BIND_UOBJECT_DELEGATE(FSimpleDelegate, SlateHandlePressed))
+		.OnReleased(BIND_UOBJECT_DELEGATE(FSimpleDelegate, SlateHandleReleased))
+		.OnHovered_UObject(this, &ThisClass::SlateHandleHovered)
+		.OnUnhovered_UObject(this, &ThisClass::SlateHandleUnhovered)
+		.ClickMethod(ClickMethod)
+		.TouchMethod(TouchMethod)
+		.PressMethod(PressMethod)
+		.IsFocusable(IsFocusable);
+	;
 	
 	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		if ( GetChildrenCount() > 0 )
-		{
-			Cast<UButtonSlot>(GetContentSlot())->BuildSlot(MyButton.ToSharedRef());
-		}
+	if ( GetChildrenCount() > 0 )
+	{
+		Cast<UButtonSlot>(GetContentSlot())->BuildSlot(MyButton.ToSharedRef());
+	}
 	
 	return MyButton.ToSharedRef();
+}
+
+void UButtonWithText::SetButtonWithNewText(FText NewButtonText)
+{
+	ButtonTextValue = NewButtonText;
+
+	if (MyButtonText.IsValid())
+	{
+		MyButtonText->SetText(NewButtonText);
+	}
 }
 
 void UButtonWithText::ButtonClickedUpdateStyle()

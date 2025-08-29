@@ -57,7 +57,7 @@ static bool SegmentCrossesGateProjectToLine(
     UE_LOG(LogTemp, Warning, TEXT("[FC] Inputs: Prev%s Curr%s A%s B%s  XYTol=%.2f ZTol=%.2f PlaneTol=%.2f  ZWin[%.1f..%.1f]"),
         *Prev.ToString(), *Curr.ToString(), *A.ToString(), *B.ToString(),
         XYSearchRadiusTol, ZTolerance, PlaneSignedDistTolerance,
-        ZLimits.MinZBounds.Load(), ZLimits.MaxZBounds.Load());
+        ZLimits.MinZBounds.load(), ZLimits.MaxZBounds.load());
 
     OutIntersectionOnLine = FVector::ZeroVector;
     OutT = 0.0f;
@@ -175,8 +175,8 @@ static bool SegmentCrossesGateProjectToLine(
         OutIntersectionOnLine = A;
 
         // Prism check (ABSOLUTE world-Z bounds)
-        const float MinZ = ZLimits.MinZBounds.Load() - ZTolerance;
-        const float MaxZ = ZLimits.MaxZBounds.Load() + ZTolerance;
+        const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
+        const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
         const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
         UE_LOG(LogTemp, Warning, TEXT("[FC] Prism check (XY-degenerate): HitZ=%.2f in [%.2f..%.2f] -> %d"),
                Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
@@ -208,8 +208,8 @@ static bool SegmentCrossesGateProjectToLine(
     UE_LOG(LogTemp, Warning, TEXT("[FC] 3D: rawT3D=%.6f t3D=%.6f  CenterPoint%s"), rawT3D, (double)t3D, *CenterPoint.ToString());
 
     // 5) Z prism (ABSOLUTE world-Z bounds)
-    const float MinZ = ZLimits.MinZBounds.Load() - ZTolerance;
-    const float MaxZ = ZLimits.MaxZBounds.Load() + ZTolerance;
+    const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
+    const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
     const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
 
     UE_LOG(LogTemp, Warning, TEXT("[FC] Prism: HitZ=%.2f in [%.2f..%.2f] -> %d"),
@@ -364,6 +364,15 @@ void AFlowCounter::BeginPlay()
 void AFlowCounter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	FBuckectTempData BucketData;
+	// Dequeue any bucket data
+	while (ThreadSafeNewAgentDataQueue.Dequeue(BucketData))
+	{
+ 		AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
+	}
+
+	
 	
 }
 
@@ -462,7 +471,8 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	// Root component should be updated to reflect the same orientation as the trigger box
 	RootComponent->SetWorldRotation(BoxRotation);
 
-	const FVector Up = RootComponent->GetUpVector();   // respects the rotation above
+	// up vector should always be world up
+	const FVector Up = FVector::UpVector;
 	const float   Height = 100.f;                       // or whatever you want
 
 	const FVector A_w = FlowCounterLineStartLocation - Up * Height;
@@ -488,6 +498,7 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
 	AFlowCounter* FlowCounter = WeakThis.Get();
 	if (FlowCounter == nullptr) { return false; }
+	
 	
 	// Get the flow counter trigger box so we can check if the agent is within the box
 	UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox();
@@ -516,7 +527,6 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			const FVector B = FlowCounter->FlowCounterLineEndLocation;
 			
 			// perform line intersection check to see if the agent has crossed the flow counter line
-			FVector IntersectionLocation = FVector::ZeroVector;
 			FVector CurrentLocation = Data.Location;
 
 			FVector IntersectionOnLine = FVector::ZeroVector;
@@ -534,15 +544,20 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			// if we intersect, then add it to the completed agent set and increment the flow counter
 			if (bAgentCrossed)
 			{
-				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionLocation, TOnLine));
-				FlowCounter->FlowCounterCount.Store(FlowCounter->AgentsPassedThroughCounter.Num());
-
+				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionOnLine, TOnLine));
+				FlowCounter->FlowCounterCount.store(FlowCounter->AgentsPassedThroughCounter.Num());
+				
+				FBuckectTempData Temp = FBuckectTempData();
+				Temp.AgentID = Data.AgentID;
+				Temp.IntersectionThreshold = TOnLine;
+				FlowCounter->ThreadSafeNewAgentDataQueue.Enqueue(Temp);
+				
 				AsyncTask(ENamedThreads::GameThread, [WeakThis, Data, TOnLine]()
 				{
 					if (AFlowCounter* Self = WeakThis.Get())
 					{
 						Self->FlashBarrierColor();
-						Self->AssignAgentToBucketUsingThreshold(Data.AgentID, TOnLine);
+						//Self->AssignAgentToBucketUsingThreshold(Data.AgentID, TOnLine);
 					}
 				});
 			}
@@ -569,7 +584,6 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		const FVector B = FlowCounter->FlowCounterLineEndLocation;
 		
 		// perform line intersection check to see if the agent has crossed the flow counter line
-		FVector IntersectionLocation = FVector::ZeroVector;
 		FVector CurrentLocation = Data.Location;
 
 		FVector IntersectionOnLine = FVector::ZeroVector;
@@ -587,17 +601,22 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		// if we intersect, then add it to the completed agent set and increment the flow counter
 		if (bAgentCrossed)
 		{
-			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionLocation, TOnLine));
-			FlowCounter->FlowCounterCount.Store(FlowCounter->AgentsPassedThroughCounter.Num());
+			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionOnLine, TOnLine));
+			FlowCounter->FlowCounterCount.store(FlowCounter->AgentsPassedThroughCounter.Num());
 
+			FBuckectTempData Temp = FBuckectTempData();
+			Temp.AgentID = Data.AgentID;
+			Temp.IntersectionThreshold = TOnLine;
+			FlowCounter->ThreadSafeNewAgentDataQueue.Enqueue(Temp);
+				
 			AsyncTask(ENamedThreads::GameThread, [WeakThis, Data, TOnLine]()
+			{
+				if (AFlowCounter* Self = WeakThis.Get())
 				{
-					if (AFlowCounter* Self = WeakThis.Get())
-					{
-						Self->FlashBarrierColor();
-						Self->AssignAgentToBucketUsingThreshold(Data.AgentID, TOnLine);
-					}
-				});
+					Self->FlashBarrierColor();
+					//Self->AssignAgentToBucketUsingThreshold(Data.AgentID, TOnLine);
+				}
+			});
 		}
 
 		// if we intersect or not we want to remove it from the previous tracked agent locations as we are no longer tracking it and likely moving away from the flow counter
@@ -635,9 +654,9 @@ void AFlowCounter::NewAgentData(TArray<FFlowCounterData>& NewAgentData)
 	
 	for (FFlowCounterData& Data : NewAgentData)
 	{
-		
+		ProcessAgentFlowCrossing(Data);
 
-		if (ProcessAgentFlowCrossing(Data)) return;
+		//if (ProcessAgentFlowCrossing(Data)) continue;
 		
 	};
 
@@ -672,7 +691,7 @@ void AFlowCounter::RemoveFlowCounterToSubsystem()
 void AFlowCounter::ResetFlowCounterTrackingData()
 {
 	// Reset the flow counter count to 0
-	FlowCounterCount.Exchange(0);
+	FlowCounterCount.exchange(0);
 	// Clear the previous tracked agent locations
 	PreviousTrackedAgentLocations.Empty();
 	// Clear the agents passed through counter
@@ -708,7 +727,7 @@ void AFlowCounter::NewSimTime(float UpdatedTime)
 		
 		PreviousTrackedAgentLocations.Reset();        // simplest + safest for scrubbing 
 		// Keep the counter authoritative
-		FlowCounterCount.Store(AgentsPassedThroughCounter.Num());
+		FlowCounterCount.store(AgentsPassedThroughCounter.Num());
 		//FlowCounterCount.Exchange(AgentsPassedThroughCounter.Num());
 		
 		// Now we need to update the flow buckets with the current agents that have passed through the counter

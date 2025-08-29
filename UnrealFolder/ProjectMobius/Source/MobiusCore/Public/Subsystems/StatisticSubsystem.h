@@ -141,6 +141,56 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void ResetFlowCounters();
 
+	// TODO: These are dropped in methods as suggested by ChatGPT, so need to confirm naming convention is correct and the calculations are correct
+#pragma region FLOW_ANALYTICS_METHODS
+	
+	/** Fundamental flow equation: q = k * v */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeFlow(float Density, float Speed);
+
+	/** Flow rate per width: Q = N / (T * W) */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeFlowRatePerWidth(int32 PedestrianCount, float TimeSeconds, float WidthMeters);
+
+	/** Density: k = N / A */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeDensity(int32 PedestrianCount, float AreaSqMeters);
+
+	/** Linear density: k = N / L */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeLinearDensity(int32 PedestrianCount, float LengthMeters);
+
+	/** Specific flow: q_s = q / W */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeSpecificFlow(float Flow, float WidthMeters);
+
+	/** Space per pedestrian: s = 1 / k */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeSpacePerPedestrian(float Density);
+
+	/** Travel time: t = L / v */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeTravelTime(float LengthMeters, float Speed);
+
+	/** Headway: h_i = t_i - t_(i-1) */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeHeadway(float CurrentTime, float PreviousTime);
+
+	/** Instantaneous flow from headway: q_i = 1 / h_i */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeInstantaneousFlow(float Headway);
+
+	/** Evacuation time: T_evac = N / (C * W) */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
+	static float ComputeEvacuationTime(int32 PedestrianCount, float CapacityPerWidth, float WidthMeters);
+
+	/** Weidmann’s speed-density relation (empirical model) */
+	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow|Empirical")
+	static float ComputeWeidmannSpeed(float Density, float FreeSpeed, float JamDensity);
+
+#pragma endregion FLOW_ANALYTICS_METHODS
+	
+
 	FOnAgentInfoChanged OnAgentInfoChanged; // Delegate to notify when agent info changes
 	FOnSelectedAgentInfoChanged OnSelectedAgentInfoChanged; // Delegate to notify when selected agent info changes
 

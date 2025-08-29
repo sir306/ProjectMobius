@@ -43,9 +43,9 @@ struct MOBIUSCORE_API FFlowCounterZSearchLimits
 		: MinZBounds(MinZ), MaxZBounds(MaxZ){};
 	
 	/** Min Z bounds of the search box */
-	TAtomic<float> MinZBounds = 0.0f;
+	std::atomic<float> MinZBounds = 0.0f;
 	/** Max Z bounds of the search box */
-	TAtomic<float> MaxZBounds = 0.0f;
+	std::atomic<float> MaxZBounds = 0.0f;
 
 	/** Equalities check to see if a value is in the z bounds of this search limit
 	 * @param[float] InZCheck The value to check if in the bounds of this search limits
@@ -53,7 +53,7 @@ struct MOBIUSCORE_API FFlowCounterZSearchLimits
 	 */
 	bool IsInZBounds(float InZCheck) const
 	{
-		return (InZCheck >= MinZBounds && InZCheck <= MaxZBounds);
+		return (InZCheck >= MinZBounds.load() && InZCheck <= MaxZBounds.load());
 	}
 };
 

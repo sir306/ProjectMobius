@@ -234,3 +234,70 @@ void UStatisticSubsystem::ResetFlowCounters()
 		}
 	}
 }
+
+float UStatisticSubsystem::ComputeFlow(float Density, float Speed)
+{
+	return Density * Speed;
+}
+
+float UStatisticSubsystem::ComputeFlowRatePerWidth(int32 PedestrianCount, float TimeSeconds, float WidthMeters)
+{
+	if (TimeSeconds <= 0.f || WidthMeters <= 0.f) return 0.f;
+	return static_cast<float>(PedestrianCount) / (TimeSeconds * WidthMeters);
+}
+
+float UStatisticSubsystem::ComputeDensity(int32 PedestrianCount, float AreaSqMeters)
+{
+	if (AreaSqMeters <= 0.f) return 0.f;
+	return static_cast<float>(PedestrianCount) / AreaSqMeters;
+}
+
+float UStatisticSubsystem::ComputeLinearDensity(int32 PedestrianCount, float LengthMeters)
+{
+	if (LengthMeters <= 0.f) return 0.f;
+	return static_cast<float>(PedestrianCount) / LengthMeters;
+}
+
+float UStatisticSubsystem::ComputeSpecificFlow(float Flow, float WidthMeters)
+{
+	if (WidthMeters <= 0.f) return 0.f;
+	return Flow / WidthMeters;
+}
+
+float UStatisticSubsystem::ComputeSpacePerPedestrian(float Density)
+{
+	if (Density <= 0.f) return 0.f;
+	return 1.f / Density;
+}
+
+float UStatisticSubsystem::ComputeTravelTime(float LengthMeters, float Speed)
+{
+	if (Speed <= 0.f) return 0.f;
+	return LengthMeters / Speed;
+}
+
+float UStatisticSubsystem::ComputeHeadway(float CurrentTime, float PreviousTime)
+{
+	return CurrentTime - PreviousTime;
+}
+
+float UStatisticSubsystem::ComputeInstantaneousFlow(float Headway)
+{
+	if (Headway <= 0.f) return 0.f;
+	return 1.f / Headway;
+}
+
+float UStatisticSubsystem::ComputeEvacuationTime(int32 PedestrianCount, float CapacityPerWidth, float WidthMeters)
+{
+	if (CapacityPerWidth <= 0.f || WidthMeters <= 0.f) return 0.f;
+	return static_cast<float>(PedestrianCount) / (CapacityPerWidth * WidthMeters);
+}
+
+float UStatisticSubsystem::ComputeWeidmannSpeed(float Density, float FreeSpeed, float JamDensity)
+{
+	if (JamDensity <= 0.f) return 0.f;
+
+	// Weidmann (1993) speed-density relation
+	const float ExpTerm = -1.913f * ((1.f / Density) - (1.f / JamDensity));
+	return FreeSpeed * (1.f - FMath::Exp(ExpTerm));
+}
