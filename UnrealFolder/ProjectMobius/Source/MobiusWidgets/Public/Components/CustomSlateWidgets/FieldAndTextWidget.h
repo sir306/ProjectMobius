@@ -28,6 +28,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
 	bool bIsTitleAboveField = true;
 
+	/** Flag to determine if it should Auto Center the text to the widget*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
+	bool bAutoCenter = false;
+
 	/** Slate Title Text Style sheet */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
 	TObjectPtr<USlateWidgetStyleAsset> TitleTextStyle;

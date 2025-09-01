@@ -24,8 +24,20 @@ protected:
 	
 	virtual void NativeDestruct() override;
 
+	virtual TSharedRef<SWidget> RebuildWidget() override;
+
+	/** 
+	 * Gets the size of the parent slot - used for layout calculations
+	 * 
+	 * @return The size of the parent slot
+	 */
+	UFUNCTION()
+	FVector2D GetParentSlotSize() const;
+
 public:
 	virtual void SynchronizeProperties() override;
+
+	
 
 private:
 
@@ -62,11 +74,11 @@ public:
 	FText FlowValueText = FText::FromString("0.00m/s");
 
 	/** Title and Field widget - we can reuse this widget to display the header text */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidget))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidgetOptional))
 	TObjectPtr<UFieldAndTextWidget> SectionHeaderFieldAndTextWidget;
 
 	/** Title and Field widget - we can reuse this widget to display the type of flow and the value of that flow text */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidget))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidgetOptional))
 	TObjectPtr<UFieldAndTextWidget> FlowTypeAndValueFieldAndTextWidget;
 
 	/** Text Style slate sheet */
@@ -78,6 +90,11 @@ public:
 	/** Current Flow Value */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties")
 	float CurrentFlowValue = 0.0f;
+
+	/** Font Size */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties")
+	int32 FontSize = 14;
+
 
 #pragma endregion PROPERTIES
 };

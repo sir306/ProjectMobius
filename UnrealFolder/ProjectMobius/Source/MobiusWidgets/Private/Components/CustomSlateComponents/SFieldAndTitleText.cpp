@@ -13,74 +13,131 @@ SFieldAndTitleText::~SFieldAndTitleText()
 
 void SFieldAndTitleText::Construct(const FArguments& InArgs)
 {
+	// Variables/Attributes
+	bVerticalStacking = InArgs._VerticalStacking.Get();
+	bAutoCenterTextToWidget = InArgs._AutoCenterTextToWidget.Get();
+	
 	// Container
 	TSharedRef<SGridPanel> GridPanel = SNew(SGridPanel);
+
+	// Lambda to handle text alignment
+	auto JustifyText = [this](bool VerticalStacking, bool AutoCenterTextToWidget , bool bTitle = true)
+	{
+		if (VerticalStacking)
+		{
+			return ETextJustify::Center;
+		}
+		else
+		{
+			if (AutoCenterTextToWidget)
+			{
+				if (bTitle)
+				{
+					return ETextJustify::Right;
+				}
+				else
+				{
+					return ETextJustify::Left;
+				}
+			}
+			else
+			{
+				return ETextJustify::Left;
+			}
+		}
+	};
 	
 	// Title Text
 	SAssignNew(TitleTextBlock, STextBlock)
-		.Text(InArgs._TitleText)
-		.Justification(InArgs._VerticalStacking.Get() ? ETextJustify::Center : ETextJustify::Left);
+	.Text(InArgs._TitleText)
+	.Justification(JustifyText(bVerticalStacking, bAutoCenterTextToWidget, true));
 	
 	// Field Text
 	SAssignNew(FieldTextBlock, STextBlock)
-		.Text(InArgs._FieldText)
-		.Justification(InArgs._VerticalStacking.Get() ? ETextJustify::Center : ETextJustify::Left);
+	.Text(InArgs._FieldText)
+	.Justification(JustifyText(bVerticalStacking, bAutoCenterTextToWidget, false));
 
 	TitleTextBlock->SetTextStyle(InArgs._TitleTextStyle);
 	FieldTextBlock->SetTextStyle(InArgs._FieldTextStyle);
-	bVerticalStacking = InArgs._VerticalStacking.Get();
 	
-	if (InArgs._VerticalStacking.Get())
+	if (!bVerticalStacking)
 	{
-		GridPanel->AddSlot(0, 0)
-		[
-			TitleTextBlock.ToSharedRef()
-		];
+		if (bAutoCenterTextToWidget)
+		{
+			// --- Centered as a unit: [fill][title(auto)][field(auto)][fill] ---
+			GridPanel->AddSlot(0, 0)[ SNullWidget::NullWidget ]; // left spacer
+			GridPanel->AddSlot(1, 0)
+			         .HAlign(HAlign_Fill).VAlign(VAlign_Center)
+			         .Padding(FMargin(5.f, 0.f, 2.f, 0.f))
+				[ TitleTextBlock.ToSharedRef() ];
+			GridPanel->AddSlot(2, 0)
+			         .HAlign(HAlign_Fill).VAlign(VAlign_Center)
+			         .Padding(FMargin(2.f, 0.f, 5.f, 0.f))
+				[ FieldTextBlock.ToSharedRef() ];
+			GridPanel->AddSlot(3, 0)[ SNullWidget::NullWidget ]; // right spacer
 
-		GridPanel->AddSlot(0, 1)
-		[
-			FieldTextBlock.ToSharedRef()
-		];
+			GridPanel->SetColumnFill(0, 1.f); // spacers eat leftover width equally
+			GridPanel->SetColumnFill(1, 0.f); // auto
+			GridPanel->SetColumnFill(2, 0.f); // auto
+			GridPanel->SetColumnFill(3, 1.f);
+			GridPanel->SetRowFill(0, 1.f);
+		}
+		else
+		{
+			// --- Your previous non-centered two-column behavior ---
+			GridPanel->AddSlot(0, 0)
+			         .HAlign(HAlign_Fill).VAlign(VAlign_Fill)
+			         .Padding(FMargin(5.f, 0.f, 5.f, 0.f))
+				[ TitleTextBlock.ToSharedRef() ];
+			GridPanel->AddSlot(1, 0)
+			         .HAlign(HAlign_Fill).VAlign(VAlign_Fill)
+			         .Padding(FMargin(5.f, 0.f, 5.f, 0.f))
+				[ FieldTextBlock.ToSharedRef() ];
 
-		GridPanel->SetRowFill(0, 0.5f);
-		GridPanel->SetRowFill(1, 0.5f);
-		GridPanel->SetColumnFill(0, 1.0f);
-		
-		// Align the text blocks in the center
-		GridPanel->Slot(0,0).HAlign(HAlign_Center);
-		GridPanel->Slot(0,1).HAlign(HAlign_Center);
-		GridPanel->Slot(0,0).VAlign(VAlign_Center);
-		GridPanel->Slot(0,1).VAlign(VAlign_Center);
+			// keep your old fill weights (change to whatever you had)
+			GridPanel->SetColumnFill(0, 0.5f);
+			GridPanel->SetColumnFill(1, 0.5f);
+			GridPanel->SetRowFill(0, 1.f);
+		}
 	}
 	else
 	{
-		GridPanel->AddSlot(0, 0)
-		[
-			TitleTextBlock.ToSharedRef()
-		];
+		if (bAutoCenterTextToWidget)
+		{
+			// --- Vertical: center the stack with symmetric row spacers ---
+			GridPanel->AddSlot(0, 0)[ SNullWidget::NullWidget ];   // top spacer
+			GridPanel->AddSlot(0, 1)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+				[ TitleTextBlock.ToSharedRef() ]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+				[ FieldTextBlock.ToSharedRef() ]
+			];
+			GridPanel->AddSlot(0, 2)[ SNullWidget::NullWidget ];   // bottom spacer
 
-		GridPanel->AddSlot(1, 0)
-		[
-			FieldTextBlock.ToSharedRef()
-		];
+			GridPanel->SetRowFill(0, 1.f);
+			GridPanel->SetRowFill(1, 0.f); // auto
+			GridPanel->SetRowFill(2, 1.f);
+			GridPanel->SetColumnFill(0, 1.f);
+		}
+		else
+		{
+			// --- Your previous vertical behavior (two rows) ---
+			GridPanel->AddSlot(0, 0)
+			         .HAlign(HAlign_Center).VAlign(VAlign_Bottom)
+				[ TitleTextBlock.ToSharedRef() ];
+			GridPanel->AddSlot(0, 1)
+			         .HAlign(HAlign_Center).VAlign(VAlign_Top)
+				[ FieldTextBlock.ToSharedRef() ];
 
-		GridPanel->SetColumnFill(0, 0.5f);
-		GridPanel->SetColumnFill(1, 0.5f);
-		GridPanel->SetRowFill(0, 1.0f);
-		GridPanel->Slot(0,0).Padding(FMargin(5.0f, 0.0f, 5.0f, 0.0f));
-		GridPanel->Slot(1,0).Padding(FMargin(5.0f, 0.0f, 5.0f, 0.0f));
-
-		// Align the text blocks in the center
-		GridPanel->Slot(0,0).HAlign(HAlign_Center);
-		GridPanel->Slot(1,0).HAlign(HAlign_Center);
-		GridPanel->Slot(0,0).VAlign(VAlign_Fill);
-		GridPanel->Slot(1,0).VAlign(VAlign_Fill);
+			GridPanel->SetRowFill(0, 0.5f);
+			GridPanel->SetRowFill(1, 0.5f);
+			GridPanel->SetColumnFill(0, 1.f);
+		}
 	}
-	
-	ChildSlot
-	[
-		GridPanel
-	];
+
+	ChildSlot [ GridPanel ];
 }
 
 void SFieldAndTitleText::SetTitleText(FText InTitleText)

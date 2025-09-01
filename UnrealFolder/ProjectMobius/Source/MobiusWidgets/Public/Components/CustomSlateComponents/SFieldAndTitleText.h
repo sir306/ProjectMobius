@@ -13,6 +13,7 @@ public:
 			  , _TitleTextStyle( &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>( "NormalText" ) )
 			  , _FieldTextStyle( &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>( "NormalText" ) )
 			  , _VerticalStacking(false)
+			  , _AutoCenterTextToWidget(false)
 		{
 		
 		}
@@ -29,6 +30,9 @@ public:
 		
 		/** Whether the title is above the field or to the left */
 		SLATE_ATTRIBUTE(bool, VerticalStacking)
+
+		/** Whether we want to auto align the text to the center of the widget */
+		SLATE_ATTRIBUTE(bool, AutoCenterTextToWidget)
 		
 	SLATE_END_ARGS()
 
@@ -75,4 +79,6 @@ private:
 	TSharedPtr<STextBlock> FieldTextBlock;
 
 	bool bVerticalStacking = false; // Whether the title is above the field or to the left
+
+	bool bAutoCenterTextToWidget = false; // Whether we want to auto align the text to the center of the widget
 };

@@ -10,6 +10,7 @@ TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 		.FieldText(FieldText)
 		.TitleText(TitleText)
 		.VerticalStacking(bIsTitleAboveField)
+		.AutoCenterTextToWidget(bAutoCenter)
 		.TitleTextStyle(TitleTextStyle ? TitleTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
 		.FieldTextStyle(FieldTextStyle ? FieldTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"));
 	
