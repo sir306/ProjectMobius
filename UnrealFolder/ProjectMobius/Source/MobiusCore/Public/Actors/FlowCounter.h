@@ -226,9 +226,17 @@ private:
 
 	/** A thread-safe queue to handle bucket data due to the possibility of bucket mutations on the game thread */
 	TQueue<FBuckectTempData, EQueueMode::Mpsc> ThreadSafeNewAgentDataQueue = TQueue<FBuckectTempData, EQueueMode::Mpsc>();
+
+	/* TODO: this property is redundant, we should just update methods to use the line that would be at the base of the pillars
+	 but for now we will keep it to avoid breaking changes */
+	/** Our virtual intersection line is at the mid-point of the pillars so we want to offset intersection calculations */
+	UPROPERTY(EditAnywhere, Category="FlowCounter|Heights")
+	float GroundOffsetFromLineCM = 100.0f;
 	
 	// may want a reference to a widget for the flow counter to display the number of agents passing through
-	
+	/* TODO: we will want a reference to a user widget this way we can create a cpp version in the widget module and
+	 * create an interface in core module to handle the communication of data to widgets and still not have to cast to
+	 * the widget and cause circular dependencies while keeping the widgets decoupled into their own module*/
 #pragma endregion PROPERTIES
 
 public:

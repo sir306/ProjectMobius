@@ -228,8 +228,10 @@ static bool SegmentCrossesGateProjectToLine(
 	const float RelMin = 10.0f;   // 10 cm below the line
 	const float RelMax = 210.0f;  // 210 cm above the line
 	// TODO: Need to clean up the line offset so we are consistent about ground vs line height as this is confusing
-	const float MinZAllowed = LineZ - RelMin - 110.0f; // The line is from the center of the pillars, so we offset down by 110 cm to get to ground level
-	const float MaxZAllowed = LineZ + RelMax - 110.0f;
+	const float MinZAllowed = LineZ - RelMin - 100.0f; // The line is from the center of the pillars, so we offset down by 100 cm to get to ground level
+	const float MaxZAllowed = LineZ + RelMax - 100.0f;
+	// const float MinZAllowed = LineZ - RelMin - GroundOffsetFromLineCM; // The line is from the center of the pillars, so we offset down by 100 cm to get to ground level
+	// const float MaxZAllowed = LineZ + RelMax - GroundOffsetFromLineCM;
 
 	if (Hit.Z < MinZAllowed - ZTolerance || Hit.Z > MaxZAllowed + ZTolerance)
 	{
