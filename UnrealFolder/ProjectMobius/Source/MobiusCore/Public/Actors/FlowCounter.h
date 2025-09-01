@@ -47,9 +47,11 @@ public:
 	 * To Resize the trigger box for the flow counter, we need to get the distance between the two pillar meshes
 	 * @param[float] OutDistanceBetweenPillars The distance between the two pillar meshes
 	 * @param[FVector] OutCenterLocation The center location of two pillar meshes
+	 * @param[FVector] OutBoxExtents The extents of the trigger box
+	 * @param[FRotator] OutBoxRotation The rotation of the trigger box
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Methods")
-	void ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation) const;
+	void ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation, FVector& OutBoxExtents, FRotator& OutBoxRotation) const;
 
 	/**
 	 * Resize extent of trigger box
@@ -235,4 +237,8 @@ public:
 	/** Get the current flow counter count */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Getters")
 	FORCEINLINE int32 GetFlowCounterCount() const { return FlowCounterCount.load(); }
+
+	/** Get the Flow Segment Count */
+	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Getters")
+	FORCEINLINE int32 GetNumberOfBucketSegments() const { return NumberOfBucketSegments; }
 };

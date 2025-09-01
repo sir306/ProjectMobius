@@ -41,191 +41,208 @@ static bool IsPointOnLineSegment(const FVector& A, const FVector& B, const FVect
 //   - OutIntersectionOnLine: the *projection* of the plane hit onto the finite A→B segment
 //   - OutT: normalized [0..1] position along A→B (0=A, 1=B)
 static bool SegmentCrossesGateProjectToLine(
-    const FVector& Prev,
-    const FVector& Curr,
-    const FVector& A,    // gate center-line start (3D)
-    const FVector& B,    // gate center-line end   (3D)
-    const FFlowCounterZSearchLimits& ZLimits, // using MinZBounds/MaxZBounds as ABS Z
-    FVector& OutIntersectionOnLine,
-    float&   OutT,
-    float    XYSearchRadiusTol        = 4.0f, // cm
-    float    ZTolerance               = 1.0f, // cm
-    float    PlaneSignedDistTolerance = 3.0f  // cm
+	const FVector& Prev,
+	const FVector& Curr,
+	const FVector& A,    // gate center-line start (3D)
+	const FVector& B,    // gate center-line end   (3D)
+	const FFlowCounterZSearchLimits& ZLimits, // using MinZBounds/MaxZBounds as ABS Z
+	FVector& OutIntersectionOnLine,
+	float&   OutT,
+	float    XYSearchRadiusTol        = 4.0f, // cm
+	float    ZTolerance               = 1.0f, // cm
+	float    PlaneSignedDistTolerance = 3.0f  // cm
 )
 {
-    // --- INPUTS ---
-    UE_LOG(LogTemp, Warning, TEXT("[FC] Inputs: Prev%s Curr%s A%s B%s  XYTol=%.2f ZTol=%.2f PlaneTol=%.2f  ZWin[%.1f..%.1f]"),
-        *Prev.ToString(), *Curr.ToString(), *A.ToString(), *B.ToString(),
-        XYSearchRadiusTol, ZTolerance, PlaneSignedDistTolerance,
-        ZLimits.MinZBounds.load(), ZLimits.MaxZBounds.load());
+	// --- INPUTS ---
+	UE_LOG(LogTemp, Warning, TEXT("[FC] Inputs: Prev%s Curr%s A%s B%s  XYTol=%.2f ZTol=%.2f PlaneTol=%.2f  ZWin[%.1f..%.1f]"),
+	       *Prev.ToString(), *Curr.ToString(), *A.ToString(), *B.ToString(),
+	       XYSearchRadiusTol, ZTolerance, PlaneSignedDistTolerance,
+	       ZLimits.MinZBounds.load(), ZLimits.MaxZBounds.load());
 
-    OutIntersectionOnLine = FVector::ZeroVector;
-    OutT = 0.0f;
+	OutIntersectionOnLine = FVector::ZeroVector;
+	OutT = 0.0f;
 
-    // 0) Degenerate segment?
-    if (Prev.Equals(Curr, UE_SMALL_NUMBER))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate segment: Prev==Curr (%.3f,%.3f,%.3f)"),
-               Prev.X, Prev.Y, Prev.Z);
-        return false;
-    }
+	// 0) Degenerate segment?
+	if (Prev.Equals(Curr, UE_SMALL_NUMBER))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate segment: Prev==Curr (%.3f,%.3f,%.3f)"),
+		       Prev.X, Prev.Y, Prev.Z);
+		return false;
+	}
 
-    const FVector AB = B - A;
-    const double  ABLenSq3D = AB.SizeSquared();
-    if (ABLenSq3D <= UE_SMALL_NUMBER)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate gate: A==B"));
-        return false;
-    }
+	const FVector AB = B - A;
+	const double  ABLenSq3D = AB.SizeSquared();
+	if (ABLenSq3D <= UE_SMALL_NUMBER)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate gate: A==B"));
+		return false;
+	}
 
-    // 1) Build vertical plane through A->B (three-point form)
-    FPlane GatePlane(A, B, A + FVector::UpVector);
-    FVector N(GatePlane.X, GatePlane.Y, GatePlane.Z);
-    const double NLen = N.Size();
-    if (NLen <= UE_SMALL_NUMBER)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Plane normal invalid (|N|=0)"));
-        return false;
-    }
-    const FVector Nn = N / NLen; // unit normal
+	// 1) Build vertical plane through A->B (three-point form)
+	FPlane GatePlane(A, B, A + FVector::UpVector);
+	FVector N(GatePlane.X, GatePlane.Y, GatePlane.Z);
+	const double NLen = N.Size();
+	if (NLen <= UE_SMALL_NUMBER)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Plane normal invalid (|N|=0)"));
+		return false;
+	}
+	const FVector Nn = N / NLen; // unit normal
 
-    // Signed distances in cm (anchor at A for clarity)
-    const double d0 = FVector::DotProduct(Prev - A, Nn);
-    const double d1 = FVector::DotProduct(Curr - A, Nn);
-    const bool   bDifferentSides = (d0 > 0.0 && d1 < 0.0) || (d0 < 0.0 && d1 > 0.0);
-    const bool   bTouchesPlane   = (FMath::Abs(d0) <= PlaneSignedDistTolerance) ||
-                                   (FMath::Abs(d1) <= PlaneSignedDistTolerance);
+	// Signed distances in cm (anchor at A for clarity)
+	const double d0 = FVector::DotProduct(Prev - A, Nn);
+	const double d1 = FVector::DotProduct(Curr - A, Nn);
+	const bool   bDifferentSides = (d0 > 0.0 && d1 < 0.0) || (d0 < 0.0 && d1 > 0.0);
+	const bool   bTouchesPlane   = (FMath::Abs(d0) <= PlaneSignedDistTolerance) ||
+		(FMath::Abs(d1) <= PlaneSignedDistTolerance);
 
-    UE_LOG(LogTemp, Warning, TEXT("[FC] Plane N=(%.6f,%.6f,%.6f)  d0=%.3f d1=%.3f  cross=%d touch=%d"),
-           Nn.X, Nn.Y, Nn.Z, d0, d1, bDifferentSides ? 1 : 0, bTouchesPlane ? 1 : 0);
+	UE_LOG(LogTemp, Warning, TEXT("[FC] Plane N=(%.6f,%.6f,%.6f)  d0=%.3f d1=%.3f  cross=%d touch=%d"),
+	       Nn.X, Nn.Y, Nn.Z, d0, d1, bDifferentSides ? 1 : 0, bTouchesPlane ? 1 : 0);
 
-    if (!bDifferentSides && !bTouchesPlane)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No cross and not within plane tolerance."));
-        return false;
-    }
+	if (!bDifferentSides && !bTouchesPlane)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No cross and not within plane tolerance."));
+		return false;
+	}
 
-    // 2) Segment-plane intersection (explicit, unit-normal form)
-    FVector Hit = FVector::ZeroVector;
-    bool bHaveHit = false;
+	// 2) Segment-plane intersection (explicit, unit-normal form)
+	FVector Hit = FVector::ZeroVector;
+	bool bHaveHit = false;
 
-    if (bDifferentSides)
-    {
-        const FVector D = Curr - Prev;
-        const double  denom = FVector::DotProduct(Nn, D);
-        // denom can be tiny if segment ~parallel to plane
-        if (FMath::Abs(denom) > SMALL_NUMBER)
-        {
-            const double numer = FVector::DotProduct(Nn, (A - Prev));  // NOTE: avoid GatePlane.W scaling issues
-            const double tLine = numer / denom;                        // param in [0,1] if intersection within segment
-            UE_LOG(LogTemp, Warning, TEXT("[FC] Cross: denom=%.6f numer=%.6f tLine=%.6f"), denom, numer, tLine);
-            if (tLine >= 0.0 && tLine <= 1.0)
-            {
-                Hit = Prev + static_cast<float>(tLine) * D;
-                bHaveHit = true;
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but tLine outside [0,1]. Will try touch projection if eligible."));
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but denom ~ 0 (parallel). Will try touch projection if eligible."));
-        }
-    }
+	if (bDifferentSides)
+	{
+		const FVector D = Curr - Prev;
+		const double  denom = FVector::DotProduct(Nn, D);
+		// denom can be tiny if segment ~parallel to plane
+		if (FMath::Abs(denom) > SMALL_NUMBER)
+		{
+			const double numer = FVector::DotProduct(Nn, (A - Prev));  // NOTE: avoid GatePlane.W scaling issues
+			const double tLine = numer / denom;                        // param in [0,1] if intersection within segment
+			UE_LOG(LogTemp, Warning, TEXT("[FC] Cross: denom=%.6f numer=%.6f tLine=%.6f"), denom, numer, tLine);
+			if (tLine >= 0.0 && tLine <= 1.0)
+			{
+				Hit = Prev + static_cast<float>(tLine) * D;
+				bHaveHit = true;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but tLine outside [0,1]. Will try touch projection if eligible."));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but denom ~ 0 (parallel). Will try touch projection if eligible."));
+		}
+	}
 
-    if (!bHaveHit)
-    {
-        if (!bTouchesPlane)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No valid intersection and not a touch."));
-            return false;
-        }
-        const bool UsePrev = (FMath::Abs(d0) <= FMath::Abs(d1));
-        const FVector NearPt = UsePrev ? Prev : Curr;
-        Hit = NearPt - FVector::DotProduct(Nn, NearPt - A) * Nn; // project endpoint onto plane
-        UE_LOG(LogTemp, Warning, TEXT("[FC] Touch: projected %s to Hit%s"),
-               UsePrev ? TEXT("Prev") : TEXT("Curr"), *Hit.ToString());
-    }
+	if (!bHaveHit)
+	{
+		if (!bTouchesPlane)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No valid intersection and not a touch."));
+			return false;
+		}
+		const bool UsePrev = (FMath::Abs(d0) <= FMath::Abs(d1));
+		const FVector NearPt = UsePrev ? Prev : Curr;
+		Hit = NearPt - FVector::DotProduct(Nn, NearPt - A) * Nn; // project endpoint onto plane
+		UE_LOG(LogTemp, Warning, TEXT("[FC] Touch: projected %s to Hit%s"),
+		       UsePrev ? TEXT("Prev") : TEXT("Curr"), *Hit.ToString());
+	}
 
-    // 3) XY-only lateral projection to finite segment
-    const FVector2D Axy(A.X, A.Y);
-    const FVector2D Bxy(B.X, B.Y);
-    const FVector2D Hxy(Hit.X, Hit.Y);
-    const FVector2D ABxy = Bxy - Axy;
-    const double    ABxyLenSq = ABxy.SizeSquared();
+	// 3) XY-only lateral projection to finite segment
+	const FVector2D Axy(A.X, A.Y);
+	const FVector2D Bxy(B.X, B.Y);
+	const FVector2D Hxy(Hit.X, Hit.Y);
+	const FVector2D ABxy = Bxy - Axy;
+	const double    ABxyLenSq = ABxy.SizeSquared();
 
-    float tXY = 0.0f;
+	float tXY = 0.0f;
 
-    if (ABxyLenSq <= SMALL_NUMBER)
-    {
-        const float dx = Hxy.X - Axy.X;
-        const float dy = Hxy.Y - Axy.Y;
-        const float distXY = FMath::Sqrt(dx*dx + dy*dy);
-        UE_LOG(LogTemp, Warning, TEXT("[FC] Degenerate XY: dist(HitXY, AXY)=%.3f (tol=%.3f)"), distXY, XYSearchRadiusTol);
-        if (distXY > XYSearchRadiusTol)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] XY distance exceeds tolerance in degenerate XY case."));
-            return false;
-        }
+	if (ABxyLenSq <= SMALL_NUMBER)
+	{
+		const float dx = Hxy.X - Axy.X;
+		const float dy = Hxy.Y - Axy.Y;
+		const float distXY = FMath::Sqrt(dx*dx + dy*dy);
+		UE_LOG(LogTemp, Warning, TEXT("[FC] Degenerate XY: dist(HitXY, AXY)=%.3f (tol=%.3f)"), distXY, XYSearchRadiusTol);
+		if (distXY > XYSearchRadiusTol)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] XY distance exceeds tolerance in degenerate XY case."));
+			return false;
+		}
 
-        // Build outputs for t=0
-        OutT = 0.0f;
-        OutIntersectionOnLine = A;
+		// Build outputs for t=0
+		OutT = 0.0f;
+		OutIntersectionOnLine = A;
 
-        // Prism check (ABSOLUTE world-Z bounds)
-        const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
-        const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
-        const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
-        UE_LOG(LogTemp, Warning, TEXT("[FC] Prism check (XY-degenerate): HitZ=%.2f in [%.2f..%.2f] -> %d"),
-               Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
-        return passZ;
-    }
+		// Prism check (ABSOLUTE world-Z bounds)
+		const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
+		const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
+		const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
+		UE_LOG(LogTemp, Warning, TEXT("[FC] Prism check (XY-degenerate): HitZ=%.2f in [%.2f..%.2f] -> %d"),
+		       Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
+		return passZ;
+	}
 
-    // Compute tXY and lateral distance in XY
-    const double dot = FVector2D::DotProduct(Hxy - Axy, ABxy);
-    const double rawT = dot / ABxyLenSq;
-    tXY = FMath::Clamp(static_cast<float>(rawT), 0.0f, 1.0f);
+	// Compute tXY and lateral distance in XY
+	const double dot = FVector2D::DotProduct(Hxy - Axy, ABxy);
+	const double rawT = dot / ABxyLenSq;
+	tXY = FMath::Clamp(static_cast<float>(rawT), 0.0f, 1.0f);
 
-    const FVector2D Cxy = Axy + ABxy * tXY;
-    const float LateralDistXY = (Hxy - Cxy).Size();
+	const FVector2D Cxy = Axy + ABxy * tXY;
+	const float LateralDistXY = (Hxy - Cxy).Size();
 
-    UE_LOG(LogTemp, Warning, TEXT("[FC] XY: rawT=%.6f tXY=%.6f  LateralDistXY=%.3f (tol=%.3f)"),
-           rawT, (double)tXY, LateralDistXY, XYSearchRadiusTol);
+	UE_LOG(LogTemp, Warning, TEXT("[FC] XY: rawT=%.6f tXY=%.6f  LateralDistXY=%.3f (tol=%.3f)"),
+	       rawT, (double)tXY, LateralDistXY, XYSearchRadiusTol);
 
-    if (LateralDistXY > XYSearchRadiusTol)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] LateralDistXY exceeds tolerance."));
-        return false;
-    }
+	if (LateralDistXY > XYSearchRadiusTol)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] LateralDistXY exceeds tolerance."));
+		return false;
+	}
 
-    // 4) 3D param for output/bucketing
-    const double rawT3D = FVector::DotProduct(Hit - A, AB) / ABLenSq3D;
-    const float  t3D = FMath::Clamp(static_cast<float>(rawT3D), 0.0f, 1.0f);
-    const FVector CenterPoint = A + AB * t3D;
+	// 4) 3D param for output/bucketing
+	const double rawT3D = FVector::DotProduct(Hit - A, AB) / ABLenSq3D;
+	const float  t3D = FMath::Clamp(static_cast<float>(rawT3D), 0.0f, 1.0f);
+	const FVector CenterPoint = A + AB * t3D;
 
-    UE_LOG(LogTemp, Warning, TEXT("[FC] 3D: rawT3D=%.6f t3D=%.6f  CenterPoint%s"), rawT3D, (double)t3D, *CenterPoint.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("[FC] 3D: rawT3D=%.6f t3D=%.6f  CenterPoint%s"), rawT3D, (double)t3D, *CenterPoint.ToString());
 
-    // 5) Z prism (ABSOLUTE world-Z bounds)
-    const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
-    const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
-    const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
+	// 5) Z prism (ABSOLUTE world-Z bounds) - this takes the lowest pillar MinZ and highest pillar MaxZ
+	//    and expands by ZTolerance -> this is a fast z tolerance check
+	const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
+	const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
+	const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
+	
 
-    UE_LOG(LogTemp, Warning, TEXT("[FC] Prism: HitZ=%.2f in [%.2f..%.2f] -> %d"),
-           Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
+	UE_LOG(LogTemp, Warning, TEXT("[FC] Prism: HitZ=%.2f in [%.2f..%.2f] -> %d"),
+	       Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
 
-    if (!passZ)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z prism reject."));
-        return false;
-    }
+	if (!passZ)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z prism reject."));
+		return false;
+	}
 
-    // 6) Success
-    OutIntersectionOnLine = CenterPoint; // on center line
-    OutT = t3D;
-    UE_LOG(LogTemp, Warning, TEXT("[FC][OK] OutT=%.6f  OutIntersection%s"), (double)OutT, *OutIntersectionOnLine.ToString());
-    return true;
+	// --------- Relative vertical band check against sloped line height ----------
+	const float LineZ = FMath::Lerp(A.Z, B.Z, t3D);
+	const float RelMin = 10.0f;   // 10 cm below the line
+	const float RelMax = 210.0f;  // 210 cm above the line
+	// TODO: Need to clean up the line offset so we are consistent about ground vs line height as this is confusing
+	const float MinZAllowed = LineZ - RelMin - 110.0f; // The line is from the center of the pillars, so we offset down by 110 cm to get to ground level
+	const float MaxZAllowed = LineZ + RelMax - 110.0f;
+
+	if (Hit.Z < MinZAllowed - ZTolerance || Hit.Z > MaxZAllowed + ZTolerance)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z=%.2f not in [%.2f..%.2f] +/- %.2f (relative band)"),
+			   Hit.Z, MinZAllowed, MaxZAllowed, ZTolerance);
+		return false;
+	}
+
+	// 6) Success
+	OutIntersectionOnLine = CenterPoint; // on center line
+	OutT = t3D;
+	UE_LOG(LogTemp, Warning, TEXT("[FC][OK] OutT=%.6f  OutIntersection%s"), (double)OutT, *OutIntersectionOnLine.ToString());
+	return true;
 }
 
 // Sets default values
@@ -369,7 +386,7 @@ void AFlowCounter::Tick(float DeltaTime)
 	// Dequeue any bucket data
 	while (ThreadSafeNewAgentDataQueue.Dequeue(BucketData))
 	{
- 		AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
+		AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
 	}
 
 	
@@ -406,24 +423,58 @@ void AFlowCounter::MoveGatePillarMeshToLocation(int32 PillarIndex, const FVector
 	AddFlowCounterToSubsystem();
 }
 
-void AFlowCounter::ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation) const
+void AFlowCounter::ResizeFlowCounterTriggerBox(float& OutDistanceBetweenPillars, FVector& OutCenterLocation, FVector& OutBoxExtents, FRotator& OutBoxRotation) const
 {
-	// if the pillars are not valid, return
+	// Validate pillar meshes
 	if (!FlowCounterPillarMesh1 || !FlowCounterPillarMesh2)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("FlowCounter Pillar Meshes are not valid!"));
 		return;
 	}
 
-	OutDistanceBetweenPillars = FVector::Dist(FlowCounterPillarMesh1->GetComponentLocation(), FlowCounterPillarMesh2->GetComponentLocation());
+	// Distance between pillar centers (fallback to relative if world distance is invalid)
+	OutDistanceBetweenPillars = FVector::Dist(
+		FlowCounterPillarMesh1->GetComponentLocation(),
+		FlowCounterPillarMesh2->GetComponentLocation());
 
 	if (OutDistanceBetweenPillars <= 0.0f)
 	{
-		OutDistanceBetweenPillars = FVector::Dist(FlowCounterPillarMesh1->GetRelativeLocation(), FlowCounterPillarMesh2->GetRelativeLocation());
+		OutDistanceBetweenPillars = FVector::Dist(
+			FlowCounterPillarMesh1->GetRelativeLocation(),
+			FlowCounterPillarMesh2->GetRelativeLocation());
 	}
 
-	// center location is the average of the two pillar locations
-	OutCenterLocation = (FlowCounterPillarMesh1->GetComponentLocation() + FlowCounterPillarMesh2->GetComponentLocation()) / 2.0f;
+	// Box center is the midpoint between the two pillar centers
+	OutCenterLocation = (FlowCounterPillarMesh1->GetComponentLocation() +
+		FlowCounterPillarMesh2->GetComponentLocation()) * 0.5f;
+
+	// Box rotation is aligned with the line spanning the two pillars
+	OutBoxRotation = (FlowCounterLineEndLocation - FlowCounterLineStartLocation).Rotation();
+
+	// Get the lower of the two pillar centers
+	FVector LowestPillarLocation = (FlowCounterPillarMesh1->GetComponentLocation().Z <
+		                               FlowCounterPillarMesh2->GetComponentLocation().Z)
+		                               ? FlowCounterPillarMesh1->GetComponentLocation()
+		                               : FlowCounterPillarMesh2->GetComponentLocation();
+
+	// Shift down by half pillar height (100 cm) → pillar origin is its center
+	LowestPillarLocation.Z -= 100.0f;
+
+	// Compute how far the lowest base extends beyond the current box extent:
+	//   1. Take the box's up direction and move 100 cm down from the center
+	//   2. Measure the XY offset from that reference point to the lowest pillar base
+	FVector RefBaseAtCenter = LowestPillarLocation - OutBoxRotation.RotateVector(FVector::UpVector) * 100.0f;
+	FVector ToLowestBase = LowestPillarLocation - RefBaseAtCenter;
+	ToLowestBase.Z = 0.0f; // Only care about horizontal span
+	float ExtraLength = ToLowestBase.Size();
+
+	// Final box extents (UE uses half sizes):
+	//   X = half the distance between pillars + extra reach to cover lowest base
+	//   Y = fixed thickness (50 cm → 25 half-extent)
+	//   Z = fixed height (110 cm total → 55 half-extent)
+	OutBoxExtents = FVector(OutDistanceBetweenPillars * 0.5f + ExtraLength,
+	                        50.0f,
+	                        110.0f);
 }
 
 void AFlowCounter::ResizeFlowCounterTriggerBoxExtent(const FVector& NewExtent)
@@ -440,32 +491,49 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 	{
 		return;// Early exit if the trigger box is not valid
 	}
+	// Update the FlowCounterLineStartLocation and FlowCounterLineEndLocation based on the pillar locations
+	FlowCounterLineStartLocation = FlowCounterPillarMesh1->GetComponentLocation();
+	FlowCounterLineEndLocation = FlowCounterPillarMesh2->GetComponentLocation();
+	
 	float DistanceBetweenPillars;
 	FVector CenterLocation;
-	ResizeFlowCounterTriggerBox(DistanceBetweenPillars, CenterLocation);
+	FVector BoxExtents;
+	FRotator BoxRotation;
+	
+	ResizeFlowCounterTriggerBox(DistanceBetweenPillars, CenterLocation, BoxExtents, BoxRotation);
 
+	
 	// Center Location should also be the root components location, that way child objects that aren't dynamic can update with it
 	RootComponent->SetWorldLocation(CenterLocation);
 	
-	FlowCounterTriggerBox->SetBoxExtent(FVector(DistanceBetweenPillars / 2.0f, 50.0f, 100.0f));
-
-	// Offset Center location to be minus 10 - to ensure we capture all agents that pass through the flow counter line
-	// this is due to the sensitivity of the line intersection check and the fact that agents may not be exactly on the lower z if offset by a few units
-	CenterLocation.Z -= 10.0f;
+	//FlowCounterTriggerBox->SetBoxExtent(FVector(DistanceBetweenPillars / 2.0f, 50.0f, 100.0f));
+	FlowCounterTriggerBox->SetBoxExtent(BoxExtents);
 	
 	// We may want to offset the box location in Z 
 	FlowCounterTriggerBox->SetWorldLocation(CenterLocation);
 
-	// Update the Z search limits based on the trigger box location and Z box extents
-	FlowCounterZSearchLimits.MinZBounds = CenterLocation.Z - (FlowCounterTriggerBox->GetScaledBoxExtent().Z );
-	FlowCounterZSearchLimits.MaxZBounds = CenterLocation.Z + (FlowCounterTriggerBox->GetScaledBoxExtent().Z );
+	//TODO: Our z limits shouldn't be based on the trigger box extents as if the pillars are at different z locations, the trigger box will be rotated
+	// and the extents will not be accurate for the z limits we want to use for the line intersection check
 
-	// Update the FlowCounterLineStartLocation and FlowCounterLineEndLocation based on the pillar locations
-	FlowCounterLineStartLocation = FlowCounterPillarMesh1->GetComponentLocation();
-	FlowCounterLineEndLocation = FlowCounterPillarMesh2->GetComponentLocation();
+	// --- Compute absolute Z bounds from the two pillars (base -> top) ---
+	// NOTE: your cylinder pillars are centered; total pillar height ~200 cm => half = 100 cm + 10 cm buffer
+	constexpr float PillarHalfHeightCm = 110.0f;
 
-	// Rotate the trigger box to align with the flow counter line
-	FRotator BoxRotation = (FlowCounterLineEndLocation - FlowCounterLineStartLocation).Rotation();
+	const FVector P1 = FlowCounterPillarMesh1->GetComponentLocation();
+	const FVector P2 = FlowCounterPillarMesh2->GetComponentLocation();
+
+	const float P1BaseZ = P1.Z - PillarHalfHeightCm;
+	const float P1TopZ  = P1.Z + PillarHalfHeightCm;
+	const float P2BaseZ = P2.Z - PillarHalfHeightCm;
+	const float P2TopZ  = P2.Z + PillarHalfHeightCm;
+
+	// Coarse world-Z band used by StatisticSubsystem::IsAgentLocationInAFlowCounterBand
+	FlowCounterZSearchLimits.MinZBounds = FMath::Min(P1BaseZ, P2BaseZ);
+	FlowCounterZSearchLimits.MaxZBounds = FMath::Max(P1TopZ,  P2TopZ);
+	
+	
+	// We only want to rotate around the yaw axis, so we set pitch and roll to 0 for the trigger box
+	//FRotator BoxRotationYawOnly = FRotator(0.0f, ActorRotation.Yaw, 0.0f); // Only use yaw rotation to keep box upright
 	FlowCounterTriggerBox->SetWorldRotation(BoxRotation);
 
 	// Root component should be updated to reflect the same orientation as the trigger box
@@ -473,7 +541,7 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 
 	// up vector should always be world up
 	const FVector Up = FVector::UpVector;
-	const float   Height = 100.f;                       // or whatever you want
+	const float   Height = 100.f;                      // Half height of the barrier visual mesh (also the pillars half height)
 
 	const FVector A_w = FlowCounterLineStartLocation - Up * Height;
 	const FVector B_w = FlowCounterLineEndLocation - Up * Height;
@@ -533,9 +601,9 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			float   TOnLine = 0.0f;
 
 			bool bAgentCrossed = SegmentCrossesGateProjectToLine(*PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
-										IntersectionOnLine, TOnLine,
-										/*PlaneLateralTolerance=*/4.0f,
-										/*ZTolerance=*/1.0f);
+			                                                     IntersectionOnLine, TOnLine,
+			                                                     /*PlaneLateralTolerance=*/4.0f,
+			                                                     /*ZTolerance=*/1.0f);
 			
 
 			// bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
@@ -590,9 +658,9 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		float   TOnLine = 0.0f;
 
 		bool bAgentCrossed = SegmentCrossesGateProjectToLine(*PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
-									IntersectionOnLine, TOnLine,
-									/*PlaneLateralTolerance=*/4.0f,
-									/*ZTolerance=*/1.0f);
+		                                                     IntersectionOnLine, TOnLine,
+		                                                     /*PlaneLateralTolerance=*/4.0f,
+		                                                     /*ZTolerance=*/1.0f);
 			
 
 		// bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
