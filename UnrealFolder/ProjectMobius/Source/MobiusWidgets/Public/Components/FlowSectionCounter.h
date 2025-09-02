@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "FlowSectionCounter.generated.h"
 
+struct FFlowSectionCounterInitParams;
 class UBorder;
 class UFieldAndTextWidget;
 /**
@@ -26,18 +27,13 @@ protected:
 
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
-	/** 
-	 * Gets the size of the parent slot - used for layout calculations
-	 * 
-	 * @return The size of the parent slot
-	 */
-	UFUNCTION()
-	FVector2D GetParentSlotSize() const;
 
 public:
 	virtual void SynchronizeProperties() override;
 
-	
+	/** Parent calls this immediately after creating/adding the widget. */
+	UFUNCTION(BlueprintCallable, Category="FlowSectionCounter")
+	void InitializeFromParent(const FFlowSectionCounterInitParams& Params);
 
 private:
 
@@ -74,11 +70,11 @@ public:
 	FText FlowValueText = FText::FromString("0.00m/s");
 
 	/** Title and Field widget - we can reuse this widget to display the header text */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidgetOptional))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidget))
 	TObjectPtr<UFieldAndTextWidget> SectionHeaderFieldAndTextWidget;
 
 	/** Title and Field widget - we can reuse this widget to display the type of flow and the value of that flow text */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidgetOptional))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowSectionCounter|Properties", meta = (BindWidget))
 	TObjectPtr<UFieldAndTextWidget> FlowTypeAndValueFieldAndTextWidget;
 
 	/** Text Style slate sheet */

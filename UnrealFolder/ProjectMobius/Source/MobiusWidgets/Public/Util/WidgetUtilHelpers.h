@@ -3,7 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EnumsAndStructs/HelperStructs.h"
 
+class UUniformGridPanel;
+class UWidgetComponent;
 class UWidget;
 class UComboBoxString;
 class UFieldAndTextWidget;
@@ -70,4 +73,74 @@ public:
 	 * @param[EVerticalAlignment] VAlign Desired vertical alignment
 	 */
 	static void SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign, EVerticalAlignment VAlign);
+
+	/** */
+	static FUniformGridLayout ComputeUniformGridLayout(
+		const FVector2D& DrawSizePx,
+		int32 NumItems,
+		const FVector2D& MinCellPx,
+		int32 PreferredColsHint = 0);
+
+	/**
+	 * Given a chosen layout, apply slot positions in a UniformGrid, add children if needed.
+	 * (Does not create the actual child widgets; just positions an existing array.)
+	 */
+	static void ApplyUniformGridLayout(
+		UUniformGridPanel* Grid,
+		const TArray<UWidget*>& Children,
+		const FUniformGridLayout& Layout);
+
+	/** Make child fill its grid cell (H/V Fill and no padding). */
+	static void UniformGridFillCell(UWidget* Child);
+
+	/**
+	 * Distance-adaptive scaling so a WidgetComponent maintains a *target on-screen pixel height*
+	 * independent of distance (approximate; assumes perspective projection).
+	 *
+	 * @param DesiredScreenHeightPx  e.g., 320 px tall on screen
+	 * @param ReferenceWorldHeightUU height in Unreal units the widget represents at scale=1 (e.g., 100uu)
+	 * @param bClamp                 optional clamping
+	 * @param MinScale, MaxScale     scale clamps to avoid absurd sizes
+	 */
+	static void UpdateWidgetComponentScaleForScreenHeight(
+		UWidgetComponent* WidgetComp,
+		APlayerController* PC,
+		float DesiredScreenHeightPx,
+		float ReferenceWorldHeightUU,
+		bool  bClamp = true,
+		float MinScale = 0.25f,
+		float MaxScale = 6.0f);
+
+	/**
+	 * Fast font fitting: find largest font size that fits a box (binary search).
+	 * (You may already have this; included here for the grid workflow.)
+	 */
+	static int32 FindFittingFontSize(const FText& Text,
+									 const struct FSlateFontInfo& BaseFont,
+									 const FVector2D& BoxPx,
+									 int32 MinSize,
+									 int32 MaxSize,
+									 float PaddingScale = 0.92f);
+
+	/** */
+	static void ApplyFontSize(class UTextBlock* TextBlock, int32 NewSize);
+
+	static FORCEINLINE int32 CeilDiv(int32 A, int32 B) { return (A + (B - 1)) / B; }
+
+	// Make a widget fill its parent (Canvas/Grid supported)
+	static void FillParentSlot(UWidget* Widget);
+
+	// Compute largest font size that fits a single FieldAndTextWidget into BoxPx
+	static int32 FindFittingFontSizeForFieldAndText(
+		class UFieldAndTextWidget* W,
+		const FVector2D& BoxPx,
+		int32 MinSize,
+		int32 MaxSize,
+		float PaddingScale = 0.92f);
+
+	/** Measure combined Title+Field extents at a given font size (no UI mutation) */
+	static FVector2D MeasureFieldAndTextAtSize(
+	const FText& Title, const FText& Field,
+	const FSlateFontInfo& TitleFontBase, const FSlateFontInfo& FieldFontBase,
+	int32 SizePx, bool bVertical);
 };

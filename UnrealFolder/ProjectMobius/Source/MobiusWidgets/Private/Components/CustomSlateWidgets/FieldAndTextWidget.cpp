@@ -52,27 +52,43 @@ void UFieldAndTextWidget::ReleaseSlateResources(bool bReleaseChildren)
 
 void UFieldAndTextWidget::SetTitleText(FText InTitleText)
 {
-	TitleText = InTitleText;
-	FieldAndTextWidget->SetTitleText(TitleText);
+	// Always keep the UObject-side value authoritative
+	TitleText = MoveTemp(InTitleText);
+	
+	// Only touch Slate if it exists
+	if (FieldAndTextWidget.IsValid())
+	{
+		FieldAndTextWidget->SetTitleText(TitleText);
+	}
 }
 
 void UFieldAndTextWidget::SetFieldText(FText InFieldText)
 {
-	FieldText = InFieldText;
-	FieldAndTextWidget->SetFieldText(FieldText);
+	// Always keep the UObject-side value authoritative
+	FieldText = MoveTemp(InFieldText);
+
+	// Only touch Slate if it exists
+	if (FieldAndTextWidget.IsValid())
+	{
+		FieldAndTextWidget->SetFieldText(FieldText);
+	}
 }
 
 FVector2D UFieldAndTextWidget::GetTextSize() const
 {
-	return FieldAndTextWidget->GetTextSize();
+	// Safe fallback while not constructed yet
+	return FieldAndTextWidget.IsValid() ? FieldAndTextWidget->GetTextSize() : FVector2D::ZeroVector;
 }
 
 void UFieldAndTextWidget::SetFontSize(float InFontSize) const
 {
-	FieldAndTextWidget->SetFontSize(InFontSize);
+	if (FieldAndTextWidget.IsValid())
+	{
+		FieldAndTextWidget->SetFontSize(InFontSize);
+	}
 }
 
 float UFieldAndTextWidget::GetFontSize()
 {
-	return FieldAndTextWidget->GetFontSize();
+	return FieldAndTextWidget.IsValid() ? FieldAndTextWidget->GetFontSize() : 0.f;
 }
