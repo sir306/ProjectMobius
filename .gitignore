@@ -73,6 +73,10 @@ SourceArt/**/*.tga
 # Unreal Engine Build Artifacts
 # =====================================================
 
+# Ensure Plugin Folders Included
+!/UnrealFolder/ProjectMobius/Plugins/UE4_Assimp
+#!/UnrealFolder/ProjectMobius/Plugins/
+
 # Binaries directories for each ProjectMobius version
 UnrealFolder/ProjectMobius/Binaries/*
 UnrealFolder/ProjectMobius 5.4/Binaries/*
@@ -218,3 +222,4 @@ UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
 # JetBrains IDE settings
 .idea/
 UnrealFolder/ProjectMobius/.idea/
+
