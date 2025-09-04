@@ -219,3 +219,41 @@ UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
 .idea/
 UnrealFolder/ProjectMobius/.idea/
 
+
+# =====================================================
+# macOS System Files
+# =====================================================
+
+# Finder metadata
+.DS_Store
+.DS_Store?
+
+# Resource fork files
+._*
+
+# AppleDouble (resource fork) files
+.AppleDouble
+
+# Spotlight / indexing
+.Spotlight-V100
+.fseventsd
+
+# Time Machine
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Disk image / archive artifacts
+*.dmg
+*.sparsebundle
+
+# Shared file system metadata
+.apdisk
+
+# Xcode user data (per-user, not project)
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+
+# Derived data / build artifacts (Xcode)
+DerivedData/
