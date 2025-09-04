@@ -235,6 +235,10 @@ void UStatisticSubsystem::ResetFlowCounters()
 	}
 }
 
+// TODO: Instantaneous flow rate is the important one need to add
+// max flow rate over the total instantaneous flow rate
+// specific flow and specific instantaneous flow
+
 float UStatisticSubsystem::ComputeFlow(float Density, float Speed)
 {
 	return Density * Speed;
