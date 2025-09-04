@@ -1,0 +1,38 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "UE_Assimp",
+	"Description": "",
+	"Category": "Other",
+	"CreatedBy": "1mohtashamiraj@gmail.com",
+	"CreatedByURL": "https://github.com/irajsb",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+    "EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "UE_Assimp",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault"
+		}
+	], 
+  	"Plugins": [
+      	{
+          	"Name": "ProceduralMeshComponent",
+          	"Enabled": true
+        },
+      	{
+          	"Name": "GeometryProcessing",
+          	"Enabled": true
+        },
+		{
+			"Name": "GeometryScripting",
+			"Enabled": true
+		}
+    ]
+}
