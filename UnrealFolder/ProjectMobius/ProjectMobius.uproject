@@ -166,7 +166,16 @@
 				"Android",
 				"VisionOS"
 			]
-		}
+		},
+      {
+        "Name":"UE_Assimp",
+        "Enabled":true,
+        "SupportedTargetPlatforms":[
+          "Win64",
+          "Linux",
+          "Mac"
+        ]
+      }
 	],
 	"TargetPlatforms": [
 		"IOS",

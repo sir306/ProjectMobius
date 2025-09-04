@@ -15,6 +15,7 @@ public class MobiusCore : ModuleRules
                 "MassEntity",
                 "ProceduralMeshComponent",
                 "RHI",
+                "UE_Assimp",
             }
         );
 
@@ -33,26 +34,20 @@ public class MobiusCore : ModuleRules
                 "DatasmithCore",
                 "Visualization",
                 "RenderCore",
+                "UE_Assimp",
             }
         );
+        
+        PublicDependencyModuleNames.AddRange(new string[]
+        {
+            "UE_Assimp",
+            "UE_AssimpLibrary",
+        });
         
         // TODO: Sort different build versions for different platforms 
         if ((Target.Platform == UnrealTargetPlatform.Win64))
         {
-            // get the project dir
-            string projectDir = Path.GetFullPath(Path.Combine(ModuleDirectory, "../../"));
-            PublicIncludePaths.Add(Path.Combine(projectDir, "Source\\MobiusCore\\ThirdParty"));
-	        
-            string platformString = (Target.Platform == UnrealTargetPlatform.Win64) ? "Win64" : "Win32";
-            string librariesPath = Path.Combine(projectDir, "Binaries", platformString);
 
-            PublicAdditionalLibraries.Add(Path.Combine(librariesPath, "assimp-vc143-mt.lib"));
-	        
-            // load the dll
-            string dllPath = Path.Combine(librariesPath, "assimp-vc143-mt.dll");
-	        
-            PublicDelayLoadDLLs.Add(dllPath);
-            RuntimeDependencies.Add(dllPath);
 	        
         }
 

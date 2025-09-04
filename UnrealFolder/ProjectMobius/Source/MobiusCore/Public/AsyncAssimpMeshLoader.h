@@ -25,7 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "assimp/scene.h"
+#include "UE_Assimp/Public/AIScene.h"
 #include "UObject/Object.h"
 #include "AsyncAssimpMeshLoader.generated.h"
 
