@@ -145,7 +145,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 		// TODO: this check will always fail on data swap as the frags are reset so sizes will be 0 like the offset
 		// if the index offset is greater or less than the total then there is a miss match with current data the indexing should always be the same
-		if (!EntityIndexOffset == CurrentInstanceTotal)
+		if (EntityIndexOffset != CurrentInstanceTotal)
 		{
 			ResetDataInNiagaraSystem(AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
 
