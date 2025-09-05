@@ -58,7 +58,7 @@ public:
 	virtual ~UDynamicPixelRenderingTexture() override;
 
 #if !PLATFORM_MAC
-       cv::Mat DensityMap;
+	cv::Mat DensityMap;
 #endif
 	
 #pragma region METHODS
@@ -179,11 +179,11 @@ public:
 	void OpenCVVoronoiDiagram() const;
 
 #if !PLATFORM_MAC
-       /**
-        *
-        * @param Mat
-        */
-       void ApplyDensityMapToTexture(const cv::Mat& Mat);
+	/**
+	 *
+	 * @param Mat
+	 */
+	void ApplyDensityMapToTexture(const cv::Mat& Mat);
 #endif
 	/*
 	 * Apply Kernel Density Estimation to the texture
@@ -340,15 +340,15 @@ private:
 	TUniquePtr<uint8[]> UpdateBuffer;
 
 #if !PLATFORM_MAC
-       /** This is used to define the size of OpenCV's Mat and UMat in a format it is expecting */
-       cv::Size CVSize;
+	/** This is used to define the size of OpenCV's Mat and UMat in a format it is expecting */
+	cv::Size CVSize;
 
-       /** To copy our pixel buffers into the UMat and back we have to use the CPU Mat version to allow direct copying */
-       cv::Mat  SrcMat;
+	/** To copy our pixel buffers into the UMat and back we have to use the CPU Mat version to allow direct copying */
+	cv::Mat  SrcMat;
 
-       /** Currently Gaussian Blur is a very expensive task to perform we can optimize it
-        * by using the UMat to incorporate GPU acceleration for the calculations */
-       cv::UMat UBlurMat;
+	/** Currently Gaussian Blur is a very expensive task to perform we can optimize it
+	 * by using the UMat to incorporate GPU acceleration for the calculations */
+	cv::UMat UBlurMat;
 #endif
 
 
