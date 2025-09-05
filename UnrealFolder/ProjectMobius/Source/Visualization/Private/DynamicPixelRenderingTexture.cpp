@@ -27,6 +27,7 @@
 // IWYU pragma: begin_keep
 #include "HLSLTypeAliases.h"
 #include "ImageUtils.h"
+#if !PLATFORM_MAC
 #include "PreOpenCVHeaders.h"
 #include "opencv2/unreal.hpp"
 #include "opencv2/opencv.hpp"
@@ -34,6 +35,7 @@
 #include "opencv2/ml.hpp"
 #include "opencv2/imgproc.hpp"
 #include "PostOpenCVHeaders.h"
+#endif
 // IWYU pragma: end_keep
 
 
@@ -92,10 +94,12 @@ void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHei
 	TextureDimensionY = InHeight;
 	DefaultColor = InitialColor;
 
-	CVSize = cv::Size(TextureDimensionY, TextureDimensionX);
+#if !PLATFORM_MAC
+       CVSize = cv::Size(TextureDimensionY, TextureDimensionX);
 
-	SrcMat.create(CVSize, CV_8UC4);
-	UBlurMat.create(CVSize, CV_8UC4);
+       SrcMat.create(CVSize, CV_8UC4);
+       UBlurMat.create(CVSize, CV_8UC4);
+#endif
 
 	//TODO: add extra parameters for mip settings, compression settings, and srgb settings to give more control
 	// Create a new texture
@@ -523,8 +527,9 @@ void UDynamicPixelRenderingTexture::UpdateTextureRender() const
 
 void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 {
+#if !PLATFORM_MAC
 #if WITH_EDITOR
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur work start");
+        TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur work start");
 #endif
 	
 	// Check if the blur is required
@@ -553,148 +558,155 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 		//UBlurMat.copyTo(SrcMat);
 
 		// Copy the blurred image back to the pixel buffer
-		FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
-	}
-	
+               FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
+       }
+#endif
+
 }
 
 void UDynamicPixelRenderingTexture::OpenCVVoronoiDiagram() const
 {
-	// Convert the pixel buffer to a cv::Mat
-	cv::Mat src = cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get());
+#if !PLATFORM_MAC
+       // Convert the pixel buffer to a cv::Mat
+       cv::Mat src = cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get());
 
-	// Create a UMat object to store and create a blurred image, this is a GPU accelerated version of the Mat object
-	cv::UMat umat;
+       // Create a UMat object to store and create a blurred image, this is a GPU accelerated version of the Mat object
+       cv::UMat umat;
 
-	// Rectangle to use with Subdiv2D
-	cv::Rect rect(0, 0, TextureDimensionX, TextureDimensionY);
+       // Rectangle to use with Subdiv2D
+       cv::Rect rect(0, 0, TextureDimensionX, TextureDimensionY);
 
-	// Create a Subdiv2D object
-	cv::Subdiv2D subdiv(rect);
+       // Create a Subdiv2D object
+       cv::Subdiv2D subdiv(rect);
 
-	// Create a vector of points to store the voronoi diagram points
-	std::vector<cv::Point2f> points;// TODO: need to test this with a vector of points
+       // Create a vector of points to store the voronoi diagram points
+       std::vector<cv::Point2f> points;// TODO: need to test this with a vector of points
 
-	// create 50 random points
-	for (int i = 0; i < 50; i++)
-	{
-		cv::Point2f fp((float)(rand() % TextureDimensionX), (float)(rand() % TextureDimensionY));
-		points.push_back(fp);
-	}
+       // create 50 random points
+       for (int i = 0; i < 50; i++)
+       {
+               cv::Point2f fp((float)(rand() % TextureDimensionX), (float)(rand() % TextureDimensionY));
+               points.push_back(fp);
+       }
 
-	// Insert points into subdiv
-	for (size_t i = 0; i < points.size(); i++)
-	{
-		subdiv.insert(points[i]);
-	}
+       // Insert points into subdiv
+       for (size_t i = 0; i < points.size(); i++)
+       {
+               subdiv.insert(points[i]);
+       }
 
-	// draw delaunay triangles
-	std::vector<cv::Vec6f> triangleList;
-	subdiv.getTriangleList(triangleList);
+       // draw delaunay triangles
+       std::vector<cv::Vec6f> triangleList;
+       subdiv.getTriangleList(triangleList);
 
-	std::vector<cv::Point> pt(3);
-	
-	for (size_t i = 0; i < triangleList.size(); i++)
-	{
-		cv::Vec6f t = triangleList[i];
-		pt[0] = cv::Point(cvRound(t[0]), cvRound(t[1]));
-		pt[1] = cv::Point(cvRound(t[2]), cvRound(t[3]));
-		pt[2] = cv::Point(cvRound(t[4]), cvRound(t[5]));
+       std::vector<cv::Point> pt(3);
 
-		if(rect.contains(pt[0]) && rect.contains(pt[1]) && rect.contains(pt[2]))
-		{
-			line(src, pt[0], pt[1], cv::Scalar(255, 255, 255), 1, cv::LINE_AA, 0);
-			line(src, pt[1], pt[2], cv::Scalar(255, 255, 255), 1, cv::LINE_AA, 0);
-			line(src, pt[2], pt[0], cv::Scalar(255, 255, 255), 1, cv::LINE_AA, 0);
-		}
-	}
+       for (size_t i = 0; i < triangleList.size(); i++)
+       {
+               cv::Vec6f t = triangleList[i];
+               pt[0] = cv::Point(cvRound(t[0]), cvRound(t[1]));
+               pt[1] = cv::Point(cvRound(t[2]), cvRound(t[3]));
+               pt[2] = cv::Point(cvRound(t[4]), cvRound(t[5]));
 
-	// Copy image back to the pixel buffer
-	FMemory::ParallelMemcpy(UpdateBuffer.Get(), src.data, BufferSize);
-	UpdateTextureRender();
+               if(rect.contains(pt[0]) && rect.contains(pt[1]) && rect.contains(pt[2]))
+               {
+                       line(src, pt[0], pt[1], cv::Scalar(255, 255, 255), 1, cv::LINE_AA, 0);
+                       line(src, pt[1], pt[2], cv::Scalar(255, 255, 255), 1, cv::LINE_AA, 0);
+                       line(src, pt[2], pt[0], cv::Scalar(255, 255, 255), 1, cv::LINE_AA, 0);
+               }
+       }
+
+       // Copy image back to the pixel buffer
+       FMemory::ParallelMemcpy(UpdateBuffer.Get(), src.data, BufferSize);
+       UpdateTextureRender();
+#endif
 }
 
+#if !PLATFORM_MAC
 void UDynamicPixelRenderingTexture::ApplyDensityMapToTexture(const cv::Mat& Mat)
 {
-	// Ensure that the input matrix is of the correct size
-	if (Mat.rows != TextureDimensionY || Mat.cols != TextureDimensionX)
-	{
-		// Log an error message
-		UE_LOG(LogTemp, Error, TEXT("Input matrix dimensions do not match texture dimensions!"));
-	}
-	else
-	{
-		// Loop through every pixel in the texture and apply the density map
-		for (int32 y = 0; y < TextureDimensionY; y++)
-		{
-			for (int32 x = 0; x < TextureDimensionX; x++)
-			{
-				// Normalize the density value between 0 and 1
-				float densityValue = FMath::Clamp(Mat.at<float>(y, x), 0.0f, 1.0f);
-	
-				// Map the density to a color (e.g., grayscale)
-				FLinearColor PixelColor = FLinearColor(densityValue, densityValue, densityValue, 1.0f);
-	
-				// Set the pixel color
-				SetPixelColor(x, y, PixelColor);
-			}
-		}
-	
-		// Finally, update the texture render with the new KDE data
-		//UpdateTextureRender();
-	}
+       // Ensure that the input matrix is of the correct size
+       if (Mat.rows != TextureDimensionY || Mat.cols != TextureDimensionX)
+       {
+               // Log an error message
+               UE_LOG(LogTemp, Error, TEXT("Input matrix dimensions do not match texture dimensions!"));
+       }
+       else
+       {
+               // Loop through every pixel in the texture and apply the density map
+               for (int32 y = 0; y < TextureDimensionY; y++)
+               {
+                       for (int32 x = 0; x < TextureDimensionX; x++)
+                       {
+                               // Normalize the density value between 0 and 1
+                               float densityValue = FMath::Clamp(Mat.at<float>(y, x), 0.0f, 1.0f);
+
+                               // Map the density to a color (e.g., grayscale)
+                               FLinearColor PixelColor = FLinearColor(densityValue, densityValue, densityValue, 1.0f);
+
+                               // Set the pixel color
+                               SetPixelColor(x, y, PixelColor);
+                       }
+               }
+
+               // Finally, update the texture render with the new KDE data
+               //UpdateTextureRender();
+       }
 }
+#endif
 
 void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FVector2D>& DataPoints, int32 KDE_Bandwidth)
 {
-	//cv::Mat src = cv::Mat(TextureDimensionY, TextureDimensionX, CV_8UC4, PixelBuffer.Get());
-	
-	// Convert the data points to a cv::Mat
-	cv::Mat PointSamples = cv::Mat(DataPoints.Num(), 2, CV_32F);
-	
-	// Loop over the data points and add them to the cv::Mat
-	for (int32 i = 0; i < DataPoints.Num(); i++)
-	{
-		PointSamples.at<float>(i, 0) = DataPoints[i].X;
-		PointSamples.at<float>(i, 1) = DataPoints[i].Y;
-	}
-	
-	// Create the OpenCV KDE model using EM (Expectation-Maximization)
-	const cv::Ptr<cv::ml::EM> Kde = cv::ml::EM::create();
-	Kde->setClustersNumber(1); // KDE is often modeled as a single cluster
-	Kde->setCovarianceMatrixType(cv::ml::EM::COV_MAT_SPHERICAL); // Spherical covariance, assuming the same variance for X and Y
-	Kde->trainEM(PointSamples);
-	
-	// Create a density map (grayscale) to store KDE results
-	cv::Mat KernelDensityMap(TextureDimensionY, TextureDimensionX, CV_32F, cv::Scalar(0));
-	
-	// Loop through every pixel in the texture and compute KDE density
-	for (int32 y = 0; y < TextureDimensionY; y++)
-	{
-		for (int32 x = 0; x < TextureDimensionX; x++)
-		{
-			// Create a matrix for the single query point
-			cv::Mat QueryPoint(1, 2, CV_32F);
-			QueryPoint.at<float>(0, 0) = static_cast<float>(x); // X coordinate
-			QueryPoint.at<float>(0, 1) = static_cast<float>(y); // Y coordinate
+#if !PLATFORM_MAC
+       //cv::Mat src = cv::Mat(TextureDimensionY, TextureDimensionX, CV_8UC4, PixelBuffer.Get());
 
-			// Evaluate the KDE density for this pixel using OpenCV's EM
-			cv::Vec2d likelihoods;
-			if (!Kde || Kde->empty()) 
-			{
-				UE_LOG(LogTemp, Error, TEXT("KDE model is not initialized or empty."));
-				return;
-			}
-			Kde->predict2(QueryPoint, likelihoods);
+       // Convert the data points to a cv::Mat
+       cv::Mat PointSamples = cv::Mat(DataPoints.Num(), 2, CV_32F);
 
-			// Normalize and store the density value
-			float densityValue = likelihoods[0]; // log-likelihood for the first cluster
-			DensityMap.at<float>(y, x) = exp(densityValue); // Exponentiate to get back from log-likelihood
-		}
-	}
-	
-	// Convert density map to texture format and apply to Unreal texture
-	ApplyDensityMapToTexture(DensityMap);
+       // Loop over the data points and add them to the cv::Mat
+       for (int32 i = 0; i < DataPoints.Num(); i++)
+       {
+               PointSamples.at<float>(i, 0) = DataPoints[i].X;
+               PointSamples.at<float>(i, 1) = DataPoints[i].Y;
+       }
+
+       // Create the OpenCV KDE model using EM (Expectation-Maximization)
+       const cv::Ptr<cv::ml::EM> Kde = cv::ml::EM::create();
+       Kde->setClustersNumber(1); // KDE is often modeled as a single cluster
+       Kde->setCovarianceMatrixType(cv::ml::EM::COV_MAT_SPHERICAL); // Spherical covariance, assuming the same variance for X and Y
+       Kde->trainEM(PointSamples);
+
+       // Create a density map (grayscale) to store KDE results
+       cv::Mat KernelDensityMap(TextureDimensionY, TextureDimensionX, CV_32F, cv::Scalar(0));
+
+       // Loop through every pixel in the texture and compute KDE density
+       for (int32 y = 0; y < TextureDimensionY; y++)
+       {
+               for (int32 x = 0; x < TextureDimensionX; x++)
+               {
+                       // Create a matrix for the single query point
+                       cv::Mat QueryPoint(1, 2, CV_32F);
+                       QueryPoint.at<float>(0, 0) = static_cast<float>(x); // X coordinate
+                       QueryPoint.at<float>(0, 1) = static_cast<float>(y); // Y coordinate
+
+                       // Evaluate the KDE density for this pixel using OpenCV's EM
+                       cv::Vec2d likelihoods;
+                       if (!Kde || Kde->empty())
+                       {
+                               UE_LOG(LogTemp, Error, TEXT("KDE model is not initialized or empty."));
+                               return;
+                       }
+                       Kde->predict2(QueryPoint, likelihoods);
+
+                       // Normalize and store the density value
+                       float densityValue = likelihoods[0]; // log-likelihood for the first cluster
+                       DensityMap.at<float>(y, x) = exp(densityValue); // Exponentiate to get back from log-likelihood
+               }
+       }
+
+       // Convert density map to texture format and apply to Unreal texture
+       ApplyDensityMapToTexture(DensityMap);
+#endif
 }
 
 void UDynamicPixelRenderingTexture::BuildVoronoiDiagram(const TArray<FVector2D>& DataPoints, int32 RelaxationIterations)
