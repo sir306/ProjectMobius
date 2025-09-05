@@ -368,8 +368,7 @@ ANiagaraAgentRepActor* UAgentRepresentation_MOP::GetOrCreateNiagaraRepActor(UWor
 	return World->SpawnActor<ANiagaraAgentRepActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 }
 
-int32 UAgentRepresentation_MOP::AddInstanceToISMComponent(UInstancedStaticMeshComponent* ISMComponent,
-                                                          const FTransform& InstanceTransform)
+int32 UAgentRepresentation_MOP::AddInstanceToISMComponent(UInstancedStaticMeshComponent* ISMComponent, const FTransform& InstanceTransform)
 {
 	const int32 InstanceIndex = ISMComponent->AddInstance(InstanceTransform);
 	// ISMComponent->SetCustomDataValue(InstanceIndex, 0,340.0f);// FrameOffset
