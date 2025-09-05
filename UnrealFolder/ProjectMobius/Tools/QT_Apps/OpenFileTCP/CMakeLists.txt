@@ -2,32 +2,41 @@ cmake_minimum_required(VERSION 3.16)
 
 project(OpenFileTCP LANGUAGES CXX)
 
+cmake_minimum_required(VERSION 3.16)
+project(OpenFileTCP VERSION 1.0 LANGUAGES CXX)
+
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find both Core, Widgets, and HttpServer components
-find_package(QT NAMES Qt6 REQUIRED COMPONENTS Core Widgets HttpServer)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets HttpServer)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets HttpServer)
 
-# Add your sources here (add more if needed)
-add_executable(OpenFileTCP
-  main.cpp
+# Build a .app bundle on macOS
+qt_add_executable(OpenFileTCP
+    MACOSX_BUNDLE
+    main.cpp
 )
 
-# Link to required Qt modules
 target_link_libraries(OpenFileTCP
-  Qt${QT_VERSION_MAJOR}::Core
-  Qt${QT_VERSION_MAJOR}::Widgets
-  Qt${QT_VERSION_MAJOR}::HttpServer
+    PRIVATE Qt6::Core Qt6::Widgets Qt6::HttpServer
 )
 
-# Install targets
+# Nice-to-have bundle metadata
+set_target_properties(OpenFileTCP PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.projectmobius.openfiletcp
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    # If you have an icon:
+    # MACOSX_BUNDLE_ICON_FILE AppIcon
+    # RESOURCE "${CMAKE_SOURCE_DIR}/icons/AppIcon.icns"
+)
+
+# Install the bundle (BUNDLE is key for macOS)
 include(GNUInstallDirs)
 install(TARGETS OpenFileTCP
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}  # for non-mac builds
 )
