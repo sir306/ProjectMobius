@@ -74,6 +74,12 @@ private:
 	void OnFileDialogRequested(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
 	void OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
 
+	/** Build the absolute path to the Qt app executable for the host platform */
+	FString ResolveQtAppExecutablePath() const;
+
+	/** Build CLI args safely (handles quoting paths) */
+	FString BuildQtArgs() const;
+
 private:
 	UPROPERTY()
 	bool bSelectionInProgress;
