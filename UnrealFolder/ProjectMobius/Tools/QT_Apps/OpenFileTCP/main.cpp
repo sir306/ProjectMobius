@@ -121,9 +121,16 @@ int main(int argc, char *argv[])
         dialogBox.setNameFilter(nameFilter);
 
         dialogBox.setViewMode(QFileDialog::Detail);
-
+#ifdef Q_OS_MAC
+        // Prefer native panels on macOS
+        dialogBox.setOptions(dialogBox.options() & ~QFileDialog::DontUseNativeDialog); //in this context ~ is a bitwise operator not destructor
+        // Let macOS manage z-order; topmost hints are ignored by native panels
+        dialogBox.setWindowFlags(Qt::Dialog);
+#else
         dialogBox.setOptions(QFileDialog::DontUseNativeDialog);
         dialogBox.setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint);
+#endif
+
         dialogBox.setWindowModality(Qt::ApplicationModal);
 
         QString currentDir = dialogBox.directory().absolutePath();
@@ -136,11 +143,16 @@ int main(int argc, char *argv[])
                 edit->clear();
             }
         }
+#ifdef Q_OS_MAC
+        dialogBox.open();
+
+#else
 
         dialogBox.raise();
         dialogBox.activateWindow();
         dialogBox.setFocus(Qt::ActiveWindowFocusReason);
         dialogBox.show();
+#endif
     };
 
     // When GET /openAgentFile is called, launch the file dialog
@@ -220,11 +232,17 @@ int main(int argc, char *argv[])
     // Setup TCP listener for HTTP server
     const quint16 port = 8080;
     QTcpServer* tcpServer = new QTcpServer();
-    if (!tcpServer->listen(QHostAddress::Any, port) || !server.bind(tcpServer)) {
+
+    // try bind server to port and the necessary server methods
+
+    if (!tcpServer->listen(QHostAddress::LocalHost, port) || !server.bind(tcpServer)) {
         qCritical() << "[Qt] Failed to bind server to port" << port;
         delete tcpServer;
         return -1;
     }
+
+
+
 
     qInfo() << "[Qt] File-dialog HTTP server running on port" << port;
     qInfo() << "  → Open dialog: http://127.0.0.1:" << port << "/openAgentFile";
