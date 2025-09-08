@@ -226,22 +226,47 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
 
 FString UQtFileOpenSubsystem::ResolveQtAppExecutablePath() const
 {
-	// Base folder shared by both platforms
+	// Base: <UE Project>/Tools/QT_Apps/OpenFileTCP/build
 	const FString ToolsDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/OpenFileTCP/build"));
 
 #if PLATFORM_WINDOWS
-	// .../build/WindowsExe/OpenFileTCP.exe
-	return FPaths::Combine(ToolsDir, TEXT("WindowsExe/OpenFileTCP.exe"));
+	// New canonical layout: build/WindowsExe/OpenFileTCP.exe
+	FString Path = FPaths::Combine(ToolsDir, TEXT("WindowsExe/OpenFileTCP.exe"));
+
+	// (Optional) Legacy fallback if someone still has the old structure
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		const FString Legacy = FPaths::Combine(ToolsDir, TEXT("WindowsExe/OpenFileTCP.exe")); // same name kept; adjust if you previously used a different subdir
+		if (IFileManager::Get().FileExists(*Legacy))
+		{
+			Path = Legacy;
+		}
+	}
+
+	return Path;
+
 #elif PLATFORM_MAC
-	// macdeployqt produces:
-	// .../build/MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP
-	const FString AppBundleBin = FPaths::Combine(ToolsDir, TEXT("MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
-	return AppBundleBin;
+	// New canonical layout: build/MacOS/OpenFileTCP.app/Contents/MacOS/OpenFileTCP
+	FString Path = FPaths::Combine(ToolsDir, TEXT("MacOS/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
+
+	// (Optional) Legacy fallback for older builds that used 'MacExe'
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		const FString Legacy = FPaths::Combine(ToolsDir, TEXT("MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
+		if (IFileManager::Get().FileExists(*Legacy))
+		{
+			Path = Legacy;
+		}
+	}
+
+	return Path;
+
 #else
-	// Fallback (not officially supported in your CMake)
+	// Not officially supported
 	return FPaths::Combine(ToolsDir, TEXT("Deploy/OpenFileTCP"));
 #endif
 }
+
 
 FString UQtFileOpenSubsystem::BuildQtArgs() const
 {
