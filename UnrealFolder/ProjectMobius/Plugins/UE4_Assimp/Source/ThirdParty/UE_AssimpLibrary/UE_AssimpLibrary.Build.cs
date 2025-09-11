@@ -1,104 +1,120 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// SPDX-License-Identifier: MIT
+// External wrapper for Assimp inside the plugin. This module exposes include paths,
+// link libs, and tells Unreal's stager which runtime binaries to copy for packaging.
 
+using System;
 using System.IO;
 using UnrealBuildTool;
 
 public class UE_AssimpLibrary : ModuleRules
 {
-	public string BinFolder(ReadOnlyTargetRules Target)
-	{
-		if (Target.Platform == UnrealTargetPlatform.Mac)
-			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../Binaries/Mac/"));
-		else if (Target.Platform == UnrealTargetPlatform.IOS)
-			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../Binaries/IOS/"));
-		if (Target.Platform == UnrealTargetPlatform.Win64)
-			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../Binaries/Win64/"));
-		if (Target.Platform == UnrealTargetPlatform.Android)
-			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../Binaries/Android/"));
-		if (Target.Platform == UnrealTargetPlatform.Linux)
-			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../Binaries/Linux/"));
-		return "";
-	}
+    public UE_AssimpLibrary(ReadOnlyTargetRules Target) : base(Target)
+    {
+        Type = ModuleType.External;
 
-	public UE_AssimpLibrary(ReadOnlyTargetRules Target) : base(Target)
-	{
-		Type = ModuleType.External;
+        // Root to our vendored assimp under this external module
+        string AssimpRoot = Path.Combine(ModuleDirectory, "assimp");
+        string IncludeDir = Path.Combine(AssimpRoot, "include");
 
-		string BinaryFolder = BinFolder(Target);
-		PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "assimp", "include"));
-		PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "assimp", "code"));
-		if (Target.Platform == UnrealTargetPlatform.Win64)
-		{
-			// Add the import library
-			PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "assimp", "lib", "Release", "assimp.lib"));
+        if (!Directory.Exists(IncludeDir))
+        {
+            throw new BuildException($"Assimp include dir not found: {IncludeDir}");
+        }
 
-			//RuntimeDependencies.Add(Path.Combine(ModuleDirectory,"assimp" , "bin","Release","assimp.dll"));
+        PublicIncludePaths.Add(IncludeDir);
 
-			// Delay-load the DLL, so we can load it from the right place first
-			PublicDelayLoadDLLs.Add(Path.Combine(ModuleDirectory, "assimp", "bin", "Release", "assimp.dll"));
+        // Per-platform linkage + staging
+        if (Target.Platform == UnrealTargetPlatform.Win64)
+        {
+            // Expected layout:
+            // assimp/
+            //   include/...
+            //   lib/Win64/assimp-vc143-mt.lib (or similar)
+            //   bin/Win64/assimp-vc143-mt.dll (or similar)
 
-			Directory.CreateDirectory(BinaryFolder);
-			string AssimpDll = Path.Combine(ModuleDirectory, "assimp", "bin", "Release", "assimp.dll");
-			string BinPath = Path.Combine(ModuleDirectory, BinaryFolder, "assimp.dll");
+            string LibDir = Path.Combine(AssimpRoot, "lib", "Win64");
+            string BinDir = Path.Combine(AssimpRoot, "bin", "Win64");
 
-			CopyFile(AssimpDll, BinPath);
-			RuntimeDependencies.Add("$(TargetOutputDir)/assimp.dll", AssimpDll);
+            if (!Directory.Exists(LibDir)) throw new BuildException($"Assimp lib dir not found: {LibDir}");
+            if (!Directory.Exists(BinDir)) throw new BuildException($"Assimp bin dir not found: {BinDir}");
 
-			// Ensure that the DLL is staged along with the executable
-			// RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/UE_AssimpLibrary/Win64/ExampleLibrary.dll");
-		}
-		else if (Target.Platform == UnrealTargetPlatform.Mac)
-		{
-			// Add the import library
-			PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "assimp", "bin", "libassimp.dylib"));
+            // Pick import lib + dll by pattern
+            string ImportLib = Directory.GetFiles(LibDir, "assimp*.lib")[0];
+            string DllPath   = Directory.GetFiles(BinDir, "assimp*.dll")[0];
+            string DllName   = Path.GetFileName(DllPath);
 
-			//RuntimeDependencies.Add(Path.Combine(ModuleDirectory,"assimp" , "bin","Release","assimp.dll"));
+            PublicAdditionalLibraries.Add(ImportLib);
+            PublicDelayLoadDLLs.Add(DllName); // filename only
 
-			// Delay-load the DLL, so we can load it from the right place first
-			// PublicDelayLoadDLLs.Add(Path.Combine(ModuleDirectory,"assimp" , "bin","Release","assimp.dll"));
+            // Stage next to your module output and packaged output
+            RuntimeDependencies.Add("$(BinaryOutputDir)/" + DllName, DllPath);
+            RuntimeDependencies.Add("$(TargetOutputDir)/" + DllName, DllPath);
 
-			Directory.CreateDirectory(BinaryFolder);
-			string AssimpDylib = Path.Combine(ModuleDirectory, "assimp", "bin", "libassimp.dylib");
-			string BinPath = Path.Combine(ModuleDirectory, BinaryFolder, "libassimp.dylib");
+            // Critical for Editor: also stage next to UnrealEditor.exe
+            if (Target.bBuildEditor)
+            {
+                RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/" + DllName, DllPath);
+            }
+        }
 
-			CopyFile(AssimpDylib, BinPath);
-			// Ensure that the DLL is staged along with the executable
-			// RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/UE_AssimpLibrary/Win64/ExampleLibrary.dll");
-		}
-		else if (Target.Platform == UnrealTargetPlatform.Android)
-		{
-			PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "assimp", "bin", "Release", "libassimp.so"));
-			
-			
-		}
-		else if (Target.Platform == UnrealTargetPlatform.Linux)
-		{
-			// Add the import library
-			PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "assimp", "bin", "libassimp.so"));
+        else if (Target.Platform == UnrealTargetPlatform.Mac)
+        {
+            // ---- macOS ----
+            // NOTE: Your CMake for assimp should set: -DCMAKE_INSTALL_NAME_DIR=@rpath
+            // so the produced dylib has an install_name like "@rpath/libassimp.dylib"
+            string LibDir   = Path.Combine(AssimpRoot, "lib", "Mac");
+            string DylibName = "libassimp.dylib";
+            string DylibPath = Path.Combine(LibDir, DylibName);
 
-			Directory.CreateDirectory(BinaryFolder);
-			string AssimpSo = Path.Combine(ModuleDirectory, "assimp", "bin", "libassimp.so");
-			string BinPath = Path.Combine(ModuleDirectory, BinaryFolder, "libassimp.so");
+            if (!File.Exists(DylibPath))
+            {
+                throw new BuildException($"Missing Assimp dylib: {DylibPath}");
+            }
 
-			CopyFile(AssimpSo, BinPath);
-		}
-	}
+            // Linker input
+            PublicAdditionalLibraries.Add(DylibPath);
 
-	public void CopyFile(string Source, string Dest)
-	{
-		System.Console.WriteLine("Copying {0} to {1}", Source, Dest);
-		if (System.IO.File.Exists(Dest))
-		{
-			System.IO.File.SetAttributes(Dest, System.IO.File.GetAttributes(Dest) & ~System.IO.FileAttributes.ReadOnly);
-		}
-		try
-		{
-			//Make Folder
-			System.IO.File.Copy(Source, Dest, true);
-		}
-		catch (System.Exception ex)
-		{
-			System.Console.WriteLine("Failed to copy file: {0}", ex.Message);
-		}
-	}
+            // Stage the dylib inside the app bundle’s MacOS folder (loader will find it via @rpath)
+            RuntimeDependencies.Add("$(TargetOutputDir)/" + DylibName, DylibPath);
+
+            // Optional: ensure rpaths are present if your project strips them; UE usually adds @executable_path/../Frameworks and @loader_path
+            // LinkerFlags.Add("-rpath @executable_path"); // Example if you need to enforce rpath
+        }
+        else if (Target.Platform == UnrealTargetPlatform.Linux)
+        {
+            // ---- Linux (optional) ----
+            string LibDir   = Path.Combine(AssimpRoot, "lib", "Linux");
+            string SoName   = "libassimp.so";
+            string SoPath   = Path.Combine(LibDir, SoName);
+
+            if (!File.Exists(SoPath))
+            {
+                throw new BuildException($"Missing Assimp so: {SoPath}");
+            }
+
+            PublicAdditionalLibraries.Add(SoPath);
+            RuntimeDependencies.Add("$(TargetOutputDir)/" + SoName, SoPath);
+        }
+        else if (Target.Platform == UnrealTargetPlatform.Android)
+        {
+            // ---- Android (if you’re providing prebuilts) ----
+            // Typically you organize by ABI: arm64-v8a, armeabi-v7a, x86_64, etc.
+            // You can also use .Build.cs + .UPL to copy per-ABI .so to the APK.
+            string Abi = "arm64-v8a"; // adjust or branch per Target.Architecture
+            string SoPath = Path.Combine(AssimpRoot, "bin", "Android", Abi, "libassimp.so");
+
+            if (!File.Exists(SoPath))
+            {
+                throw new BuildException($"Missing Assimp android so: {SoPath}");
+            }
+
+            // For Android, use RuntimeDependencies so the .so gets packaged into the APK
+            RuntimeDependencies.Add("$(TargetOutputDir)/libassimp.so", SoPath);
+            // If you also ship headers to NDK build steps, ensure PublicIncludePaths covers them (already done above).
+        }
+        else
+        {
+            // Other platforms not wired yet
+        }
+    }
 }

@@ -1,70 +1,53 @@
 using System;
-using UnrealBuildTool;
 using System.IO;
+using UnrealBuildTool;
 
 public class MobiusCore : ModuleRules
 {
-    public MobiusCore(ReadOnlyTargetRules Target) : base(Target)
-    {
-        PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+	public MobiusCore(ReadOnlyTargetRules Target) : base(Target)
+	{
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(
-            new string[]
-            {
-                "Core",
-                "MassEntity",
-                "ProceduralMeshComponent",
-                "RHI",
-                "UE_Assimp",
-            }
-        );
+		// Public deps: only what your *public headers* require
+		PublicDependencyModuleNames.AddRange(new[]
+		{
+			"Core",
+			"MassEntity",
+			"ProceduralMeshComponent",
+			"RHI",
+			"UE_Assimp",
+			"UE_AssimpLibrary",
+		});
 
-        PrivateDependencyModuleNames.AddRange(
-            new string[]
-            {
-                "CoreUObject",
-                "Engine",
-                "Slate",
-                "SlateCore",
-                "HTTP",  
-                "Json", 
-                "JsonUtilities",
-                "WebSockets",
-                "DatasmithRuntime", 
-                "DatasmithCore",
-                "Visualization",
-                "RenderCore",
-                "UE_Assimp",
-            }
-        );
-        
-        PublicDependencyModuleNames.AddRange(new string[]
-        {
-            "UE_Assimp",
-            "UE_AssimpLibrary",
-        });
-        
-        // TODO: Sort different build versions for different platforms 
-        if ((Target.Platform == UnrealTargetPlatform.Win64))
-        {
+		// Private deps: used in your .cpp files
+		PrivateDependencyModuleNames.AddRange(new[]
+		{
+			"CoreUObject",
+			"Engine",
+			"Slate",
+			"SlateCore",
+			"HTTP",
+			"Json",
+			"JsonUtilities",
+			"WebSockets",
+			"DatasmithRuntime",
+			"DatasmithCore",
+			"Visualization",
+			"RenderCore",
+			
+		});
 
-	        
-        }
 
-        PrivateIncludePaths.AddRange(new string[]
-        {
-            "MobiusCore/Public",
-            "MobiusCore/Private",
-            "MobiusCore/ThirdParty",
-        });
+		PrivateIncludePaths.AddRange(new[]
+		{
+			"MobiusCore/Public",
+			"MobiusCore/Private",
+			"MobiusCore/ThirdParty",
+		});
 
-        // Uncomment if you are using Slate UI
-        // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
-
-        // Uncomment if you are using online features
-        // PrivateDependencyModuleNames.Add("OnlineSubsystem");
-
-        // To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
-
-    }
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			// Platform switches if you need them later
+		}
+	}
 }

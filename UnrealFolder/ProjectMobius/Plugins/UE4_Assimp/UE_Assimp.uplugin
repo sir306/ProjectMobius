@@ -10,17 +10,17 @@
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
-	"CanContainContent": true,
+	"CanContainContent": false,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
     "EnabledByDefault": true,
-	"Modules": [
-		{
-			"Name": "UE_Assimp",
-			"Type": "Runtime",
-			"LoadingPhase": "PreDefault"
-		}
-	], 
+    "Modules": [
+      {
+        "Name": "UE_Assimp",
+        "Type": "Runtime",
+        "LoadingPhase": "Default"
+      }
+    ],
   	"Plugins": [
       	{
           	"Name": "ProceduralMeshComponent",

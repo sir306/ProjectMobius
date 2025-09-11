@@ -145,8 +145,7 @@
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"Linux",
-				"Android",
-				"VisionOS"
+				"Android"
 			]
 		},
 		{
@@ -167,11 +166,10 @@
 				"Android",
 				"VisionOS"
 			]
-		},
-		{
-			"Name": "UE_Assimp",
-			"Enabled": true
 		}
+	],
+	"AdditionalPluginDirectories": [
+		"Plugins"
 	],
 	"TargetPlatforms": [
 		"IOS",
