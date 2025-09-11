@@ -118,19 +118,25 @@ elseif(APPLE)
     message(FATAL_ERROR "macdeployqt not found. Ensure Qt bin is on PATH or Qt6::qmake is available.")
   endif()
 
+  # Where the app bundle is produced in-tree
+  set(APP_BUNDLE "$<TARGET_BUNDLE_DIR:OpenFileTCP>")
+
   add_custom_target(DeployOpenFileTCP ALL
     DEPENDS OpenFileTCP
-    # Fix up in-tree bundle (universal-aware), then copy to MacExe for distribution
-    COMMAND "${MACDEPLOYQT_EXECUTABLE}"
-            "$<TARGET_BUNDLE_DIR:OpenFileTCP>"
-            -verbose=2
-            -always-overwrite
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${DEPLOY_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "$<TARGET_BUNDLE_DIR:OpenFileTCP>"
-            "${DEPLOY_DIR}/OpenFileTCP.app"
-    COMMENT "Deploying OpenFileTCP to ${DEPLOY_DIR} (macOS universal)"
+    # 1) Fix up bundle with macdeployqt (copies frameworks/plugins next to the app)
+    COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${APP_BUNDLE}" -verbose=2 -always-overwrite
+
+    # 2) Normalize ALL symlinks under the bundle to real files so Unreal's UAT
+    #    NonUFS copy doesn't hit size-mismatch (e.g., QtVirtualKeyboardQml.framework)
+    #    We do it in-place: rsync to a temp dir with -L (follow symlinks), swap.
+    COMMAND ${CMAKE_COMMAND} -E echo "Normalizing framework symlinks in ${APP_BUNDLE}"
+    COMMAND /usr/bin/rsync -aL "${APP_BUNDLE}/" "${APP_BUNDLE}.nosymlinks/"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${APP_BUNDLE}"
+    COMMAND ${CMAKE_COMMAND} -E rename "${APP_BUNDLE}.nosymlinks" "${APP_BUNDLE}"
+
+    COMMENT "Deploying OpenFileTCP (macOS) and normalizing symlinks for Unreal packaging"
   )
+
 
 else()
   message(WARNING "No deploy step defined for this platform.")
