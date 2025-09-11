@@ -259,3 +259,17 @@ xcuserdata/
 DerivedData/
 /UnrealFolder/ProjectMobius/_superbuild
 /UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build
+
+
+# Build and binary outputs
+build/
+executable/
+
+# Qt / IDE generated files
+*.user
+*.user.*
+*.KgsUPe
+
+# OS junk
+.DS_Store
+Thumbs.db
