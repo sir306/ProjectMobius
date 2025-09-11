@@ -78,3 +78,20 @@ Plugins/*/Intermediate/*
 # Cache files for the editor to use
 DerivedDataCache/*
 .idea/
+
+# CMake build trees and intermediates
+build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# IDE projects
+*.sln
+*.vcxproj*
+*.xcodeproj
+*.xcworkspace
+
+# Keep these (we ship them)
+!include/
+!bin/
+!lib/
