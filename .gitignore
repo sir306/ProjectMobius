@@ -257,3 +257,4 @@ xcuserdata/
 
 # Derived data / build artifacts (Xcode)
 DerivedData/
+/UnrealFolder/ProjectMobius/_superbuild
