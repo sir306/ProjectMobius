@@ -32,6 +32,20 @@
 #include "Serialization/JsonSerializer.h"
 
 
+// Utility: map UE platform to the folder your superbuild uses
+static const TCHAR* GetPlatformFolder()
+{
+#if PLATFORM_WINDOWS
+	return TEXT("Win64");
+#elif PLATFORM_MAC
+	return TEXT("Mac");
+#elif PLATFORM_LINUX
+	return TEXT("Linux");
+#else
+	return TEXT("Unknown");
+#endif
+}
+
 UQtFileOpenSubsystem::UQtFileOpenSubsystem():
 	QtProcessID(0)
 {
@@ -226,44 +240,58 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
 
 FString UQtFileOpenSubsystem::ResolveQtAppExecutablePath() const
 {
-	// Base: <UE Project>/Tools/QT_Apps/OpenFileTCP/build
-	const FString ToolsDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/OpenFileTCP/build"));
+	const TCHAR* Plat = GetPlatformFolder();
+    
+	// NEW SUPERBUILD PATH: Tools/bin/<Platform>/OpenFileTCP/...
+	const FString SuperbuildDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/bin"), Plat, TEXT("OpenFileTCP"));
 
 #if PLATFORM_WINDOWS
-	// New canonical layout: build/WindowsExe/OpenFileTCP.exe
-	FString Path = FPaths::Combine(ToolsDir, TEXT("WindowsExe/OpenFileTCP.exe"));
-
-	// (Optional) Legacy fallback if someone still has the old structure
+	// Superbuild stages to: Tools/bin/Win64/OpenFileTCP/OpenFileTCP.exe
+	FString Path = FPaths::Combine(SuperbuildDir, TEXT("OpenFileTCP.exe"));
+    
+	// Legacy fallback to old build location
 	if (!IFileManager::Get().FileExists(*Path))
 	{
-		const FString Legacy = FPaths::Combine(ToolsDir, TEXT("WindowsExe/OpenFileTCP.exe")); // same name kept; adjust if you previously used a different subdir
-		if (IFileManager::Get().FileExists(*Legacy))
+		const FString LegacyPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/OpenFileTCP/build/WindowsExe/OpenFileTCP.exe"));
+		if (IFileManager::Get().FileExists(*LegacyPath))
 		{
-			Path = Legacy;
+			Path = LegacyPath;
 		}
 	}
-
+    
 	return Path;
 
 #elif PLATFORM_MAC
-	// New canonical layout: build/MacOS/OpenFileTCP.app/Contents/MacOS/OpenFileTCP
-	FString Path = FPaths::Combine(ToolsDir, TEXT("MacOS/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
-
-	// (Optional) Legacy fallback for older builds that used 'MacExe'
+	// Superbuild stages to: Tools/bin/Mac/OpenFileTCP.app/Contents/MacOS/OpenFileTCP
+	FString Path = FPaths::Combine(SuperbuildDir, TEXT("Contents/MacOS/OpenFileTCP"));
+    
+	// Legacy fallback to old build location
 	if (!IFileManager::Get().FileExists(*Path))
 	{
-		const FString Legacy = FPaths::Combine(ToolsDir, TEXT("MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
-		if (IFileManager::Get().FileExists(*Legacy))
+		const FString LegacyPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/OpenFileTCP/build/MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
+		if (IFileManager::Get().FileExists(*LegacyPath))
 		{
-			Path = Legacy;
+			Path = LegacyPath;
 		}
 	}
-
+    
 	return Path;
 
 #else
-	// Not officially supported
-	return FPaths::Combine(ToolsDir, TEXT("Deploy/OpenFileTCP"));
+	// Linux - adjust if you add Linux support to superbuild
+	FString Path = FPaths::Combine(SuperbuildDir, TEXT("OpenFileTCP"));
+    
+	// Legacy fallback
+	if (!IFileManager::Get().FileExists(*Path))
+	{
+		const FString LegacyPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/OpenFileTCP/build/Deploy/OpenFileTCP"));
+		if (IFileManager::Get().FileExists(*LegacyPath))
+		{
+			Path = LegacyPath;
+		}
+	}
+    
+	return Path;
 #endif
 }
 
