@@ -34,7 +34,7 @@
 #include "ChartTableModel.h"
 #include "AxisSettings.h"
 #include "WebSocketManager.h"
-#include <QWindow.h>
+#include <QWindow>
 #include <QTimer>
 
 // …

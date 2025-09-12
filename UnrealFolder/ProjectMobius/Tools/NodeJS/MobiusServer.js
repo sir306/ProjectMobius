@@ -31,12 +31,10 @@ const { randomUUID } = require('crypto');
 
 // 1) Load port from config.json or fallback to env/9090
 let port;
-console.log("Looking for config at:", path.resolve(process.cwd(), 'config.json'));
+console.log("Looking for config at:", path.resolve(__dirname, 'config.json'));
 
 try {
-  const cfg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'config.json'), 'utf8'));
-  
-
+  const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'config.json'), 'utf8'));
   port = cfg.port;
   console.log(`Loaded port ${port} from config.json`);
 } catch {

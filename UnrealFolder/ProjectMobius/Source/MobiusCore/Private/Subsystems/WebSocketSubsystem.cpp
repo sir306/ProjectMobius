@@ -33,6 +33,20 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 
+// Utility: map UE platform to the folder your superbuild uses
+static const TCHAR* GetPlatformFolder()
+{
+#if PLATFORM_WINDOWS
+    return TEXT("Win64");
+#elif PLATFORM_MAC
+    return TEXT("Mac");
+#elif PLATFORM_LINUX
+    return TEXT("Linux");
+#else
+    return TEXT("Unknown");
+#endif
+}
+
 /**
  * Helper function to read the WebSocket port from Tools/NodeJS/config.json.
  * Returns 9090 if the file can't be read or parsed.
@@ -157,24 +171,41 @@ void UWebSocketSubsystem::Deinitialize()
 
 void UWebSocketSubsystem::StartWebSocketServer()
 {
-	// Setup the correct file path for the Web Socket server executable
-	FString WsExePath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/NodeJS/mobius-server.exe"));
+	const TCHAR* Plat = GetPlatformFolder();
 
-	//FString WsExePath = FPaths::Combine(FPaths::LaunchDir(), TEXT("Tools/NodeJS/mobius-server.exe"));
+	// Where the superbuild stages Node binaries now:
+	//   Tools/bin/<Platform>/NodeJS/...
+	FString NodeDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/bin"), Plat, TEXT("NodeJS"));
 
+	FString WsExePath;
+
+#if PLATFORM_WINDOWS
+	// Superbuild renames/copies to mobius-server.exe under Tools/bin/Win64/NodeJS/
+	WsExePath = FPaths::Combine(NodeDir, TEXT("mobius-server.exe"));
+#elif PLATFORM_MAC
+	// Superbuild emits both archs. Prefer arm64, fallback to x64.
+	const FString Arm = FPaths::Combine(NodeDir, TEXT("mobius-server-macos-arm64"));
+	const FString X64 = FPaths::Combine(NodeDir, TEXT("mobius-server-macos-x64"));
+	WsExePath = FPaths::FileExists(Arm) ? Arm : X64;
+#else
+	// If you add Linux in superbuild, it’ll be Tools/bin/Linux/NodeJS/mobius-server-linux-x64
+	WsExePath = FPaths::Combine(NodeDir, TEXT("mobius-server-linux-x64"));
+#endif
 
 	if (FPaths::FileExists(WsExePath))
 	{
-		// Store the process handle to check if it's still running
-		WebSocketServerProcHandle = FPlatformProcess::CreateProc(*WsExePath, TEXT(""), true, false, false, &WebSocketServerProcessID, 0, nullptr, nullptr);
+		// Launch detached
+		WebSocketServerProcHandle = FPlatformProcess::CreateProc(
+			*WsExePath, TEXT(""), /*bLaunchDetached*/ true,
+			/*bLaunchHidden*/ false, /*bLaunchReallyHidden*/ false,
+			&WebSocketServerProcessID, 0, nullptr, nullptr);
+
 		UE_LOG(LogTemp, Log, TEXT("Launched Web Socket Server at: %s"), *WsExePath);
-        
-		// Give the Qt app a moment to start up
-		FPlatformProcess::Sleep(0.5f);
+		FPlatformProcess::Sleep(0.25f);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("mobius-server.exe not found at: %s"), *WsExePath);
+		UE_LOG(LogTemp, Error, TEXT("mobius-server not found at: %s"), *WsExePath);
 	}
 }
 
@@ -205,52 +236,53 @@ void UWebSocketSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCo
 
 void UWebSocketSubsystem::OpenOrCloseQtStatApp()
 {
-	// if the Qt app is running, close it
+	// If already running, kill it (unchanged behavior)
 	if (QtProcessHandle.IsValid() && FPlatformProcess::IsProcRunning(QtProcessHandle))
 	{
-		// 1) ask the OS to terminate the child
-		FPlatformProcess::TerminateProc(QtProcessHandle); // not a nice way force kill -> set up socket cmd in qt
-
-		// 2) close our handle on it
+		FPlatformProcess::TerminateProc(QtProcessHandle);
 		FPlatformProcess::CloseProc(QtProcessHandle);
-
-		// 3) clear out our struct
 		QtProcessHandle.Reset();
+		return;
+	}
+
+	const TCHAR* Plat = GetPlatformFolder();
+
+	// Where the superbuild stages PlotUE_Data now:
+	//   Windows: Tools/bin/Win64/PlotUE_Data/appPlotUE_Data.exe
+	//   macOS:   Tools/bin/Mac/PlotUE_Data.app/Contents/MacOS/appPlotUE_Data
+	FString QtExePath;
+
+#if PLATFORM_WINDOWS
+	QtExePath = FPaths::Combine(
+		FPaths::ProjectDir(),
+		TEXT("Tools/bin"), Plat, TEXT("PlotUE_Data"),
+		TEXT("appPlotUE_Data.exe"));
+#elif PLATFORM_MAC
+	QtExePath = FPaths::Combine(
+		FPaths::ProjectDir(),
+		TEXT("Tools/bin"), Plat, TEXT("PlotUE_Data.app/Contents/MacOS/appPlotUE_Data"));
+#else
+	QtExePath = FPaths::Combine(
+		FPaths::ProjectDir(),
+		TEXT("Tools/bin"), Plat, TEXT("PlotUE_Data/appPlotUE_Data"));
+#endif
+
+	if (FPaths::FileExists(QtExePath))
+	{
+		const FString Args = FString::Printf(TEXT("--pairId=%s"), *UniqueMobiusAppID);
+
+		QtProcessHandle = FPlatformProcess::CreateProc(
+			*QtExePath, *Args,
+			/*bLaunchDetached*/ true,
+			/*bLaunchHidden*/ false,
+			/*bLaunchReallyHidden*/ false,
+			&QtProcessID, 0, nullptr, nullptr);
+
+		UE_LOG(LogTemp, Log, TEXT("Launched Qt stats app at: %s"), *QtExePath);
+		FPlatformProcess::Sleep(0.25f);
 	}
 	else
 	{
-		FString QtExePath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/PlotUE_Data/executable/appPlotUE_Data.exe"));
-
-
-		if (FPaths::FileExists(QtExePath))
-		{
-			// We meed too launch the QT app with args that allow it to connect to the right Unreal App instance
-			FString QTAppArgs = FString::Printf(TEXT("--pairId=%s"), *UniqueMobiusAppID);
-
-			// Note: below is an example of how you might pass additional arguments to the Qt app
-			//QTAppArgs += FString::Printf(TEXT(" --mode=%s"), TEXT("live"));
-
-			// Store the process handle to check if it's still running
-			QtProcessHandle = FPlatformProcess::CreateProc(
-				*QtExePath,
-				*QTAppArgs, // Here we pass the unique Mobius App ID as an argument
-				true,
-				false,
-				false,
-				&QtProcessID,
-				0,
-				nullptr,
-				nullptr);
-
-
-			UE_LOG(LogTemp, Log, TEXT("Launched QT Stat app at: %s"), *QtExePath);
-        
-			// Give the Qt app a moment to start up
-			FPlatformProcess::Sleep(0.5f);
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("appPlotUE_Data.exe not found at: %s"), *QtExePath);
-		}
+		UE_LOG(LogTemp, Error, TEXT("Qt app not found at: %s"), *QtExePath);
 	}
 }

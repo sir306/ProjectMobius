@@ -273,3 +273,4 @@ executable/
 # OS junk
 .DS_Store
 Thumbs.db
+/UnrealFolder/ProjectMobius/Tools/bin

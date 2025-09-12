@@ -31,7 +31,7 @@
 #include <QJsonArray>
 #include <QMetaObject>
 #include <QDebug>
-#include <qthread.h>
+#include <QThread>
 
 // Constructor
 MessageProcessor::MessageProcessor(ChartTableModel* model, AxisSettings* axis, ChartSettings* settings)

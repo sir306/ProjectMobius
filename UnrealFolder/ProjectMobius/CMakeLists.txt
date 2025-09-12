@@ -1,6 +1,24 @@
 cmake_minimum_required(VERSION 3.21)
 project(MobiusSuperbuild LANGUAGES C CXX)
 
+# ======================
+# Global build settings
+# ======================
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Default to a user-writable install prefix if none is provided
+if(NOT DEFINED CMAKE_INSTALL_PREFIX OR CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  if(WIN32)
+    set(_DEFAULT_PREFIX "$ENV{USERPROFILE}/MobiusSuperbuild")
+  else()
+    set(_DEFAULT_PREFIX "$ENV{HOME}/MobiusSuperbuild")
+  endif()
+  set(CMAKE_INSTALL_PREFIX "${_DEFAULT_PREFIX}" CACHE PATH "Install prefix" FORCE)
+endif()
+
+message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
+
 # Usage (Windows VS generator):
 #   cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.9.2/msvc2022_64"
 #   cmake --build _superbuild --config Release --parallel
@@ -143,19 +161,23 @@ endif()
 #    (Forward parent CMAKE_PREFIX_PATH so 'find_package(Qt6 ... Graphs)' works.)
 # ------------------------------------------------------------
 set(PLOTUE_BUILD "${CMAKE_BINARY_DIR}/PlotUE_Data-build")
-set(PLOTUE_INST  "${CMAKE_BINARY_DIR}/PlotUE_Data-install")
 
 ExternalProject_Add(PlotUE_Data_ep
   SOURCE_DIR  "${PLOTUE_SRC}"
   BINARY_DIR  "${PLOTUE_BUILD}"
-  INSTALL_DIR "${PLOTUE_INST}"
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_INSTALL_PREFIX=${PLOTUE_INST}
-    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-  BUILD_COMMAND   ${CMAKE_COMMAND} --build . --config Release --parallel
-  INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install --config Release --parallel
+    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}   # forward Qt path
+  BUILD_COMMAND   ${CMAKE_COMMAND} --build . --config Release --target appPlotUE_Data --parallel
+  INSTALL_COMMAND ""   # deployment handled via custom target
   UPDATE_DISCONNECTED 1
+)
+
+# invoke its deploy target (created in step 1)
+ExternalProject_Add_Step(PlotUE_Data_ep deploy
+  COMMAND ${CMAKE_COMMAND} --build . --config Release --target DeployPlotUE_Data --parallel
+  DEPENDEES build
+  WORKING_DIRECTORY "${PLOTUE_BUILD}"
 )
 
 add_custom_target(PlotUE_Data_stage ALL
@@ -166,12 +188,13 @@ add_custom_target(PlotUE_Data_stage ALL
 if(WIN32)
   add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_INST}/bin" "${TOOLS_STAGE_DIR}/PlotUE_Data"
+            "${PLOTUE_BUILD}/WindowsExe" "${TOOLS_STAGE_DIR}/PlotUE_Data"
+    COMMENT "Staging PlotUE_Data to ${TOOLS_STAGE_DIR}/PlotUE_Data"
   )
 elseif(APPLE)
   add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_INST}/appPlotUE_Data.app" "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
+            "$<TARGET_BUNDLE_DIR:appPlotUE_Data>" "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
   )
 endif()
 
@@ -179,3 +202,58 @@ endif()
 add_custom_target(all_external
   DEPENDS assimp_stage OpenFileTCP_stage PlotUE_Data_stage
 )
+# ------------------------------------------------------------
+# 4) Package NodeJS WebSocket server and stage alongside tools
+#     (Tools/bin/<Platform>/NodeJS/mobius-server[.exe])
+# ------------------------------------------------------------
+# ======================
+# NodeJS server (Tools/NodeJS)
+# ======================
+# Ensure the NodeJS subproject is added but does NOT define global targets
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Tools/NodeJS
+                 ${CMAKE_BINARY_DIR}/nodejs-build)
+
+# Ensure our umbrella target exists
+if(NOT TARGET all_external)
+  add_custom_target(all_external)
+endif()
+
+# Wait for the node bundle to be produced
+add_dependencies(all_external mobius_node_bundle)
+
+# --- Stage/rename for UE runtime lookup (WebSocketSubsystem) ---
+set(NODEJS_STAGE_DIR "${TOOLS_STAGE_DIR}/NodeJS")
+file(MAKE_DIRECTORY "${NODEJS_STAGE_DIR}")
+
+if(WIN32)
+  set(NODE_SRC_EXE "${CMAKE_BINARY_DIR}/bundle/MobiusServer.exe")
+  set(NODE_DST_EXE "${NODEJS_STAGE_DIR}/mobius-server.exe")  # EXACT name UE expects
+  add_custom_target(nodejs_stage ALL
+    DEPENDS mobius_node_bundle
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODE_DST_EXE}"
+    COMMENT "Staging NodeJS server to ${NODE_DST_EXE}"
+  )
+elseif(APPLE)
+  # Build produces a single "MobiusServer" universal for chosen arch
+  set(NODE_SRC_EXE "${CMAKE_BINARY_DIR}/bundle/MobiusServer")
+  # Provide both names if you want to be explicit or keep one — your UE code prefers arm then x64. :contentReference[oaicite:6]{index=6}
+  add_custom_target(nodejs_stage ALL
+    DEPENDS mobius_node_bundle
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODEJS_STAGE_DIR}/mobius-server-macos-arm64"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODEJS_STAGE_DIR}/mobius-server-macos-x64"
+    COMMENT "Staging NodeJS server to ${NODEJS_STAGE_DIR}"
+  )
+endif()
+
+add_dependencies(all_external
+  assimp_ep
+  PlotUE_Data_ep
+  OpenFileTCP_ep
+  nodejs_stage
+)
+
+# ======================
+# Convenience messages
+# ======================
+message(STATUS "Superbuild will stage outputs in: ${SUPERBUILD_DIR}")
+message(STATUS "Node bundle output: ${SUPERBUILD_DIR}/nodejs-build/bundle")
