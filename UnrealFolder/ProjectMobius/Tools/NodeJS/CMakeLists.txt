@@ -4,16 +4,21 @@ project(MobiusNodeJS NONE)
 #==================
 # Helper Methods
 #==================
-# ---- robust downloader: use file(DOWNLOAD) via -P, fallback to curl ----
+# ---- robust downloader: use file(DOWNLOAD) via -P, with size check; optional curl fallback ----
 set(_DL_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/_mobius_download.cmake")
 file(WRITE "${_DL_SCRIPT}" "
   if(NOT DEFINED URL OR NOT DEFINED OUT)
     message(FATAL_ERROR \"URL/OUT not set for download\")
   endif()
   message(STATUS \"[mobius-node] download: ${URL} -> ${OUT}\")
-  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
+  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS EXPECTED_HASH ALGO=SHA256 EXPECTED_HASH=IGNORE)
+  # sanity check: require >= 1 KiB
+  file(SIZE \"${OUT}\" _sz)
+  if(_sz LESS 1024)
+    file(REMOVE \"${OUT}\")
+    message(FATAL_ERROR \"[mobius-node] download produced empty/too-small file (size=\${_sz})\")
+  endif()
 ")
-# try to find curl as a second option
 find_program(CURL_CMD curl)
 
 # ----- Pin Node for pkg runtime (node18) -----
@@ -94,7 +99,10 @@ add_custom_command(
 add_custom_command(
   OUTPUT "${NODE_EXE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] extract start: ${NODE_ARCHIVE}"
+  # First try cmake -E tar ...
   COMMAND ${ARCHIVE_EXTRACT_CMD}
+  # If that ever fails silently on certain cmake builds, fall back to system tar
+  COMMAND /usr/bin/tar -tf "${NODE_ARCHIVE}" > /dev/null || /usr/bin/tar -xJf "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] extract ok: ${NODE_BIN_DIR}"
   WORKING_DIRECTORY "${NODE_STAGE_DIR}"
   DEPENDS "${NODE_ARCHIVE}"
