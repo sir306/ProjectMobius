@@ -88,7 +88,15 @@ add_custom_target(node_runtime ALL
   COMMENT "Ensuring Node.js runtime available"
 )
 if(NOT USE_SYSTEM_NODE)
-  add_dependencies(node_runtime "${NODE_EXE}")
+  # node_runtime is considered "built" when the extracted node executable exists
+  add_custom_target(node_runtime ALL
+    DEPENDS "${NODE_EXE}"
+    COMMENT "Ensuring portable Node.js runtime available"
+  )
+else()
+  add_custom_target(node_runtime ALL
+    COMMENT "Using system Node.js runtime"
+  )
 endif()
 
 # ===========================
