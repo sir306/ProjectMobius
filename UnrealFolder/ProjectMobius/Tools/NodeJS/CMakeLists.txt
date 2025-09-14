@@ -84,9 +84,9 @@ add_custom_command(
   VERBATIM
 )
 
-add_custom_target(node_runtime ALL
-  COMMENT "Ensuring Node.js runtime available"
-)
+# ===========================
+# Node runtime target
+# ===========================
 if(NOT USE_SYSTEM_NODE)
   # node_runtime is considered "built" when the extracted node executable exists
   add_custom_target(node_runtime ALL
