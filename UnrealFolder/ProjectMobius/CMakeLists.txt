@@ -194,7 +194,9 @@ if(WIN32)
 elseif(APPLE)
   add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "$<TARGET_BUNDLE_DIR:appPlotUE_Data>" "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
+            "${PLOTUE_BUILD}/MacExe/appPlotUE_Data.app"
+            "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
+    COMMENT "Staging PlotUE_Data.app from ${PLOTUE_BUILD}/MacExe"
   )
 endif()
 
@@ -255,5 +257,5 @@ add_dependencies(all_external
 # ======================
 # Convenience messages
 # ======================
-message(STATUS "Superbuild will stage outputs in: ${SUPERBUILD_DIR}")
-message(STATUS "Node bundle output: ${SUPERBUILD_DIR}/nodejs-build/bundle")
+message(STATUS "Superbuild will stage outputs in: ${CMAKE_BINARY_DIR}")
+message(STATUS "Node bundle output: ${CMAKE_BINARY_DIR}/nodejs-build/bundle")
