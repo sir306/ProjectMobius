@@ -194,9 +194,9 @@ if(WIN32)
 elseif(APPLE)
   add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_BUILD}/MacExe/appPlotUE_Data.app"
+            "${PLOTUE_BUILD}/appPlotUE_Data.app"
             "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
-    COMMENT "Staging PlotUE_Data.app from ${PLOTUE_BUILD}/MacExe"
+    COMMENT "Staging PlotUE_Data.app from ${PLOTUE_BUILD}"
   )
 endif()
 
