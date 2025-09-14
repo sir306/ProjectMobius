@@ -11,8 +11,8 @@ file(WRITE "${_DL_SCRIPT}" "
     message(FATAL_ERROR \"URL/OUT not set for download\")
   endif()
   message(STATUS \"[mobius-node] download: ${URL} -> ${OUT}\")
-  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS EXPECTED_HASH ALGO=SHA256 EXPECTED_HASH=IGNORE)
-  # sanity check: require >= 1 KiB
+  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
+  # sanity check: require >= 1 KiB so we don't try to untar a stub/0B file
   file(SIZE \"${OUT}\" _sz)
   if(_sz LESS 1024)
     file(REMOVE \"${OUT}\")
