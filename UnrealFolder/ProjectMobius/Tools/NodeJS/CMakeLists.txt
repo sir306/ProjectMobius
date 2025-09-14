@@ -1,6 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
 project(MobiusNodeJS NONE)
 
+#==================
+# Helper Methods
+#==================
+# ---- robust downloader: use file(DOWNLOAD) via -P, fallback to curl ----
+set(_DL_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/_mobius_download.cmake")
+file(WRITE "${_DL_SCRIPT}" "
+  if(NOT DEFINED URL OR NOT DEFINED OUT)
+    message(FATAL_ERROR \"URL/OUT not set for download\")
+  endif()
+  message(STATUS \"[mobius-node] download: ${URL} -> ${OUT}\")
+  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
+")
+# try to find curl as a second option
+find_program(CURL_CMD curl)
+
 # ----- Pin Node for pkg runtime (node18) -----
 set(NODE_VERSION "18.20.0")
 
@@ -66,7 +81,10 @@ add_custom_command(
   OUTPUT "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] download start: ${NODE_URL}"
   COMMAND ${CMAKE_COMMAND} -E rm -f "${NODE_ARCHIVE}"
-  COMMAND ${CMAKE_COMMAND} -E download "${NODE_URL}" "${NODE_ARCHIVE}" TLS_VERIFY ON
+  # Prefer CMake script downloader (works even if '-E download' is missing)
+  COMMAND ${CMAKE_COMMAND} -DURL=${NODE_URL} -DOUT=${NODE_ARCHIVE} -P "${_DL_SCRIPT}"
+  # If you want a strict curl fallback instead, uncomment this and comment the line above:
+  # COMMAND ${CURL_CMD} -L "${NODE_URL}" -o "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] download ok: ${NODE_ARCHIVE}"
   WORKING_DIRECTORY "${NODE_STAGE_DIR}"
   COMMENT "Downloading Node.js v${NODE_VERSION}"
