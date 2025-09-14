@@ -126,6 +126,10 @@ elseif(APPLE)
     COMMAND /usr/bin/rsync -aL "$<TARGET_BUNDLE_DIR:appPlotUE_Data>/" "$<TARGET_BUNDLE_DIR:appPlotUE_Data>.nosymlinks/"
     COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_BUNDLE_DIR:appPlotUE_Data>"
     COMMAND ${CMAKE_COMMAND} -E rename "$<TARGET_BUNDLE_DIR:appPlotUE_Data>.nosymlinks" "$<TARGET_BUNDLE_DIR:appPlotUE_Data>"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PLOT_DEPLOY_DIR}"
+COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "$<TARGET_BUNDLE_DIR:appPlotUE_Data>"
+        "${PLOT_DEPLOY_DIR}/appPlotUE_Data.app"
     COMMENT "Deploying PlotUE_Data app bundle (macOS) and normalizing symlinks"
   )
   
