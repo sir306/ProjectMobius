@@ -134,7 +134,13 @@ elseif(APPLE)
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${APP_BUNDLE}"
     COMMAND ${CMAKE_COMMAND} -E rename "${APP_BUNDLE}.nosymlinks" "${APP_BUNDLE}"
 
-    COMMENT "Deploying OpenFileTCP (macOS) and normalizing symlinks for Unreal packaging"
+    # 3) Copy the finalized bundle into the expected deploy directory
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/Tools/bin/Mac"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${APP_BUNDLE}"
+            "${CMAKE_SOURCE_DIR}/Tools/bin/Mac/OpenFileTCP.app"
+
+    COMMENT "Deploying OpenFileTCP (macOS) into Tools/bin/Mac and normalizing symlinks"
   )
 
 
