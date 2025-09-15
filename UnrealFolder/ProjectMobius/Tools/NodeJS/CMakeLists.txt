@@ -4,22 +4,25 @@ project(MobiusNodeJS NONE)
 #==================
 # Helper Methods
 #==================
+# A robust downloader that works even if the running CMake doesn't have `-E download`.
+# It also rejects tiny/empty downloads.
 set(_DL_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/_mobius_download.cmake")
 file(WRITE "${_DL_SCRIPT}" "
   if(NOT DEFINED URL OR NOT DEFINED OUT)
     message(FATAL_ERROR \"URL/OUT not set for download\")
   endif()
-  message(STATUS \"[mobius-node] download: ${URL} -> ${OUT}\")
-  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
-  file(SIZE \"${OUT}\" _sz)
+  message(STATUS \"[mobius-node] download: \${URL} -> \${OUT}\")
+  file(DOWNLOAD \"\${URL}\" \"\${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
+  file(SIZE \"\${OUT}\" _sz)
   if(_sz LESS 1024)
-    file(REMOVE \"${OUT}\")
+    file(REMOVE \"\${OUT}\")
     message(FATAL_ERROR \"[mobius-node] download produced empty/too-small file (size=\${_sz})\")
   endif()
 ")
-find_program(CURL_CMD curl)
+find_program(CURL_CMD curl)  # optional
 
 # ----- Pin Node for pkg runtime (node18) -----
+# (Some npm deps warn about engines >=20 — that’s fine for us.)
 set(NODE_VERSION "18.20.0")
 
 # Where the superbuild stages intermediary artifacts
@@ -64,7 +67,6 @@ endif()
 find_program(SYSTEM_NODE node)
 find_program(SYSTEM_NPM  npm)
 
-# Decide once, in the right order
 if(DEFINED FORCE_PORTABLE_NODE AND FORCE_PORTABLE_NODE)
   set(USE_SYSTEM_NODE FALSE)
 elseif(SYSTEM_NODE AND SYSTEM_NPM)
@@ -73,14 +75,14 @@ else()
   set(USE_SYSTEM_NODE FALSE)
 endif()
 
-# Concrete command tokens
 if(USE_SYSTEM_NODE)
   set(NODE "${SYSTEM_NODE}")
   set(NPM  "${SYSTEM_NPM}")
 else()
-  set(NODE       "${NODE_EXE}")
-  set(NPM_NODE   "${NODE_EXE}")
-  set(NPM_CLI    "${NPM_CLI_JS}")
+  # We'll drive npm via the portable node + npm-cli.js
+  set(NODE       "${NODE_EXE}")     # for clarity
+  set(NPM_NODE   "${NODE_EXE}")     # executable token 1
+  set(NPM_CLI    "${NPM_CLI_JS}")   # tokenized separately
 endif()
 
 # ===========================
@@ -91,6 +93,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] download start: ${NODE_URL}"
   COMMAND ${CMAKE_COMMAND} -E rm -f "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -DURL=${NODE_URL} -DOUT=${NODE_ARCHIVE} -P "${_DL_SCRIPT}"
+  # (curl alternative)
+  # COMMAND ${CURL_CMD} -L "${NODE_URL}" -o "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] download ok: ${NODE_ARCHIVE}"
   WORKING_DIRECTORY "${NODE_STAGE_DIR}"
   COMMENT "Downloading Node.js v${NODE_VERSION}"
@@ -101,6 +105,7 @@ add_custom_command(
   OUTPUT "${NODE_EXE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] extract start: ${NODE_ARCHIVE}"
   COMMAND ${ARCHIVE_EXTRACT_CMD}
+  # On mac, if cmake tar failed silently, validate/fallback to system tar
   COMMAND /usr/bin/tar -tf "${NODE_ARCHIVE}" > /dev/null || /usr/bin/tar -xJf "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] extract ok: ${NODE_BIN_DIR}"
   WORKING_DIRECTORY "${NODE_STAGE_DIR}"
@@ -136,18 +141,18 @@ else()
   set(NPM_INST_CMD "${NPM_NODE}" "${NPM_CLI}" "install" "--no-audit" "--no-fund")
 endif()
 
-# PATH shim for npm when using portable node
+# When using portable node, ensure lifecycle scripts can find 'node'
 unset(_NPM_ENV)
+unset(_PKG_ENV)
 if(NOT USE_SYSTEM_NODE)
   if(APPLE)
-    set(_NPM_ENV ${CMAKE_COMMAND} -E env
-      "PATH=${NODE_BIN_DIR}/bin:$ENV{PATH}"
-      "npm_config_scripts_prepend_node_path=true")
+    set(_ENV_PATH "PATH=${NODE_BIN_DIR}/bin:$ENV{PATH}")
   elseif(WIN32)
-    set(_NPM_ENV ${CMAKE_COMMAND} -E env
-      "PATH=${NODE_BIN_DIR};$ENV{PATH}"
-      "npm_config_scripts_prepend_node_path=true")
+    set(_ENV_PATH "PATH=${NODE_BIN_DIR};$ENV{PATH}")
   endif()
+  set(_NPM_ENV ${CMAKE_COMMAND} -E env "${_ENV_PATH}" "npm_config_scripts_prepend_node_path=true")
+  # pkg also needs node on PATH
+  set(_PKG_ENV ${CMAKE_COMMAND} -E env "${_ENV_PATH}")
 endif()
 
 add_custom_command(
@@ -185,16 +190,6 @@ add_custom_target(mobius_node_deps ALL
 # Package with pkg (node18 targets)
 # ===========================
 file(MAKE_DIRECTORY "${BUNDLE_DIR}")
-
-# PATH shim for pkg so the #!/usr/bin/env node shebang works
-unset(_PKG_ENV)
-if(NOT USE_SYSTEM_NODE)
-  if(APPLE)
-    set(_PKG_ENV ${CMAKE_COMMAND} -E env "PATH=${NODE_BIN_DIR}/bin:$ENV{PATH}")
-  elseif(WIN32)
-    set(_PKG_ENV ${CMAKE_COMMAND} -E env "PATH=${NODE_BIN_DIR};$ENV{PATH}")
-  endif()
-endif()
 
 if(WIN32)
   set(PKG_CMD "cmd" "/C" "${PKG_BIN}")
