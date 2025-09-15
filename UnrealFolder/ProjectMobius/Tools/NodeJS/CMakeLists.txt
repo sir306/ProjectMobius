@@ -21,6 +21,16 @@ file(WRITE "${_DL_SCRIPT}" "
 ")
 find_program(CURL_CMD curl)  # optional secondary option if you prefer curl
 
+# Force portable Node if no working system Node/npm is present
+if(DEFINED FORCE_PORTABLE_NODE AND FORCE_PORTABLE_NODE)
+  set(USE_SYSTEM_NODE FALSE)
+elseif(SYSTEM_NODE AND SYSTEM_NPM)
+  set(USE_SYSTEM_NODE TRUE)
+else()
+  set(USE_SYSTEM_NODE FALSE)
+endif()
+
+
 # ----- Pin Node for pkg runtime (node18) -----
 # NOTE: Some npm deps warn about engines >=20 — warnings are fine for our use.
 set(NODE_VERSION "18.20.0")
