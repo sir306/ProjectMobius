@@ -52,20 +52,43 @@ set(ASSIMP_STAGE_DIR "${UE_ROOT}/Plugins/UE4_Assimp/Binaries/${PLAT}")
 # Tools staging (so UE can launch them with CreateProc)
 set(TOOLS_STAGE_DIR  "${UE_ROOT}/Tools/bin/${PLAT}")
 
-# ---------------------------------------
-# 1) Build Assimp as shared and stage it
-# ---------------------------------------
-set(ASSIMP_BUILD "${CMAKE_BINARY_DIR}/assimp-build")
-set(ASSIMP_INST  "${CMAKE_BINARY_DIR}/assimp-install")
+# ------------------------------------------------------------------------------------
+# 1) Build & INSTALL Assimp directly into the plugin ThirdParty layout
+#    This matches UE_AssimpLibrary.Build.cs expectations:
+#      assimp/
+#        include/assimp/...   (headers: config.h, version.h, etc.)
+#        lib/<PLAT>/...       (libassimp.dylib, assimp*.lib, etc.)
+#        bin/<PLAT>/...       (Win64 DLLs)
+# ------------------------------------------------------------------------------------
+# Install directly under the plugin ThirdParty payload:
+set(ASSIMP_PLUGIN_ROOT "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
 
-# Build arg list without generator expressions to avoid dev warnings
+# Per-platform install subfolders that the Build.cs already looks for
+if(WIN32)
+  set(ASSIMP_INSTALL_LIBDIR "lib/Win64")
+  set(ASSIMP_INSTALL_BINDIR "bin/Win64")
+elseif(APPLE)
+  set(ASSIMP_INSTALL_LIBDIR "lib/Mac")
+  set(ASSIMP_INSTALL_BINDIR "bin/Mac")  # not used today, but consistent layout
+else()
+  set(ASSIMP_INSTALL_LIBDIR "lib/Linux")
+  set(ASSIMP_INSTALL_BINDIR "bin/Linux")
+endif()
+
+set(ASSIMP_BUILD "${SUPERBUILD_DIR}/assimp-build")
+set(ASSIMP_INST  "${ASSIMP_PLUGIN_ROOT}")  # <— install straight into plugin
+
+# Assimp configure arguments
 set(_assimp_cmake_args
   -DCMAKE_BUILD_TYPE=Release
   -DBUILD_SHARED_LIBS=ON
   -DASSIMP_BUILD_TESTS=OFF
   -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
   -DASSIMP_BUILD_SAMPLES=OFF
+  -DASSIMP_INSTALL=ON
   -DCMAKE_INSTALL_PREFIX=${ASSIMP_INST}
+  -DCMAKE_INSTALL_LIBDIR=${ASSIMP_INSTALL_LIBDIR}
+  -DCMAKE_INSTALL_BINDIR=${ASSIMP_INSTALL_BINDIR}
 )
 
 if(WIN32)
@@ -73,9 +96,9 @@ if(WIN32)
 elseif(APPLE)
   list(APPEND _assimp_cmake_args
     -DASSIMP_BUILD_ZLIB=OFF
-    -DCMAKE_MACOSX_RPATH=ON
+    -DCMAKE_MACOSX_RPATH=ON                   # ensure @rpath in install_name
     -DCMAKE_INSTALL_NAME_DIR=@rpath
-    -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64
+    -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64   # universal (UE 5.5+)
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
   )
 else()
@@ -92,23 +115,23 @@ ExternalProject_Add(assimp_ep
   UPDATE_DISCONNECTED 1
 )
 
-# Stage Assimp runtime into the plugin’s Binaries/<Platform>
+# Optional: also mirror the produced runtime into Plugin/Binaries/<PLAT> for convenience
 add_custom_target(assimp_stage ALL
   DEPENDS assimp_ep
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_STAGE_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${PLUGIN_BIN_DIR}"
 )
-
 if(WIN32)
   add_custom_command(TARGET assimp_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${ASSIMP_INST}/bin" "${ASSIMP_STAGE_DIR}"
-    COMMENT "Staging Assimp DLLs to ${ASSIMP_STAGE_DIR}"
+            "${ASSIMP_INST}/${ASSIMP_INSTALL_BINDIR}" "${PLUGIN_BIN_DIR}"
+    COMMENT "Staging Assimp DLLs to ${PLUGIN_BIN_DIR}"
   )
 elseif(APPLE)
+  # Copy the dylib to Binaries/Mac for Editor runs (RuntimeDependencies will also stage to app)
   add_custom_command(TARGET assimp_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${ASSIMP_INST}/lib" "${ASSIMP_STAGE_DIR}"
-    COMMENT "Staging Assimp dylibs to ${ASSIMP_STAGE_DIR}"
+            "${ASSIMP_INST}/${ASSIMP_INSTALL_LIBDIR}" "${PLUGIN_BIN_DIR}"
+    COMMENT "Staging Assimp dylibs to ${PLUGIN_BIN_DIR}"
   )
 endif()
 
