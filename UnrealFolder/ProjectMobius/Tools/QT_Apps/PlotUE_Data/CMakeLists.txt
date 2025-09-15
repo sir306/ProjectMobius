@@ -117,28 +117,36 @@ elseif(APPLE)
     message(FATAL_ERROR "macdeployqt not found.")
   endif()
 
+  # Where the app bundle is produced in-tree
+  set(APP_BUNDLE "$<TARGET_BUNDLE_DIR:appPlotUE_Data>")
+
   add_custom_target(DeployPlotUE_Data ALL
     DEPENDS appPlotUE_Data
-    # macdeployqt operates on the app bundle in the build dir
-    COMMAND "${MACDEPLOYQT_EXECUTABLE}" "$<TARGET_BUNDLE_DIR:appPlotUE_Data>" -verbose=1 -qmldir="${CMAKE_CURRENT_SOURCE_DIR}"
-    # Normalize symlinks so Unreal packaging doesn't trip over framework links
-    COMMAND ${CMAKE_COMMAND} -E echo "Normalizing framework symlinks in $<TARGET_BUNDLE_DIR:appPlotUE_Data>"
-    COMMAND /usr/bin/rsync -aL "$<TARGET_BUNDLE_DIR:appPlotUE_Data>/" "$<TARGET_BUNDLE_DIR:appPlotUE_Data>.nosymlinks/"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_BUNDLE_DIR:appPlotUE_Data>"
-    COMMAND ${CMAKE_COMMAND} -E rename "$<TARGET_BUNDLE_DIR:appPlotUE_Data>.nosymlinks" "$<TARGET_BUNDLE_DIR:appPlotUE_Data>"
+
+    # 1) Fix up bundle with macdeployqt (copies frameworks/plugins next to the app)
+    COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${APP_BUNDLE}" -verbose=2 -qmldir="${CMAKE_CURRENT_SOURCE_DIR}" -always-overwrite
+
+    # 2) Normalize ALL symlinks so Unreal's NonUFS copy won't hit size mismatches
+    COMMAND ${CMAKE_COMMAND} -E echo "Normalizing framework symlinks in ${APP_BUNDLE}"
+    COMMAND /usr/bin/rsync -aL "${APP_BUNDLE}/" "${APP_BUNDLE}.nosymlinks/"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${APP_BUNDLE}"
+    COMMAND ${CMAKE_COMMAND} -E rename "${APP_BUNDLE}.nosymlinks" "${APP_BUNDLE}"
+
+    # 3) Copy the finalized bundle to our deploy dir
     COMMAND ${CMAKE_COMMAND} -E make_directory "${PLOT_DEPLOY_DIR}"
-COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "$<TARGET_BUNDLE_DIR:appPlotUE_Data>"
-        "${PLOT_DEPLOY_DIR}/appPlotUE_Data.app"
-    COMMENT "Deploying PlotUE_Data app bundle (macOS) and normalizing symlinks"
+    # remove the old bundle first so copy_directory won’t fail if it exists
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "${PLOT_DEPLOY_DIR}/appPlotUE_Data.app"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_BUNDLE}" "${PLOT_DEPLOY_DIR}/appPlotUE_Data.app"
+
+    COMMENT "Deploying PlotUE_Data (macOS) and normalizing symlinks for Unreal packaging"
   )
-  
-  # Copy shaders if directory exists (macOS)
+
+  # Optional: copy shaders into the bundle’s Resources
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
     add_custom_command(TARGET DeployPlotUE_Data POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
               "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
-              "$<TARGET_BUNDLE_DIR:appPlotUE_Data>/Contents/Resources/Shaders"
+              "${APP_BUNDLE}/Contents/Resources/Shaders"
       COMMENT "Copying Shaders directory to app bundle (macOS)"
     )
   endif()
