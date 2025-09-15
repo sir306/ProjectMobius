@@ -121,23 +121,26 @@ elseif(APPLE)
   # Where the app bundle is produced in-tree
 set(APP_BUNDLE "$<TARGET_BUNDLE_DIR:OpenFileTCP>")
 
-# Where we want it deployed for packaging
-set(DEPLOY_DIR "${CMAKE_SOURCE_DIR}/Tools/bin/Mac")
+# Where the app bundle is produced in-tree
+set(APP_BUNDLE "$<TARGET_BUNDLE_DIR:OpenFileTCP>")
+
+# Deploy beside the build as MacExe/OpenFileTCP.app (matches superbuild staging)
+set(DEPLOY_DIR "${CMAKE_BINARY_DIR}/MacExe")
 set(DEPLOY_DST "${DEPLOY_DIR}/OpenFileTCP.app")
 
 add_custom_target(DeployOpenFileTCP ALL
   DEPENDS OpenFileTCP
 
-  # 1) Fix up bundle with macdeployqt (copies frameworks/plugins next to the app)
+  # 1) Fix up bundle with macdeployqt
   COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${APP_BUNDLE}" -verbose=2 -always-overwrite
 
-  # 2) Normalize ALL symlinks under the bundle to real files so Unreal’s UAT doesn’t choke
+  # 2) Normalize ALL symlinks under the bundle (Unreal NonUFS copy can choke on framework symlinks)
   COMMAND ${CMAKE_COMMAND} -E echo "Normalizing framework symlinks in ${APP_BUNDLE}"
   COMMAND /usr/bin/rsync -aL "${APP_BUNDLE}/" "${APP_BUNDLE}.nosymlinks/"
   COMMAND ${CMAKE_COMMAND} -E remove_directory "${APP_BUNDLE}"
   COMMAND ${CMAKE_COMMAND} -E rename "${APP_BUNDLE}.nosymlinks" "${APP_BUNDLE}"
 
-  # 3) Copy the finalized bundle into Tools/bin/Mac as OpenFileTCP.app
+  # 3) Copy finalized bundle into MacExe/OpenFileTCP.app (clean first to avoid copy_directory conflicts)
   COMMAND ${CMAKE_COMMAND} -E make_directory "${DEPLOY_DIR}"
   COMMAND ${CMAKE_COMMAND} -E remove_directory "${DEPLOY_DST}"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_BUNDLE}" "${DEPLOY_DST}"
