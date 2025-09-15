@@ -52,57 +52,46 @@ set(ASSIMP_STAGE_DIR "${UE_ROOT}/Plugins/UE4_Assimp/Binaries/${PLAT}")
 # Tools staging (so UE can launch them with CreateProc)
 set(TOOLS_STAGE_DIR  "${UE_ROOT}/Tools/bin/${PLAT}")
 
-# ------------------------------------------------------------------------------------
-# 1) Build & INSTALL Assimp directly into the plugin ThirdParty layout
-#    This matches UE_AssimpLibrary.Build.cs expectations:
-#      assimp/
-#        include/assimp/...   (headers: config.h, version.h, etc.)
-#        lib/<PLAT>/...       (libassimp.dylib, assimp*.lib, etc.)
-#        bin/<PLAT>/...       (Win64 DLLs)
-# ------------------------------------------------------------------------------------
-# Install directly under the plugin ThirdParty payload:
-set(ASSIMP_PLUGIN_ROOT "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
+# ---------------------------------------
+# 1) Build Assimp as shared and INSTALL into the plugin's ThirdParty layout
+# ---------------------------------------
+set(ASSIMP_BUILD "${CMAKE_BINARY_DIR}/assimp-build")
 
-# Per-platform install subfolders that the Build.cs already looks for
-if(WIN32)
-  set(ASSIMP_INSTALL_LIBDIR "lib/Win64")
-  set(ASSIMP_INSTALL_BINDIR "bin/Win64")
-elseif(APPLE)
-  set(ASSIMP_INSTALL_LIBDIR "lib/Mac")
-  set(ASSIMP_INSTALL_BINDIR "bin/Mac")  # not used today, but consistent layout
-else()
-  set(ASSIMP_INSTALL_LIBDIR "lib/Linux")
-  set(ASSIMP_INSTALL_BINDIR "bin/Linux")
-endif()
+# Install directly where UE modules expect it:
+set(ASSIMP_INST "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
 
-set(ASSIMP_BUILD "${SUPERBUILD_DIR}/assimp-build")
-set(ASSIMP_INST  "${ASSIMP_PLUGIN_ROOT}")  # <— install straight into plugin
-
-# Assimp configure arguments
+# Common args
 set(_assimp_cmake_args
   -DCMAKE_BUILD_TYPE=Release
   -DBUILD_SHARED_LIBS=ON
   -DASSIMP_BUILD_TESTS=OFF
   -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
   -DASSIMP_BUILD_SAMPLES=OFF
-  -DASSIMP_INSTALL=ON
   -DCMAKE_INSTALL_PREFIX=${ASSIMP_INST}
-  -DCMAKE_INSTALL_LIBDIR=${ASSIMP_INSTALL_LIBDIR}
-  -DCMAKE_INSTALL_BINDIR=${ASSIMP_INSTALL_BINDIR}
 )
 
+# Per-platform install subdirs that match UE_Assimp(.Build.cs)
 if(WIN32)
-  list(APPEND _assimp_cmake_args -DASSIMP_BUILD_ZLIB=ON)
+  list(APPEND _assimp_cmake_args
+    -DASSIMP_BUILD_ZLIB=ON
+    -DCMAKE_INSTALL_BINDIR=bin/Win64
+    -DCMAKE_INSTALL_LIBDIR=lib/Win64
+  )
 elseif(APPLE)
   list(APPEND _assimp_cmake_args
     -DASSIMP_BUILD_ZLIB=OFF
-    -DCMAKE_MACOSX_RPATH=ON                   # ensure @rpath in install_name
+    -DCMAKE_MACOSX_RPATH=ON
     -DCMAKE_INSTALL_NAME_DIR=@rpath
-    -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64   # universal (UE 5.5+)
+    -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+    -DCMAKE_INSTALL_LIBDIR=lib/Mac
   )
 else()
-  list(APPEND _assimp_cmake_args -DASSIMP_BUILD_ZLIB=OFF)
+  list(APPEND _assimp_cmake_args
+    -DASSIMP_BUILD_ZLIB=OFF
+    -DCMAKE_INSTALL_LIBDIR=lib/Linux
+    -DCMAKE_INSTALL_BINDIR=bin/Linux
+  )
 endif()
 
 ExternalProject_Add(assimp_ep
@@ -115,29 +104,47 @@ ExternalProject_Add(assimp_ep
   UPDATE_DISCONNECTED 1
 )
 
-# Optional: also mirror the produced runtime into Plugin/Binaries/<PLAT> for convenience
+# Ensure generated headers (revision.h, config.h) exist under include/assimp after install.
+# Upstream generates them in the build tree; copy them into our install include tree.
+ExternalProject_Add_Step(assimp_ep install_generated_headers
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_INST}/include/assimp"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${ASSIMP_BUILD}/include/assimp/revision.h" "${ASSIMP_INST}/include/assimp/revision.h"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${ASSIMP_BUILD}/include/assimp/config.h" "${ASSIMP_INST}/include/assimp/config.h"
+  DEPENDEES install
+  WORKING_DIRECTORY "${ASSIMP_BUILD}"
+)
+
+# Stage Assimp runtime into the plugin’s Binaries/<Platform> for editor runs
 add_custom_target(assimp_stage ALL
   DEPENDS assimp_ep
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${PLUGIN_BIN_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_STAGE_DIR}"
 )
+
 if(WIN32)
   add_custom_command(TARGET assimp_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${ASSIMP_INST}/${ASSIMP_INSTALL_BINDIR}" "${PLUGIN_BIN_DIR}"
-    COMMENT "Staging Assimp DLLs to ${PLUGIN_BIN_DIR}"
+            "${ASSIMP_INST}/bin/Win64" "${ASSIMP_STAGE_DIR}"
+    COMMENT "Staging Assimp DLLs to ${ASSIMP_STAGE_DIR}"
   )
 elseif(APPLE)
-  # Copy the dylib to Binaries/Mac for Editor runs (RuntimeDependencies will also stage to app)
   add_custom_command(TARGET assimp_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${ASSIMP_INST}/${ASSIMP_INSTALL_LIBDIR}" "${PLUGIN_BIN_DIR}"
-    COMMENT "Staging Assimp dylibs to ${PLUGIN_BIN_DIR}"
+            "${ASSIMP_INST}/lib/Mac" "${ASSIMP_STAGE_DIR}"
+    COMMENT "Staging Assimp dylibs to ${ASSIMP_STAGE_DIR}"
+  )
+elseif(UNIX)
+  add_custom_command(TARGET assimp_stage POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${ASSIMP_INST}/lib/Linux" "${ASSIMP_STAGE_DIR}"
+    COMMENT "Staging Assimp .so to ${ASSIMP_STAGE_DIR}"
   )
 endif()
 
 # ------------------------------------------------------------
 # 2) Build OpenFileTCP and run its deploy step (Win/Mac)
-#    OpenFileTCP CMake already defaults Qt paths & defines DeployOpenFileTCP. (see its CMake)  [ref]
+#    OpenFileTCP CMake already defaults Qt paths & defines DeployOpenFileTCP.
 # ------------------------------------------------------------
 set(OPENFILETCP_BUILD "${CMAKE_BINARY_DIR}/OpenFileTCP-build")
 
@@ -179,106 +186,4 @@ elseif(APPLE)
   )
 endif()
 
-# ------------------------------------------------------------
-# 3) Build PlotUE_Data, install it, then stage for UE
-#    (Forward parent CMAKE_PREFIX_PATH so 'find_package(Qt6 ... Graphs)' works.)
-# ------------------------------------------------------------
-set(PLOTUE_BUILD "${CMAKE_BINARY_DIR}/PlotUE_Data-build")
-
-ExternalProject_Add(PlotUE_Data_ep
-  SOURCE_DIR  "${PLOTUE_SRC}"
-  BINARY_DIR  "${PLOTUE_BUILD}"
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}   # forward Qt path
-  BUILD_COMMAND   ${CMAKE_COMMAND} --build . --config Release --target appPlotUE_Data --parallel
-  INSTALL_COMMAND ""   # deployment handled via custom target
-  UPDATE_DISCONNECTED 1
-)
-
-# invoke its deploy target (created in step 1)
-ExternalProject_Add_Step(PlotUE_Data_ep deploy
-  COMMAND ${CMAKE_COMMAND} --build . --config Release --target DeployPlotUE_Data --parallel
-  DEPENDEES build
-  WORKING_DIRECTORY "${PLOTUE_BUILD}"
-)
-
-add_custom_target(PlotUE_Data_stage ALL
-  DEPENDS PlotUE_Data_ep
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${TOOLS_STAGE_DIR}"
-)
-
-if(WIN32)
-  add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_BUILD}/WindowsExe" "${TOOLS_STAGE_DIR}/PlotUE_Data"
-    COMMENT "Staging PlotUE_Data to ${TOOLS_STAGE_DIR}/PlotUE_Data"
-  )
-elseif(APPLE)
-  add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_BUILD}/appPlotUE_Data.app"
-            "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
-    COMMENT "Staging PlotUE_Data.app from ${PLOTUE_BUILD}"
-  )
-endif()
-
-# Convenience umbrella target
-add_custom_target(all_external
-  DEPENDS assimp_stage OpenFileTCP_stage PlotUE_Data_stage
-)
-# ------------------------------------------------------------
-# 4) Package NodeJS WebSocket server and stage alongside tools
-#     (Tools/bin/<Platform>/NodeJS/mobius-server[.exe])
-# ------------------------------------------------------------
-# ======================
-# NodeJS server (Tools/NodeJS)
-# ======================
-# Ensure the NodeJS subproject is added but does NOT define global targets
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Tools/NodeJS
-                 ${CMAKE_BINARY_DIR}/nodejs-build)
-
-# Ensure our umbrella target exists
-if(NOT TARGET all_external)
-  add_custom_target(all_external)
-endif()
-
-# Wait for the node bundle to be produced
-add_dependencies(all_external mobius_node_bundle)
-
-# --- Stage/rename for UE runtime lookup (WebSocketSubsystem) ---
-set(NODEJS_STAGE_DIR "${TOOLS_STAGE_DIR}/NodeJS")
-file(MAKE_DIRECTORY "${NODEJS_STAGE_DIR}")
-
-if(WIN32)
-  set(NODE_SRC_EXE "${CMAKE_BINARY_DIR}/bundle/MobiusServer.exe")
-  set(NODE_DST_EXE "${NODEJS_STAGE_DIR}/mobius-server.exe")  # EXACT name UE expects
-  add_custom_target(nodejs_stage ALL
-    DEPENDS mobius_node_bundle
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODE_DST_EXE}"
-    COMMENT "Staging NodeJS server to ${NODE_DST_EXE}"
-  )
-elseif(APPLE)
-  # Build produces a single "MobiusServer" universal for chosen arch
-  set(NODE_SRC_EXE "${CMAKE_BINARY_DIR}/bundle/MobiusServer")
-  # Provide both names if you want to be explicit or keep one — your UE code prefers arm then x64. :contentReference[oaicite:6]{index=6}
-  add_custom_target(nodejs_stage ALL
-    DEPENDS mobius_node_bundle
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODEJS_STAGE_DIR}/mobius-server-macos-arm64"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODEJS_STAGE_DIR}/mobius-server-macos-x64"
-    COMMENT "Staging NodeJS server to ${NODEJS_STAGE_DIR}"
-  )
-endif()
-
-add_dependencies(all_external
-  assimp_ep
-  PlotUE_Data_ep
-  OpenFileTCP_ep
-  nodejs_stage
-)
-
-# ======================
-# Convenience messages
-# ======================
-message(STATUS "Superbuild will stage outputs in: ${CMAKE_BINARY_DIR}")
-message(STATUS "Node bundle output: ${CMAKE_BINARY_DIR}/nodejs-build/bundle")
+# --------------------------------------------------
