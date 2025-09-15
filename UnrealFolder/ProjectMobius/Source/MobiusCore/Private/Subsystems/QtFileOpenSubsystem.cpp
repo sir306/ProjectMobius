@@ -263,7 +263,7 @@ FString UQtFileOpenSubsystem::ResolveQtAppExecutablePath() const
 
 #elif PLATFORM_MAC
 	// Superbuild stages to: Tools/bin/Mac/OpenFileTCP.app/Contents/MacOS/OpenFileTCP
-	FString Path = FPaths::Combine(SuperbuildDir, TEXT("Contents/MacOS/OpenFileTCP"));
+	FString Path = FPaths::Combine(FPaths::ProjectDir(), TEXT("Contents/MacOS/OpenFileTCP"));
     
 	// Legacy fallback to old build location
 	if (!IFileManager::Get().FileExists(*Path))
