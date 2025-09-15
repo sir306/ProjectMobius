@@ -119,29 +119,31 @@ elseif(APPLE)
   endif()
 
   # Where the app bundle is produced in-tree
-  set(APP_BUNDLE "$<TARGET_BUNDLE_DIR:OpenFileTCP>")
+set(APP_BUNDLE "$<TARGET_BUNDLE_DIR:OpenFileTCP>")
 
-  add_custom_target(DeployOpenFileTCP ALL
-    DEPENDS OpenFileTCP
-    # 1) Fix up bundle with macdeployqt (copies frameworks/plugins next to the app)
-    COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${APP_BUNDLE}" -verbose=2 -always-overwrite
+# Where we want it deployed for packaging
+set(DEPLOY_DIR "${CMAKE_SOURCE_DIR}/Tools/bin/Mac")
+set(DEPLOY_DST "${DEPLOY_DIR}/OpenFileTCP.app")
 
-    # 2) Normalize ALL symlinks under the bundle to real files so Unreal's UAT
-    #    NonUFS copy doesn't hit size-mismatch (e.g., QtVirtualKeyboardQml.framework)
-    #    We do it in-place: rsync to a temp dir with -L (follow symlinks), swap.
-    COMMAND ${CMAKE_COMMAND} -E echo "Normalizing framework symlinks in ${APP_BUNDLE}"
-    COMMAND /usr/bin/rsync -aL "${APP_BUNDLE}/" "${APP_BUNDLE}.nosymlinks/"
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${APP_BUNDLE}"
-    COMMAND ${CMAKE_COMMAND} -E rename "${APP_BUNDLE}.nosymlinks" "${APP_BUNDLE}"
+add_custom_target(DeployOpenFileTCP ALL
+  DEPENDS OpenFileTCP
 
-    # 3) Copy the finalized bundle into the expected deploy directory
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${DEPLOY_DIR}/Tools/bin/Mac"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${APP_BUNDLE}"
-            "${DEPLOY_DIR}/Tools/bin/Mac/OpenFileTCP.app"
+  # 1) Fix up bundle with macdeployqt (copies frameworks/plugins next to the app)
+  COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${APP_BUNDLE}" -verbose=2 -always-overwrite
 
-    COMMENT "Deploying OpenFileTCP (macOS) into Tools/bin/Mac and normalizing symlinks"
-  )
+  # 2) Normalize ALL symlinks under the bundle to real files so Unreal’s UAT doesn’t choke
+  COMMAND ${CMAKE_COMMAND} -E echo "Normalizing framework symlinks in ${APP_BUNDLE}"
+  COMMAND /usr/bin/rsync -aL "${APP_BUNDLE}/" "${APP_BUNDLE}.nosymlinks/"
+  COMMAND ${CMAKE_COMMAND} -E remove_directory "${APP_BUNDLE}"
+  COMMAND ${CMAKE_COMMAND} -E rename "${APP_BUNDLE}.nosymlinks" "${APP_BUNDLE}"
+
+  # 3) Copy the finalized bundle into Tools/bin/Mac as OpenFileTCP.app
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${DEPLOY_DIR}"
+  COMMAND ${CMAKE_COMMAND} -E remove_directory "${DEPLOY_DST}"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${APP_BUNDLE}" "${DEPLOY_DST}"
+
+  COMMENT "Deploying OpenFileTCP (macOS) into ${DEPLOY_DST} and normalizing symlinks"
+)
 
 
 else()
