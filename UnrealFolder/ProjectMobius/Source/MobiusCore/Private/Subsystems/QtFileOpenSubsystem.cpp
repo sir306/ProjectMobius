@@ -262,19 +262,33 @@ FString UQtFileOpenSubsystem::ResolveQtAppExecutablePath() const
 	return Path;
 
 #elif PLATFORM_MAC
-	// Superbuild stages to: Tools/bin/Mac/OpenFileTCP.app/Contents/MacOS/OpenFileTCP
-	FString Path = FPaths::Combine(FPaths::ProjectDir(), TEXT("Contents/MacOS/OpenFileTCP"));
-    
+	// Preferred macOS bundle path produced by the superbuild
+	FString Path = FPaths::Combine(
+		FPaths::ProjectDir(),
+		TEXT("Tools/bin/Mac/OpenFileTCP.app/Contents/MacOS/OpenFileTCP")
+	);
+
 	// Legacy fallback to old build location
 	if (!IFileManager::Get().FileExists(*Path))
 	{
-		const FString LegacyPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/QT_Apps/OpenFileTCP/build/MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP"));
+		const FString LegacyPath = FPaths::Combine(
+			FPaths::ProjectDir(),
+			TEXT("Tools/QT_Apps/OpenFileTCP/build/MacExe/OpenFileTCP.app/Contents/MacOS/OpenFileTCP")
+		);
+
 		if (IFileManager::Get().FileExists(*LegacyPath))
 		{
 			Path = LegacyPath;
 		}
+		else
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("[QtFileOpenSubsystem] OpenFileTCP not found. Tried:\n  %s\n  %s"),
+				*Path, *LegacyPath);
+			return FString(); // empty indicates failure
+		}
 	}
-    
+
 	return Path;
 
 #else
