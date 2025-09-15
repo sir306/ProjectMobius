@@ -4,23 +4,25 @@ project(MobiusNodeJS NONE)
 #==================
 # Helper Methods
 #==================
-# ---- robust downloader: use file(DOWNLOAD) via -P, with size check; optional curl fallback ----
+# A robust downloader that works even if the running CMake doesn't have `-E download`.
+# It also rejects tiny/empty downloads.
 set(_DL_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/_mobius_download.cmake")
 file(WRITE "${_DL_SCRIPT}" "
   if(NOT DEFINED URL OR NOT DEFINED OUT)
     message(FATAL_ERROR \"URL/OUT not set for download\")
   endif()
-  message(STATUS \"[mobius-node] download: \${URL} -> \${OUT}\")
-  file(DOWNLOAD \"\${URL}\" \"\${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
-  file(SIZE \"\${OUT}\" _sz)
+  message(STATUS \"[mobius-node] download: ${URL} -> ${OUT}\")
+  file(DOWNLOAD \"${URL}\" \"${OUT}\" TLS_VERIFY ON SHOW_PROGRESS)
+  file(SIZE \"${OUT}\" _sz)
   if(_sz LESS 1024)
-    file(REMOVE \"\${OUT}\")
+    file(REMOVE \"${OUT}\")
     message(FATAL_ERROR \"[mobius-node] download produced empty/too-small file (size=\${_sz})\")
   endif()
 ")
-find_program(CURL_CMD curl)
+find_program(CURL_CMD curl)  # optional secondary option if you prefer curl
 
 # ----- Pin Node for pkg runtime (node18) -----
+# NOTE: Some npm deps warn about engines >=20 — warnings are fine for our use.
 set(NODE_VERSION "18.20.0")
 
 # Where the superbuild stages intermediary artifacts
@@ -38,9 +40,7 @@ if(WIN32)
   set(NODE_URL     "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_OS}-x64.zip")
   set(NODE_BIN_DIR "${NODE_STAGE_DIR}/node-v${NODE_VERSION}-${NODE_OS}-x64")
   set(NODE_EXE     "${NODE_BIN_DIR}/node.exe")
-  # npm CLI path inside the portable node tree
   set(NPM_CLI_JS   "${NODE_BIN_DIR}/node_modules/npm/bin/npm-cli.js")
-  # local pkg wrapper installed into node_modules/.bin
   set(PKG_BIN      "${NODEJS_SRC_DIR}/node_modules/.bin/pkg.cmd")
   set(OUTPUT_NAME  "MobiusServer.exe")
   set(ARCHIVE_EXTRACT_CMD ${CMAKE_COMMAND} -E tar xvf "${NODE_ARCHIVE}")
@@ -73,9 +73,10 @@ if(SYSTEM_NODE AND SYSTEM_NPM)
   set(NPM  "${SYSTEM_NPM}")
 else()
   set(USE_SYSTEM_NODE FALSE)
-  set(NODE "${NODE_EXE}")                 # executable token 1
-  set(NPM_NODE "${NODE_EXE}")             # we'll run npm via: node <npm-cli.js> <args...>
-  set(NPM_CLI  "${NPM_CLI_JS}")           # tokenized separately
+  # We'll drive npm via the portable node + npm-cli.js
+  set(NODE       "${NODE_EXE}")     # for clarity
+  set(NPM_NODE   "${NODE_EXE}")     # executable token 1
+  set(NPM_CLI    "${NPM_CLI_JS}")   # tokenized separately
 endif()
 
 # ===========================
@@ -85,9 +86,9 @@ add_custom_command(
   OUTPUT "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] download start: ${NODE_URL}"
   COMMAND ${CMAKE_COMMAND} -E rm -f "${NODE_ARCHIVE}"
-  # Prefer CMake script downloader (works even if '-E download' is missing)
+  # Prefer the CMake script downloader (works on older cmake, handles TLS + size check)
   COMMAND ${CMAKE_COMMAND} -DURL=${NODE_URL} -DOUT=${NODE_ARCHIVE} -P "${_DL_SCRIPT}"
-  # If you want a strict curl fallback instead, uncomment this and comment the line above:
+  # If you want strict curl only, you could replace the line above with:
   # COMMAND ${CURL_CMD} -L "${NODE_URL}" -o "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] download ok: ${NODE_ARCHIVE}"
   WORKING_DIRECTORY "${NODE_STAGE_DIR}"
@@ -98,9 +99,9 @@ add_custom_command(
 add_custom_command(
   OUTPUT "${NODE_EXE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] extract start: ${NODE_ARCHIVE}"
-  # First try cmake -E tar ...
+  # First try cmake's tar helper
   COMMAND ${ARCHIVE_EXTRACT_CMD}
-  # If that ever fails silently on certain cmake builds, fall back to system tar
+  # On mac, if cmake tar failed silently, fallback to system tar to validate+bailout
   COMMAND /usr/bin/tar -tf "${NODE_ARCHIVE}" > /dev/null || /usr/bin/tar -xJf "${NODE_ARCHIVE}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] extract ok: ${NODE_BIN_DIR}"
   WORKING_DIRECTORY "${NODE_STAGE_DIR}"
@@ -113,7 +114,6 @@ add_custom_command(
 # Node runtime target
 # ===========================
 if(NOT USE_SYSTEM_NODE)
-  # node_runtime is considered "built" when the extracted node executable exists
   add_custom_target(node_runtime ALL
     DEPENDS "${NODE_EXE}"
     COMMENT "Ensuring portable Node.js runtime available"
@@ -125,27 +125,42 @@ else()
 endif()
 
 # ===========================
-# npm install (ci → fallback), tokenized correctly
+# npm install (ci → fallback) with PATH shim
 # ===========================
 # Marker: creation of node_modules/.bin indicates install done
 set(NPM_BIN_MARKER "${NODEJS_SRC_DIR}/node_modules/.bin")
 
+# Construct the base npm commands (tokens split so spaces are safe)
 if(USE_SYSTEM_NODE)
-  # system npm is a real exe; pass subcommands as separate args
   set(NPM_CI_CMD   "${NPM}" "ci")
   set(NPM_INST_CMD "${NPM}" "install" "--no-audit" "--no-fund")
 else()
-  # drive npm via node + npm-cli.js; each token is separate
   set(NPM_CI_CMD   "${NPM_NODE}" "${NPM_CLI}" "ci")
   set(NPM_INST_CMD "${NPM_NODE}" "${NPM_CLI}" "install" "--no-audit" "--no-fund")
+endif()
+
+# --- IMPORTANT: when using portable node, ensure lifecycle scripts (postinstall) can find 'node'
+if(NOT USE_SYSTEM_NODE)
+  if(APPLE)
+    set(_NPM_ENV ${CMAKE_COMMAND} -E env
+      "PATH=${NODE_BIN_DIR}/bin:$ENV{PATH}"
+      "npm_config_scripts_prepend_node_path=true"
+    )
+  elseif(WIN32)
+    # (node.exe is directly under NODE_BIN_DIR on Windows)
+    set(_NPM_ENV ${CMAKE_COMMAND} -E env
+      "PATH=${NODE_BIN_DIR};$ENV{PATH}"
+      "npm_config_scripts_prepend_node_path=true"
+    )
+  endif()
 endif()
 
 add_custom_command(
   OUTPUT "${NPM_BIN_MARKER}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] npm ci (lockfile install)"
-  # try ci
-  COMMAND ${NPM_CI_CMD}
-  # if ci fails, fallback to install (Windows: use cmd for '||' chaining)
+  # try ci (wrapped with PATH shim only when using portable node)
+  COMMAND ${_NPM_ENV} ${NPM_CI_CMD}
+  # if ci fails, fallback to install via a small script (also with PATH shim)
   COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/_npm_fallback.cmake"
   WORKING_DIRECTORY "${NODEJS_SRC_DIR}"
   DEPENDS node_runtime
@@ -153,15 +168,15 @@ add_custom_command(
   VERBATIM
 )
 
-# tiny script to do the fallback in a cross-platform way
+# tiny script to do the fallback in a cross-platform way (also wraps with PATH shim)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/_npm_fallback.cmake" "
-execute_process(COMMAND ${NPM_CI_CMD}
+execute_process(COMMAND ${_NPM_ENV} ${NPM_CI_CMD}
                 WORKING_DIRECTORY \"${NODEJS_SRC_DIR}\"
                 RESULT_VARIABLE _r1
                 OUTPUT_QUIET ERROR_QUIET)
 if(NOT _r1 EQUAL 0)
   message(STATUS \"[mobius-node] npm ci failed; falling back to npm install...\")
-  execute_process(COMMAND ${NPM_INST_CMD}
+  execute_process(COMMAND ${_NPM_ENV} ${NPM_INST_CMD}
                   WORKING_DIRECTORY \"${NODEJS_SRC_DIR}\"
                   RESULT_VARIABLE _r2)
   if(NOT _r2 EQUAL 0)
