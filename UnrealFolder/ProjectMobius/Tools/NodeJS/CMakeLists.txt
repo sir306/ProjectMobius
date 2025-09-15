@@ -21,16 +21,6 @@ file(WRITE "${_DL_SCRIPT}" "
 ")
 find_program(CURL_CMD curl)  # optional secondary option if you prefer curl
 
-# Force portable Node if no working system Node/npm is present
-if(DEFINED FORCE_PORTABLE_NODE AND FORCE_PORTABLE_NODE)
-  set(USE_SYSTEM_NODE FALSE)
-elseif(SYSTEM_NODE AND SYSTEM_NPM)
-  set(USE_SYSTEM_NODE TRUE)
-else()
-  set(USE_SYSTEM_NODE FALSE)
-endif()
-
-
 # ----- Pin Node for pkg runtime (node18) -----
 # NOTE: Some npm deps warn about engines >=20 — warnings are fine for our use.
 set(NODE_VERSION "18.20.0")
@@ -76,6 +66,14 @@ endif()
 # ----- Prefer system Node only if BOTH node and npm exist -----
 find_program(SYSTEM_NODE node)
 find_program(SYSTEM_NPM  npm)
+
+if(DEFINED FORCE_PORTABLE_NODE AND FORCE_PORTABLE_NODE)
+  set(USE_SYSTEM_NODE FALSE)
+elseif(SYSTEM_NODE AND SYSTEM_NPM)
+  set(USE_SYSTEM_NODE TRUE)
+else()
+  set(USE_SYSTEM_NODE FALSE)
+endif()
 
 if(SYSTEM_NODE AND SYSTEM_NPM)
   set(USE_SYSTEM_NODE TRUE)
@@ -214,7 +212,7 @@ endif()
 add_custom_command(
   OUTPUT "${BUNDLE_DIR}/${OUTPUT_NAME}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] packaging ${OUTPUT_NAME} (targets: node18-${NODE_OS}-x64)"
-  COMMAND ${PKG_CMD} "${NODEJS_SRC_DIR}/MobiusServer.js"
+  COMMAND ${_PKG_ENV} ${PKG_CMD} "${NODEJS_SRC_DIR}/MobiusServer.js"
           --targets "node18-${NODE_OS}-x64"
           --output "${BUNDLE_DIR}/${OUTPUT_NAME}"
   COMMAND ${CMAKE_COMMAND} -E echo "[mobius-node] package ok: ${BUNDLE_DIR}/${OUTPUT_NAME}"
