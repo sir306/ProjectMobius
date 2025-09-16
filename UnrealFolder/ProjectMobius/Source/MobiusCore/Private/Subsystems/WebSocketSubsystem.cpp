@@ -186,7 +186,7 @@ void UWebSocketSubsystem::StartWebSocketServer()
 	// Superbuild emits both archs. Prefer arm64, fallback to x64.
 	const FString Arm = FPaths::Combine(NodeDir, TEXT("mobius-server-macos-arm64"));
 	const FString X64 = FPaths::Combine(NodeDir, TEXT("mobius-server-macos-x64"));
-	WsExePath = FPaths::FileExists(X64) ? X64 : Arm; // fix this logic mac - could make both but may not run both correctly
+	WsExePath = FPaths::FileExists(Arm) ? Arm : X64; // fix this logic mac - could make both but may not run both correctly
 #else
 	// If you add Linux in superbuild, it’ll be Tools/bin/Linux/NodeJS/mobius-server-linux-x64
 	WsExePath = FPaths::Combine(NodeDir, TEXT("mobius-server-linux-x64"));
