@@ -54,7 +54,7 @@ const wss = new WebSocket.Server({
   // Optimize WebSocket server settings
   perMessageDeflate: false, // Disable compression for speed
 }, () => {
-  //console.log(`WebSocket server listening on ws://localhost:${port}`);
+  console.log(`WebSocket server listening on ws://localhost:${port}`);
 });
 
 wss.on('connection', ws => {
@@ -86,17 +86,20 @@ wss.on('connection', ws => {
         lastUpdateTime: 0,
         messageQueue: [],
         isProcessing: false,
+        lastAxis: null,         
+        lastTitle: null,         
+        lastData: null, 
         stats: { sent: 0, dropped: 0 }
       };
       ws.send(JSON.stringify({ type: 'assignId', id }));
-      //console.log(`🎮 Unreal registered → assigned ID=${id}`);
+      console.log(`🎮 Unreal registered → assigned ID=${id}`);
 
       // Qt registers → attach to existing slot
     } else {
       const id = msg.id;
       if (!id || !registry[id]) {
         ws.send(JSON.stringify({ error: 'unknown id, cannot register qt' }));
-        //console.warn(`❌ Qt tried to register with bad id=${id}`);
+        console.warn(`❌ Qt tried to register with bad id=${id}`);
         return ws.close();
       }
       ws.clientId = id;
@@ -109,7 +112,12 @@ wss.on('connection', ws => {
       }
 
       ws.send(JSON.stringify({ status: 'qt registered' }));
-      //console.log(`📊 Qt registered to ID=${id}`);
+      console.log(`📊 Qt registered to ID=${id}`);
+
+      const entry = registry[id];
+      if (entry.lastTitle) ws.send(entry.lastTitle);
+      if (entry.lastAxis)  ws.send(entry.lastAxis);
+      if (entry.lastData)  ws.send(entry.lastData);
     }
 
     // After registration, handle messages from both Unreal & Qt
@@ -164,6 +172,11 @@ wss.on('connection', ws => {
             entry.currentTime = payload.currentTime;
             entry.currentAgentCount = payload.count;
             break;
+
+          // Buffer full-state pieces so we can replay to Qt on join
+          case 'updateAxis':       entry.lastAxis  = raw2; break;
+          case 'updateChartTitle': entry.lastTitle = raw2; break;
+          case 'setData':          entry.lastData  = raw2; break;
         }
       }
 

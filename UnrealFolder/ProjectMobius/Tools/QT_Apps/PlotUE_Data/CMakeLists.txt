@@ -24,8 +24,8 @@ qt_add_qml_module(appPlotUE_Data
         SOURCES ChartSettings.h
         SOURCES MessageProcessor.h MessageProcessor.cpp
         QML_FILES GraphHoverItem.qml
-        RESOURCES shaders/PlaybarShaderEffect.frag
-        RESOURCES shaders/PlaybarShaderEffect.frag.qsb
+        RESOURCES Shaders/PlaybarShaderEffect.frag
+        RESOURCES Shaders/PlaybarShaderEffect.frag.qsb
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

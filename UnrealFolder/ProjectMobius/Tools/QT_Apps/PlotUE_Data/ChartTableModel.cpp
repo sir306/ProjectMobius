@@ -47,7 +47,7 @@ void ChartTableModel::setPoints(const QList<QPointF> &pts)
     beginResetModel();
     m_points = std::move(sorted);
     m_seenX.clear();
-    for (const auto &p : m_points)
+    for (const auto &p : std::as_const(m_points))
         m_seenX.insert(p.x());
     endResetModel();
 }
