@@ -239,9 +239,9 @@ void UStatisticSubsystem::ResetFlowCounters()
 // max flow rate over the total instantaneous flow rate
 // specific flow and specific instantaneous flow
 
-float UStatisticSubsystem::ComputeFlow(float Density, float Speed)
+float UStatisticSubsystem::ComputeFlow(int32 Pedestrians, float TimeSeconds)
 {
-	return Density * Speed;
+	return Pedestrians / TimeSeconds;
 }
 
 float UStatisticSubsystem::ComputeFlowRatePerWidth(int32 PedestrianCount, float TimeSeconds, float WidthMeters)

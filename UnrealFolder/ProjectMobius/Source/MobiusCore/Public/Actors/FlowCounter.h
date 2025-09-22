@@ -7,10 +7,18 @@
 #include "GameFramework/Actor.h"
 #include "FlowCounter.generated.h"
 
+// Forward declarations
 class UDeformableQuadComponent;
 class UStatisticSubsystem;
 class UBoxComponent;
 
+// Delegates
+/** Broadcasts Flow Data that would be relevant to the widget for this actor */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+	FOnFlowCounterSecond, int32, SimSecond, int32, RollingTotal, const TArray<int32>&, PerBucketTotals);
+
+
+// Structs used internally for bucketing agents -> TODO: Move it to the FlowCounterStructs.h file as we may want to use it elsewhere
 struct FBuckectTempData
 {
 	int32 AgentID = 0;
@@ -148,6 +156,24 @@ private:
 	void SetupBucketSegments();
 	
 	int32 BucketIndex_LeftClosed(float T, int32 N, float Eps = 1e-6f);
+
+	void UpdateLastFiveSecondAgentsHistory();// removes agents that are older than 5 seconds from the history map or adds if less than 5 seconds
+
+	void SetupRollingAverageArrays();
+
+	void RecordCrossingForRollingFlowRate(const float SampleTime);
+
+	void AdvanceRollingWindow();
+
+	void ResetRolling5s();
+
+	void RewindRollingWindow();
+
+	void AdvanceRollingWindowToSecond(int32 CurrentSecond); // O(5 * NumSegments)
+	void ReinitPerSegmentRolling(int32 NumSegments);
+	void RecordCrossingForRollingSegment(int32 BucketIndex, float SampleTime);
+
+	void AssignAgentToBucketUsingThresholdWithTime(int32 AgentID, float Threshold, float SampleTime);
 	
 #pragma endregion METHODS 
 
@@ -168,6 +194,9 @@ public:
 	/** */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	FVector FlowCounterLineEndLocation = FVector(0.0f, 0.0f, 0.0f);
+
+	UPROPERTY(BlueprintAssignable, Category="FlowCounter|Events")
+	FOnFlowCounterSecond OnSimSecondUpdate;
 
 protected:
 	/**
@@ -196,6 +225,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	TMap<int32, FFlowCounterCountedAgentData> AgentsPassedThroughCounter;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	TMap<int32, float> LastFiveSecondAgentsHistory = TMap<int32, float>();// AgentID, TimePassedThroughCounter
+
+#pragma region RollingAverageFlowRate
+	static constexpr int32 RollingWindowSeconds = 5;
+
+	TStaticArray<int32, RollingWindowSeconds> RollingBinCounts;   // counts per sim-second
+	TStaticArray<int32, RollingWindowSeconds> RollingBinSeconds;  // which sim-second each slot represents
+	int32 RollingWindowTotal = 0;                                 // sum of the 5 bins
+
+	int32 LastSimSecondProcessed = TNumericLimits<int32>::Min(); // last whole sim-second we emitted
+
+	// ---- Per-segment rolling windows for the rolling averages as per section ---
+	TArray<TStaticArray<int32, RollingWindowSeconds>> SegmentBinCounts;   // [NumSegments][5]
+	TArray<TStaticArray<int32, RollingWindowSeconds>> SegmentBinSeconds;  // [NumSegments][5]
+	TArray<int32> SegmentWindowTotals;                                    // [NumSegments]
+
+	// TODO: we will need to also bucket this off as a per segment rolling average as we want that data
+#pragma endregion RollingAverageFlowRate
+	
+	
 	/**
 	 * Represents the number of segments or partitions in the bucket system of the flow counter.
 	 * Used for dividing the counter's area into distinct sections to calculate the number of agents passing

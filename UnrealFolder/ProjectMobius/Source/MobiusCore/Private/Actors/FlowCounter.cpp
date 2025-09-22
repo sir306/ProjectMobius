@@ -377,6 +377,11 @@ void AFlowCounter::BeginPlay()
 
 	// Setup the bucket segments based on the number of segments property
 	SetupBucketSegments();
+
+	// Setup the rolling average arrays
+	SetupRollingAverageArrays();
+	
+	LastSimSecondProcessed = FMath::FloorToInt(CurrentSimTime) - 1; // so first Update advances to "now"
 }
 
 // Called every frame
@@ -408,9 +413,8 @@ void AFlowCounter::Tick(float DeltaTime)
 				FFlowCounterCountedAgentData(R.SampleTime, R.IntersectionOnLine, R.IntersectionThreshold)
 			);
 			FlowCounterCount.store(AgentsPassedThroughCounter.Num());
-
-			// 3) Buckets (safe: GT only)
-			AssignAgentToBucketUsingThreshold(R.AgentID, R.IntersectionThreshold);
+			
+			AssignAgentToBucketUsingThresholdWithTime(R.AgentID, R.IntersectionThreshold, R.SampleTime);
 		}
 	}
 	
@@ -850,92 +854,60 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 
 void AFlowCounter::NewSimTime(float UpdatedTime)
 {
-	// // TODO: this is test to see if it fixes crash, if it does we need to change time implementation as to not lock every tick
-	// // if it doesnt see if we lock on the new agent data call
-	// FScopeLock _(&FlowStateCS);
-	// if (CurrentSimTime < UpdatedTime)
-	// {
-	// 	CurrentSimTime = UpdatedTime;
-	// }
-	// else
-	// {
-	// 	
-	// 	CurrentSimTime = UpdatedTime;
-	// 	// Remove the tracked agents that would of not yet passed through the flow counter
-	// 	decltype(AgentsPassedThroughCounter) Kept;
-	// 	Kept.Reserve(AgentsPassedThroughCounter.Num());
-	//
-	// 	for (const auto& Kvp : AgentsPassedThroughCounter)
-	// 	{
-	// 		if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)     // keep only “already passed”
-	// 		{
-	// 			Kept.Add(Kvp.Key, Kvp.Value);
-	//
-	// 			// log the val and key we are keeping
-	// 			UE_LOG(LogTemp, Warning, TEXT("[FC] Keeping AgentID %d that passed at %.2f (now %.2f)"),
-	// 			       Kvp.Key, Kvp.Value.TimePassedThroughCounter, CurrentSimTime);
-	// 		}
-	// 	}
-	//
-	// 	if (Kept.Num() == 0)
-	// 	{
-	// 		AgentsPassedThroughCounter.Reset();
-	//
-	// 		// log there should be 0 agents
-	// 		UE_LOG(LogTemp, Warning, TEXT("[FC] Time moved BACKWARDS to %.2f: all %d tracked agents cleared"),
-	// 		       CurrentSimTime, AgentsPassedThroughCounter.Num());
-	// 	}
-	// 	else
-	// 	{
-	// 		AgentsPassedThroughCounter = MoveTemp(Kept);  // whole-map swap
-	//
-	// 		// log how many agents remain
-	// 		UE_LOG(LogTemp, Warning, TEXT("[FC] Time moved BACKWARDS to %.2f: %d agents remain (of %d total)"),
-	// 		       CurrentSimTime, AgentsPassedThroughCounter.Num(), Kept.Num());
-	// 	}
-	// 	
-	// 	PreviousTrackedAgentLocations.Reset();        // simplest + safest for scrubbing 
-	// 	// Keep the counter authoritative
-	// 	FlowCounterCount.store(AgentsPassedThroughCounter.Num());
-	// 	//FlowCounterCount.Exchange(AgentsPassedThroughCounter.Num());
-	// 	
-	// 	// Now we need to update the flow buckets with the current agents that have passed through the counter
-	// 	UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
-	// }
-
 	FScopeLock _(&FlowStateCS);
 
-	if (UpdatedTime >= CurrentSimTime) // forward or equal → no heavy work
+	const bool bRewind = (UpdatedTime < CurrentSimTime);
+	CurrentSimTime = UpdatedTime;
+
+	if (!bRewind)
 	{
-		CurrentSimTime = UpdatedTime;
+		const int32 NewSec = FMath::FloorToInt(CurrentSimTime);
+
+		// First-time init if we spawned late
+		if (LastSimSecondProcessed == TNumericLimits<int32>::Min())
+		{
+			LastSimSecondProcessed = NewSec - 1;
+		}
+
+		// Advance once per whole simulated second
+		for (int32 sec = LastSimSecondProcessed + 1; sec <= NewSec; ++sec)
+		{
+			AdvanceRollingWindowToSecond(sec);
+
+			// notify widgets: total + per-bucket current rolling totals
+			OnSimSecondUpdate.Broadcast(
+				sec,
+				RollingWindowTotal,
+				SegmentWindowTotals // TArray<int32> by value is fine here
+			);
+		}
+
+		LastSimSecondProcessed = NewSec;
 		return;
 	}
 
-	// Backward scrub
-	CurrentSimTime = UpdatedTime;
-
-	// 0) Drain result queue (no stale future)
+	// ---- Backward scrub (rewind) ----
+	// (keep your existing queue drain, kept <= time, bucket rebuild)
 	{
-		FFlowCrossingResult Tmp;
-		int32 Drained = 0;
-		while (ThreadSafeResults.Dequeue(Tmp)) { ++Drained; }
-		UE_LOG(LogTemp, Warning, TEXT("[FC] Rewind drained %d pending results."), Drained);
+		FFlowCrossingResult Tmp; while (ThreadSafeResults.Dequeue(Tmp)) {}
 	}
-
-	// 1) Keep only agents with pass time <= current
 	decltype(AgentsPassedThroughCounter) Kept;
 	Kept.Reserve(AgentsPassedThroughCounter.Num());
 	for (const auto& Kvp : AgentsPassedThroughCounter)
 	{
 		if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)
-		{
-			Kept.Add(Kvp.Key, Kvp.Value);
-		}
+		{ Kept.Add(Kvp.Key, Kvp.Value); }
 	}
 	AgentsPassedThroughCounter = MoveTemp(Kept);
-
 	PreviousTrackedAgentLocations.Reset();
 	FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+
+	// reset global and per-segment rolling windows
+	ResetRolling5s();
+	ReinitPerSegmentRolling(NumberOfBucketSegments);
+
+	// align second cursor to new time
+	LastSimSecondProcessed = FMath::FloorToInt(CurrentSimTime);
 
 	UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
 }
@@ -1109,6 +1081,9 @@ void AFlowCounter::SetupBucketSegments()
 		
 		FlowCounterBucketData.Add(FFlowCounterBucketData(i, SegmentStartLocation, SegmentEndLocation,StartThreshold,EndThreshold));
 	}
+
+	// Handles our rolling 5s flow rate section buckets
+	ReinitPerSegmentRolling(NumberOfBucketSegments);
 }
 
 int32 AFlowCounter::BucketIndex_LeftClosed(float T, int32 N, float Eps)
@@ -1125,4 +1100,163 @@ int32 AFlowCounter::BucketIndex_LeftClosed(float T, int32 N, float Eps)
 	// Floor then clamp to [0, N-1]. For T=1.0: Scaled = N - Eps -> floor = N-1.
 	const int32 Idx = FMath::FloorToInt(Scaled);
 	return FMath::Clamp(Idx, 0, N - 1);
+}
+
+void AFlowCounter::UpdateLastFiveSecondAgentsHistory()
+{
+	float CheckTime = CurrentSimTime < 5.0f ? CurrentSimTime : CurrentSimTime - 5.0f;
+
+	// first check the current agents in the LastFiveSecondAgentsHistory map and remove any agents that are older than 5 seconds
+	for (auto It = LastFiveSecondAgentsHistory.CreateIterator(); It; ++It)
+	{
+		// if the agent time is less than the check time or greater than the current time + 5 seconds, remove it from the map
+		if (It.Value() < CheckTime || It.Value() > (CurrentSimTime + 5.0f))
+		{
+			It.RemoveCurrent();
+		}
+	}
+}
+
+void AFlowCounter::SetupRollingAverageArrays()
+{
+	for (int32 i = 0; i < RollingWindowSeconds; ++i)
+	{
+		RollingBinCounts[i]  = 0;
+		RollingBinSeconds[i] = TNumericLimits<int32>::Min(); // "empty"
+	}
+}
+
+void AFlowCounter::RecordCrossingForRollingFlowRate(const float SampleTime)
+{
+	// If the event is already older than our window, ignore it.
+	if (SampleTime < (CurrentSimTime - RollingWindowSeconds))
+	{
+		return;
+	}
+
+	const int32 Sec     = FMath::FloorToInt(SampleTime);      // which sim-second this event belongs to
+	const int32 SlotIdx = Sec % RollingWindowSeconds;         // ring position
+
+	// If this slot currently represents an older second, evict it before reuse.
+	if (RollingBinSeconds[SlotIdx] != Sec)
+	{
+		RollingWindowTotal -= RollingBinCounts[SlotIdx];
+		RollingBinCounts[SlotIdx] = 0;
+		RollingBinSeconds[SlotIdx] = Sec;
+	}
+
+	++RollingBinCounts[SlotIdx];
+	++RollingWindowTotal;
+}
+
+void AFlowCounter::AdvanceRollingWindow()
+{
+	const int32 MinSec = FMath::FloorToInt(CurrentSimTime) - (RollingWindowSeconds - 1);
+
+	for (int32 i = 0; i < RollingWindowSeconds; ++i)
+	{
+		const int32 KeySec = RollingBinSeconds[i];
+		if (KeySec != TNumericLimits<int32>::Min() && KeySec < MinSec)
+		{
+			RollingWindowTotal -= RollingBinCounts[i];
+			RollingBinCounts[i]  = 0;
+			RollingBinSeconds[i] = TNumericLimits<int32>::Min();
+		}
+	}
+}
+
+void AFlowCounter::ResetRolling5s()
+{
+	RollingWindowTotal = 0;
+	for (int32 i = 0; i < RollingWindowSeconds; ++i)
+	{
+		RollingBinCounts[i]  = 0;
+		RollingBinSeconds[i] = TNumericLimits<int32>::Min();
+	}
+}
+
+void AFlowCounter::RewindRollingWindow()
+{
+}
+
+void AFlowCounter::AdvanceRollingWindowToSecond(int32 CurrentSecond)
+{
+	// expire global
+	const int32 MinSec = CurrentSecond - (RollingWindowSeconds - 1);
+	for (int32 i = 0; i < RollingWindowSeconds; ++i)
+	{
+		const int32 KeySec = RollingBinSeconds[i];
+		if (KeySec != TNumericLimits<int32>::Min() && KeySec < MinSec)
+		{
+			RollingWindowTotal      -= RollingBinCounts[i];
+			RollingBinCounts[i]      = 0;
+			RollingBinSeconds[i]     = TNumericLimits<int32>::Min();
+		}
+	}
+
+	// expire each segment
+	for (int32 s = 0; s < SegmentBinCounts.Num(); ++s)
+	{
+		for (int32 i = 0; i < RollingWindowSeconds; ++i)
+		{
+			const int32 KeySec = SegmentBinSeconds[s][i];
+			if (KeySec != TNumericLimits<int32>::Min() && KeySec < MinSec)
+			{
+				SegmentWindowTotals[s]    -= SegmentBinCounts[s][i];
+				SegmentBinCounts[s][i]     = 0;
+				SegmentBinSeconds[s][i]    = TNumericLimits<int32>::Min();
+			}
+		}
+	}
+}
+
+void AFlowCounter::ReinitPerSegmentRolling(int32 NumSegments)
+{
+	SegmentBinCounts.SetNum(NumSegments);
+	SegmentBinSeconds.SetNum(NumSegments);
+	SegmentWindowTotals.SetNum(NumSegments);
+
+	for (int32 s = 0; s < NumSegments; ++s)
+	{
+		for (int32 i = 0; i < RollingWindowSeconds; ++i)
+		{
+			SegmentBinCounts[s][i]  = 0;
+			SegmentBinSeconds[s][i] = TNumericLimits<int32>::Min();
+		}
+		SegmentWindowTotals[s] = 0;
+	}
+}
+
+void AFlowCounter::RecordCrossingForRollingSegment(int32 BucketIndex, float SampleTime)
+{
+	if (!SegmentBinCounts.IsValidIndex(BucketIndex)) return;
+
+	// ignore events already older than window
+	if (SampleTime < (CurrentSimTime - RollingWindowSeconds)) return;
+
+	const int32 Sec     = FMath::FloorToInt(SampleTime);
+	const int32 SlotIdx = Sec % RollingWindowSeconds;
+
+	if (SegmentBinSeconds[BucketIndex][SlotIdx] != Sec)
+	{
+		SegmentWindowTotals[BucketIndex]    -= SegmentBinCounts[BucketIndex][SlotIdx];
+		SegmentBinCounts[BucketIndex][SlotIdx]  = 0;
+		SegmentBinSeconds[BucketIndex][SlotIdx] = Sec;
+	}
+
+	++SegmentBinCounts[BucketIndex][SlotIdx];
+	++SegmentWindowTotals[BucketIndex];
+}
+
+void AFlowCounter::AssignAgentToBucketUsingThresholdWithTime(int32 AgentID, float Threshold, float SampleTime)
+{
+	const int32 BucketIdx = BucketIndex_LeftClosed(Threshold, NumberOfBucketSegments);
+	if (FlowCounterBucketData.IsValidIndex(BucketIdx))
+	{
+		FlowCounterBucketData[BucketIdx].AgentIDs.Add(AgentID);
+		FlowCounterBucketData[BucketIdx].AgentCount = FlowCounterBucketData[BucketIdx].AgentIDs.Num();
+		// Rolling (total + per-segment)
+		RecordCrossingForRollingFlowRate(SampleTime);
+		RecordCrossingForRollingSegment(BucketIdx, SampleTime);
+	}
 }

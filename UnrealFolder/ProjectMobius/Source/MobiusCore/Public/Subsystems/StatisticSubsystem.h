@@ -144,9 +144,9 @@ public:
 	// TODO: These are dropped in methods as suggested by ChatGPT, so need to confirm naming convention is correct and the calculations are correct
 #pragma region FLOW_ANALYTICS_METHODS
 	
-	/** Fundamental flow equation: q = k * v */
+	/** Fundamental flow equation: q = people / TimeSeconds */
 	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
-	static float ComputeFlow(float Density, float Speed);
+	static float ComputeFlow(int32 Pedestrians, float TimeSeconds);
 
 	/** Flow rate per width: Q = N / (T * W) */
 	UFUNCTION(BlueprintCallable, Category="Pedestrian Flow")
