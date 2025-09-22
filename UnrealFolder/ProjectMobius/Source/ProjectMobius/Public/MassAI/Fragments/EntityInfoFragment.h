@@ -102,6 +102,10 @@ struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
 	/** Current Movement Bracket */
 	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
 	EPedestrianMovementBracket CurrentMovementBracket  = EPedestrianMovementBracket::Emb_NotMoving;
+
+	// Quick Fix for flow counters - when we set this fragment we need to sim time stamp it so we can use it for flow counters
+	UPROPERTY(EditAnywhere, Category = "PedestrianMovement")
+	float LastUpdatedSimTime = 0.0f;
 };
 
 /**

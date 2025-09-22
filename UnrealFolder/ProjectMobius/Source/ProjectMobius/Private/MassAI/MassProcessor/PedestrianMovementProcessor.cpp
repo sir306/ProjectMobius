@@ -288,6 +288,9 @@ void UPedestrianMovementProcessor::AssignFromSample(FEntityMovementFragment& Mov
 	RenderFrag.bAnimationChanged = static_cast<EPedestrianMovementBracket>(MoveFrag.CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(Sample.MovementBracket);
 
 	MoveFrag.CurrentMovementBracket = Sample.MovementBracket;
+	
+	// Quick Fix for flow counters - when we set this fragment we need to sim time stamp it so we can use it for flow counters
+	MoveFrag.LastUpdatedSimTime = CurrentSimTime;
 }
 
 void UPedestrianMovementProcessor::InterpolateAndAssign(FEntityMovementFragment& MoveFrag,
@@ -302,6 +305,9 @@ void UPedestrianMovementProcessor::InterpolateAndAssign(FEntityMovementFragment&
 
 	RenderFrag.bAnimationChanged = static_cast<EPedestrianMovementBracket>(MoveFrag.CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(Next.MovementBracket);
 	MoveFrag.CurrentMovementBracket = Current.MovementBracket;
+
+	// Quick Fix for flow counters - when we set this fragment we need to sim time stamp it so we can use it for flow counters
+	MoveFrag.LastUpdatedSimTime = CurrentSimTime;
 }
 
 bool UPedestrianMovementProcessor::IsThereDataToProcess(const FMassExecutionContext& ExecutionContext) const
@@ -364,6 +370,8 @@ void UPedestrianMovementProcessor::UpdateCurrentTimeStepAndStepPercentage()
 
 		// update the time step percentage
 		TimeStepPercentage = TimeDilationSubSystem->GetCurrentTimeStepPercentage();
+
+		CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
 	}
 	else
 	{

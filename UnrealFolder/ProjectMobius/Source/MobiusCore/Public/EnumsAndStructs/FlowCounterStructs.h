@@ -62,11 +62,12 @@ struct MOBIUSCORE_API FFlowCounterData
 {
 	int32 AgentID = 0; // Unique ID for the agent
 	FVector Location = FVector::ZeroVector;// Location of the agent in world space
+	float SimTime = 0.0f;
 
 	// constructor
 	FFlowCounterData() = default;
-	FFlowCounterData(int32 InAgentID, const FVector& InLocation)
-		: AgentID(InAgentID), Location(InLocation) {};
+	FFlowCounterData(int32 InAgentID, const FVector& InLocation, float InSimTime)
+		: AgentID(InAgentID), Location(InLocation), SimTime(InSimTime) {};
 };
 
 /**

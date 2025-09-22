@@ -9,6 +9,7 @@
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Tags/MassAITags.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 
 UFlowCounterProcessor::UFlowCounterProcessor()
 {
@@ -31,6 +32,9 @@ void UFlowCounterProcessor::ConfigureQueries()
 
 	// The required subsystem for this processor -> set to read-write access as we will need to send data
 	ProcessorRequirements.AddSubsystemRequirement<UStatisticSubsystem>(EMassFragmentAccess::ReadWrite);
+
+	// time dialation subsystem needed for passing current sim time to flow counter
+	ProcessorRequirements.AddSubsystemRequirement<UTimeDilationSubSystem>(EMassFragmentAccess::ReadOnly);
 }
 
 void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
@@ -45,15 +49,27 @@ void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 			return;
 		}
 	}
+	if (TimeDilationSubSystem == nullptr)
+	{
+		// Get the TimeDilationSubSystem from the world
+		TimeDilationSubSystem = ToObjectPtr(Context.GetWorld()->GetSubsystem<UTimeDilationSubSystem>());
+		if (TimeDilationSubSystem == nullptr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("TimeDilationSubSystem is null! Cannot execute FlowCounterProcessor."));
+			return;
+		}
+	}
 
 	//TODO: check if paused -> don't want to keep executing if not needed
 	
+	CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
 
 	EntityQuery.ForEachEntityChunk(EntityManager, Context, ([this](FMassExecutionContext& QueryContext)
 	{
 		// Get the required fragments and entities from the query context
 		const TConstArrayView<FEntityMovementFragment> EntityMovementFragment = QueryContext.GetFragmentView<FEntityMovementFragment>();
 		const int32 NumEntities = QueryContext.GetEntities().Num();
+		
 
 		//auto FlowCounters = StatisticSubsystem->GetFlowCounters().Num();
 
@@ -68,7 +84,7 @@ void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 				// check to see if in band and not already been processed
 				if (!StatisticSubsystem->HasAgentBeenCountedInFlowCounter(AgentID, j) && StatisticSubsystem->IsAgentLocationInAFlowCounterBand(MoveFrag.CurrentLocation, j))
 				{
-					const FFlowCounterData MoveData(AgentID, MoveFrag.CurrentLocation);
+					const FFlowCounterData MoveData(AgentID, MoveFrag.CurrentLocation, MoveFrag.LastUpdatedSimTime);
 					StatisticSubsystem->SendDataToFlowCounter(MoveData, j);
 				}
 			}

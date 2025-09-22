@@ -249,7 +249,10 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	for (auto& EntityHandle : SpawnedEntityPedestrianHandles)
 	{
 		FEntityCollisionFragment Fragment = EntityManager->GetFragmentDataChecked<FEntityCollisionFragment>(EntityHandle);
-		Fragment.Capsule->DestroyComponent();
+		if (Fragment.Capsule.IsValid())
+		{
+			Fragment.Capsule->DestroyComponent();
+		}
 	}
 	
 	// Destroy any existing spawned pedestrians and clear the Niagara simulation

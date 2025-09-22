@@ -236,7 +236,7 @@ static bool SegmentCrossesGateProjectToLine(
 	if (Hit.Z < MinZAllowed - ZTolerance || Hit.Z > MaxZAllowed + ZTolerance)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z=%.2f not in [%.2f..%.2f] +/- %.2f (relative band)"),
-			   Hit.Z, MinZAllowed, MaxZAllowed, ZTolerance);
+		       Hit.Z, MinZAllowed, MaxZAllowed, ZTolerance);
 		return false;
 	}
 
@@ -384,14 +384,35 @@ void AFlowCounter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	FBuckectTempData BucketData;
-	// Dequeue any bucket data
-	while (ThreadSafeNewAgentDataQueue.Dequeue(BucketData))
-	{
-		AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
-	}
+	// FBuckectTempData BucketData;
+	// // Dequeue any bucket data
+	// while (ThreadSafeNewAgentDataQueue.Dequeue(BucketData))
+	// {
+	// 	AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
+	// }
 
-	
+	FFlowCrossingResult R;
+	while (ThreadSafeResults.Dequeue(R))
+	{
+		// 1) Time-window gate: drop anything that happened “in the future”
+		//    relative to the CURRENT timeline after scrubs.
+		if (R.SampleTime > CurrentSimTime)
+		{
+			continue; // stale due to rewind
+		}
+		else
+		{
+			// 2) Commit counted agent (safe: GT only)
+			AgentsPassedThroughCounter.Add(
+				R.AgentID,
+				FFlowCounterCountedAgentData(R.SampleTime, R.IntersectionOnLine, R.IntersectionThreshold)
+			);
+			FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+
+			// 3) Buckets (safe: GT only)
+			AssignAgentToBucketUsingThreshold(R.AgentID, R.IntersectionThreshold);
+		}
+	}
 	
 }
 
@@ -568,7 +589,11 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
 	AFlowCounter* FlowCounter = WeakThis.Get();
 	if (FlowCounter == nullptr) { return false; }
-	
+
+	FScopeLock _(&FlowStateCS);
+
+	// We need to store the current sim time when we start processing agents - as this could change while processing
+	float ProcessTime = FlowCounter->CurrentSimTime;
 	
 	// Get the flow counter trigger box so we can check if the agent is within the box
 	UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox();
@@ -586,7 +611,22 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		// check if the agent is already tracked
 		if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID))
 		{
-			FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+			FPreviousTrackedAgentLocation* PrevTracked = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+			if (PrevTracked == nullptr)
+			{
+				// This should never happen as we already checked if the agent is contained in the map
+				UE_LOG(LogTemp, Warning, TEXT("FlowCounter: PreviousTrackedAgentLocation is null for AgentID %d"), Data.AgentID);
+				return false;
+			}
+
+			if (PrevTracked->LastKnownSimTime >= ProcessTime)
+			{
+				// Agent should not be processed as previous data is from the future, so we need to update the previous tracked data and exit
+				PrevTracked->LastKnownLocation = Data.Location;
+				PrevTracked->LastKnownSimTime = Data.SimTime;
+				return false;
+			}
+			FVector PreviousLocation = PrevTracked->LastKnownLocation;
 
 			// TODO: this is a temporary fix to account for the Z search limits being in world space and the line intersection check being in local space
 			// we need to convert the flow counter line start and end locations to be correct as the pillar mesh origins are center not base
@@ -602,7 +642,7 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			FVector IntersectionOnLine = FVector::ZeroVector;
 			float   TOnLine = 0.0f;
 
-			bool bAgentCrossed = SegmentCrossesGateProjectToLine(*PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
+			bool bAgentCrossed = SegmentCrossesGateProjectToLine(PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
 			                                                     IntersectionOnLine, TOnLine,
 			                                                     /*PlaneLateralTolerance=*/4.0f,
 			                                                     /*ZTolerance=*/1.0f);
@@ -611,16 +651,31 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			// bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
 			//                                                   FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
 
+			// if process time is greater than the current sim time, we need to exit as the user has rewound time and any agents being processed are no longer valid
+			if (ProcessTime > FlowCounter->CurrentSimTime)
+			{				
+				return false;
+			}
+			
 			// if we intersect, then add it to the completed agent set and increment the flow counter
 			if (bAgentCrossed)
 			{
-				FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionOnLine, TOnLine));
-				FlowCounter->FlowCounterCount.store(FlowCounter->AgentsPassedThroughCounter.Num());
-				
-				FBuckectTempData Temp = FBuckectTempData();
-				Temp.AgentID = Data.AgentID;
-				Temp.IntersectionThreshold = TOnLine;
-				FlowCounter->ThreadSafeNewAgentDataQueue.Enqueue(Temp);
+				// FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(Data.SimTime, IntersectionOnLine, TOnLine));
+				// FlowCounter->FlowCounterCount.store(FlowCounter->AgentsPassedThroughCounter.Num());
+				//
+				// FBuckectTempData Temp = FBuckectTempData();
+				// Temp.AgentID = Data.AgentID;
+				// Temp.IntersectionThreshold = TOnLine;
+				// FlowCounter->ThreadSafeNewAgentDataQueue.Enqueue(Temp);// TODO: using queues could be an issue if time changes but we queued data 
+				//
+
+				FFlowCrossingResult R;
+				R.AgentID                = Data.AgentID;
+				R.IntersectionOnLine     = IntersectionOnLine;
+				R.IntersectionThreshold  = TOnLine;
+				R.SampleTime             = Data.SimTime;
+
+				ThreadSafeResults.Enqueue(MoveTemp(R));
 				
 				AsyncTask(ENamedThreads::GameThread, [WeakThis, Data, TOnLine]()
 				{
@@ -634,19 +689,38 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			else
 			{
 				// Agent has not crossed the line, update the previous tracked agent location with the new location
-				FlowCounter->PreviousTrackedAgentLocations[Data.AgentID] = Data.Location;
+				FlowCounter->PreviousTrackedAgentLocations[Data.AgentID].LastKnownLocation = Data.Location;
+				FlowCounter->PreviousTrackedAgentLocations[Data.AgentID].LastKnownSimTime = Data.SimTime;
 			}
 		}
 		else
 		{
-			// Agent is not tracked, add it 
-			FlowCounter->PreviousTrackedAgentLocations.Add(Data.AgentID, Data.Location);
+			// Agent is not tracked, add it
+			FPreviousTrackedAgentLocation New;
+			New.LastKnownLocation = Data.Location;
+			New.LastKnownSimTime = Data.SimTime;
+			FlowCounter->PreviousTrackedAgentLocations.Add(Data.AgentID, New);
 		}
 	}
 	// check that we weren't already tracking the agent in case movement extends pass the trigger box
 	else if (FlowCounter->PreviousTrackedAgentLocations.Contains(Data.AgentID)) // TODO: check if we actually want to check if intersected or disregard 
 	{
-		FVector* PreviousLocation = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+		FPreviousTrackedAgentLocation* PrevTracked = FlowCounter->PreviousTrackedAgentLocations.Find(Data.AgentID);
+		if (PrevTracked == nullptr)
+		{
+			// This should never happen as we already checked if the agent is contained in the map
+			UE_LOG(LogTemp, Warning, TEXT("FlowCounter: PreviousTrackedAgentLocation is null for AgentID %d"), Data.AgentID);
+			return false;
+		}
+
+		if (PrevTracked->LastKnownSimTime >= ProcessTime)
+		{
+			// Agent should not be processed as previous data is from the future, so we need to update the previous tracked data and exit
+			PrevTracked->LastKnownLocation = Data.Location;
+			PrevTracked->LastKnownSimTime = Data.SimTime;
+			return false;
+		}
+		FVector PreviousLocation = PrevTracked->LastKnownLocation;
 
 		// TODO: this is a temporary fix to account for the Z search limits being in world space and the line intersection check being in local space -> also minz may not be correctly set
 		// we need to convert the flow counter line start and end locations to be correct as the pillar mesh origins are center not base
@@ -659,7 +733,7 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		FVector IntersectionOnLine = FVector::ZeroVector;
 		float   TOnLine = 0.0f;
 
-		bool bAgentCrossed = SegmentCrossesGateProjectToLine(*PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
+		bool bAgentCrossed = SegmentCrossesGateProjectToLine(PreviousLocation, CurrentLocation, A, B, FlowCounter->FlowCounterZSearchLimits,
 		                                                     IntersectionOnLine, TOnLine,
 		                                                     /*PlaneLateralTolerance=*/4.0f,
 		                                                     /*ZTolerance=*/1.0f);
@@ -668,16 +742,22 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 		// bool bAgentCrossed = FMath::SegmentIntersection2D(*PreviousLocation, CurrentLocation,
 		//                                                   FlowCounter->FlowCounterLineStartLocation, FlowCounter->FlowCounterLineEndLocation, IntersectionLocation);
 
+		// if process time is greater than the current sim time, we need to exit as the user has rewound time and any agents being processed are no longer valid
+		if (ProcessTime > FlowCounter->CurrentSimTime)
+		{			
+			return false;
+		}
+		
 		// if we intersect, then add it to the completed agent set and increment the flow counter
 		if (bAgentCrossed)
 		{
-			FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(FlowCounter->CurrentSimTime, IntersectionOnLine, TOnLine));
-			FlowCounter->FlowCounterCount.store(FlowCounter->AgentsPassedThroughCounter.Num());
+			FFlowCrossingResult R;
+			R.AgentID                = Data.AgentID;
+			R.IntersectionOnLine     = IntersectionOnLine;
+			R.IntersectionThreshold  = TOnLine;
+			R.SampleTime             = Data.SimTime;
 
-			FBuckectTempData Temp = FBuckectTempData();
-			Temp.AgentID = Data.AgentID;
-			Temp.IntersectionThreshold = TOnLine;
-			FlowCounter->ThreadSafeNewAgentDataQueue.Enqueue(Temp);
+			ThreadSafeResults.Enqueue(MoveTemp(R));
 				
 			AsyncTask(ENamedThreads::GameThread, [WeakThis, Data, TOnLine]()
 			{
@@ -770,39 +850,94 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 
 void AFlowCounter::NewSimTime(float UpdatedTime)
 {
-	// TODO: this is test to see if it fixes crash, if it does we need to change time implementation as to not lock every tick
-	// if it doesnt see if we lock on the new agent data call
+	// // TODO: this is test to see if it fixes crash, if it does we need to change time implementation as to not lock every tick
+	// // if it doesnt see if we lock on the new agent data call
+	// FScopeLock _(&FlowStateCS);
+	// if (CurrentSimTime < UpdatedTime)
+	// {
+	// 	CurrentSimTime = UpdatedTime;
+	// }
+	// else
+	// {
+	// 	
+	// 	CurrentSimTime = UpdatedTime;
+	// 	// Remove the tracked agents that would of not yet passed through the flow counter
+	// 	decltype(AgentsPassedThroughCounter) Kept;
+	// 	Kept.Reserve(AgentsPassedThroughCounter.Num());
+	//
+	// 	for (const auto& Kvp : AgentsPassedThroughCounter)
+	// 	{
+	// 		if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)     // keep only “already passed”
+	// 		{
+	// 			Kept.Add(Kvp.Key, Kvp.Value);
+	//
+	// 			// log the val and key we are keeping
+	// 			UE_LOG(LogTemp, Warning, TEXT("[FC] Keeping AgentID %d that passed at %.2f (now %.2f)"),
+	// 			       Kvp.Key, Kvp.Value.TimePassedThroughCounter, CurrentSimTime);
+	// 		}
+	// 	}
+	//
+	// 	if (Kept.Num() == 0)
+	// 	{
+	// 		AgentsPassedThroughCounter.Reset();
+	//
+	// 		// log there should be 0 agents
+	// 		UE_LOG(LogTemp, Warning, TEXT("[FC] Time moved BACKWARDS to %.2f: all %d tracked agents cleared"),
+	// 		       CurrentSimTime, AgentsPassedThroughCounter.Num());
+	// 	}
+	// 	else
+	// 	{
+	// 		AgentsPassedThroughCounter = MoveTemp(Kept);  // whole-map swap
+	//
+	// 		// log how many agents remain
+	// 		UE_LOG(LogTemp, Warning, TEXT("[FC] Time moved BACKWARDS to %.2f: %d agents remain (of %d total)"),
+	// 		       CurrentSimTime, AgentsPassedThroughCounter.Num(), Kept.Num());
+	// 	}
+	// 	
+	// 	PreviousTrackedAgentLocations.Reset();        // simplest + safest for scrubbing 
+	// 	// Keep the counter authoritative
+	// 	FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+	// 	//FlowCounterCount.Exchange(AgentsPassedThroughCounter.Num());
+	// 	
+	// 	// Now we need to update the flow buckets with the current agents that have passed through the counter
+	// 	UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
+	// }
+
 	FScopeLock _(&FlowStateCS);
-	if (CurrentSimTime < UpdatedTime)
-	{
-		CurrentSimTime = UpdatedTime;
-	}
-	else
-	{
-		
-		CurrentSimTime = UpdatedTime;
-		// Remove the tracked agents that would of not yet passed through the flow counter
-		decltype(AgentsPassedThroughCounter) Kept;
-		Kept.Reserve(AgentsPassedThroughCounter.Num());
 
-		for (const auto& Kvp : AgentsPassedThroughCounter)
+	if (UpdatedTime >= CurrentSimTime) // forward or equal → no heavy work
+	{
+		CurrentSimTime = UpdatedTime;
+		return;
+	}
+
+	// Backward scrub
+	CurrentSimTime = UpdatedTime;
+
+	// 0) Drain result queue (no stale future)
+	{
+		FFlowCrossingResult Tmp;
+		int32 Drained = 0;
+		while (ThreadSafeResults.Dequeue(Tmp)) { ++Drained; }
+		UE_LOG(LogTemp, Warning, TEXT("[FC] Rewind drained %d pending results."), Drained);
+	}
+
+	// 1) Keep only agents with pass time <= current
+	decltype(AgentsPassedThroughCounter) Kept;
+	Kept.Reserve(AgentsPassedThroughCounter.Num());
+	for (const auto& Kvp : AgentsPassedThroughCounter)
+	{
+		if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)
 		{
-			if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)     // keep only “already passed”
-			{
-				Kept.Add(Kvp.Key, Kvp.Value);
-			}
+			Kept.Add(Kvp.Key, Kvp.Value);
 		}
-
-		AgentsPassedThroughCounter = MoveTemp(Kept);  // whole-map swap
-		
-		PreviousTrackedAgentLocations.Reset();        // simplest + safest for scrubbing 
-		// Keep the counter authoritative
-		FlowCounterCount.store(AgentsPassedThroughCounter.Num());
-		//FlowCounterCount.Exchange(AgentsPassedThroughCounter.Num());
-		
-		// Now we need to update the flow buckets with the current agents that have passed through the counter
-		UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
 	}
+	AgentsPassedThroughCounter = MoveTemp(Kept);
+
+	PreviousTrackedAgentLocations.Reset();
+	FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+
+	UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
 }
 
 void AFlowCounter::SetCorners(const FVector& A, const FVector& B, const FVector& C, const FVector& D)

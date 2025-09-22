@@ -17,6 +17,23 @@ struct FBuckectTempData
 	float IntersectionThreshold = 0.0f;
 };
 
+struct FFlowCrossingResult
+{
+	
+	int32   AgentID = -1;
+	FVector IntersectionOnLine = FVector::ZeroVector;
+	float   IntersectionThreshold = 0.f;  // T on line [0..1]
+	float   SampleTime = 0.f;             // time this crossing happened
+};
+
+USTRUCT(BlueprintType)
+struct FPreviousTrackedAgentLocation
+{
+	GENERATED_BODY()
+	FVector LastKnownLocation = FVector::ZeroVector;
+	float   LastKnownSimTime = 0.f; // time this location was recorded
+};
+
 UCLASS()
 class MOBIUSCORE_API AFlowCounter : public AActor
 {
@@ -171,10 +188,10 @@ protected:
 	 * Stores the previous tracked locations of agents, where each agent is identified by an integer ID
 	 * and their corresponding location is stored as an FVector.
 	 * @key[int32] The unique ID of an agent.
-	 * @value[FVector] The last known location of the corresponding agent.
+	 * @value[FPreviousTrackedAgentLocation] The last known data of the agent including location and time.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
-	TMap<int32, FVector> PreviousTrackedAgentLocations;
+	TMap<int32, FPreviousTrackedAgentLocation> PreviousTrackedAgentLocations;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	TMap<int32, FFlowCounterCountedAgentData> AgentsPassedThroughCounter;
@@ -185,7 +202,7 @@ protected:
 	 * through each segment.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
-	int32 NumberOfBucketSegments = 3;//TODO: expose to UI to allow user to set number of segments and reset to default value of 1
+	int32 NumberOfBucketSegments = 1;
 	
 	/** For a bucket system that tells the amount of agents that passed through a
 	 * section of the counter we need to know what a bucket width should be */
@@ -226,6 +243,9 @@ private:
 
 	/** A thread-safe queue to handle bucket data due to the possibility of bucket mutations on the game thread */
 	TQueue<FBuckectTempData, EQueueMode::Mpsc> ThreadSafeNewAgentDataQueue = TQueue<FBuckectTempData, EQueueMode::Mpsc>();
+
+	/** */
+	TQueue<FFlowCrossingResult, EQueueMode::Mpsc> ThreadSafeResults;
 
 	/* TODO: this property is redundant, we should just update methods to use the line that would be at the base of the pillars
 	 but for now we will keep it to avoid breaking changes */
