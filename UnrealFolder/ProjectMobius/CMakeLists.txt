@@ -74,8 +74,9 @@ set(_assimp_cmake_args
 if(WIN32)
   list(APPEND _assimp_cmake_args
     -DASSIMP_BUILD_ZLIB=ON
-    -DCMAKE_INSTALL_BINDIR=bin/Win64
-    -DCMAKE_INSTALL_LIBDIR=lib/Win64
+    -DASSIMP_BIN_INSTALL_DIR=bin/Win64      
+    -DASSIMP_LIB_INSTALL_DIR=lib/Win64      
+    -DASSIMP_INCLUDE_INSTALL_DIR=include   
   )
 elseif(APPLE)
   list(APPEND _assimp_cmake_args
@@ -84,13 +85,15 @@ elseif(APPLE)
     -DCMAKE_INSTALL_NAME_DIR=@rpath
     -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-    -DCMAKE_INSTALL_LIBDIR=lib/Mac
+    -DASSIMP_LIB_INSTALL_DIR=lib/Mac       
+    -DASSIMP_INCLUDE_INSTALL_DIR=include
   )
 else()
   list(APPEND _assimp_cmake_args
     -DASSIMP_BUILD_ZLIB=OFF
-    -DCMAKE_INSTALL_LIBDIR=lib/Linux
-    -DCMAKE_INSTALL_BINDIR=bin/Linux
+    -DASSIMP_BIN_INSTALL_DIR=bin/Linux
+    -DASSIMP_LIB_INSTALL_DIR=lib/Linux
+    -DASSIMP_INCLUDE_INSTALL_DIR=include
   )
 endif()
 
@@ -124,18 +127,24 @@ add_custom_target(assimp_stage ALL
 
 if(WIN32)
   add_custom_command(TARGET assimp_stage POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${ASSIMP_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_STAGE_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${ASSIMP_INST}/bin/Win64" "${ASSIMP_STAGE_DIR}"
     COMMENT "Staging Assimp DLLs to ${ASSIMP_STAGE_DIR}"
   )
 elseif(APPLE)
   add_custom_command(TARGET assimp_stage POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${ASSIMP_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_STAGE_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${ASSIMP_INST}/lib/Mac" "${ASSIMP_STAGE_DIR}"
     COMMENT "Staging Assimp dylibs to ${ASSIMP_STAGE_DIR}"
   )
-elseif(UNIX)
+else()
   add_custom_command(TARGET assimp_stage POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${ASSIMP_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_STAGE_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${ASSIMP_INST}/lib/Linux" "${ASSIMP_STAGE_DIR}"
     COMMENT "Staging Assimp .so to ${ASSIMP_STAGE_DIR}"
