@@ -230,7 +230,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 
 			// For thesis, I don't want collisions
 			ImportOptions.BuildCollisions = ECollisionEnabled::Type::NoCollision;
-			ImportOptions.CollisionType = ECollisionTraceFlag::CTF_UseSimpleAsComplex;
+			ImportOptions.CollisionType = ECollisionTraceFlag::CTF_UseSimpleAndComplex;
 			ImportOptions.TessellationOptions.bUseCADKernel = true;
 			
 			RuntimeDatasmithAnchor->ImportOptions = ImportOptions;
