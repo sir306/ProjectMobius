@@ -274,3 +274,8 @@ executable/
 .DS_Store
 Thumbs.db
 /UnrealFolder/ProjectMobius/Tools/bin
+/UnrealFolder/ProjectMobius/Content/Characters
+/UnrealFolder/ProjectMobius/Content/VRTemplate
+/UnrealFolder/ProjectMobius/Content/VRSpectator
+/UnrealFolder/ProjectMobius/Content/LevelPrototyping
+/UnrealFolder/ProjectMobius/Content/FPWeapon

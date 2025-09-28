@@ -25,6 +25,7 @@
 #include "Controller/MobiusController.h"
 
 #include "ImageUtils.h"
+#include "IXRTrackingSystem.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/MobiusControllerSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
@@ -38,7 +39,7 @@ AMobiusController::AMobiusController()
 void AMobiusController::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
 	// Setup cursor and input mode
 	FInputModeGameAndUI InputMode;
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
