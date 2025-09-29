@@ -141,6 +141,7 @@ public:
 
 	EPedestrianScalabilitySettings GetCurrentPedestrianAvatarType() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
 	void SetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings NewAvatarModelType);
 
 protected:

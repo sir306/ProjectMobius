@@ -24,6 +24,7 @@
 
 #include "Controller/MobiusController.h"
 
+#include "HeadMountedDisplayFunctionLibrary.h"
 #include "ImageUtils.h"
 #include "IXRTrackingSystem.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
@@ -39,16 +40,37 @@ AMobiusController::AMobiusController()
 void AMobiusController::BeginPlay()
 {
 	Super::BeginPlay();
+	bool bVr = UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled();
 	
-	// Setup cursor and input mode
-	FInputModeGameAndUI InputMode;
-	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-	InputMode.SetHideCursorDuringCapture(false);
-	SetInputMode(InputMode);
+	if (bVr)
+	{
+		// --- VR PROFILE: Game-only; OS cursor off; WidgetInteraction drives UI ---
+		FInputModeGameOnly Mode;
+		SetInputMode(Mode);
 
-	// Set Mouse Cursor Behavior
-	bShowMouseCursor = true;
-	
+		// In VR you don’t want a desktop cursor getting in the way.
+		bShowMouseCursor = false;
+
+		// Safety: make sure mouse-generated click/hover events don’t interfere
+		bEnableClickEvents = false;
+		bEnableMouseOverEvents = false;
+	}
+	else
+	{
+		// --- DESKTOP PROFILE: Game + UI; cursor visible; no lock; don’t hide on capture ---
+		FInputModeGameAndUI Mode;
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		Mode.SetHideCursorDuringCapture(false);
+
+		// Optionally set a specific widget to focus (UMG root), if you have one:
+		// Mode.SetWidgetToFocus(MyRootWidget ? MyRootWidget->TakeWidget() : TSharedPtr<SWidget>{});
+
+		SetInputMode(Mode);
+
+		bShowMouseCursor = true;
+		bEnableClickEvents = true;
+		bEnableMouseOverEvents = true;
+	}
 	GetScreenshotRequiredSubsystemsAndData();
 
 	// Bind to the screenshot request captured delegate

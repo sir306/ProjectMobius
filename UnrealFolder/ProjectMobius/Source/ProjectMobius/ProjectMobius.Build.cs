@@ -48,7 +48,8 @@ public class ProjectMobius : ModuleRules
             // for JSOn handling and our web sockets
             "Json", 
             "JsonUtilities", 
-            "MobiusCore",
+            "MobiusCore", 
+            "XRBase",
         });
 
     }

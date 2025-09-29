@@ -165,7 +165,11 @@
 				"Linux",
 				"Android"
 			]
-		}
+		},
+      { 
+        "Name": "XRBase", 
+        "Enabled": true
+      }
 	],
 	"AdditionalPluginDirectories": [
 		"Plugins"
