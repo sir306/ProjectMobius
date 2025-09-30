@@ -17,14 +17,14 @@ void UFlowSectionCounter::NativePreConstruct()
 	// Push initial text values to children if they exist
 	if (SectionHeaderFieldAndTextWidget)
 	{
-		SectionHeaderFieldAndTextWidget->SetTitleText(SectionHeaderText);
-		SectionHeaderFieldAndTextWidget->SetFieldText(SectionHeaderAgentCountText);
+		SectionHeaderFieldAndTextWidget->SetUpdateTitleText(SectionHeaderText);
+		SectionHeaderFieldAndTextWidget->SetUpdateFieldText(SectionHeaderAgentCountText);
 		SectionHeaderFieldAndTextWidget->bAutoCenter = true;
 	}
 	if (FlowTypeAndValueFieldAndTextWidget)
 	{
-		FlowTypeAndValueFieldAndTextWidget->SetTitleText(FlowTypeTitleText);
-		FlowTypeAndValueFieldAndTextWidget->SetFieldText(FlowValueText);
+		FlowTypeAndValueFieldAndTextWidget->SetUpdateTitleText(FlowTypeTitleText);
+		FlowTypeAndValueFieldAndTextWidget->SetUpdateFieldText(FlowValueText);
 		FlowTypeAndValueFieldAndTextWidget->bAutoCenter = true;
 	}
 	
@@ -71,11 +71,11 @@ void UFlowSectionCounter::InitializeFromParent(const FFlowSectionCounterInitPara
 	}
 
 	// Ensure the text the parent expects is applied (parent may have passed live values)
-	SectionHeaderFieldAndTextWidget->SetTitleText(SectionHeaderText);
-	SectionHeaderFieldAndTextWidget->SetFieldText(SectionHeaderAgentCountText);
+	SectionHeaderFieldAndTextWidget->SetUpdateTitleText(SectionHeaderText);
+	SectionHeaderFieldAndTextWidget->SetUpdateFieldText(SectionHeaderAgentCountText);
 
-	FlowTypeAndValueFieldAndTextWidget->SetTitleText(FlowTypeTitleText);
-	FlowTypeAndValueFieldAndTextWidget->SetFieldText(FlowValueText);
+	FlowTypeAndValueFieldAndTextWidget->SetUpdateTitleText(FlowTypeTitleText);
+	FlowTypeAndValueFieldAndTextWidget->SetUpdateFieldText(FlowValueText);
 
 	// Compute per-row boxes inside this section’s allocated cell
 	const FMargin Pad = Params.InnerPadding;

@@ -50,7 +50,7 @@ void UFieldAndTextWidget::ReleaseSlateResources(bool bReleaseChildren)
 	}
 }
 
-void UFieldAndTextWidget::SetTitleText(FText InTitleText)
+void UFieldAndTextWidget::SetUpdateTitleText(FText InTitleText)
 {
 	// Always keep the UObject-side value authoritative
 	TitleText = MoveTemp(InTitleText);
@@ -62,7 +62,7 @@ void UFieldAndTextWidget::SetTitleText(FText InTitleText)
 	}
 }
 
-void UFieldAndTextWidget::SetFieldText(FText InFieldText)
+void UFieldAndTextWidget::SetUpdateFieldText(FText InFieldText)
 {
 	// Always keep the UObject-side value authoritative
 	FieldText = MoveTemp(InFieldText);

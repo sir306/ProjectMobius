@@ -76,7 +76,7 @@ void WidgetUtilHelpers::UpdateTextIfChanged(UFieldAndTextWidget* Widget, const F
 
 	if (!Widget->FieldText.EqualTo(NewText))
 	{
-		Widget->SetFieldText(NewText);
+		Widget->SetUpdateFieldText(NewText);
 	}
 }
 
@@ -87,7 +87,7 @@ void WidgetUtilHelpers::UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32
 	FText NewText = FText::AsNumber(NewNumber);
 	if (!Widget->FieldText.EqualTo(NewText))
 	{
-		Widget->SetFieldText(NewText);
+		Widget->SetUpdateFieldText(NewText);
 	}
 }
 
@@ -98,7 +98,7 @@ void WidgetUtilHelpers::UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float 
 	FText NewText = FText::FromString(FString::Printf(TEXT("%.2f"), NewFloat));
 	if (!Widget->FieldText.EqualTo(NewText))
 	{
-		Widget->SetFieldText(NewText);
+		Widget->SetUpdateFieldText(NewText);
 	}
 }
 
@@ -110,7 +110,7 @@ void WidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const
 
 	if (!Widget->FieldText.EqualTo(NewText))
 	{
-		Widget->SetFieldText(NewText);
+		Widget->SetUpdateFieldText(NewText);
 	}
 }
 

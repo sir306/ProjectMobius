@@ -26,6 +26,7 @@
 
 #include <QObject>
 #include <qqml.h>
+#include <QTimer>
 
 class ChartSettings : public QObject {
     Q_OBJECT
@@ -44,7 +45,15 @@ class ChartSettings : public QObject {
 public:
     explicit ChartSettings(QObject* parent = nullptr)
         : QObject(parent)
-    {}
+    {
+        // Default title so the Label shows even without server data
+        m_title = QStringLiteral("Agent Count vs Time (s)");
+
+        // Make sure QML gets an initial notify after the object is bound
+        QTimer::singleShot(0, this, [this]{
+            emit titleChanged(m_title);
+        });
+    }
 
     bool showAllPoints() const { return m_showAllPoints; }
 

@@ -49,8 +49,12 @@ public:
 	virtual void SynchronizeProperties() override;
 	
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
-	void SetTitleText(FText InTitleText);
-	void SetFieldText(FText InFieldText);
+
+	UFUNCTION(BlueprintCallable, Category = "FieldAndTextWidget")
+	void SetUpdateTitleText(FText InTitleText);
+	
+	UFUNCTION(BlueprintCallable, Category = "FieldAndTextWidget")
+	void SetUpdateFieldText(FText InFieldText);
 	/**
 	 * Gets the size of the text in this widget, used for layout calculations
 	 * 

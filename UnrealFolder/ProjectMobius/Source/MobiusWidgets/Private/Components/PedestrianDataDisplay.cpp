@@ -92,7 +92,7 @@ void UPedestrianDataDisplay::SetupTextBlockTitles() const
 	{
 		if (TitleFieldWidgets[Index])
 		{
-			TitleFieldWidgets[Index]->SetTitleText(FText::FromString(FieldTitles[Index]));
+			TitleFieldWidgets[Index]->SetUpdateTitleText(FText::FromString(FieldTitles[Index]));
 		}
 	}
 

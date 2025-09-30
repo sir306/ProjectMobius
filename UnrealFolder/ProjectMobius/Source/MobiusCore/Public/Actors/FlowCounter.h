@@ -174,6 +174,23 @@ private:
 	void RecordCrossingForRollingSegment(int32 BucketIndex, float SampleTime);
 
 	void AssignAgentToBucketUsingThresholdWithTime(int32 AgentID, float Threshold, float SampleTime);
+
+	/** When we add a new flow counter we should set the location its added to in front of the user camera by 1m */
+	void SetInitialPlacementInFrontOfUser();
+
+	// Returns whether the UI should be reversed (left↔right from viewer) and
+	// a world rotation for the widget that faces the camera and aligns with the gate.
+	UFUNCTION(BlueprintPure, Category="Flow|Gate")
+	void ComputeWidgetReverseAndRotation(bool& bReverseOut, FRotator& WidgetWorldRotationOut, FVector WidgetWorldLocation) const;
+
+	static void ComputeReverseAndRotationUtility(
+		const FVector Pillar1World,
+		const FVector Pillar2World,
+		const FVector CameraWorldLocation,
+		const FRotator CameraWorldRotation,
+		const FVector WidgetWorldLocation,
+		bool& bReverseOut,
+		FRotator& WidgetWorldRotationOut);
 	
 #pragma endregion METHODS 
 

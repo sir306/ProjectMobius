@@ -254,7 +254,7 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 		MaxAgentCount = AgentDataSubSystem->GetMaxAgents();
 	}
 	// log the max agent count
-	UE_LOG(LogTemp, Warning, TEXT("1called in floorstats Max Agent Count: %d"), MaxAgentCount);
+	//UE_LOG(LogTemp, Warning, TEXT("1called in floorstats Max Agent Count: %d"), MaxAgentCount);
 
 	// we cant have axis mins and max == the same or be min > max
 	if (MinAgentCountToSend > MaxAgentCount)
@@ -265,14 +265,14 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 		MaxAgentCount = temp;
 	}
 	// log the max agent count
-	UE_LOG(LogTemp, Warning, TEXT("2called in floorstats Max Agent Count: %d"), MaxAgentCount);
+	//UE_LOG(LogTemp, Warning, TEXT("2called in floorstats Max Agent Count: %d"), MaxAgentCount);
 	if (MinAgentCountToSend == MaxAgentCount)
 	{
 		// they cant be equal so increase max
 		MaxAgentCount += 1;
 	}
 	// log the max agent count
-	UE_LOG(LogTemp, Warning, TEXT("3called in floorstats Max Agent Count: %d"), MaxAgentCount);
+	//UE_LOG(LogTemp, Warning, TEXT("3called in floorstats Max Agent Count: %d"), MaxAgentCount);
 	if (MaxTime == 0.0f)
 	{
 		// if max time is 0 then set it to 1
@@ -369,6 +369,9 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 			}
 	
 			CompleteUIData.Reserve(MES_Subsystem->NumOfAgentsPerTimeStep.Num()); // reserve some space for the data
+
+			// we want it to show number evacuated not number remaining
+			int32 MaxAgentCount = MES_Subsystem->AgentDataSubsystem->GetMaxAgents();
 	
 			int32 SmallestFoundSampleCount = INT32_MAX;
 			
@@ -381,8 +384,8 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 					SmallestFoundSampleCount = MES_Subsystem->NumOfAgentsPerTimeStep[i];
 				}
 				
-				// get the sample count
-				int32 SampleCount = MES_Subsystem->NumOfAgentsPerTimeStep[i];
+				// minus the sample count from the max to get the number evacuated
+				int32 SampleCount = MaxAgentCount - MES_Subsystem->NumOfAgentsPerTimeStep[i];
 	
 				// get the time frequency from time dilation subsystem
 				float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;

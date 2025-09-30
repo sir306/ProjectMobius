@@ -20,16 +20,7 @@ Window {
         spacing: 10
         padding: 10
 
-        // 1) Status
-        Text {
-            text: wsMgr.connectionStatus
-            font.pixelSize: 16
-            color: wsMgr.connectionStatus === "Connected" ? "lightgreen" : "tomato"
-            horizontalAlignment: Text.AlignHCenter
-            anchors.horizontalCenter: parent.horizontalCenter
-        }
-
-        // 2) Chart title
+        // ── Chart title only ──
         Label {
             text: chartSettings.title
             font.pixelSize: 24
@@ -37,62 +28,6 @@ Window {
             horizontalAlignment: Text.AlignHCenter
             anchors.horizontalCenter: parent.horizontalCenter
         }
-
-        // Text {
-        //     text: chartSettings.statusDisplay
-        //     font.pixelSize: 14
-        //     color: "white"
-        //     anchors.horizontalCenter: parent.horizontalCenter
-        //     renderType: Text.NativeRendering
-        //     layer.enabled: true;
-        //     layer.smooth: true
-        // }
-
-        Row {
-            spacing: 12
-            anchors.horizontalCenter: parent.horizontalCenter
-
-            // ── Static label, never changes ──
-            Text {
-                id: labelText
-                font.pixelSize: 14
-                color: wsMgr.connectionStatus === "Connected" ? "lightgreen" : "tomato"
-                text: "Measuring:"
-                wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignRight
-                renderType: Text.NativeRendering
-                layer.enabled: true;
-                layer.smooth: true
-            }
-
-            // ── Dynamic values, repaints when time or count change ──
-            Text {
-                id: valueText
-                font.pixelSize: 14
-                color: "white"
-                text: chartSettings.statusDisplay
-                wrapMode: Text.WordWrap
-                renderType: Text.NativeRendering
-                layer.enabled: true;
-                layer.smooth: true
-            }
-        }
-
-
-
-        // Visibility toggle for scatters if we want it back
-        // // 3) Toggle button
-        // Row {
-        //     spacing: 10
-        //     anchors.horizontalCenter: parent.horizontalCenter
-
-        //     Button {
-        //         text: chartSettings.showAllPoints
-        //               ? "Show Major-Y-Only Scatter Points"
-        //               : "Show All Scatter Points"
-        //         onClicked: chartSettings.setShowAllPoints(!chartSettings.showAllPoints)
-        //     }
-        // }
     }
 
     // ────────────────────────────────────────────
@@ -114,26 +49,68 @@ Window {
             id: agentGraph
             anchors.fill: parent
 
-            axisX: ValueAxis {
-                id: xAxis
-                min: axisSettings.xMin
-                max: axisSettings.xChartMax
+            // 1 device pixel helper
+                // (Qt rounds to nearest device pixel and avoids blurry/“fat” lines)
+                property real px: 1.0 / window.screen.devicePixelRatio
 
-                //max: axisSettings.xMax
-                titleText: axisSettings.xTitle
-                gridVisible: axisSettings.xGridVisible
-            }
-            axisY: ValueAxis {
-                id: yAxis
-                min: axisSettings.yMin
-                max: axisSettings.yChartMax
+                // Disable AA for crisp hairlines
+                antialiasing: false
+
+                theme: GraphsTheme {
+                    theme: GraphsTheme.Theme.UserDefined
+
+                    // backgrounds
+                    backgroundVisible: true
+                    backgroundColor: "white"
+                    plotAreaBackgroundVisible: true
+                    plotAreaBackgroundColor: "white"
+
+                    // axis styling
+                    axisX.labelTextColor: "black"
+                    axisY.labelTextColor: "black"
+                    axisX.mainColor: "black"     // axis baseline
+                    axisY.mainColor: "black"
+                    axisX.subColor:  "black"     // tick marks
+                    axisY.subColor:  "black"
+
+                    // ensure axis and tick widths are exactly 1 device pixel
+                    axisX.mainWidth: agentGraph.px
+                    axisY.mainWidth: agentGraph.px
+                    axisX.subWidth:  agentGraph.px
+                    axisY.subWidth:  agentGraph.px
+
+                    // grid styling
+                    gridVisible: true
+                    grid.mainColor: "black"
+                    grid.subColor:  "black"
+
+                    // Make lines 1 device pixel;
+                    grid.mainWidth: agentGraph.px
+                    grid.subWidth:  0            // <- disables visible minor grid thickness
+                }
 
 
-                titleText: axisSettings.yTitle
-                gridVisible: axisSettings.yGridVisible
-            }
+                axisX: ValueAxis {
+                    id: xAxis
+                    min: axisSettings.xMin
+                    max: axisSettings.xChartMax
+                    titleText: axisSettings.xTitle
+                    gridVisible: axisSettings.xGridVisible
+                    titleColor: "black"
+                    subTickCount: 0
+                }
 
-            LineSeries    { id: lineSeries;    color: "red"   }
+                axisY: ValueAxis {
+                    id: yAxis
+                    min: axisSettings.yMin
+                    max: axisSettings.yChartMax
+                    titleText: axisSettings.yTitle
+                    gridVisible: axisSettings.yGridVisible
+                    titleColor: "black"
+                    subTickCount: 0
+                }
+
+            LineSeries    { id: lineSeries;    color: "dark green"   }
             ScatterSeries {
                 id: scatterSeries
                 pointDelegate: GraphHoverItem {

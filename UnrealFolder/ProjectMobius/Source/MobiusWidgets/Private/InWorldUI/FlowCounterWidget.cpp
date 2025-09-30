@@ -75,8 +75,8 @@ void UFlowCounterWidget::InitializeCounterWidget()
 		return;
 	}
 
-	LiveAgentCountFieldAndTextWidget->SetTitleText(TitleText);
-	LiveAgentCountFieldAndTextWidget->SetFieldText(FText::AsNumber(0));
+	LiveAgentCountFieldAndTextWidget->SetUpdateTitleText(TitleText);
+	LiveAgentCountFieldAndTextWidget->SetUpdateFieldText(FText::AsNumber(0));
 
 	// Initialize the current live agent count to 0
 	CurrentLiveAgentCount = 0;
@@ -176,11 +176,11 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 				
 				FlowDataUniformGridPanel->AddChildToUniformGrid(NewSectionCounter, 0, Column);
 
-				NewSectionCounter->SectionHeaderFieldAndTextWidget->SetTitleText(NewSectionCounter->SectionHeaderText);
-				NewSectionCounter->SectionHeaderFieldAndTextWidget->SetFieldText(NewSectionCounter->SectionHeaderAgentCountText);
+				NewSectionCounter->SectionHeaderFieldAndTextWidget->SetUpdateTitleText(NewSectionCounter->SectionHeaderText);
+				NewSectionCounter->SectionHeaderFieldAndTextWidget->SetUpdateFieldText(NewSectionCounter->SectionHeaderAgentCountText);
 				
-				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetTitleText(NewSectionCounter->FlowTypeTitleText);
-				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetFieldText(NewSectionCounter->FlowValueText);
+				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetUpdateTitleText(NewSectionCounter->FlowTypeTitleText);
+				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetUpdateFieldText(NewSectionCounter->FlowValueText);
 				
 				// Ensure the new widget fills its cell
 				WidgetUtilHelpers::UniformGridFillCell(NewSectionCounter);
@@ -254,8 +254,11 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 	float UniformScale = FMath::Min( FMath::Clamp(ScaleX, 0, ScaleX),  FMath::Clamp(ScaleY, 0, ScaleY)); // Ensure scale is non-negative and min val of 0
 	
 	// Adjust font size
-	float FinalFontSize = FMath::Clamp((CurrentFontSize * UniformScale), 1, 20); // Text should never be allowed to be bigger than 20
+	float FinalFontSize = FMath::Clamp((CurrentFontSize * UniformScale), 1, 14); // Text should never be allowed to be bigger than 14
 
+	// the font should only be a max of 1 decimal place
+	FinalFontSize = FMath::RoundToFloat(FinalFontSize * 10.0f) / 10.0f;
+	
 	// Apply the new layout to the grid and its children
 	for (int32 i = 0; i < CurrentFlowDataSections; i++)
 	{

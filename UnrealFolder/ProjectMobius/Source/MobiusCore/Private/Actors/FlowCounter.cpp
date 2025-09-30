@@ -5,11 +5,21 @@
 
 #include "Components/BoxComponent.h"
 #include "Components/DeformableQuadComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "Subsystems/StatisticActorManagementSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 
 // TODO: Move these helpers to a utility class - likely will be useful elsewhere
+static FORCEINLINE FVector SafeHorizontal(const FVector& V)
+{
+	// Zero Z then renormalize; if degenerate, fall back to forward axis.
+	FVector H(V.X, V.Y, 0.f);
+	const float LenSq = H.SizeSquared();
+	if (LenSq < KINDA_SMALL_NUMBER) return FVector::ForwardVector;
+	return H.GetSafeNormal();
+}
+
 // Check if Point lies on the line segment AB
 static bool IsPointOnLineSegment(const FVector& A, const FVector& B, const FVector& Point, float Tolerance = KINDA_SMALL_NUMBER)
 {
@@ -54,10 +64,10 @@ static bool SegmentCrossesGateProjectToLine(
 )
 {
 	// --- INPUTS ---
-	UE_LOG(LogTemp, Warning, TEXT("[FC] Inputs: Prev%s Curr%s A%s B%s  XYTol=%.2f ZTol=%.2f PlaneTol=%.2f  ZWin[%.1f..%.1f]"),
-	       *Prev.ToString(), *Curr.ToString(), *A.ToString(), *B.ToString(),
-	       XYSearchRadiusTol, ZTolerance, PlaneSignedDistTolerance,
-	       ZLimits.MinZBounds.load(), ZLimits.MaxZBounds.load());
+	// UE_LOG(LogTemp, Warning, TEXT("[FC] Inputs: Prev%s Curr%s A%s B%s  XYTol=%.2f ZTol=%.2f PlaneTol=%.2f  ZWin[%.1f..%.1f]"),
+	//        *Prev.ToString(), *Curr.ToString(), *A.ToString(), *B.ToString(),
+	//        XYSearchRadiusTol, ZTolerance, PlaneSignedDistTolerance,
+	//        ZLimits.MinZBounds.load(), ZLimits.MaxZBounds.load());
 
 	OutIntersectionOnLine = FVector::ZeroVector;
 	OutT = 0.0f;
@@ -65,8 +75,8 @@ static bool SegmentCrossesGateProjectToLine(
 	// 0) Degenerate segment?
 	if (Prev.Equals(Curr, UE_SMALL_NUMBER))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate segment: Prev==Curr (%.3f,%.3f,%.3f)"),
-		       Prev.X, Prev.Y, Prev.Z);
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate segment: Prev==Curr (%.3f,%.3f,%.3f)"),
+		//        Prev.X, Prev.Y, Prev.Z);
 		return false;
 	}
 
@@ -74,7 +84,7 @@ static bool SegmentCrossesGateProjectToLine(
 	const double  ABLenSq3D = AB.SizeSquared();
 	if (ABLenSq3D <= UE_SMALL_NUMBER)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate gate: A==B"));
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Degenerate gate: A==B"));
 		return false;
 	}
 
@@ -84,7 +94,7 @@ static bool SegmentCrossesGateProjectToLine(
 	const double NLen = N.Size();
 	if (NLen <= UE_SMALL_NUMBER)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Plane normal invalid (|N|=0)"));
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Plane normal invalid (|N|=0)"));
 		return false;
 	}
 	const FVector Nn = N / NLen; // unit normal
@@ -96,12 +106,12 @@ static bool SegmentCrossesGateProjectToLine(
 	const bool   bTouchesPlane   = (FMath::Abs(d0) <= PlaneSignedDistTolerance) ||
 		(FMath::Abs(d1) <= PlaneSignedDistTolerance);
 
-	UE_LOG(LogTemp, Warning, TEXT("[FC] Plane N=(%.6f,%.6f,%.6f)  d0=%.3f d1=%.3f  cross=%d touch=%d"),
-	       Nn.X, Nn.Y, Nn.Z, d0, d1, bDifferentSides ? 1 : 0, bTouchesPlane ? 1 : 0);
+	// UE_LOG(LogTemp, Warning, TEXT("[FC] Plane N=(%.6f,%.6f,%.6f)  d0=%.3f d1=%.3f  cross=%d touch=%d"),
+	//        Nn.X, Nn.Y, Nn.Z, d0, d1, bDifferentSides ? 1 : 0, bTouchesPlane ? 1 : 0);
 
 	if (!bDifferentSides && !bTouchesPlane)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No cross and not within plane tolerance."));
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No cross and not within plane tolerance."));
 		return false;
 	}
 
@@ -118,7 +128,7 @@ static bool SegmentCrossesGateProjectToLine(
 		{
 			const double numer = FVector::DotProduct(Nn, (A - Prev));  // NOTE: avoid GatePlane.W scaling issues
 			const double tLine = numer / denom;                        // param in [0,1] if intersection within segment
-			UE_LOG(LogTemp, Warning, TEXT("[FC] Cross: denom=%.6f numer=%.6f tLine=%.6f"), denom, numer, tLine);
+			// UE_LOG(LogTemp, Warning, TEXT("[FC] Cross: denom=%.6f numer=%.6f tLine=%.6f"), denom, numer, tLine);
 			if (tLine >= 0.0 && tLine <= 1.0)
 			{
 				Hit = Prev + static_cast<float>(tLine) * D;
@@ -126,12 +136,12 @@ static bool SegmentCrossesGateProjectToLine(
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but tLine outside [0,1]. Will try touch projection if eligible."));
+				// UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but tLine outside [0,1]. Will try touch projection if eligible."));
 			}
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but denom ~ 0 (parallel). Will try touch projection if eligible."));
+			// UE_LOG(LogTemp, Warning, TEXT("[FC] Cross but denom ~ 0 (parallel). Will try touch projection if eligible."));
 		}
 	}
 
@@ -139,14 +149,14 @@ static bool SegmentCrossesGateProjectToLine(
 	{
 		if (!bTouchesPlane)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No valid intersection and not a touch."));
+			// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] No valid intersection and not a touch."));
 			return false;
 		}
 		const bool UsePrev = (FMath::Abs(d0) <= FMath::Abs(d1));
 		const FVector NearPt = UsePrev ? Prev : Curr;
 		Hit = NearPt - FVector::DotProduct(Nn, NearPt - A) * Nn; // project endpoint onto plane
-		UE_LOG(LogTemp, Warning, TEXT("[FC] Touch: projected %s to Hit%s"),
-		       UsePrev ? TEXT("Prev") : TEXT("Curr"), *Hit.ToString());
+		// UE_LOG(LogTemp, Warning, TEXT("[FC] Touch: projected %s to Hit%s"),
+		//        UsePrev ? TEXT("Prev") : TEXT("Curr"), *Hit.ToString());
 	}
 
 	// 3) XY-only lateral projection to finite segment
@@ -163,10 +173,10 @@ static bool SegmentCrossesGateProjectToLine(
 		const float dx = Hxy.X - Axy.X;
 		const float dy = Hxy.Y - Axy.Y;
 		const float distXY = FMath::Sqrt(dx*dx + dy*dy);
-		UE_LOG(LogTemp, Warning, TEXT("[FC] Degenerate XY: dist(HitXY, AXY)=%.3f (tol=%.3f)"), distXY, XYSearchRadiusTol);
+		// UE_LOG(LogTemp, Warning, TEXT("[FC] Degenerate XY: dist(HitXY, AXY)=%.3f (tol=%.3f)"), distXY, XYSearchRadiusTol);
 		if (distXY > XYSearchRadiusTol)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] XY distance exceeds tolerance in degenerate XY case."));
+			// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] XY distance exceeds tolerance in degenerate XY case."));
 			return false;
 		}
 
@@ -178,8 +188,8 @@ static bool SegmentCrossesGateProjectToLine(
 		const float MinZ = ZLimits.MinZBounds.load() - ZTolerance;
 		const float MaxZ = ZLimits.MaxZBounds.load() + ZTolerance;
 		const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
-		UE_LOG(LogTemp, Warning, TEXT("[FC] Prism check (XY-degenerate): HitZ=%.2f in [%.2f..%.2f] -> %d"),
-		       Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
+		// UE_LOG(LogTemp, Warning, TEXT("[FC] Prism check (XY-degenerate): HitZ=%.2f in [%.2f..%.2f] -> %d"),
+		//        Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
 		return passZ;
 	}
 
@@ -191,12 +201,12 @@ static bool SegmentCrossesGateProjectToLine(
 	const FVector2D Cxy = Axy + ABxy * tXY;
 	const float LateralDistXY = (Hxy - Cxy).Size();
 
-	UE_LOG(LogTemp, Warning, TEXT("[FC] XY: rawT=%.6f tXY=%.6f  LateralDistXY=%.3f (tol=%.3f)"),
-	       rawT, (double)tXY, LateralDistXY, XYSearchRadiusTol);
+	// UE_LOG(LogTemp, Warning, TEXT("[FC] XY: rawT=%.6f tXY=%.6f  LateralDistXY=%.3f (tol=%.3f)"),
+	//        rawT, (double)tXY, LateralDistXY, XYSearchRadiusTol);
 
 	if (LateralDistXY > XYSearchRadiusTol)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] LateralDistXY exceeds tolerance."));
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] LateralDistXY exceeds tolerance."));
 		return false;
 	}
 
@@ -205,7 +215,7 @@ static bool SegmentCrossesGateProjectToLine(
 	const float  t3D = FMath::Clamp(static_cast<float>(rawT3D), 0.0f, 1.0f);
 	const FVector CenterPoint = A + AB * t3D;
 
-	UE_LOG(LogTemp, Warning, TEXT("[FC] 3D: rawT3D=%.6f t3D=%.6f  CenterPoint%s"), rawT3D, (double)t3D, *CenterPoint.ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("[FC] 3D: rawT3D=%.6f t3D=%.6f  CenterPoint%s"), rawT3D, (double)t3D, *CenterPoint.ToString());
 
 	// 5) Z prism (ABSOLUTE world-Z bounds) - this takes the lowest pillar MinZ and highest pillar MaxZ
 	//    and expands by ZTolerance -> this is a fast z tolerance check
@@ -214,12 +224,12 @@ static bool SegmentCrossesGateProjectToLine(
 	const bool  passZ = (Hit.Z >= MinZ && Hit.Z <= MaxZ);
 	
 
-	UE_LOG(LogTemp, Warning, TEXT("[FC] Prism: HitZ=%.2f in [%.2f..%.2f] -> %d"),
-	       Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
+	// UE_LOG(LogTemp, Warning, TEXT("[FC] Prism: HitZ=%.2f in [%.2f..%.2f] -> %d"),
+	//        Hit.Z, MinZ, MaxZ, passZ ? 1 : 0);
 
 	if (!passZ)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z prism reject."));
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z prism reject."));
 		return false;
 	}
 
@@ -235,15 +245,15 @@ static bool SegmentCrossesGateProjectToLine(
 
 	if (Hit.Z < MinZAllowed - ZTolerance || Hit.Z > MaxZAllowed + ZTolerance)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z=%.2f not in [%.2f..%.2f] +/- %.2f (relative band)"),
-		       Hit.Z, MinZAllowed, MaxZAllowed, ZTolerance);
+		// UE_LOG(LogTemp, Warning, TEXT("[FC][FAIL] Z=%.2f not in [%.2f..%.2f] +/- %.2f (relative band)"),
+		//        Hit.Z, MinZAllowed, MaxZAllowed, ZTolerance);
 		return false;
 	}
 
 	// 6) Success
 	OutIntersectionOnLine = CenterPoint; // on center line
 	OutT = t3D;
-	UE_LOG(LogTemp, Warning, TEXT("[FC][OK] OutT=%.6f  OutIntersection%s"), (double)OutT, *OutIntersectionOnLine.ToString());
+	// UE_LOG(LogTemp, Warning, TEXT("[FC][OK] OutT=%.6f  OutIntersection%s"), (double)OutT, *OutIntersectionOnLine.ToString());
 	return true;
 }
 
@@ -285,7 +295,7 @@ AFlowCounter::AFlowCounter()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Default mesh not found!"));
+		// UE_LOG(LogTemp, Warning, TEXT("Default mesh not found!"));
 	}
 
 	// Set up the box component for flow counter trigger area
@@ -382,6 +392,8 @@ void AFlowCounter::BeginPlay()
 	SetupRollingAverageArrays();
 	
 	LastSimSecondProcessed = FMath::FloorToInt(CurrentSimTime) - 1; // so first Update advances to "now"
+
+	SetInitialPlacementInFrontOfUser();
 }
 
 // Called every frame
@@ -1259,4 +1271,120 @@ void AFlowCounter::AssignAgentToBucketUsingThresholdWithTime(int32 AgentID, floa
 		RecordCrossingForRollingFlowRate(SampleTime);
 		RecordCrossingForRollingSegment(BucketIdx, SampleTime);
 	}
+}
+
+void AFlowCounter::SetInitialPlacementInFrontOfUser()
+{
+	// Get the player controller
+	APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+
+	// exit early if you cant get the player controller
+	if (PlayerController == nullptr) return;
+
+	// get the player camera manager
+	APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
+	if (CameraManager == nullptr) return;
+	
+	// get the camera forward direction and location
+	FVector CameraLocation = FVector::ZeroVector;
+	FVector CameraForward = FVector::ForwardVector;
+	FRotator CameraRotation = FRotator::ZeroRotator;
+	
+	CameraManager->GetCameraViewPoint(CameraLocation, CameraRotation);
+	CameraForward = CameraRotation.Vector();
+
+	// get the location 1 m in front of the camera
+	FVector NewLocation = CameraLocation + CameraForward * 1000.0f;
+
+	// minus z by half the pillar height to place the flow counter central to the camera
+	NewLocation.Z -= 100.0f; // half pillar height
+
+	// we want pillar 1 to be left of this location by 75cm and pillar 2 to be right of this location by 75cm
+	FVector RightVector = CameraRotation.RotateVector(FVector::RightVector);
+	FVector Pillar1Location = NewLocation - RightVector * 75.0f;
+	FVector Pillar2Location = NewLocation + RightVector * 75.0f;
+	
+
+	MoveGatePillarMeshToLocation(0, Pillar1Location);
+	MoveGatePillarMeshToLocation(1, Pillar2Location);
+}
+
+void AFlowCounter::ComputeWidgetReverseAndRotation(bool& bReverseOut, FRotator& WidgetWorldRotationOut,
+	FVector WidgetWorldLocation) const
+{
+	bReverseOut = false;
+	WidgetWorldRotationOut = FRotator::ZeroRotator;
+
+	// Validate pillars
+	if (!FlowCounterPillarMesh1 || !FlowCounterPillarMesh2)
+	{
+		return; // cannot compute without both pillars
+	}
+
+	const FVector P1 = FlowCounterPillarMesh1->GetComponentLocation();
+	const FVector P2 = FlowCounterPillarMesh2->GetComponentLocation();
+
+	// Get camera viewpoint
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if (!PC) return;
+
+	APlayerCameraManager* CamMgr = PC->PlayerCameraManager;
+	if (!CamMgr) return;
+
+	FVector CamLoc = FVector::ZeroVector;
+	FRotator CamRot = FRotator::ZeroRotator;
+	CamMgr->GetCameraViewPoint(CamLoc, CamRot);
+
+	ComputeReverseAndRotationUtility(P1, P2, CamLoc, CamRot, WidgetWorldLocation, bReverseOut, WidgetWorldRotationOut);
+}
+
+void AFlowCounter::ComputeReverseAndRotationUtility(const FVector Pillar1World, const FVector Pillar2World,
+	const FVector CameraWorldLocation, const FRotator CameraWorldRotation, const FVector WidgetWorldLocation,
+	bool& bReverseOut, FRotator& WidgetWorldRotationOut)
+{
+	// --- 1) Decide reverse by projecting pillars onto camera's Right axis ---
+	const FVector CamRight = CameraWorldRotation.RotateVector(FVector::RightVector); // viewer's right
+	const float S1 = FVector::DotProduct(Pillar1World - CameraWorldLocation, CamRight);
+	const float S2 = FVector::DotProduct(Pillar2World - CameraWorldLocation, CamRight);
+
+	// If Pillar1 is more to the viewer's right than Pillar2, then perceived order is "2 then 1" → reverse
+	constexpr float Epsilon = 1.0f; // ~1 cm tolerance (tune for your world scale)
+	bReverseOut = (S1 > S2 + Epsilon);
+
+	// --- 2) Build a stable widget rotation ---
+	// Forward: face the camera horizontally (avoid pitching up/down)
+	const FVector ToCam = SafeHorizontal(CameraWorldLocation - WidgetWorldLocation);
+
+	// Gate span direction: pillar1 → pillar2 (or flipped if reversed).
+	FVector GateRight = (Pillar2World - Pillar1World);
+	GateRight = SafeHorizontal(GateRight);
+	if (bReverseOut)
+	{
+		GateRight *= -1.f; // flip so widget local +X aligns with left→right as displayed
+	}
+
+	// Derive Up from Forward × Right (right-handed basis).
+	// Order matters: Up = Forward cross Right, then re-orthonormalize Right.
+	FVector Up = FVector::CrossProduct(ToCam, GateRight).GetSafeNormal();
+	// If degenerate (camera aligned with gate), fall back to world up
+	if (Up.IsNearlyZero())
+	{
+		Up = FVector::UpVector;
+	}
+
+	// Rebuild an orthonormal basis (make sure GateRight is perpendicular to ToCam)
+	GateRight = FVector::CrossProduct(Up, ToCam).GetSafeNormal();
+
+	// Construct rotation where:
+	//   X (Forward) = ToCam  (faces viewer)
+	//   Y (Right)   = GateRight (left→right across the gate, obeying reverse)
+	//   Z (Up)      = Up
+	const FMatrix Basis = FMatrix(
+		FPlane(ToCam, 0.f),
+		FPlane(GateRight, 0.f),
+		FPlane(Up, 0.f),
+		FPlane(0.f, 0.f, 0.f, 1.f)
+	);
+
+	WidgetWorldRotationOut = Basis.Rotator();
 }
