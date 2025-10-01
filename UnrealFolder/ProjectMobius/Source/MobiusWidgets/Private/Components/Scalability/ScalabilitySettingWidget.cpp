@@ -48,15 +48,15 @@ void UScalabilitySettingWidget::ApplyButtonStyleForActiveSetting()
 			if (bIsActive)
 			{
 				FButtonStyle NewButtonStyle = *ScalabilityButtonStyle->GetStyle<FButtonStyle>();
-				NewButtonStyle.Normal = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Hovered;
-				NewButtonStyle.Hovered = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Normal;
+				NewButtonStyle.Normal = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Pressed;
+				NewButtonStyle.Pressed = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Normal;
 				Button->SetStyle(NewButtonStyle);
 			}
 			else
 			{
 				FButtonStyle NewButtonStyle = *ScalabilityButtonStyle->GetStyle<FButtonStyle>();
 				NewButtonStyle.Normal = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Normal;
-				NewButtonStyle.Hovered = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Hovered;
+				NewButtonStyle.Pressed = ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Pressed;
 				Button->SetStyle(NewButtonStyle);
 			}
 		}
@@ -66,7 +66,7 @@ void UScalabilitySettingWidget::ApplyButtonStyleForActiveSetting()
 	{
 		if (Button && ScalabilityButtonStyle)
 		{
-			if (Button->GetStyle().Normal == ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Hovered && bIsActive)
+			if (Button->GetStyle().Normal == ScalabilityButtonStyle->GetStyle<FButtonStyle>()->Pressed && bIsActive)
 			{
 				// Button is already set to the ScalabilityButtonStyle, no need to apply again
 				return true;

@@ -234,7 +234,7 @@ void UFloorStatsWidget::BuildQtAppChartTitle() const
 	TSharedPtr<FJsonObject> ChartTitle = MakeShared<FJsonObject>();
 	ChartTitle->SetStringField(TEXT("action"),     TEXT("updateChartTitle"));
 	
-	ChartTitle->SetStringField(TEXT("chartTitle"), TEXT("Chart Metrics"));
+	ChartTitle->SetStringField(TEXT("chartTitle"), TEXT("Total Number of People Over Time"));
 
 	WsSubsystem->SendJsonMessage(ChartTitle);
 }
@@ -281,7 +281,7 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 
 	AxisSettings->SetStringField(TEXT("action"), TEXT("updateAxis"));
 	AxisSettings->SetStringField(TEXT("xTitle"),TEXT("Elapsed Time (s)"));
-	AxisSettings->SetStringField(TEXT("yTitle"),TEXT("Occupants"));
+	AxisSettings->SetStringField(TEXT("yTitle"),TEXT("Number of Occupants Evacuated"));
 	AxisSettings->SetNumberField(TEXT("xMin"), 0.0); // for now assume always start at 0
 	AxisSettings->SetNumberField(TEXT("xMax"), MaxTime);
 	AxisSettings->SetNumberField(TEXT("yMin"), MinAgentCountToSend); // what was the smallest value we found in the data

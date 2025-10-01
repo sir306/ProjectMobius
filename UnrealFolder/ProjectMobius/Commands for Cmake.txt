@@ -1,0 +1,5 @@
+## Windows Powershell
+cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.9.2/msvc2022_64"
+cmake --build _superbuild --config Release --parallel
+
+## Apple Zsh Terminal

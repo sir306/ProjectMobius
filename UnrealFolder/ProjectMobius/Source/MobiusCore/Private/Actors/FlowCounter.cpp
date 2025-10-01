@@ -396,6 +396,37 @@ void AFlowCounter::BeginPlay()
 	SetInitialPlacementInFrontOfUser();
 }
 
+void AFlowCounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bTearingDown.Store(true);   // visible to all threads
+
+	// 1) Unregister from subsystems so no NEW calls are scheduled
+	RemoveFlowCounterToSubsystem();
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UTimeDilationSubSystem* Time = World->GetSubsystem<UTimeDilationSubSystem>())
+		{
+			Time->OnNewCurrentTime.RemoveDynamic(this, &AFlowCounter::NewSimTime);
+		}
+	}
+
+	// 2) Drain any internal queues so Tick (or anyone) won’t commit after teardown
+	{ FFlowCrossingResult Tmp; while (ThreadSafeResults.Dequeue(Tmp)) {} }
+
+	// 3) Optionally: take exclusive locks and clear containers to help catch misuse in debug
+	{
+		FWriteScopeLock _(AgentsMapRW);
+		AgentsPassedThroughCounter.Empty();
+	}
+	{
+		FWriteScopeLock _(TrackedPrevMapRW);
+		PreviousTrackedAgentLocations.Empty();
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
 // Called every frame
 void AFlowCounter::Tick(float DeltaTime)
 {
@@ -419,6 +450,7 @@ void AFlowCounter::Tick(float DeltaTime)
 		}
 		else
 		{
+			FWriteScopeLock _(AgentsMapRW);
 			// 2) Commit counted agent (safe: GT only)
 			AgentsPassedThroughCounter.Add(
 				R.AgentID,
@@ -602,11 +634,13 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 
 bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 {
+	if (bTearingDown.Load()) return false;
 	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
 	AFlowCounter* FlowCounter = WeakThis.Get();
 	if (FlowCounter == nullptr) { return false; }
 
-	FScopeLock _(&FlowStateCS);
+	FWriteScopeLock LockPrev(TrackedPrevMapRW);
+	FReadScopeLock  LockCounted(AgentsMapRW);
 
 	// We need to store the current sim time when we start processing agents - as this could change while processing
 	float ProcessTime = FlowCounter->CurrentSimTime;
@@ -798,16 +832,8 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 
 bool AFlowCounter::HasAgentAlreadyPassedThrough(int32 AgentID) const
 {
-	if (AgentsPassedThroughCounter.Contains(AgentID))
-	{
-		// Agent has already passed through the flow counter
-		return true;
-	}
-	else
-	{
-		// Agent has not passed through the flow counter
-		return false;
-	}
+	FReadScopeLock _(AgentsMapRW);
+	return AgentsPassedThroughCounter.Contains(AgentID);
 }
 
 void AFlowCounter::NewAgentData(TArray<FFlowCounterData>& NewAgentData)
@@ -859,9 +885,15 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 	// Reset the flow counter count to 0
 	FlowCounterCount.exchange(0);
 	// Clear the previous tracked agent locations
-	PreviousTrackedAgentLocations.Empty();
+	{
+		FWriteScopeLock _(TrackedPrevMapRW);
+		PreviousTrackedAgentLocations.Empty();
+	}
 	// Clear the agents passed through counter
-	AgentsPassedThroughCounter.Empty();
+	{
+		FWriteScopeLock _(AgentsMapRW);
+		AgentsPassedThroughCounter.Empty();
+	}
 }
 
 void AFlowCounter::NewSimTime(float UpdatedTime)
@@ -904,15 +936,21 @@ void AFlowCounter::NewSimTime(float UpdatedTime)
 		FFlowCrossingResult Tmp; while (ThreadSafeResults.Dequeue(Tmp)) {}
 	}
 	decltype(AgentsPassedThroughCounter) Kept;
-	Kept.Reserve(AgentsPassedThroughCounter.Num());
-	for (const auto& Kvp : AgentsPassedThroughCounter)
 	{
-		if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)
-		{ Kept.Add(Kvp.Key, Kvp.Value); }
+		FReadScopeLock Lock1(AgentsMapRW);
+		Kept.Reserve(AgentsPassedThroughCounter.Num());
+		for (const auto& Kvp : AgentsPassedThroughCounter)
+		{
+			if (Kvp.Value.TimePassedThroughCounter <= CurrentSimTime)
+			{ Kept.Add(Kvp.Key, Kvp.Value); }
+		}
 	}
-	AgentsPassedThroughCounter = MoveTemp(Kept);
-	PreviousTrackedAgentLocations.Reset();
-	FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+	{
+		FWriteScopeLock Lock2(AgentsMapRW);
+		AgentsPassedThroughCounter = MoveTemp(Kept);
+		FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+	}
+	{ FWriteScopeLock Lock3(TrackedPrevMapRW); PreviousTrackedAgentLocations.Reset(); }
 
 	// reset global and per-segment rolling windows
 	ResetRolling5s();

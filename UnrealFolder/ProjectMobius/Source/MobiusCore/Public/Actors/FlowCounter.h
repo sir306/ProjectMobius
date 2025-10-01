@@ -59,6 +59,8 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -307,7 +309,9 @@ private:
 	float CurrentSimTime = 0.0f; // Used to track the current simulation time for the flow counter
 
 	mutable FCriticalSection FlowStateCS;
-
+	mutable FRWLock AgentsMapRW;        // protects AgentsPassedThroughCounter
+	mutable FRWLock TrackedPrevMapRW;   // protects PreviousTrackedAgentLocations
+	TAtomic<bool> bTearingDown{false};
 	/** A thread-safe queue to handle bucket data due to the possibility of bucket mutations on the game thread */
 	TQueue<FBuckectTempData, EQueueMode::Mpsc> ThreadSafeNewAgentDataQueue = TQueue<FBuckectTempData, EQueueMode::Mpsc>();
 
@@ -336,4 +340,6 @@ public:
 	/** Get the Flow Segment Count */
 	UFUNCTION(BlueprintCallable, Category = "FlowCounter|Getters")
 	FORCEINLINE int32 GetNumberOfBucketSegments() const { return NumberOfBucketSegments; }
+	
+	
 };
