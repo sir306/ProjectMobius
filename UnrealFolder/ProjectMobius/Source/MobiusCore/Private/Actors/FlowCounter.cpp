@@ -894,6 +894,15 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 		FWriteScopeLock _(AgentsMapRW);
 		AgentsPassedThroughCounter.Empty();
 	}
+	// reset global and per-segment rolling windows
+	ResetRolling5s();
+	ReinitPerSegmentRolling(NumberOfBucketSegments);
+
+	for (FFlowCounterBucketData& Bucket : FlowCounterBucketData)
+	{
+		Bucket.AgentIDs.Empty();
+		Bucket.AgentCount = 0;
+	}
 }
 
 void AFlowCounter::NewSimTime(float UpdatedTime)
