@@ -51,18 +51,21 @@ int main(int argc, char *argv[])
     QString agentFileFilter =
         "All Supported Data Files (*.json);;"
         "JSON Files (*.json)";
-    // QString meshFileFilter =
-    //     "All Mesh Files (*.udatasmith *.fbx *.obj);;"
-    //     "UDatasmith Files (*.udatasmith);;"
-    //     "FBX Files (*.fbx);;"
-    //     "OBJ Files (*.obj)";
+     
+    // Datasmith allowed in this filter user configured the project correctly for Datasmith use
+    QString meshFileFilter =
+         "All Mesh Files (*.udatasmith *.fbx *.obj *.wkt);;"
+         "UDatasmith Files (*.udatasmith);;"
+         "FBX Files (*.fbx);;"
+         "OBJ Files (*.obj)";
+         "WKT Files (*.wkt)";
 
     // No Datasmith allowed in this filter to prevent users who haven't configured the project correctly for Datasmith use
-    QString meshFileFilter =
+   /* QString meshFileFilter =
         "All Mesh Files (*.fbx *.obj *.wkt);;"
         "FBX Files (*.fbx);;"
         "OBJ Files (*.obj);;"
-        "WKT Files (*.wkt)";
+        "WKT Files (*.wkt)";*/
 
     // Connect signals
     QObject::connect(&dialogBox, &QFileDialog::fileSelected, [&](const QString& file) {
