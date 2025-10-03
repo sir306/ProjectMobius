@@ -64,7 +64,7 @@ void UBaseChangePedestrianMaterial::NativeConstruct()
 	}
 
 	// Make sure the UI matches the current material instance
-	if (MaterialTypeComboBox && RandomClothingCheckBox && CurrentSelectedMaleMaterialInstance && CurrentSelectedFemaleMaterialInstance && RepresentationSubsystem)
+	if (MaterialTypeComboBox && RandomClothingCheckBox && CurrentSelectedMaleMaterialInstance && CurrentSelectedFemaleMaterialInstance && RepresentationSubsystem && bInDestopMode)
 	{
 		// Make sure the random clothing matches the current random setting
 		OnRandomClothingCheckBoxChanged(RandomClothingCheckBox->IsChecked());
@@ -100,7 +100,8 @@ void UBaseChangePedestrianMaterial::ConvertMaterialsToDynamicMaterialInstances(
 	const TArray<UMaterialInstance*>& AdultFemaleMaterials,
 	const TArray<UMaterialInstance*>& ElderlyFemaleMaterials,
 	const TArray<UMaterialInstance*>& ChildrenMaterials,
-	const TArray<FString> DisplayName)
+	const TArray<FString> DisplayName,
+	bool bDesktopMode)
 {
 	// Clear the material instances array
 	MatInstDynamicDisplayNames.Empty();
@@ -163,9 +164,11 @@ void UBaseChangePedestrianMaterial::ConvertMaterialsToDynamicMaterialInstances(
 			ChildrenMaterialDynamicInstances.Add(ChildEyesDynamicMaterialInst);
 		}
 	}
-	
-	// Assign the material names to the combo box
-	AssignMaterialNamesToComboBox(); 
+	if (bDesktopMode)
+	{
+		// Assign the material names to the combo box
+		AssignMaterialNamesToComboBox();
+	}
 }
 
 void UBaseChangePedestrianMaterial::AddMaterialTypeComponents()

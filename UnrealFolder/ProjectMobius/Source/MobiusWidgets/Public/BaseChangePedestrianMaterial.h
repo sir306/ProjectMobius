@@ -69,7 +69,8 @@ public:
 		const TArray<UMaterialInstance*>& AdultFemaleMaterials,
 		const TArray<UMaterialInstance*>& ElderlyFemaleMaterials,
 		const TArray<UMaterialInstance*>& ChildrenMaterials,
-		const TArray<FString> DisplayName);
+		const TArray<FString> DisplayName,
+		bool bDesktopMode = true);
 
 	// TODO: more user settings and customization for the material types will be desired but for now they will be given fixed inputs
 	/**
@@ -100,6 +101,7 @@ protected:
 	/**
 	 * Update the stored material instances to the selected material instance
 	 */
+	UFUNCTION(BlueprintCallable)
 	void UpdateRepSubsystemMaterialInstances();
 
 #pragma endregion
@@ -180,6 +182,8 @@ protected:
 	
 	// TODO add the components for the material types that we want to change 
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bInDestopMode = true;
 
 private:
 
@@ -193,23 +197,23 @@ public:
 
 	// While the materials are being set the same, each mesh will require different materials to vertex animate correctly
 	/** Materials for adult males */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> MaleMaterialDynamicInstances;
 
 	/** Materials for elderly males */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> ElderlyMaleMaterialDynamicInstances;
 
 	/** Materials for adult females */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> FemaleMaterialDynamicInstances;
 
 	/** Materials for elderly females */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> ElderlyFemaleMaterialDynamicInstances;
 
 	/** Materials for children */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> ChildrenMaterialDynamicInstances;
 
 	/** To prevent the representation subsystem from destroying and keep the spawn materials we store a ptr to it */

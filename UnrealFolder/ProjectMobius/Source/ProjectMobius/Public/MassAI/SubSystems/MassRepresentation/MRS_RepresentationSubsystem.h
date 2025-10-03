@@ -90,9 +90,10 @@ public:
 	 * @param[EPedestrianGender] AgentGender The gender of the agent to set
 	 * 
 	 */
-	UFUNCTION(BlueprintCallable, Category = "MRS|Subsystem|ThesisResearch")
+	
 	void SetPedestrianMaterial(UMaterialInstanceDynamic* MaterialInst, EPedestrianGender AgentGender);
 	void SetPedestrianMaterial(UMaterialInstanceDynamic* MaterialInstBody,UMaterialInstanceDynamic* MaterialInstEyes, EPedestrianGender AgentGender);
+	UFUNCTION(BlueprintCallable, Category = "MRS|Subsystem|ThesisResearch")
 	void SetPedestrianMaterial(UMaterialInstanceDynamic* MaterialInstBody,UMaterialInstanceDynamic* MaterialInstEyes, EPedestrianGender AgentGender, EAgeDemographic AgentAgeDemographic);
 
 	/**

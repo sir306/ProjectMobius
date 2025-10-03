@@ -700,17 +700,10 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 		return;
 	}
 
-	// For my thesis we don't want to edit certain meshes materials and some of the meshes need to be removed like the placeholders for people
-	FString MeshesToIgnore[] = {"Starting_Ground","Starting_Landscape"};
-	FString MeshesToRemove[] = {"Entourage"};
-
-	int DESTROY_ME_INDEX = -1;
 
 	// loop over the data components
 	for (auto DataComp: DataComps)
-	{
-		DESTROY_ME_INDEX++;
-		
+	{		
 		// cast to scene component
 		auto SceneComp = Cast<USceneComponent>(DataComp);
 
@@ -721,69 +714,17 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
 			// get the children components 
 			SceneComp->GetChildrenComponents(true, ChildrenComps);
-
-			int32 i = 0;
+			
 
 			// loop over the children components
 			for (auto ChildComp : ChildrenComps)
 			{
-				DESTROY_ME_INDEX++;
-				// delete cardboard cutouts of people
-				if (ChildComp != nullptr && (ChildComp->GetName().Contains("Entourage") || ChildComp->GetName().Contains("Starting_")))
-				{
-					UE_LOG(LogTemp, Error, TEXT("Child Component: %s"), *ChildComp->GetName());
-					TArray<USceneComponent*> ChildrenToDelete;
-					ChildComp->GetChildrenComponents(true, ChildrenToDelete);
-					for (auto Child : ChildrenToDelete)
-					{
-						UE_LOG(LogTemp, Error, TEXT("Child: %s"), *Child->GetName());
-						Child->DestroyComponent();
-					}
-					ChildComp->DestroyComponent(false);
-					continue;
-				}
-				// delete intersecting pad
-				if (ChildComp != nullptr && ChildComp->GetName().Contains("Pads_Pad_Pad_1"))
-				{
-					UE_LOG(LogTemp, Error, TEXT("Child Component: %s"), *ChildComp->GetName());
-					ChildComp->DestroyComponent(false);
-					continue;
-				}
-				
-				
-				if (i <= 2 && i > 0)
-				{
-					UE_LOG(LogTemp, Error, TEXT("Child Component: %s"), *ChildComp->GetName());
-					TArray<USceneComponent*> ChildrenToDelete;
-					ChildComp->GetChildrenComponents(true, ChildrenToDelete);
-					for (auto Child : ChildrenToDelete)
-					{
-						UE_LOG(LogTemp, Error, TEXT("Child: %s"), *Child->GetName());
-						Child->DestroyComponent();
-					}
-					ChildComp->DestroyComponent(false);
-					i++;
-					continue;
-				}
-				
-				if (i == 0)
-				{
-					i++;
-				}
-				
 				// cast child to mesh component
 				auto MeshComp = Cast<UStaticMeshComponent>(ChildComp);
 
 				// if the mesh component is not valid then continue
 				if (MeshComp == nullptr || MeshComp->IsBeingDestroyed())
 				{
-					continue;
-				}
-				// DESTROY_ME_INDEX at 387 is the Pad_Pad_1 mesh //TODO check if it matches on other pc
-				if (MeshComp->GetName().Contains("Entourage") || MeshComp->GetName().Contains("Pads_Pad_Pad_1") || MeshComp->GetReadableName().Contains("Pads_Pad_Pad_1"))
-				{
-					UE_LOG(LogTemp, Error, TEXT("Mesh to remove: %s, DESTROY INDEX: %i"), *MeshComp->GetReadableName(), DESTROY_ME_INDEX);
-					MeshComp->DestroyComponent(true);
 					continue;
 				}
 				
