@@ -166,10 +166,10 @@
 				"Android"
 			]
 		},
-      { 
-        "Name": "XRBase", 
-        "Enabled": true
-      }
+		{
+			"Name": "XRBase",
+			"Enabled": true
+		}
 	],
 	"AdditionalPluginDirectories": [
 		"Plugins"

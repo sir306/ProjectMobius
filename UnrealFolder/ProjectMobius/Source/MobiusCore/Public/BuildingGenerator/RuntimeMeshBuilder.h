@@ -163,6 +163,11 @@ private:
 	
 	/** Internal Method to handle Translucent Material creation of datasmith materials */
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
+
+
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial);
+	
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque);
 	
 #pragma endregion PRIVATE_METHODS
 

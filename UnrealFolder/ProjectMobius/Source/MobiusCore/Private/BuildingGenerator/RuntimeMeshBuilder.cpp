@@ -232,7 +232,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			ImportOptions.BuildCollisions = ECollisionEnabled::Type::NoCollision;
 			ImportOptions.CollisionType = ECollisionTraceFlag::CTF_UseSimpleAndComplex;
 			ImportOptions.TessellationOptions.bUseCADKernel = true;
-			
+			ImportOptions.TessellationOptions.StitchingTechnique = EDatasmithCADStitchingTechnique::StitchingHeal;
 			RuntimeDatasmithAnchor->ImportOptions = ImportOptions;
 
 			// import the mesh data into the anchor
@@ -742,7 +742,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 				{
 					// get the material
 					auto Material = MeshComp->GetMaterial(Index);
-
+				
 					// get the materials parent material
 					auto ParentMaterial = Material->GetMaterial();
 
@@ -759,6 +759,16 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 					else if (ParentMaterial->GetName() == "M_TMStdTranslucentNEW") // translucent variants - ie windows
 					{
 						MaterialInstances.Append(CreateOpaqueMaterials(Material));
+						MaterialInstances.Append(CreateTranslucentMaterials(Material));
+					}
+					else if (ParentMaterial->GetName() == "M_Opaque") // Runtime Datasmith
+					{
+						MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
+						MaterialInstances.Append(CreateTranslucentMaterials(Material, true));
+					}
+					else if (ParentMaterial->GetName() == "M_Transparent") // Runtime Datasmith
+					{
+						MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
 						MaterialInstances.Append(CreateTranslucentMaterials(Material));
 					}
 					else
@@ -957,6 +967,21 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateTransluc
 	const FString TranslucentMaterialPath = bIsOpaque
 		                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'")
 		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'");
+
+	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
+}
+
+TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial)
+{
+	static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'");
+	return CreateMaterialInstances(InMaterial, OpaqueMaterialPath);
+}
+
+TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque)
+{
+	const FString TranslucentMaterialPath = bIsOpaque
+												? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
+												: TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'");
 
 	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
 }
