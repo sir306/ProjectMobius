@@ -628,38 +628,32 @@ void ARuntimeMeshBuilder::SetDatasmithToOriginalMatStyle()
 	// loop over the map and set the mesh to use the translucent materials
 	for(auto& DatasmithMaterialMap : DatasmithMaterialsMap)
 	{
-		for (auto Material : DatasmithMaterialMap.Value.MeshMaterials)
+
+		for (int32 Index = 0; Index < DatasmithMaterialMap.Key->GetNumMaterials(); Index++)
 		{
 			// set the material shading to use the modified colour material or not
-			Material->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
-			Material->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
 
-			// set the material shading to use the clear coat material or not
-			if(DatasmithMaterialMap.Value.bIsOpaque)
-			{
-				Material->SetScalarParameterValue(FName("Default Lit Shading"), 1.0f);
-			}
-			else
-			{
-				Material->SetScalarParameterValue(FName("Default Lit Shading"), 0.0f);
-			}
-		}
-
-		// if is opaque then set the material to use the opaque material
-		if(DatasmithMaterialMap.Value.bIsOpaque)
-		{
-			for (int32 Index = 0; Index < DatasmithMaterialMap.Key->GetNumMaterials(); Index++)
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
+			
+			// if is opaque then set the material to use the opaque material
+			if(DatasmithMaterialMap.Value.bIsOpaque[Index])
 			{
 				// set the material to use the opaque material
 				DatasmithMaterialMap.Key->SetMaterial(Index,DatasmithMaterialMap.Value.MeshMaterials[Index * 2]);
+
+				// set the material shading to use default Lit Shading
+				DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Default Lit Shading"), 1.0f);
 			}
-		}
-		else
-		{
-			for (int32 Index = 0; Index < DatasmithMaterialMap.Key->GetNumMaterials(); Index++)
+			else
 			{
 				// set the material to use the translucent material
 				DatasmithMaterialMap.Key->SetMaterial(Index,DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]);
+
+				// set the material shading to use the clear coat material
+				DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Default Lit Shading"), 0.0f);
 			}
 		}
 	}
@@ -754,22 +748,25 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 					{
 						MaterialInstances.Append(CreateOpaqueMaterials(Material));
 						MaterialInstances.Append(CreateTranslucentMaterials(Material, true));
-						DatasmithMaterials.bIsOpaque = true;
+						DatasmithMaterials.bIsOpaque.Add(true);
 					}
 					else if (ParentMaterial->GetName() == "M_TMStdTranslucentNEW") // translucent variants - ie windows
 					{
 						MaterialInstances.Append(CreateOpaqueMaterials(Material));
 						MaterialInstances.Append(CreateTranslucentMaterials(Material));
+						DatasmithMaterials.bIsOpaque.Add(false);
 					}
 					else if (ParentMaterial->GetName() == "M_Opaque") // Runtime Datasmith
 					{
 						MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
-						MaterialInstances.Append(CreateTranslucentMaterials(Material, true));
+						MaterialInstances.Append(CreateRuntimeTranslucentMaterials(Material, true));
+						DatasmithMaterials.bIsOpaque.Add(true);
 					}
 					else if (ParentMaterial->GetName() == "M_Transparent") // Runtime Datasmith
 					{
 						MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
-						MaterialInstances.Append(CreateTranslucentMaterials(Material));
+						MaterialInstances.Append(CreateRuntimeTranslucentMaterials(Material));
+						DatasmithMaterials.bIsOpaque.Add(false);
 					}
 					else
 					{
@@ -780,7 +777,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 					DatasmithMaterials.MeshMaterials.Append(MaterialInstances);
 
 					// on initial load we want the materials to be there default datasmith look
-					if (DatasmithMaterials.bIsOpaque)
+					if (DatasmithMaterials.bIsOpaque[Index])
 					{
 						// set the dynamic material on the mesh component
 						MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2]);
@@ -981,7 +978,7 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeT
 {
 	const FString TranslucentMaterialPath = bIsOpaque
 												? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
-												: TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'");
-
+												: TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
+	
 	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
 }

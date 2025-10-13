@@ -43,7 +43,7 @@ struct FDatasmithMaterials
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> MeshMaterials;
 
 	UPROPERTY()
-	bool bIsOpaque = false;
+	TArray<bool> bIsOpaque;
 };
 
 UCLASS()
@@ -167,7 +167,7 @@ private:
 
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial);
 	
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque);
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
 	
 #pragma endregion PRIVATE_METHODS
 
