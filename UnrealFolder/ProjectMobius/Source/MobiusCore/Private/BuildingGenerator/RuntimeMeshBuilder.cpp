@@ -33,6 +33,7 @@
 #include "DirectLink/DatasmithSceneReceiver.h"
 #include "Engine/StaticMeshActor.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "Subsystems/LoadingSubsystem.h"
 
 // Sets default values
 ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
@@ -235,6 +236,15 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			ImportOptions.TessellationOptions.StitchingTechnique = EDatasmithCADStitchingTechnique::StitchingHeal;
 			RuntimeDatasmithAnchor->ImportOptions = ImportOptions;
 
+			// Start the load widget
+			auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+
+			if(LoadingSubsystem)
+			{
+				LoadingSubsystem->SetLoadingTextAndTitle(TEXT("Please wait while the model is being loaded..."), TEXT("Loading UDatasmith Model"));
+				LoadingSubsystem->BroadcastNewLoadPercent(0.0f);
+			}
+			
 			// import the mesh data into the anchor
 			RuntimeDatasmithAnchor->LoadFile(MeshFileName);
 
@@ -243,16 +253,16 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			      {
 				      FPlatformProcess::Sleep(5.0f);
 				      // log building and receiving
-				      UE_LOG(LogTemp, Warning, TEXT("Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
+				      UE_LOG(LogTemp, Warning, TEXT("1Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
 				      while (RuntimeDatasmithAnchor->bBuilding || RuntimeDatasmithAnchor->IsReceiving())
 				      {
 					      // log building and receiving
-					      UE_LOG(LogTemp, Warning, TEXT("Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
+					      UE_LOG(LogTemp, Warning, TEXT("2Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
 					      // sleep for 0.05 seconds
 					      FPlatformProcess::Sleep(0.05f);
 				      }
 				      // log building and receiving
-				      UE_LOG(LogTemp, Warning, TEXT("Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
+				      UE_LOG(LogTemp, Warning, TEXT("3Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
 
 			      }, [this]()
 			      {
@@ -892,6 +902,14 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
 	// broadcast the mesh has been built
 	OnMeshBuilt.Broadcast(HeatmapOrigin, Bounds.GetExtent());
+
+	// End the load widget
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+
+	if(LoadingSubsystem)
+	{
+		LoadingSubsystem->BroadcastNewLoadPercent(1.0f);
+	}
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstances(UMaterialInterface* InMaterial, const FString& MaterialPath)
@@ -977,8 +995,8 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeO
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque)
 {
 	const FString TranslucentMaterialPath = bIsOpaque
-												? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
-												: TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
+		                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
+		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
 	
 	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
 }
