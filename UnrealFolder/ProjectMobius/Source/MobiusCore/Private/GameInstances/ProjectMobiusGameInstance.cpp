@@ -233,7 +233,12 @@ void UProjectMobiusGameInstance::SetSimulationMeshFilePath(const FString& NewSim
 	if(SimulationMeshFilePath != NewSimulationMeshFilePath)
 	{
 		SimulationMeshFilePath = NewSimulationMeshFilePath;
-		OnMeshFileChanged.Broadcast(); // Broadcast that the mesh file has changed
+
+		// Update SimulationMeshFileName
+		SimulationMeshFileName = FPaths::GetCleanFilename(NewSimulationMeshFilePath);
+
+		// Broadcast that the mesh file has changed		
+		OnMeshFileChanged.Broadcast();
 	}
 }
 

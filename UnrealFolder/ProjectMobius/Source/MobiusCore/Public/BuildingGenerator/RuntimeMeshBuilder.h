@@ -153,6 +153,9 @@ private:
 	/** Internal method to set the material on the mesh - TODO: this will need to be converted to be called via a delegate  */
 	void SetMaterialOnMesh();
 
+	/** */
+	void EndLoadingWidget();
+
 	/** Internal Method that creates and maps datasmith materials */
 	void CreateDatasmithMaterials();
 

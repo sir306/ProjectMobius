@@ -191,6 +191,18 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	// Assign the new file path to the mesh file name
 	MeshFileName = GameInst->GetSimulationMeshFilePath();
 
+	// get the clean file name
+	FString LoadingFileName = GameInst->GetSimulationMeshFileName();
+
+	// Get the loading subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+
+	if(LoadingSubsystem)
+	{
+		// Start the load widget
+		LoadingSubsystem->SetLoadingUnknownDuration(true, TEXT("Loading Geometry: " + LoadingFileName));
+	}
+
 	// for memory issues, we need to clear all the mesh sections first then get the new mesh data
 	MobiusProceduralMeshComponent->ClearAllMeshSections();
 	if (RuntimeDatasmithAnchor)
@@ -200,6 +212,8 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	}
 	DatasmithMaterialsMap.Empty();
 	bIsDatasmithAsset = false;
+
+	
 
 	// As we are now able to use Datasmith assets we need to check if the file is a .udatasmith file
 	if(MeshFileName.Contains(".udatasmith") || MeshFileName.Contains(".ifc"))
@@ -235,14 +249,6 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			ImportOptions.TessellationOptions.bUseCADKernel = true;
 			ImportOptions.TessellationOptions.StitchingTechnique = EDatasmithCADStitchingTechnique::StitchingHeal;
 			RuntimeDatasmithAnchor->ImportOptions = ImportOptions;
-
-			// Start the load widget
-			auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-
-			if(LoadingSubsystem)
-			{
-				LoadingSubsystem->SetLoadingUnknownDuration(true, TEXT("Please wait while the Datasmith file is being loaded..."));
-			}
 			
 			// import the mesh data into the anchor
 			RuntimeDatasmithAnchor->LoadFile(MeshFileName);
@@ -305,7 +311,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	}
 	// not a datasmith file so we can load the mesh as normal
 	else
-	{
+	{		
 		//GetMeshDataFromFile(FRotator(0.0f, 0.0f, 90.0f));
 		AsyncUpdateMesh(MeshFileName);
 	}
@@ -412,6 +418,7 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 			delete ExistingRunnable;
 		});
 	}
+	EndLoadingWidget();
 }
 
 void ARuntimeMeshBuilder::UpdateMeshMaterial(UMaterialInstanceDynamic* InMaterial)
@@ -681,6 +688,17 @@ void ARuntimeMeshBuilder::SetMaterialOnMesh()
 	}
 }
 
+void ARuntimeMeshBuilder::EndLoadingWidget()
+{
+	// End the load widget
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+
+	if(LoadingSubsystem)
+	{
+		LoadingSubsystem->SetLoadingUnknownDuration(false, TEXT(""));
+	}
+}
+
 void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 {
 	// check datasmith anchor is valid
@@ -902,13 +920,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 	// broadcast the mesh has been built
 	OnMeshBuilt.Broadcast(HeatmapOrigin, Bounds.GetExtent());
 
-	// End the load widget
-	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-
-	if(LoadingSubsystem)
-	{
-		LoadingSubsystem->SetLoadingUnknownDuration(false, TEXT(""));
-	}
+	EndLoadingWidget();
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstances(UMaterialInterface* InMaterial, const FString& MaterialPath)
