@@ -24,6 +24,7 @@
 
 #include "MobiusWidgetSubsystem.h"
 
+#include "ImprovedLoadingNotifyWidget.h"
 #include "LoadingNotifyWidget.h"
 #include "MoveableErrorWidget.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -47,13 +48,17 @@ void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		// OnLoadingPercentChanged
 		LoadingSubsystem->OnLoadingPercentChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadPercent);
 		// OnLoadingTextChanged
-		LoadingSubsystem->OnLoadingTextChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::SetLoadingTextAndTitle);
+		LoadingSubsystem->OnLoadingTextChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::SetLoadingText);
+		// OnLoadingUnknownDurationChanged
+		LoadingSubsystem->OnLoadingUnknownDurationChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget);
 		
 		
 		// bind the loading percent changed delegate
 		LoadingSubsystem->OnLoadingPercentChanged.AddDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadPercent);
 		// bind the loading text changed delegate
-		LoadingSubsystem->OnLoadingTextChanged.AddDynamic(this, &UMobiusWidgetSubsystem::SetLoadingTextAndTitle);
+		LoadingSubsystem->OnLoadingTextChanged.AddDynamic(this, &UMobiusWidgetSubsystem::SetLoadingText);
+		// OnLoadingUnknownDurationChanged
+		LoadingSubsystem->OnLoadingUnknownDurationChanged.AddDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget);
 	}
 	
 	Super::Initialize(Collection);
@@ -69,7 +74,10 @@ void UMobiusWidgetSubsystem::Deinitialize()
 		LoadingSubsystem->OnLoadingPercentChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadPercent);
 
 		// OnLoadingTextChanged
-		LoadingSubsystem->OnLoadingTextChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::SetLoadingTextAndTitle);
+		LoadingSubsystem->OnLoadingTextChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::SetLoadingText);
+
+		// OnLoadingUnknownDurationChanged
+		LoadingSubsystem->OnLoadingUnknownDurationChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget);
 	}
 	
 	Super::Deinitialize();
@@ -107,7 +115,7 @@ void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText Title, const FText M
 	ErrorWidget->SetVisibility(ESlateVisibility::Visible);
 }
 
-void UMobiusWidgetSubsystem::AddLoadingWidget(ULoadingNotifyWidget* NewLoadingWidget)
+void UMobiusWidgetSubsystem::AddLoadingWidget(UImprovedLoadingNotifyWidget* NewLoadingWidget)
 {
 	// set the loading widget
 	LoadingNotifyWidget = NewLoadingWidget;
@@ -117,9 +125,9 @@ void UMobiusWidgetSubsystem::AddLoadingWidget(ULoadingNotifyWidget* NewLoadingWi
 
 }
 
-ULoadingNotifyWidget* UMobiusWidgetSubsystem::GetLoadingWidget() const
+UImprovedLoadingNotifyWidget* UMobiusWidgetSubsystem::GetLoadingWidget() const
 {
-	return nullptr;
+	return LoadingNotifyWidget;
 }
 
 void UMobiusWidgetSubsystem::UpdateLoadPercent(float NewLoadPercent)
@@ -138,7 +146,7 @@ void UMobiusWidgetSubsystem::UpdateLoadPercent(float NewLoadPercent)
 	//UE_LOG(LogTemp, Warning, TEXT("New Load Percent: %f"), NewLoadPercent);
 }
 
-void UMobiusWidgetSubsystem::SetLoadingTextAndTitle(FString NewLoadingText, FString NewLoadingTitle) 
+void UMobiusWidgetSubsystem::SetLoadingText(bool bIsLoadingBar, FString NewLoadingText) 
 {
 	// check if the loading widget is null
 	if(LoadingNotifyWidget == nullptr)
@@ -146,7 +154,15 @@ void UMobiusWidgetSubsystem::SetLoadingTextAndTitle(FString NewLoadingText, FStr
         UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
         return;
     }
-	LoadingNotifyWidget->SetLoadingTextAndTitle(NewLoadingText, NewLoadingTitle);
+	FText LoadingText = FText::FromString(NewLoadingText);
+	LoadingNotifyWidget->SetLoadingText(bIsLoadingBar, LoadingText);
+}
+
+void UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText)
+{
+	FText LoadingText = FText::FromString(NewLoadingText);
+	LoadingNotifyWidget->SetLoadingText(false, LoadingText);
+	LoadingNotifyWidget->SetIsLoadingGeometry(bIsLoading);
 }
 
 FVector2D UMobiusWidgetSubsystem::GetCenterPosition(UUserWidget* Widget)

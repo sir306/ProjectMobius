@@ -309,10 +309,10 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		// get file name from the json data file
 		FString FileName = FPaths::GetCleanFilename(JSONDataFile);
 
-		FString LoadingText = FString::Printf(TEXT("File: %s"), *FileName);
+		FString LoadingText = FString::Printf(TEXT("Loading File: %s"), *FileName);
 		
 		// Set the loading text and title
-		LoadingSubsystem->SetLoadingTextAndTitle("Loading Pedestrian Vectors", LoadingText);
+		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
 
 	

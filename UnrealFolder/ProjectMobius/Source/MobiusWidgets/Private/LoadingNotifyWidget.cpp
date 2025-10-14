@@ -41,7 +41,7 @@ void ULoadingNotifyWidget::NativeConstruct()
 	// Add the loading widget to the subsystem
 	if (UMobiusWidgetSubsystem* MobiusWidgetSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>())
 	{
-		MobiusWidgetSubsystem->AddLoadingWidget(this);
+		//MobiusWidgetSubsystem->AddLoadingWidget(this);
 	}
 }
 

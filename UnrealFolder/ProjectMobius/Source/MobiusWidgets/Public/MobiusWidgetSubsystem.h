@@ -28,7 +28,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "MobiusWidgetSubsystem.generated.h"
 
-class ULoadingNotifyWidget;
+class UMoveableErrorWidget;
+class UImprovedLoadingNotifyWidget;
 /**
  * 
  */
@@ -76,7 +77,7 @@ public:
 	 * @param NewLoadingWidget - New Loading Widget to add to the Subsystem - by design there is only ever one loading widget
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget")
-	void AddLoadingWidget(ULoadingNotifyWidget* NewLoadingWidget);
+	void AddLoadingWidget(UImprovedLoadingNotifyWidget* NewLoadingWidget);
 
 	/**
 	 * Get the Loading Widget
@@ -84,7 +85,7 @@ public:
 	 * @return Loading Widget
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget")
-	ULoadingNotifyWidget* GetLoadingWidget() const;
+	UImprovedLoadingNotifyWidget* GetLoadingWidget() const;
 	
 	/**
 	 * Update Load percent value used for binding with external delegates
@@ -97,11 +98,14 @@ public:
 	/**
 	 * Update the loading text and title for the loading widget
 	 *
-	 * @param[FString] NewLoadingText - New Loading Text
-	 * @param[FString] NewLoadingTitle - New Loading Title
+	 * @param[bool] bIsLoadingBar - update the correct type of loading widget
+	 * @param[FString] NewLoadingText - New Loading Title
 	 */
 	UFUNCTION()
-	void SetLoadingTextAndTitle(FString NewLoadingText, FString NewLoadingTitle);
+	void SetLoadingText(bool bIsLoadingBar, FString NewLoadingText);
+
+	UFUNCTION()
+	void UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText);
 
 private:
 	
@@ -131,6 +135,6 @@ public:
 
 	// Loading Notify Widget
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LoadingNotifyWidget")
-	ULoadingNotifyWidget* LoadingNotifyWidget;
+	UImprovedLoadingNotifyWidget* LoadingNotifyWidget;
 #pragma endregion PROPERTIES
 };

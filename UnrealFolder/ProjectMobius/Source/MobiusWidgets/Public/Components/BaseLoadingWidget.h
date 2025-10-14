@@ -9,6 +9,11 @@
 class UImage;
 class UProgressBar;
 class UTextBlock;
+
+// DELEGATES
+/** Delegate to notify listeners if something is loading or finished loading */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLoadingStateChanged, bool, bLoadingStateChanged);
+
 /**
  * 
  */
@@ -18,8 +23,22 @@ class MOBIUSWIDGETS_API UBaseLoadingWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
+#pragma region MEHTODS
+
+
+	void UpdateLoading(float NewLoadPercent);
+	void UpdateLoading(bool bNewLoading);
+
+	void UpdateLoadingText(FText& NewLoadingText);
+	
+#pragma endregion METHODS
+	
 
 #pragma region PUBLIC_PROPERTIES
+	/** Delegate to notify listeners if something is loading or finished loading */
+	UPROPERTY(BlueprintAssignable, Category = "LoadingWidget|Delegates")
+	FOnLoadingStateChanged OnLoadingStateChanged;
+	
 	/** Text block to show current Load Text - this will inform the user what loading action is being done */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
 	TObjectPtr<UTextBlock> LoadingText;
@@ -33,11 +52,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
 	TObjectPtr<UImage> LoadingInfiniteImage;
+	
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
-	float LoadPercent;
+	float LoadPercent = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
-	bool bIsInfiniteLoading = false;
+	bool bIsInfiniteLoadingWidget = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	bool bIsLoading = false;
 #pragma endregion PUBLIC_PROPERTIES
 };

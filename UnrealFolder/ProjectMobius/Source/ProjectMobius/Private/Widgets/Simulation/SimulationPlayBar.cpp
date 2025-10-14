@@ -435,6 +435,10 @@ void USimulationPlayBar::SetPlayButtonStyle() const
 	{
 		return;
 	}
+	if (!PlayPauseButton->GetIsEnabled())
+	{
+		return;
+	}
 
 	// is the simulation paused
 	if (SimulationPaused)

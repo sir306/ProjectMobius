@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "ImprovedLoadingNotifyWidget.generated.h"
 
+class UTextBlock;
 class UBaseLoadingWidget;
 /**
  * 
@@ -38,6 +39,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
 	void UpdateLoadPercent(float NewLoadPercent);
 
+	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
+	void SetIsLoadingGeometry(bool bNewIsLoadingGeometry);
+	
 	/**
 	 * To simplify the loading widget we can auto hide it when the load is complete
 	 */
@@ -50,14 +54,18 @@ public:
 	void ResetLoadPercent();
 
 	/**
-	 * Method to set the loading text and title for the loading widget
 	 *
-	 * @param[FString] NewLoadingText - New Loading Text
-	 * @param[FString] NewLoadingTitle - New Loading Title
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
-	void SetLoadingTextAndTitle(FString NewLoadingText, FString NewLoadingTitle);
+	void UpdateLoadingTitleTextWidget();
 
+	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
+	void SetLoadingText(bool bIsLoadingBar, FText& NewLoadingText);
+
+	void UpdateLoadingTitleText();
+
+	void UpdateGameInstanceLoadingState();
+	
 	/**
 	 * Method to get the current load percent
 	 * 
@@ -79,7 +87,7 @@ protected:
 #pragma endregion METHODS
 
 #pragma region PROPERTIES
-#pragma region PUBLIC_PROPERTIES
+
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
 	TObjectPtr<UBaseLoadingWidget> LoadingBarWidget;
@@ -87,6 +95,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
 	TObjectPtr<UBaseLoadingWidget> LoadingInfiniteWidget;
 
+	/** Text block to show current Load Title - this will inform the user what loading action is being done */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
+	TObjectPtr<UTextBlock> LoadingTitleText;
+
+private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	bool bIsLoadingComplete = false;
 
@@ -95,6 +108,24 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	bool bIsLoadingPedestrianVectors = false;
-#pragma endregion PUBLIC_PROPERTIES
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	float LoadingBarPercent = 1.0f;
+
+	/** Ptr to the game instance to prevent recasting */
+	UPROPERTY()
+	TObjectPtr<class UProjectMobiusGameInstance> ProjectMobiusGameInstance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
+	FText LoadingTitle;
+
 #pragma endregion PROPERTIES
+
+#pragma region GETTERS_SETTERS
+public:
+	FORCEINLINE void SetLoadingGeometry(bool bIsLoadingGeometryComplete) { bIsLoadingGeometry = bIsLoadingGeometryComplete; UpdateLoadingWidgets(); }
+
+	FORCEINLINE void SetLoadingPedestrianVectors(float NewLoadPercent){ LoadingBarPercent = NewLoadPercent; UpdateLoadingWidgets(); }
+
+#pragma endregion GETTERS_SETTERS
 };

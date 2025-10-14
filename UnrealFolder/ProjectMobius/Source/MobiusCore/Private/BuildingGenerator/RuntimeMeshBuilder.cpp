@@ -241,8 +241,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 
 			if(LoadingSubsystem)
 			{
-				LoadingSubsystem->SetLoadingTextAndTitle(TEXT("Please wait while the model is being loaded..."), TEXT("Loading UDatasmith Model"));
-				LoadingSubsystem->BroadcastNewLoadPercent(0.0f);
+				LoadingSubsystem->SetLoadingUnknownDuration(true, TEXT("Please wait while the Datasmith file is being loaded..."));
 			}
 			
 			// import the mesh data into the anchor
@@ -908,7 +907,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
 	if(LoadingSubsystem)
 	{
-		LoadingSubsystem->BroadcastNewLoadPercent(1.0f);
+		LoadingSubsystem->SetLoadingUnknownDuration(false, TEXT(""));
 	}
 }
 
