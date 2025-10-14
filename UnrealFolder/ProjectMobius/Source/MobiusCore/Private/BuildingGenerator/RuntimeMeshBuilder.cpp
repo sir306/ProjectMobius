@@ -32,6 +32,7 @@
 #include "DatasmithSceneFactory.h"
 #include "DirectLink/DatasmithSceneReceiver.h"
 #include "Engine/StaticMeshActor.h"
+#include "DatasmithAssetUserData.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Subsystems/LoadingSubsystem.h"
 
@@ -747,6 +748,20 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 				if (MeshComp == nullptr || MeshComp->IsBeingDestroyed())
 				{
 					continue;
+				}
+
+				UDatasmithAssetUserData* MetaData = MeshComp->GetAssetUserData<UDatasmithAssetUserData>();
+
+				if (MetaData != nullptr)
+				{
+					auto FoundData = MetaData->MetaData;
+					for (auto& Data : FoundData)
+					{
+						if (Data.Key == TEXT("Element*Category"))
+						{
+							UE_LOG(LogTemp, Warning, TEXT("Element Category: %s"), *Data.Value);
+						}
+					}
 				}
 				
 				// create new struct to store the materials
