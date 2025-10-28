@@ -25,13 +25,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Actors/FlowCounter.h"
 #include "GameFramework/Actor.h"
 #include "Interfaces/AssimpInterface.h"
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "RuntimeMeshBuilder.generated.h"
 
+
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
+
+/** Delegate for broadcasting auto flow counter spawns */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowCounterSpawned, AFlowCounter*, NewFlowCounter);
 
 /** Structs */
 USTRUCT()
@@ -171,6 +176,13 @@ private:
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial);
 	
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
+
+	/**
+	 * Auto Generates flow counters from door meta-data
+	 *
+	 * @param[UStaticMeshComponent] DoorMesh The mesh component of the door, used for generating the flow counters
+	 */
+	void GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh);
 	
 #pragma endregion PRIVATE_METHODS
 
@@ -208,6 +220,9 @@ public:
 	/** This bool is used for working out whether this is a datasmith asset or using the procedural mesh component */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Datasmith")
 	bool bIsDatasmithAsset = false;
+
+	UPROPERTY(EditAnywhere, BlueprintAssignable, Category = "MeshGenerator|Delegates")
+	FOnFlowCounterSpawned OnFlowCounterAutoSpawned;
 	
 	/*
 	* Array to store the Procedural Meshes UV0 to Generate 
@@ -226,6 +241,10 @@ public:
 	* - These are stored as Proc Mesh Tangent Structures, 
 	* length must be the same as the length of vertices array 
 	*/
+
+	/***/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|FlowCounter")
+	TSubclassOf<AFlowCounter> FlowCounterToAutoSpawn = nullptr;
 #pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 
 protected:

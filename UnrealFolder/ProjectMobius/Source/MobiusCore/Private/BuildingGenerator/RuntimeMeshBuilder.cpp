@@ -33,6 +33,7 @@
 #include "DirectLink/DatasmithSceneReceiver.h"
 #include "Engine/StaticMeshActor.h"
 #include "DatasmithAssetUserData.h"
+#include "Actors/FlowCounter.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Subsystems/LoadingSubsystem.h"
 
@@ -757,9 +758,10 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 					auto FoundData = MetaData->MetaData;
 					for (auto& Data : FoundData)
 					{
-						if (Data.Key == TEXT("Element*Category"))
+						if (Data.Key == TEXT("Element*Category") && Data.Value == TEXT("Doors"))
 						{
 							UE_LOG(LogTemp, Warning, TEXT("Element Category: %s"), *Data.Value);
+							GenerateFlowCounterForDoor(MeshComp);
 						}
 					}
 				}
@@ -1025,4 +1027,35 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeT
 		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
 	
 	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
+}
+
+void ARuntimeMeshBuilder::GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh)
+{
+	// We can't spawn something that doesn't exist or gives valid data to use
+	if (DoorMesh == nullptr || FlowCounterToAutoSpawn == nullptr) return;
+
+	// Spawn location
+	FTransform DoorTransform = DoorMesh->GetComponentTransform();
+
+	// Spawn the flow counter at the world transform
+	auto SpawnedFlowCounter = GetWorld()->SpawnActor<AFlowCounter>(FlowCounterToAutoSpawn, DoorTransform);
+
+	SpawnedFlowCounter->SetActorTransform(DoorTransform);
+
+	OnFlowCounterAutoSpawned.Broadcast(SpawnedFlowCounter);
+
+	FVector MinBounds, MaxBounds;
+	
+	DoorMesh->GetLocalBounds(MinBounds, MaxBounds);
+
+	MaxBounds.Z = 0;
+	MaxBounds.Y = MaxBounds.X;
+	MaxBounds.X = 0;
+	
+	SpawnedFlowCounter->MoveGatePillarMeshToLocation(0, ((DoorTransform.GetLocation() - MaxBounds) + FVector(0,0,100)));
+	SpawnedFlowCounter->MoveGatePillarMeshToLocation(1, ((DoorTransform.GetLocation() + MaxBounds) + FVector(0,0,100)));
+
+	SpawnedFlowCounter->SetActorRotation(DoorTransform.GetRotation());
+
+	// TODO: Manipulate the rotation, size etc to fit door
 }

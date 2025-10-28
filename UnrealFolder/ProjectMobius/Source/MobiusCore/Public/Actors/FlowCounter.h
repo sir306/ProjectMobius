@@ -17,7 +17,6 @@ class UBoxComponent;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
 	FOnFlowCounterSecond, int32, SimSecond, int32, RollingTotal, const TArray<int32>&, PerBucketTotals);
 
-
 // Structs used internally for bucketing agents -> TODO: Move it to the FlowCounterStructs.h file as we may want to use it elsewhere
 struct FBuckectTempData
 {
@@ -153,7 +152,6 @@ public:
 	void RemoveAgentFromBuckets(int32 AgentID);
 
 	void UpdateFlowBucketsWithCurrentAgentsFromTimeChange();
-
 private:
 	void SetupBucketSegments();
 	
@@ -216,7 +214,7 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category="FlowCounter|Events")
 	FOnFlowCounterSecond OnSimSecondUpdate;
-
+	
 protected:
 	/**
 	 * An atomic integer used to keep track of the flow counter count.
