@@ -1040,7 +1040,7 @@ void ARuntimeMeshBuilder::GenerateFlowCounterForDoor(UStaticMeshComponent* DoorM
 	// Spawn the flow counter at the world transform
 	auto SpawnedFlowCounter = GetWorld()->SpawnActor<AFlowCounter>(FlowCounterToAutoSpawn, DoorTransform);
 
-	SpawnedFlowCounter->SetActorTransform(DoorTransform);
+	SpawnedFlowCounter->SetActorLocation(DoorTransform.GetLocation());
 
 	OnFlowCounterAutoSpawned.Broadcast(SpawnedFlowCounter);
 
@@ -1049,13 +1049,25 @@ void ARuntimeMeshBuilder::GenerateFlowCounterForDoor(UStaticMeshComponent* DoorM
 	DoorMesh->GetLocalBounds(MinBounds, MaxBounds);
 
 	MaxBounds.Z = 0;
-	MaxBounds.Y = MaxBounds.X;
-	MaxBounds.X = 0;
+	//MaxBounds.Y = MaxBounds.X;
+	//MaxBounds.X = 0;
+
+	// if x is bigger than y then set y to 0 else set x to 0
+	if (FMath::Abs(MaxBounds.X) > FMath::Abs(MaxBounds.Y))
+	{
+		MaxBounds.Y = 0;
+	}
+	else
+	{
+		MaxBounds.X = 0;
+	}
+
+	MaxBounds = RotateVector(MaxBounds, DoorTransform.GetRotation().Rotator());
 	
 	SpawnedFlowCounter->MoveGatePillarMeshToLocation(0, ((DoorTransform.GetLocation() - MaxBounds) + FVector(0,0,100)));
 	SpawnedFlowCounter->MoveGatePillarMeshToLocation(1, ((DoorTransform.GetLocation() + MaxBounds) + FVector(0,0,100)));
 
-	SpawnedFlowCounter->SetActorRotation(DoorTransform.GetRotation());
+	//SpawnedFlowCounter->SetActorRotation(DoorTransform.GetRotation());
 
 	// TODO: Manipulate the rotation, size etc to fit door
 }
