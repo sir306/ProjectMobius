@@ -183,6 +183,9 @@ private:
 	 * @param[UStaticMeshComponent] DoorMesh The mesh component of the door, used for generating the flow counters
 	 */
 	void GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh);
+
+	/** */
+	void RemoveFlowCounters() const;
 	
 #pragma endregion PRIVATE_METHODS
 

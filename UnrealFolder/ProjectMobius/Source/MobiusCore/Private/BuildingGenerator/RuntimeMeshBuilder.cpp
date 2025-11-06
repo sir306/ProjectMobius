@@ -34,6 +34,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "DatasmithAssetUserData.h"
 #include "Actors/FlowCounter.h"
+#include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Subsystems/LoadingSubsystem.h"
 
@@ -215,7 +216,8 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	DatasmithMaterialsMap.Empty();
 	bIsDatasmithAsset = false;
 
-	
+	// Remove any flow counters, as the mesh is changing
+	RemoveFlowCounters();
 
 	// As we are now able to use Datasmith assets we need to check if the file is a .udatasmith file
 	if(MeshFileName.Contains(".udatasmith") || MeshFileName.Contains(".ifc"))
@@ -275,6 +277,8 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			      {
 				      AsyncTask(ENamedThreads::GameThread,[this] {
 					      CreateDatasmithMaterials();
+				      	// lights imported by datasmith can cause performance issues, so may need to disable cast shadows or reduce
+				      	// the size of point light radius and intensitys
 				      });
 				
 			      });
@@ -1070,4 +1074,22 @@ void ARuntimeMeshBuilder::GenerateFlowCounterForDoor(UStaticMeshComponent* DoorM
 	//SpawnedFlowCounter->SetActorRotation(DoorTransform.GetRotation());
 
 	// TODO: Manipulate the rotation, size etc to fit door
+}
+
+void ARuntimeMeshBuilder::RemoveFlowCounters() const
+{
+	if (GetWorld() == nullptr) return;
+
+	// get all flow counters
+	TArray<AActor*> FlowCounters;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFlowCounter::StaticClass(), FlowCounters);
+
+	for (AActor* FlowCounterActor : FlowCounters)
+	{
+		// we don't need to cast and check, so we can check its not null or pending kill
+		if (FlowCounterActor != nullptr && !FlowCounterActor->IsPendingKillPending())
+		{
+			FlowCounterActor->Destroy();
+		}
+	}
 }
