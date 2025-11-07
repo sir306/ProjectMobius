@@ -5,7 +5,7 @@ project(PlotUE_Data VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick WebSockets Graphs)
+find_package(Qt6 REQUIRED COMPONENTS Quick Network Graphs)
 
 qt_standard_project_setup(REQUIRES 6.9)
 
@@ -18,7 +18,6 @@ qt_add_qml_module(appPlotUE_Data
     VERSION 1.0
     QML_FILES
     AppWindow.qml
-    SOURCES WebSocketManager.h WebSocketManager.cpp
     SOURCES ChartTableModel.h ChartTableModel.cpp
         SOURCES AxisSettings.h
         SOURCES ChartSettings.h
@@ -26,6 +25,8 @@ qt_add_qml_module(appPlotUE_Data
         QML_FILES GraphHoverItem.qml
         RESOURCES Shaders/PlaybarShaderEffect.frag
         RESOURCES Shaders/PlaybarShaderEffect.frag.qsb
+        SOURCES IpcServerManager.h IpcServerManager.cpp
+        SOURCES Logger.h
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -41,7 +42,7 @@ set_target_properties(appPlotUE_Data PROPERTIES
 
 target_link_libraries(appPlotUE_Data
     PRIVATE Qt6::Quick
-    PRIVATE Qt6::WebSockets
+    PRIVATE Qt6::Network
     PRIVATE Qt6::Graphs
 )
 

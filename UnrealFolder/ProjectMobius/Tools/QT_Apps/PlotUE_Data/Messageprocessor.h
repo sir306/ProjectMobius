@@ -44,6 +44,7 @@ enum class ActionType {
     ResetData,
     UpdateAxis,
     UpdateChartTitle,
+    Heartbeat,
     BuiltInCount,
     Unknown
 };
@@ -65,7 +66,8 @@ constexpr std::pair<uint32_t, ActionType> kActionMap[] = {
     { const_hash("updateLiveData"),  ActionType::UpdateLiveData },
     { const_hash("resetData"),          ActionType::ResetData },
     { const_hash("updateAxis"),         ActionType::UpdateAxis },
-    { const_hash("updateChartTitle"),   ActionType::UpdateChartTitle }
+    { const_hash("updateChartTitle"),   ActionType::UpdateChartTitle },
+    { const_hash("heartbeat"),          ActionType::Heartbeat }
 };
 
 constexpr ActionType actionFromString(std::string_view str) {

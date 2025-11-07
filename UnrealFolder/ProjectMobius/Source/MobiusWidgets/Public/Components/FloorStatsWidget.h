@@ -94,7 +94,7 @@ public:
 
 	/** pointer to the websocket subsystem */
 	UPROPERTY()
-	TObjectPtr<class UWebSocketSubsystem> WsSubsystem;
+	TObjectPtr<class UIpcSubsystem> IpcSubsystem;
 
 	/** pointer to the time subsystem */
 	UPROPERTY()

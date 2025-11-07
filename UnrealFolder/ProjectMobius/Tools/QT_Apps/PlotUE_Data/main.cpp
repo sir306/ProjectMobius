@@ -30,10 +30,13 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStandardPaths>
+#include <QDebug>
 #include "ChartSettings.h"
 #include "ChartTableModel.h"
 #include "AxisSettings.h"
-#include "WebSocketManager.h"
+// #include "WebSocketManager.h"
+#include "IpcServerManager.h"
 #include <QWindow>
 #include <QTimer>
 
@@ -47,58 +50,36 @@ int main(int argc, char *argv[]) {
     AxisSettings    axisSettings(&engine);
     ChartSettings   chartSettings(&engine);
 
-    // Assign the .h and .cpp files for the QML logic
     engine.rootContext()->setContextProperty("chartModel",   &model);
     engine.rootContext()->setContextProperty("axisSettings", &axisSettings);
     engine.rootContext()->setContextProperty("chartSettings",&chartSettings);
 
-
-    // ───────────────────────────────────────────────
-    //  Parse --pairId so we know which Unreal instance
-    // ───────────────────────────────────────────────
+    // Parse command line
     QCommandLineParser parser;
-    parser.addOption({{"p","pairId"}, "Mobius App ID", "pairId"});
+    parser.addOption({{"p","pairId"},  "Mobius App ID (unused for IPC)", "pairId", ""}); // ✅ Default to empty
+    parser.addOption({{"e","endpoint"},"QLocalServer name", "endpoint", "MobiusIpc"});
     parser.process(app);
-    const QString pairId = parser.value("pairId");
 
-    // Read websocket port from Tools/NodeJS/config.json relative to the
-    // executable location. When running from the 'executable' folder the file is
-    // located at '../../../NodeJS/config.json'.
-    int port = 9090;
-    const QString configPath =
-        QCoreApplication::applicationDirPath() +
-        QStringLiteral("/../../../NodeJS/config.json");
-    QFile configFile(configPath);
-    if (configFile.open(QIODevice::ReadOnly)) {
-        const QJsonDocument doc = QJsonDocument::fromJson(configFile.readAll());
-        if (doc.isObject()) {
-            const QJsonObject obj = doc.object();
-            port = obj.value(QStringLiteral("port")).toInt(port);
-        }
-    }
+    const QString pairId  = parser.value("pairId");  // Will be empty, that's fine
+    const QString endpoint = parser.value("endpoint");
 
-    // URL for websocket using the loaded port
-    QUrl wsUrl(QStringLiteral("ws://127.0.0.1:%1").arg(port));
-
-
-    WebSocketManager wsMgr(
-        wsUrl,
-        pairId,
+    // IPC server - pairId is ignored now
+    IpcServerManager ipcMgr(
+        endpoint,
+        pairId,      // ✅ Can be empty string, not used anymore
         &model,
         &axisSettings,
         &chartSettings,
         &engine
         );
-    engine.rootContext()->setContextProperty("wsMgr", &wsMgr);
+    engine.rootContext()->setContextProperty("wsMgr", &ipcMgr);
 
     engine.loadFromModule("PlotUE_Data", "AppWindow");
 
-    // Use QTimer::singleShot to defer execution until after show
     QTimer::singleShot(0, &app, [&engine]() {
         const QObjectList rootObjs = engine.rootObjects();
         if (!rootObjs.isEmpty()) {
-            QWindow* window = qobject_cast<QWindow*>(rootObjs.first());
-            if (window) {
+            if (QWindow* window = qobject_cast<QWindow*>(rootObjs.first())) {
                 window->setFlag(Qt::WindowStaysOnTopHint, true);
                 window->raise();
                 window->requestActivate();

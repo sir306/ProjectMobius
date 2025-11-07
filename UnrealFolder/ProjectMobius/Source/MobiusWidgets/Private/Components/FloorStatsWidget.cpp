@@ -29,7 +29,7 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
-#include "Subsystems/WebSocketSubsystem.h"
+#include "Subsystems/IpcSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Subsystems//HeatmapSubsystem.h"
 
@@ -106,11 +106,10 @@ void UFloorStatsWidget::NativeConstruct()
 		}
 		
 		
-		WsSubsystem = GetWorld()->GetGameInstance()->GetSubsystem<UWebSocketSubsystem>();
-		
-		if (WsSubsystem == nullptr)
+		IpcSubsystem = GetWorld()->GetGameInstance()->GetSubsystem<UIpcSubsystem>();
+		if (IpcSubsystem == nullptr)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("The WebSocket Subsystem is invalid"));
+			UE_LOG(LogTemp, Warning, TEXT("The IPC Subsystem is invalid"));
 		}
 
 	}
@@ -236,7 +235,7 @@ void UFloorStatsWidget::BuildQtAppChartTitle() const
 	
 	ChartTitle->SetStringField(TEXT("chartTitle"), TEXT("Total Number of People Over Time"));
 
-	WsSubsystem->SendJsonMessage(ChartTitle);
+	IpcSubsystem->SendJsonMessage(ChartTitle);
 }
 
 void UFloorStatsWidget::BuildQtChartAxisSetting()
@@ -293,7 +292,7 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 	// 	CurrentLiveAgentCount = MaxAgentCount;
 	// }
 
-	WsSubsystem->SendJsonMessage(AxisSettings);
+	IpcSubsystem->SendJsonMessage(AxisSettings);
 }
 
 void UFloorStatsWidget::BuildQtChartGraphData() const
@@ -305,14 +304,14 @@ void UFloorStatsWidget::BuildQtChartGraphData() const
 		CompleteDataMsg->SetStringField(TEXT("action"), TEXT("setData"));
 			
 		CompleteDataMsg->SetArrayField(TEXT("points"), CompleteUIData);
-		WsSubsystem->SendJsonMessage(CompleteDataMsg);
+		IpcSubsystem->SendJsonMessage(CompleteDataMsg);
 	}
 }
 
 void UFloorStatsWidget::SendQtAppChartData()
 {
 	// don't send data if subsystems are not valid or if this is not the total occupants widget
-	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && WsSubsystem != nullptr)
+	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && IpcSubsystem != nullptr)
 	{
 		BuildQtAppChartTitle();
 
@@ -334,10 +333,10 @@ void UFloorStatsWidget::SendQtAppChartData()
 
 void UFloorStatsWidget::LaunchCloseQtApp()
 {
-	if (FloorNumber == -1 && WsSubsystem != nullptr)
+	if (FloorNumber == -1 && IpcSubsystem != nullptr)
 	{
 		// launch or close the qt app
-		WsSubsystem->OpenOrCloseQtStatApp();
+		IpcSubsystem->OpenOrCloseQtStatApp();
 
 		// TODO: change the open close method to return a bool so we can check if the app is open or not and then send the data if it is open
 		
@@ -351,7 +350,7 @@ void UFloorStatsWidget::LaunchCloseQtApp()
 void UFloorStatsWidget::BuildDataForInstantQtUI()
 {
 	// Only doing all data for now
-	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && WsSubsystem != nullptr)
+	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && IpcSubsystem != nullptr)
 	{
 		CompleteUIData.Reset();
 		
@@ -423,7 +422,7 @@ void UFloorStatsWidget::UpdateCurrentPlaybackTime(float CurrentTime)
 {
 	
 	// for now doing total so if floor number is not -1 then do nothing
-	if (FloorNumber != -1 || WsSubsystem == nullptr || TimeDilationSubSystem == nullptr)
+	if (FloorNumber != -1 || IpcSubsystem == nullptr || TimeDilationSubSystem == nullptr)
 	{
 		return;
 	}
@@ -465,7 +464,7 @@ void UFloorStatsWidget::UpdateAgentLiveData()
 	UpdateLiveDataMsg->SetStringField(TEXT("action"), TEXT("updateLiveData"));
 	UpdateLiveDataMsg->SetNumberField(TEXT("currentTime"), LastSentTimeInt);
 	UpdateLiveDataMsg->SetNumberField(TEXT("count"), CurrentLiveAgentCount);
-	WsSubsystem->SendJsonMessage(UpdateLiveDataMsg);
+	IpcSubsystem->SendJsonMessage(UpdateLiveDataMsg);
 }
 
 FText UFloorStatsWidget::FormatTextForTextBlock(const FText& Prefix, int32 Count)

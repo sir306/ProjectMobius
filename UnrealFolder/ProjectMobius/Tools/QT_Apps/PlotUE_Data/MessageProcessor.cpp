@@ -26,6 +26,7 @@
 #include "ChartTableModel.h"
 #include "AxisSettings.h"
 #include "ChartSettings.h"
+#include "Logger.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -59,6 +60,9 @@ void MessageProcessor::handleBuiltIn(ActionType type, const QJsonObject& obj) {
             const QJsonObject o = arr.at(i).toObject();
             points.append(QPointF(o["x"].toDouble(), o["y"].toDouble()));
         }
+
+        LOG_INFO(QString("SetData: received %1 points").arg(points.size()));
+
         QMetaObject::invokeMethod(m_model, "setPoints", Qt::QueuedConnection,
                                   Q_ARG(QList<QPointF>, points));
         break;
@@ -78,14 +82,16 @@ void MessageProcessor::handleBuiltIn(ActionType type, const QJsonObject& obj) {
         break;
     }
     case ActionType::UpdateLiveData: {
-        qint32 t = obj["time"].toInt();
+        qint32 t = obj["currentTime"].toInt();
         qint32 c = obj["count"].toInt();
+
+        LOG_DEBUG(QString("UpdateLiveData: time=%1, count=%2").arg(t).arg(c));
+
         QMetaObject::invokeMethod(m_settings,
                                   "updateLiveData",
                                   Qt::QueuedConnection,
                                   Q_ARG(qint32, t),
                                   Q_ARG(qint32, c));
-
         break;
     }
 
@@ -95,6 +101,7 @@ void MessageProcessor::handleBuiltIn(ActionType type, const QJsonObject& obj) {
     }
 
     case ActionType::UpdateAxis: {
+        LOG_INFO("UpdateAxis received");
         if (obj.contains("xMin")) QMetaObject::invokeMethod(m_axis, "setXMin", Qt::QueuedConnection,
                                       Q_ARG(qreal, obj["xMin"].toDouble()));
         if (obj.contains("xMax")) QMetaObject::invokeMethod(m_axis, "setXMax", Qt::QueuedConnection,
@@ -118,11 +125,16 @@ void MessageProcessor::handleBuiltIn(ActionType type, const QJsonObject& obj) {
 
     case ActionType::UpdateChartTitle: {
         if (obj.contains("chartTitle")) {
+            QString title = obj["chartTitle"].toString();
+            LOG_INFO(QString("UpdateChartTitle: %1").arg(title));
             QMetaObject::invokeMethod(m_settings, "setTitle", Qt::QueuedConnection,
-                                      Q_ARG(QString, obj["chartTitle"].toString()));
+                                      Q_ARG(QString, title));
         }
         break;
     }
+    case ActionType::Heartbeat:
+        // ✅ Just ignore heartbeats silently
+        break;
 
     case ActionType::Unknown:
     default:
@@ -135,26 +147,42 @@ void MessageProcessor::handleMessage(const QString &msg)
 {
     QJsonParseError perr;
     QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8(), &perr);
-    if (perr.error != QJsonParseError::NoError || !doc.isObject())
+    if (perr.error != QJsonParseError::NoError)
+    {
+        LOG_ERROR(QString("JSON parse error at offset %1: %2").arg(perr.offset).arg(perr.errorString()));
         return;
+    }
+
+    if (!doc.isObject())
+    {
+        LOG_ERROR("Received JSON is not an object");
+        return;
+    }
 
     const QJsonObject obj = doc.object();
     const QString actionStr = obj["action"].toString();
-    const std::string_view actionView(actionStr.toUtf8().constData(), actionStr.size());
 
-    // Fast enum dispatch first
+    if (actionStr.isEmpty())
+    {
+        LOG_WARN(QString("Received message with no action field: %1").arg(msg));
+        return;
+    }
+
+    LOG_DEBUG(QString("Processing action: %1").arg(actionStr));
+
+    const std::string_view actionView(actionStr.toUtf8().constData(), actionStr.size());
     ActionType type = actionFromString(actionView);
+
     if (type != ActionType::Unknown) {
         handleBuiltIn(type, obj);
         return;
     }
 
-    // Then fallback to dynamic handler if registered
     auto it = m_dynamicHandlers.find(actionStr);
     if (it != m_dynamicHandlers.end()) {
         it->second(obj);
     } else {
-        qWarning() << "[MessageProcessor] Unknown action:" << actionStr;
+        LOG_WARN(QString("Unknown action: %1").arg(actionStr));
     }
 }
 

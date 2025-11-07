@@ -138,6 +138,7 @@ private:
 
     qreal  m_yMin         = 0;
     qreal  m_yMax         = 1;
-    QString m_yTitle       = QStringLiteral("Agent Count");
+    QString m_yTitle       = QStringLiteral("TEST");
+    //QString m_yTitle       = QStringLiteral("Agent Count");
     bool    m_yGridVisible = true;
 };
