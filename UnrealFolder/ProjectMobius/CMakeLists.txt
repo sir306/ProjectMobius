@@ -243,54 +243,11 @@ endif()
 add_custom_target(all_external
   DEPENDS assimp_stage OpenFileTCP_stage PlotUE_Data_stage
 )
-# ------------------------------------------------------------
-# 4) Package NodeJS WebSocket server and stage alongside tools
-#     (Tools/bin/<Platform>/NodeJS/mobius-server[.exe])
-# ------------------------------------------------------------
-# ======================
-# NodeJS server (Tools/NodeJS)
-# ======================
-# Ensure the NodeJS subproject is added but does NOT define global targets
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Tools/NodeJS
-                 ${CMAKE_BINARY_DIR}/nodejs-build)
-
-# Ensure our umbrella target exists
-if(NOT TARGET all_external)
-  add_custom_target(all_external)
-endif()
-
-# Wait for the node bundle to be produced
-add_dependencies(all_external mobius_node_bundle)
-
-# --- Stage/rename for UE runtime lookup (WebSocketSubsystem) ---
-set(NODEJS_STAGE_DIR "${TOOLS_STAGE_DIR}/NodeJS")
-file(MAKE_DIRECTORY "${NODEJS_STAGE_DIR}")
-
-if(WIN32)
-  set(NODE_SRC_EXE "${CMAKE_BINARY_DIR}/bundle/MobiusServer.exe")
-  set(NODE_DST_EXE "${NODEJS_STAGE_DIR}/mobius-server.exe")  # EXACT name UE expects
-  add_custom_target(nodejs_stage ALL
-    DEPENDS mobius_node_bundle
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODE_DST_EXE}"
-    COMMENT "Staging NodeJS server to ${NODE_DST_EXE}"
-  )
-elseif(APPLE)
-  # Build produces a single "MobiusServer" universal for chosen arch
-  set(NODE_SRC_EXE "${CMAKE_BINARY_DIR}/bundle/MobiusServer")
-  # Provide both names if you want to be explicit or keep one — your UE code prefers arm then x64. :contentReference[oaicite:6]{index=6}
-  add_custom_target(nodejs_stage ALL
-    DEPENDS mobius_node_bundle
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODEJS_STAGE_DIR}/mobius-server-macos-arm64"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${NODE_SRC_EXE}" "${NODEJS_STAGE_DIR}/mobius-server-macos-x64"
-    COMMENT "Staging NodeJS server to ${NODEJS_STAGE_DIR}"
-  )
-endif()
 
 add_dependencies(all_external
   assimp_ep
   PlotUE_Data_ep
   OpenFileTCP_ep
-  nodejs_stage
 )
 
 # ======================

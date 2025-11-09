@@ -37,13 +37,13 @@
 static const TCHAR* GetPlatformFolder()
 {
 #if PLATFORM_WINDOWS
-    return TEXT("Win64");
+	return TEXT("Win64");
 #elif PLATFORM_MAC
-    return TEXT("Mac");
+	return TEXT("Mac");
 #elif PLATFORM_LINUX
-    return TEXT("Linux");
+	return TEXT("Linux");
 #else
-    return TEXT("Unknown");
+	return TEXT("Unknown");
 #endif
 }
 
@@ -53,28 +53,27 @@ static const TCHAR* GetPlatformFolder()
  */
 static int32 LoadWebSocketPort()
 {
-        const FString ConfigPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/NodeJS/config.json"));
-        FString JsonString;
-        if (FFileHelper::LoadFileToString(JsonString, *ConfigPath))
-        {
-                TSharedPtr<FJsonObject> JsonObject;
-                const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-                if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
-                {
-                        int32 Port;
-                        if (JsonObject->TryGetNumberField(TEXT("port"), Port))
-                        {
-                                return Port;
-                        }
-                }
-        }
-        return 9090;
+	const FString ConfigPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tools/NodeJS/config.json"));
+	FString JsonString;
+	if (FFileHelper::LoadFileToString(JsonString, *ConfigPath))
+	{
+		TSharedPtr<FJsonObject> JsonObject;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+		if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+		{
+			int32 Port;
+			if (JsonObject->TryGetNumberField(TEXT("port"), Port))
+			{
+				return Port;
+			}
+		}
+	}
+	return 9090;
 }
 
 void UWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-
 	// before we attempt to create a socket and launch the server, we need to ensure that the WebSockets module is loaded
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("WebSockets")))
 	{
@@ -93,11 +92,11 @@ void UWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		StartWebSocketServer();
 	}
 	
-        // Create and hook up your socket. The port is read from Tools/NodeJS/config.json,
-        // falling back to 9090 if the file cannot be parsed.
-        const int32 Port = LoadWebSocketPort();
-        const FString Url = FString::Printf(TEXT("ws://127.0.0.1:%d"), Port);
-        Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
+	// Create and hook up your socket. The port is read from Tools/NodeJS/config.json,
+	// falling back to 9090 if the file cannot be parsed.
+	const int32 Port = LoadWebSocketPort();
+	const FString Url = FString::Printf(TEXT("ws://127.0.0.1:%d"), Port);
+	Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
 
 	Socket->OnConnected().AddLambda([this]()
 	{
@@ -147,6 +146,7 @@ void UWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UWebSocketSubsystem::Deinitialize()
 {
+	Super::Deinitialize();
 	if (Socket.IsValid() && Socket->IsConnected())
 	{
 		// Ensure that we send the command to close the socket

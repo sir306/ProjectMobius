@@ -33,7 +33,7 @@ class IWebSocket;
  * 
  */
 UCLASS()
-class MOBIUSCORE_API UWebSocketSubsystem : public UGameInstanceSubsystem
+class UE_DEPRECATED(5.5, "This Websocket system for the NodeJs server has been deprecated due to security issues with node packages that are being compromised. Instead use the IpcSubystem.h to communicate with the Qt apps, the previous implementation has been left in place in the event it is brought back in.") MOBIUSCORE_API UWebSocketSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 
