@@ -284,6 +284,12 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	TObjectPtr<UStatisticSubsystem> StatisticSubsystem;
+
+	/**
+	 * If the flow counter is active and tracking agents passing through it then we need to allow door tracking
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
+	bool bIsFlowCounterActive = false;
 	
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Visuals", meta = (AllowPrivateAccess = "true"))

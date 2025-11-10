@@ -67,7 +67,7 @@ void UFlowSectionCounter::InitializeFromParent(const FFlowSectionCounterInitPara
 	// Fill our immediate slot if requested (Canvas/Grid etc.)
 	if (Params.bFillParentSlot && Slot)
 	{
-		WidgetUtilHelpers::FillParentSlot(this);
+		UWidgetUtilHelpers::FillParentSlot(this);
 	}
 
 	// Ensure the text the parent expects is applied (parent may have passed live values)
@@ -94,10 +94,10 @@ void UFlowSectionCounter::InitializeFromParent(const FFlowSectionCounterInitPara
 	const int32 Max = Params.MaxFontSize;
 	const float Safety = Params.FitPaddingScale;
 
-	const int32 HeaderFontPx = WidgetUtilHelpers::FindFittingFontSizeForFieldAndText(
+	const int32 HeaderFontPx = UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(
 		SectionHeaderFieldAndTextWidget, HeaderBox, Min, Max, Safety);
 
-	const int32 ValueFontPx  = WidgetUtilHelpers::FindFittingFontSizeForFieldAndText(
+	const int32 ValueFontPx  = UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(
 		FlowTypeAndValueFieldAndTextWidget, ValueBox, Min, Max, Safety);
 
 	// Apply

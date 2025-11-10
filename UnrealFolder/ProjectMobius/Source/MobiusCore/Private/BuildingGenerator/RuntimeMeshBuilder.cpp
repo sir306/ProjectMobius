@@ -36,6 +36,7 @@
 #include "Actors/FlowCounter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Subsystems/LoadingSubsystem.h"
 
 // Sets default values
@@ -186,6 +187,33 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 	
 }
 
+void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
+{
+	// 1. Turn off async cooking for deterministic behavior here (optional but recommended), ensures it will update
+	MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+
+	// 2. Clear all generated geometry + convex collision
+	MobiusProceduralMeshComponent->ClearAllMeshSections();          // Empties sections + UpdateCollision()
+	MobiusProceduralMeshComponent->ClearCollisionConvexMeshes();    // Empties convex + UpdateCollision()
+
+	// 3. Make sure the collision setup itself is empty and re-cooked
+	if (UBodySetup* BodySetup = MobiusProceduralMeshComponent->GetBodySetup())
+	{
+		// Wipe any residual simple collision shapes
+		BodySetup->AggGeom.EmptyElements();
+
+		// Throw away any cooked data and rebuild with the now-empty geometry
+		BodySetup->InvalidatePhysicsData();
+		BodySetup->CreatePhysicsMeshes();
+	}
+
+	// 4. Force physics state to be recreated on the component
+	MobiusProceduralMeshComponent->RecreatePhysicsState();
+
+	// 5. Reactivate the async cooking
+	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
+}
+
 void ARuntimeMeshBuilder::UpdateMeshFileName()
 {
 	// Get the game instance
@@ -206,13 +234,15 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 		LoadingSubsystem->SetLoadingUnknownDuration(true, TEXT("Loading Geometry: " + LoadingFileName));
 	}
 
-	// for memory issues, we need to clear all the mesh sections first then get the new mesh data
-	MobiusProceduralMeshComponent->ClearAllMeshSections();
+	// Make sure no residual data of the procedural mesh comp exists  
+	ResetMeshCollisionAndPhysics();
+	
 	if (RuntimeDatasmithAnchor)
 	{
 		RuntimeDatasmithAnchor->Destroy();
 		RuntimeDatasmithAnchor = nullptr;
 	}
+	
 	DatasmithMaterialsMap.Empty();
 	bIsDatasmithAsset = false;
 
@@ -880,6 +910,12 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 			continue;
 		}
 
+		// ensure we are blocking this channel so we can interact with the mesh if needed/manipulate door counters
+		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		
 		// Get the local to world transform
 		FTransform LocalToWorldTransform = Mesh->GetComponentTransform();
 		
@@ -1092,4 +1128,5 @@ void ARuntimeMeshBuilder::RemoveFlowCounters() const
 			FlowCounterActor->Destroy();
 		}
 	}
+	OnAllFlowCountersRemoved.Broadcast();
 }

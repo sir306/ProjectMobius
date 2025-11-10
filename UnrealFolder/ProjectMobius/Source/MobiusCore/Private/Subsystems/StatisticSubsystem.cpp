@@ -106,12 +106,12 @@ void UStatisticSubsystem::UpdateFlowCounters()
 bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& AgentLocation, int32 FlowCounterID) const
 {
 	// Dow we have a valid FlowCounterID?
-	if (!FlowCounters.IsValidIndex(FlowCounterID))
+	if (!ActiveFlowCounters.IsValidIndex(FlowCounterID))
 	{
 		return false;
 	}
 	
-	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
+	AFlowCounter* FlowCounter = ActiveFlowCounters[FlowCounterID];
 
 	// First check: is the agent's Z coordinate within this counter's Z bounds?
 	if (!FlowCounter->FlowCounterZSearchLimits.IsInZBounds(AgentLocation.Z))
@@ -136,12 +136,12 @@ bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& Agent
 
 bool UStatisticSubsystem::HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const
 {
-	if (!FlowCounters.IsValidIndex(FlowCounterID))
+	if (!ActiveFlowCounters.IsValidIndex(FlowCounterID))
 	{
 		return false;
 	}
 
-	AFlowCounter* FlowCounter = FlowCounters[FlowCounterID];
+	AFlowCounter* FlowCounter = ActiveFlowCounters[FlowCounterID];
 
 	// Check if the agent has already been counted in this flow counter
 	return FlowCounter->HasAgentAlreadyPassedThrough(AgentID);
@@ -206,12 +206,12 @@ void UStatisticSubsystem::SendArrayDataToFlowCounter(TArray<FFlowCounterData>& F
 void UStatisticSubsystem::SendDataToFlowCounter(const FFlowCounterData& FlowData, int32 FlowCounterIndex)
 {
 	// Check if the flow counter index is valid
-	if (!FlowCounters.IsValidIndex(FlowCounterIndex))
+	if (!ActiveFlowCounters.IsValidIndex(FlowCounterIndex))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Invalid FlowCounterIndex: %d"), FlowCounterIndex);
 		return;
 	}
-	AFlowCounter* FlowCounter = FlowCounters[FlowCounterIndex];
+	AFlowCounter* FlowCounter = ActiveFlowCounters[FlowCounterIndex];
 
 	// we may have found a valid index but we can still have a null pointer
 	if (FlowCounter)
@@ -232,6 +232,21 @@ void UStatisticSubsystem::ResetFlowCounters()
 		{
 			UE_LOG(LogTemp, Warning, TEXT("FlowCounter is null"));
 		}
+	}
+}
+
+void UStatisticSubsystem::AddRemoveActiveFlowCounter(AFlowCounter* FlowCounter, bool bAddToActiveCounters)
+{
+	if (bAddToActiveCounters && FlowCounter)
+	{
+		if (!ActiveFlowCounters.Contains(FlowCounter))
+		{
+			ActiveFlowCounters.Add(FlowCounter);
+		}
+	}
+	else if (!bAddToActiveCounters && FlowCounter)
+	{
+		ActiveFlowCounters.Remove(FlowCounter);
 	}
 }
 

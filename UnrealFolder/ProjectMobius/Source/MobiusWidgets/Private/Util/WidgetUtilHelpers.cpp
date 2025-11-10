@@ -3,9 +3,12 @@
 
 #include "Util/WidgetUtilHelpers.h"
 
+#include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/ComboBoxString.h"
+#include "Components/EditableTextBox.h"
 #include "Components/GridSlot.h"
+#include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "Components/UniformGridSlot.h"
 #include "Components/WidgetComponent.h"
@@ -13,15 +16,15 @@
 #include "Fonts/FontMeasure.h"
 
 
-WidgetUtilHelpers::WidgetUtilHelpers()
+UWidgetUtilHelpers::UWidgetUtilHelpers()
 {
 }
 
-WidgetUtilHelpers::~WidgetUtilHelpers()
+UWidgetUtilHelpers::~UWidgetUtilHelpers()
 {
 }
 
-void WidgetUtilHelpers::ClearComboBoxOptions(TObjectPtr<UComboBoxString> ComboBox)
+void UWidgetUtilHelpers::ClearComboBoxOptions(TObjectPtr<UComboBoxString> ComboBox)
 {
 	if (ComboBox)
 	{
@@ -30,7 +33,7 @@ void WidgetUtilHelpers::ClearComboBoxOptions(TObjectPtr<UComboBoxString> ComboBo
 	}
 }
 
-void WidgetUtilHelpers::UpdateComboBoxOptions(TObjectPtr<UComboBoxString> ComboBox, const TArray<FString>& Options,
+void UWidgetUtilHelpers::UpdateComboBoxOptions(TObjectPtr<UComboBoxString> ComboBox, const TArray<FString>& Options,
                                               const FString& SelectedOption)
 {
 	if (ComboBox->IsValidLowLevel() && Options.Num() > 0)
@@ -58,7 +61,7 @@ void WidgetUtilHelpers::UpdateComboBoxOptions(TObjectPtr<UComboBoxString> ComboB
 	}
 }
 
-void WidgetUtilHelpers::FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option,
+void UWidgetUtilHelpers::FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option,
                                                  bool bSetSelection)
 {
 	if (ComboBox->IsValidLowLevel() && ComboBox->FindOptionIndex(Option) != INDEX_NONE)
@@ -70,7 +73,7 @@ void WidgetUtilHelpers::FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> Com
 	}
 }
 
-void WidgetUtilHelpers::UpdateTextIfChanged(UFieldAndTextWidget* Widget, const FText& NewText)
+void UWidgetUtilHelpers::UpdateTextIfChanged(UFieldAndTextWidget* Widget, const FText& NewText)
 {
 	if (!Widget) return;
 
@@ -80,7 +83,7 @@ void WidgetUtilHelpers::UpdateTextIfChanged(UFieldAndTextWidget* Widget, const F
 	}
 }
 
-void WidgetUtilHelpers::UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32 NewNumber)
+void UWidgetUtilHelpers::UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32 NewNumber)
 {
 	if (!Widget) return;
 
@@ -91,7 +94,7 @@ void WidgetUtilHelpers::UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32
 	}
 }
 
-void WidgetUtilHelpers::UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float NewFloat)
+void UWidgetUtilHelpers::UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float NewFloat)
 {
 	if (!Widget) return;
 
@@ -102,7 +105,7 @@ void WidgetUtilHelpers::UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float 
 	}
 }
 
-void WidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec)
+void UWidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec)
 {
 	if (!Widget) return;
 
@@ -114,7 +117,7 @@ void WidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const
 	}
 }
 
-void WidgetUtilHelpers::SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign,
+void UWidgetUtilHelpers::SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign,
                                              EVerticalAlignment VAlign)
 {
 	if (!Widget)
@@ -136,7 +139,7 @@ void WidgetUtilHelpers::SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignme
 	}
 }
 
-FUniformGridLayout WidgetUtilHelpers::ComputeUniformGridLayout(const FVector2D& DrawSizePx, int32 NumItems,
+FUniformGridLayout UWidgetUtilHelpers::ComputeUniformGridLayout(const FVector2D& DrawSizePx, int32 NumItems,
                                                                const FVector2D& MinCellPx, int32 PreferredColsHint)
 {
 	FUniformGridLayout Out;
@@ -190,7 +193,7 @@ FUniformGridLayout WidgetUtilHelpers::ComputeUniformGridLayout(const FVector2D& 
 	return Out;
 }
 //TODO: FIX THIS METHOD
-void WidgetUtilHelpers::ApplyUniformGridLayout(
+void UWidgetUtilHelpers::ApplyUniformGridLayout(
 	UUniformGridPanel* Grid,
 	const TArray<UWidget*>& Children,
 	const FUniformGridLayout& Layout)
@@ -219,7 +222,7 @@ void WidgetUtilHelpers::ApplyUniformGridLayout(
 	}
 }
 
-void WidgetUtilHelpers::UniformGridFillCell(UWidget* Child)
+void UWidgetUtilHelpers::UniformGridFillCell(UWidget* Child)
 {
 	if (!Child) return;
 	if (UUniformGridSlot* S = Cast<UUniformGridSlot>(Child->Slot))
@@ -230,7 +233,7 @@ void WidgetUtilHelpers::UniformGridFillCell(UWidget* Child)
 	}
 }
 
-void WidgetUtilHelpers::UpdateWidgetComponentScaleForScreenHeight(
+void UWidgetUtilHelpers::UpdateWidgetComponentScaleForScreenHeight(
 	UWidgetComponent* WidgetComp,
 	APlayerController* PC,
 	float DesiredScreenHeightPx,
@@ -280,7 +283,7 @@ void WidgetUtilHelpers::UpdateWidgetComponentScaleForScreenHeight(
 	WidgetComp->SetWorldScale3D(FVector(Scale));
 }
 
-int32 WidgetUtilHelpers::FindFittingFontSize(const FText& Text,
+int32 UWidgetUtilHelpers::FindFittingFontSize(const FText& Text,
                                              const FSlateFontInfo& BaseFont,
                                              const FVector2D& BoxPx,
                                              int32 MinSize,
@@ -316,7 +319,7 @@ int32 WidgetUtilHelpers::FindFittingFontSize(const FText& Text,
 	return Best;
 }
 
-void WidgetUtilHelpers::ApplyFontSize(UTextBlock* TB, int32 NewSize)
+void UWidgetUtilHelpers::ApplyFontSize(UTextBlock* TB, int32 NewSize)
 {
 	if (!TB) return;
 	FSlateFontInfo F = TB->GetFont();
@@ -324,7 +327,7 @@ void WidgetUtilHelpers::ApplyFontSize(UTextBlock* TB, int32 NewSize)
 	TB->SetFont(F);
 }
 
-void WidgetUtilHelpers::FillParentSlot(UWidget* Widget)
+void UWidgetUtilHelpers::FillParentSlot(UWidget* Widget)
 {
 	if (!Widget) return;
 
@@ -356,7 +359,7 @@ void WidgetUtilHelpers::FillParentSlot(UWidget* Widget)
 	}
 }
 
-int32 WidgetUtilHelpers::FindFittingFontSizeForFieldAndText(class UFieldAndTextWidget* W, const FVector2D& BoxPx,
+int32 UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(class UFieldAndTextWidget* W, const FVector2D& BoxPx,
 	int32 MinSize, int32 MaxSize, float PaddingScale)
 {
 	if (!W || BoxPx.X <= 0.f || BoxPx.Y <= 0.f || MaxSize < MinSize)
@@ -390,7 +393,7 @@ int32 WidgetUtilHelpers::FindFittingFontSizeForFieldAndText(class UFieldAndTextW
 	return Best;
 }
 
-FVector2D WidgetUtilHelpers::MeasureFieldAndTextAtSize(const FText& Title, const FText& Field,
+FVector2D UWidgetUtilHelpers::MeasureFieldAndTextAtSize(const FText& Title, const FText& Field,
 	const FSlateFontInfo& TitleFontBase, const FSlateFontInfo& FieldFontBase, int32 SizePx, bool bVertical)
 {
 	if (!FSlateApplication::IsInitialized())
@@ -408,4 +411,155 @@ FVector2D WidgetUtilHelpers::MeasureFieldAndTextAtSize(const FText& Title, const
 	return bVertical
 		? FVector2D(FMath::Max(T.X, F.X), T.Y + F.Y)
 		: FVector2D(T.X + F.X, FMath::Max(T.Y, F.Y));
+}
+
+void UWidgetUtilHelpers::SortScrollBoxChildrenByFloorAndCounter(
+	UScrollBox* ScrollBox,
+	bool bDescendingFloor,
+	bool bDescendingCounter)
+{
+	if (!ScrollBox)
+	{
+		return;
+	}
+
+	// Capture original children and preserve order for non-matching entries.
+	const TArray<UWidget*> OriginalChildren = ScrollBox->GetAllChildren();
+
+	struct FItem
+	{
+		UUserWidget* Widget = nullptr;
+		int32 Floor = 0;
+		int32 Counter = 0;
+		int32 OriginalIndex = 0;
+		bool bHasValidKey = false;
+	};
+
+	TArray<FItem> Items;
+	Items.Reserve(OriginalChildren.Num());
+
+	for (int32 Index = 0; Index < OriginalChildren.Num(); ++Index)
+	{
+		UWidget* Child = OriginalChildren[Index];
+
+		FItem Item;
+		Item.OriginalIndex = Index;
+		Item.Widget = Cast<UUserWidget>(Child);
+
+		if (Item.Widget)
+		{
+			Item.bHasValidKey = ExtractFloorAndCounterFromWidget(
+				Item.Widget,
+				Item.Floor,
+				Item.Counter);
+		}
+
+		Items.Add(Item);
+	}
+
+	// Sort with two groups:
+	//  1) Widgets with valid keys, sorted by Floor/Counter.
+	//  2) Widgets without keys, kept in original relative order at the end.
+	Items.Sort(
+		[bDescendingFloor, bDescendingCounter](const FItem& A, const FItem& B)
+		{
+			// Non-valid always go after valids.
+			if (A.bHasValidKey != B.bHasValidKey)
+			{
+				return A.bHasValidKey && !B.bHasValidKey;
+			}
+
+			// If neither has a valid key, keep original order stable.
+			if (!A.bHasValidKey && !B.bHasValidKey)
+			{
+				return A.OriginalIndex < B.OriginalIndex;
+			}
+
+			// Both have valid keys: compare Floor
+			if (A.Floor != B.Floor)
+			{
+				return bDescendingFloor
+					? (A.Floor > B.Floor)
+					: (A.Floor < B.Floor);
+			}
+
+			// Floors equal; compare Counter
+			if (A.Counter != B.Counter)
+			{
+				return bDescendingCounter
+					? (A.Counter > B.Counter)
+					: (A.Counter < B.Counter);
+			}
+
+			// Full tie: fall back to original index for deterministic order
+			return A.OriginalIndex < B.OriginalIndex;
+		});
+
+	// Rebuild the ScrollBox with new order
+	ScrollBox->ClearChildren();
+
+	for (const FItem& Item : Items)
+	{
+		if (UWidget* Child = OriginalChildren.IsValidIndex(Item.OriginalIndex)
+			                     ? OriginalChildren[Item.OriginalIndex]
+			                     : nullptr)
+		{
+			ScrollBox->AddChild(Child);
+		}
+	}
+}
+
+bool UWidgetUtilHelpers::TryParseFloorAndCounterFromText(
+	const FString& InText,
+	int32& OutFloor,
+	int32& OutCounter)
+{
+	OutFloor = 0;
+	OutCounter = 0;
+
+	FString Trimmed = InText.TrimStartAndEnd();
+	if (!Trimmed.StartsWith(TEXT("F")))
+		return false;
+
+	Trimmed.RightChopInline(1); // drop 'F'
+
+	FString FloorStr, CounterPart;
+	if (!Trimmed.Split(TEXT("Counter"), &FloorStr, &CounterPart))
+		return false;
+
+	FloorStr = FloorStr.TrimStartAndEnd();
+	CounterPart = CounterPart.TrimStartAndEnd();
+
+	if (!FloorStr.IsNumeric() || !CounterPart.IsNumeric())
+		return false;
+
+	OutFloor   = FCString::Atoi(*FloorStr);
+	OutCounter = FCString::Atoi(*CounterPart);
+	return true;
+}
+
+bool UWidgetUtilHelpers::ExtractFloorAndCounterFromWidget(
+	UUserWidget* Widget,
+	int32& OutFloor,
+	int32& OutCounter)
+{
+	if (!Widget || !Widget->WidgetTree)
+		return false;
+
+	TArray<UWidget*> AllWidgets;
+	Widget->WidgetTree->GetAllWidgets(AllWidgets);
+
+	for (UWidget* ChildWidget : AllWidgets)
+	{
+		if (UTextBlock* TB = Cast<UTextBlock>(ChildWidget))
+		{
+			const FString Text = TB->GetText().ToString();
+			if (TryParseFloorAndCounterFromText(Text, OutFloor, OutCounter))
+			{
+				return true; // stop at first match
+			}
+		}
+	}
+
+	return false;
 }

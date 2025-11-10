@@ -75,6 +75,8 @@ void UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize(const FVector& SpawnOr
 
 void UHeatmapSubsystem::UpdateSpawnHeightLocations(const TArray<float>& NewHeightSpawnLocations)
 {
+	// Broadcast the new spawn heights
+	OnNewSpawnHeights.Broadcast(NewHeightSpawnLocations);
 	{
 		// lock
 		FScopeLock lock(&HeightSpawnDataLock);

@@ -72,13 +72,19 @@ void UFlowCounterProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 		
 
 		//auto FlowCounters = StatisticSubsystem->GetFlowCounters().Num();
+		TArray<TObjectPtr<AFlowCounter>> ActiveCounters = StatisticSubsystem->GetActiveFlowCounters();
+		if (ActiveCounters.Num() == 0)
+		{
+			// No active flow counters, exit early
+			return;
+		}
 
 		for (int32 i = 0; i < NumEntities; ++i)
 		{
 			// Get the current entity movement fragment
 			const FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 			
-			for (int32 j = 0; j < StatisticSubsystem->GetFlowCounters().Num(); ++j)
+			for (int32 j = 0; j < ActiveCounters.Num(); ++j)
 			{
 				int32 AgentID = MoveFrag.EntityID;
 				// check to see if in band and not already been processed

@@ -37,6 +37,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins
 
 /** Delegate for broadcasting auto flow counter spawns */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowCounterSpawned, AFlowCounter*, NewFlowCounter);
+/** Delegate for broadcasting all flow counters removed */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAllFlowCounterRemoved);
 
 /** Structs */
 USTRUCT()
@@ -87,7 +89,8 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MeshGenerator|Generation")
 	void GetMeshDataFromFile(FRotator MeshRotationOffset = FRotator::ZeroRotator);
-	
+	void ResetMeshCollisionAndPhysics();
+
 	/**
 	 * Update the Mesh file name, this is bound to the OnMeshFileChanged Delegate in the Game Instance
 	 * and will call the methods to get the mesh data and rebuild the mesh
@@ -226,6 +229,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintAssignable, Category = "MeshGenerator|Delegates")
 	FOnFlowCounterSpawned OnFlowCounterAutoSpawned;
+
+	UPROPERTY(EditAnywhere, BlueprintAssignable, Category = "MeshGenerator|Delegates")
+	FOnAllFlowCounterRemoved OnAllFlowCountersRemoved;
 	
 	/*
 	* Array to store the Procedural Meshes UV0 to Generate 

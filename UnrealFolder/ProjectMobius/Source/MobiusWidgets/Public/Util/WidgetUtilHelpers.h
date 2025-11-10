@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "EnumsAndStructs/HelperStructs.h"
+#include "WidgetUtilHelpers.generated.h"
 
+class UScrollBox;
 class UUniformGridPanel;
 class UWidgetComponent;
 class UWidget;
@@ -13,11 +15,14 @@ class UFieldAndTextWidget;
 /**
  * 
  */
-class MOBIUSWIDGETS_API WidgetUtilHelpers
+UCLASS()
+class MOBIUSWIDGETS_API UWidgetUtilHelpers : public UBlueprintFunctionLibrary
 {
+	GENERATED_BODY()
+	
 public:
-	WidgetUtilHelpers();
-	~WidgetUtilHelpers();
+	UWidgetUtilHelpers();
+	~UWidgetUtilHelpers();
 
 	/**
 	 * Clears all options in the provided combo string box
@@ -143,4 +148,31 @@ public:
 		const FText& Title, const FText& Field,
 		const FSlateFontInfo& TitleFontBase, const FSlateFontInfo& FieldFontBase,
 		int32 SizePx, bool bVertical);
+
+	/**
+	 * Sort ScrollBox children by label "F{Floor} Counter {Counter}".
+	 *
+	 * - Looks through each UserWidget child for a UTextBlock matching that format.
+	 * - Sorts by Floor first, then Counter.
+	 * - bDescendingFloor / bDescendingCounter control sort direction on each key.
+	 *
+	 * Widgets without a valid label are left at the end, in original order.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Mobius|WidgetUtils")
+	static void SortScrollBoxChildrenByFloorAndCounter(
+		UScrollBox* ScrollBox,
+		bool bDescendingFloor,
+		bool bDescendingCounter);
+
+private:
+
+	static bool TryParseFloorAndCounterFromText(
+		const FString& InText,
+		int32& OutFloor,
+		int32& OutCounter);
+
+	static bool ExtractFloorAndCounterFromWidget(
+		UUserWidget* Widget,
+		int32& OutFloor,
+		int32& OutCounter);
 };

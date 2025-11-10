@@ -69,7 +69,7 @@ void UPedestrianDataDisplay::ConfigureTextBlockStyles() const
 
 	for (UFieldAndTextWidget* Widget : TitleFieldWidgets)
 	{
-		WidgetUtilHelpers::SetGridSlotAlignment(Widget, HAlign_Fill, VAlign_Center);
+		UWidgetUtilHelpers::SetGridSlotAlignment(Widget, HAlign_Fill, VAlign_Center);
 	}
 	// SetTextBlockAlignment(TitleFieldWidget1, HAlign_Center, VAlign_Center);
 	// SetTextBlockAlignment(TitleFieldWidget2, HAlign_Center, VAlign_Center);
@@ -122,10 +122,10 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 			if (WidgetHeadGridPanel && WidgetHeadGridPanel->GetVisibility() != ESlateVisibility::Collapsed)
 			{
 				// Hide the grid panel if no agent is selected and clear old fields
-				WidgetUtilHelpers::UpdateNumberIfChanged(TitleFieldWidgets[0], -1);
+				UWidgetUtilHelpers::UpdateNumberIfChanged(TitleFieldWidgets[0], -1);
 				for (int32 i = 1; i < TitleFieldWidgets.Num(); ++i)
 				{
-					WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[i], FText::FromString(TEXT("N/A"))); 
+					UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[i], FText::FromString(TEXT("N/A"))); 
 				}
 				WidgetHeadGridPanel->SetVisibility(ESlateVisibility::Collapsed);
 
@@ -137,9 +137,9 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		{
 			if (TitleFieldWidgets.Num() >= 8)
 			{
-				WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[4], FText::FromString(TEXT("N/A")));
-				WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[5], FText::FromString(TEXT("N/A")));
-				WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[7], FText::FromString(TEXT("N/A")));
+				UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[4], FText::FromString(TEXT("N/A")));
+				UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[5], FText::FromString(TEXT("N/A")));
+				UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[7], FText::FromString(TEXT("N/A")));
 			}
 		}
 		
@@ -160,14 +160,14 @@ void UPedestrianDataDisplay::UpdateFieldTextBlocks() const
 		
 		if (TitleFieldWidgets.Num() >= 8)
 		{
-			WidgetUtilHelpers::UpdateNumberIfChanged(TitleFieldWidgets[0], LastUpdatedAgentMeshViewerData.AgentID);
-			WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[1], LastUpdatedAgentMeshViewerData.AgentName);
-			WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[2], LastUpdatedAgentMeshViewerData.Gender);
-			WidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[3], LastUpdatedAgentMeshViewerData.Demographic);
-			WidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[4], LastUpdatedAgentMeshViewerData.AgentSpeed);
-			WidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[5], LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
-			WidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[6], LastUpdatedAgentMeshViewerData.AgentHeight);
-			WidgetUtilHelpers::UpdateVectorIfChanged(TitleFieldWidgets[7], LastUpdatedAgentMeshViewerData.AgentWorldPosition);
+			UWidgetUtilHelpers::UpdateNumberIfChanged(TitleFieldWidgets[0], LastUpdatedAgentMeshViewerData.AgentID);
+			UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[1], LastUpdatedAgentMeshViewerData.AgentName);
+			UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[2], LastUpdatedAgentMeshViewerData.Gender);
+			UWidgetUtilHelpers::UpdateTextIfChanged(TitleFieldWidgets[3], LastUpdatedAgentMeshViewerData.Demographic);
+			UWidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[4], LastUpdatedAgentMeshViewerData.AgentSpeed);
+			UWidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[5], LastUpdatedAgentMeshViewerData.GaitDirectionalSpeed);
+			UWidgetUtilHelpers::UpdateFloatIfChanged(TitleFieldWidgets[6], LastUpdatedAgentMeshViewerData.AgentHeight);
+			UWidgetUtilHelpers::UpdateVectorIfChanged(TitleFieldWidgets[7], LastUpdatedAgentMeshViewerData.AgentWorldPosition);
 		}
 		
 	}

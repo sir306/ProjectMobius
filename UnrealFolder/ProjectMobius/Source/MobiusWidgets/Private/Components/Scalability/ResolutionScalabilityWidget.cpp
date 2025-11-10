@@ -106,11 +106,11 @@ void UResolutionScalabilityWidget::PopulateResolutionComboBox()
 	FString CurrentResolutionStr = FormatResolution(CurrentScreenResolution);
 
 	// Update the combo box options with the formatted resolution strings
-	WidgetUtilHelpers::UpdateComboBoxOptions(ResolutionComboBox, ResolutionOptions, CurrentResolutionStr);
+	UWidgetUtilHelpers::UpdateComboBoxOptions(ResolutionComboBox, ResolutionOptions, CurrentResolutionStr);
 }
 
 void UResolutionScalabilityWidget::SetSelectedDropdownOption(const FIntPoint& NewOption)
 {
 	FString NewOptionStr = FormatResolution(NewOption);
-	WidgetUtilHelpers::FindAndSetComboBoxOption(ResolutionComboBox, NewOptionStr);
+	UWidgetUtilHelpers::FindAndSetComboBoxOption(ResolutionComboBox, NewOptionStr);
 }

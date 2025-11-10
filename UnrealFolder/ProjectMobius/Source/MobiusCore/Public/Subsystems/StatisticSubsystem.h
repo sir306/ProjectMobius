@@ -141,6 +141,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void ResetFlowCounters();
 
+	/** */
+	UFUNCTION(BlueprintCallable)
+	void AddRemoveActiveFlowCounter(AFlowCounter* FlowCounter, bool bAddToActiveCounters);
+
 	// TODO: These are dropped in methods as suggested by ChatGPT, so need to confirm naming convention is correct and the calculations are correct
 #pragma region FLOW_ANALYTICS_METHODS
 	
@@ -203,6 +207,10 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StatisticSubsystem|FlowCounter", meta = (AllowPrivateAccess = "true"))
 	TArray<TObjectPtr<AFlowCounter>> FlowCounters = TArray<TObjectPtr<AFlowCounter>>();
 
+	/** Reference to active FlowCounters,  */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StatisticSubsystem|FlowCounter", meta = (AllowPrivateAccess = "true"))
+	TArray<TObjectPtr<AFlowCounter>> ActiveFlowCounters = TArray<TObjectPtr<AFlowCounter>>();
+
 public:
 	// GETTERS AND SETTERS
 	/**
@@ -211,5 +219,9 @@ public:
 	 * @return A pointer to the AFlowCounter actor if it exists, otherwise nullptr.
 	 */
 	FORCEINLINE TArray<TObjectPtr<AFlowCounter>> GetFlowCounters() { return FlowCounters; }
+
+	/** */
+	FORCEINLINE TArray<TObjectPtr<AFlowCounter>> GetActiveFlowCounters() { return ActiveFlowCounters; }
+	
 	
 };

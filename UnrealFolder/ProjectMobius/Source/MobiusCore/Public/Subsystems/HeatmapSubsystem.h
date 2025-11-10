@@ -38,6 +38,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHeatmapAdded, AHeatmapPixelTextureV
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHeatmapRemoved, AHeatmapPixelTextureVisualizer*, HeatmapActor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FUpdateFloorStatCount, int32, FloorNumber, int32, AgentCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FUpdateBetweenFloorStatCount, int32, FloorNumber, int32, AgentCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewSpawnHeights, const TArray<float>&, NewHeightSpawnLocations);
 
 
 /*
@@ -209,6 +210,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Heatmap|Subsystem")
 	FUpdateBetweenFloorStatCount OnUpdateBetweenFloorStatCount;
+
+	UPROPERTY(BlueprintAssignable, Category = "Heatmap|Subsystem")
+	FOnNewSpawnHeights OnNewSpawnHeights;
 	
 protected:
 	/** Stores all the heatmaps of the world */

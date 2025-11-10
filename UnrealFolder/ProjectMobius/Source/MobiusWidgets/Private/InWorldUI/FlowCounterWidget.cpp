@@ -23,8 +23,8 @@ void UFlowCounterWidget::NativePreConstruct()
 		RootUniformGridPanel->AddChildToUniformGrid(FlowDataUniformGridPanel, 1, 0);
 
 		// ensure the flow data uniform grid panel and Live Agent Count Widget fills its cell
-		WidgetUtilHelpers::UniformGridFillCell(LiveAgentCountFieldAndTextWidget);
-		WidgetUtilHelpers::UniformGridFillCell(FlowDataUniformGridPanel);
+		UWidgetUtilHelpers::UniformGridFillCell(LiveAgentCountFieldAndTextWidget);
+		UWidgetUtilHelpers::UniformGridFillCell(FlowDataUniformGridPanel);
 
 	}
 	
@@ -183,7 +183,7 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetUpdateFieldText(NewSectionCounter->FlowValueText);
 				
 				// Ensure the new widget fills its cell
-				WidgetUtilHelpers::UniformGridFillCell(NewSectionCounter);
+				UWidgetUtilHelpers::UniformGridFillCell(NewSectionCounter);
 			}
 			else
 			{

@@ -311,11 +311,13 @@ AFlowCounter::AFlowCounter()
 	CounterBarrierVisualMesh->Initialize(100.f, 100.f);
 
 	UpdateFlowCounterTriggerBox();
-	
-	// As the trigger box is only used to check whether a location is within the flow counter area, we can set the collision to none
-	FlowCounterTriggerBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// TODO: setup alternative for VR
+	// As the trigger box is only used for query we set it to query only (if there was no mouse clicks then set to none)
+	FlowCounterTriggerBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	FlowCounterTriggerBox->SetCollisionObjectType(ECC_WorldDynamic);
 	FlowCounterTriggerBox->SetCollisionResponseToAllChannels(ECR_Ignore);
+	FlowCounterTriggerBox->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	//DEBUG - for now we will make the trigger box visible in the sim
 	FlowCounterTriggerBox->SetVisibility(true);
 	FlowCounterTriggerBox->SetHiddenInGame(false);
@@ -438,28 +440,36 @@ void AFlowCounter::Tick(float DeltaTime)
 	// {
 	// 	AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
 	// }
-
-	FFlowCrossingResult R;
-	while (ThreadSafeResults.Dequeue(R))
+	
+	if (bIsFlowCounterActive)
 	{
-		// 1) Time-window gate: drop anything that happened “in the future”
-		//    relative to the CURRENT timeline after scrubs.
-		if (R.SampleTime > CurrentSimTime)
+		FFlowCrossingResult R;
+		while (ThreadSafeResults.Dequeue(R))
 		{
-			continue; // stale due to rewind
-		}
-		else
-		{
-			FWriteScopeLock _(AgentsMapRW);
-			// 2) Commit counted agent (safe: GT only)
-			AgentsPassedThroughCounter.Add(
-				R.AgentID,
-				FFlowCounterCountedAgentData(R.SampleTime, R.IntersectionOnLine, R.IntersectionThreshold)
-			);
-			FlowCounterCount.store(AgentsPassedThroughCounter.Num());
+			// 1) Time-window gate: drop anything that happened “in the future”
+			//    relative to the CURRENT timeline after scrubs.
+			if (R.SampleTime > CurrentSimTime)
+			{
+				continue; // stale due to rewind
+			}
+			else
+			{
+				FWriteScopeLock _(AgentsMapRW);
+				// 2) Commit counted agent (safe: GT only)
+				AgentsPassedThroughCounter.Add(
+					R.AgentID,
+					FFlowCounterCountedAgentData(R.SampleTime, R.IntersectionOnLine, R.IntersectionThreshold)
+				);
+				FlowCounterCount.store(AgentsPassedThroughCounter.Num());
 			
-			AssignAgentToBucketUsingThresholdWithTime(R.AgentID, R.IntersectionThreshold, R.SampleTime);
+				AssignAgentToBucketUsingThresholdWithTime(R.AgentID, R.IntersectionThreshold, R.SampleTime);
+			}
 		}
+	}
+	else
+	{
+		// to avoid results stacking up just completely empty the list
+		ThreadSafeResults.Empty();
 	}
 	
 }
@@ -638,6 +648,11 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
 	AFlowCounter* FlowCounter = WeakThis.Get();
 	if (FlowCounter == nullptr) { return false; }
+
+	if (!FlowCounter->bIsFlowCounterActive)
+	{
+		return false;
+	}
 
 	FWriteScopeLock LockPrev(TrackedPrevMapRW);
 	FReadScopeLock  LockCounted(AgentsMapRW);
