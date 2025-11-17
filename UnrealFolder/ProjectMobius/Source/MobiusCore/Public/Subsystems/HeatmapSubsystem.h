@@ -151,10 +151,13 @@ public:
 
 	//TODO: this method needs to be placed in a more appropriate place as it is not really a heatmap method but we have bound the visualiser chart logic to this system
 	/** Broadcast the total agent count, for total stat count */
-	void BroadcastTotalAgentCount(int32 TotalAgentCount) const
+	void BroadcastTotalAgentCount(int32 NewTotalAgentCount) 
 	{
-		//TODO: calls every frame make it so it only calls when the agent count changes
-		OnUpdateFloorStatCount.Broadcast(-1, TotalAgentCount);
+		if (TotalAgentCount != NewTotalAgentCount)
+		{
+			TotalAgentCount = NewTotalAgentCount;
+			OnUpdateFloorStatCount.Broadcast(-1, TotalAgentCount);
+		}
 	}
 
 protected:
@@ -183,7 +186,7 @@ private:
 
 	/** Broadcast agent counts for each floor and between floors */
 	void BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
-	                          const TArray<TArray<FVector>>& BetweenLocations) const;
+	                          const TArray<TArray<FVector>>& BetweenLocations);
 
 	void RunAsyncHeatmapUpdate_Mpmc(
 	const TArray<TArray<FVector>>& ValidLocations,
@@ -243,6 +246,23 @@ private:
 	UPROPERTY()
 	FTimerHandle HeatmapGenerationTimerHandle;
 
+	/**
+	 * Array storing the count of agents on the last processed floor for each heatmap.
+	 * Used to track and compare the number of agents between floors during heatmap updates.
+	 */
+	UPROPERTY()
+	TArray<int32> LastFloorCounts;
+
+	/**
+	 * Array that stores the counts of agents located between floors for the most recent calculation.
+	 * This data is used to track agent distribution and transitions occurring between distinct levels
+	 * within the heatmap system.
+	 */
+	UPROPERTY()
+	TArray<int32> LastBetweenFloorCounts;
+
+	UPROPERTY()
+	int32 TotalAgentCount = 0;
 
 #pragma endregion PROPERTIES
 

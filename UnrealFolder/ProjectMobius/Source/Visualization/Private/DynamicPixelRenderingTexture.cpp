@@ -525,7 +525,7 @@ void UDynamicPixelRenderingTexture::UpdateTextureRender() const
 	);
 }
 
-void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
+void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
 {
 #if !PLATFORM_MAC
 #if WITH_EDITOR
@@ -559,6 +559,8 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 
 		// Copy the blurred image back to the pixel buffer
 		FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
+		
+		bIsBlurRequired = false;
 	}
 #endif
 

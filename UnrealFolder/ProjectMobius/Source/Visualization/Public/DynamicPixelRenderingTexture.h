@@ -170,7 +170,7 @@ public:
 	/**
 	 * This method performs a Gaussian Blur on the texture using OpenCV, so that the heatmaps have even distribution
 	 */
-	void OpenCVGaussianBlur() const;
+	void OpenCVGaussianBlur();
 
 	/**
 	 * Method that creates a voronoi diagram using openCV

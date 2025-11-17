@@ -494,18 +494,38 @@ void UHeatmapSubsystem::ComputeValidHeatmapLocations(const TArray<FVector>& Loca
 }
 
 void UHeatmapSubsystem::BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
-                                             const TArray<TArray<FVector>>& BetweenLocations) const
+                                             const TArray<TArray<FVector>>& BetweenLocations) 
 {
-	//TRACE_CPUPROFILER_EVENT_SCOPE("BroadcastAgentCounts");
-        for (int32 i = 0; i < BetweenLocations.Num(); ++i)
-        {
-                OnUpdateBetweenFloorStatCount.Broadcast(i, BetweenLocations[i].Num());
-        }
+	// Resize caches if heatmap count changed
+	if (LastBetweenFloorCounts.Num() != BetweenLocations.Num())
+	{
+		LastBetweenFloorCounts.Init(INDEX_NONE, BetweenLocations.Num());
+	}
 
-        for (int32 i = 0; i < ValidLocations.Num(); ++i)
-        {
-                OnUpdateFloorStatCount.Broadcast(i, ValidLocations[i].Num());
-        }
+	if (LastFloorCounts.Num() != ValidLocations.Num())
+	{
+		LastFloorCounts.Init(INDEX_NONE, ValidLocations.Num());
+	}
+
+	for (int32 i = 0; i < BetweenLocations.Num(); ++i)
+	{
+		const int32 NewCount = BetweenLocations[i].Num();
+		if (LastBetweenFloorCounts[i] != NewCount)
+		{
+			LastBetweenFloorCounts[i] = NewCount;
+			OnUpdateBetweenFloorStatCount.Broadcast(i, NewCount);
+		}
+	}
+
+	for (int32 i = 0; i < ValidLocations.Num(); ++i)
+	{
+		const int32 NewCount = ValidLocations[i].Num();
+		if (LastFloorCounts[i] != NewCount)
+		{
+			LastFloorCounts[i] = NewCount;
+			OnUpdateFloorStatCount.Broadcast(i, NewCount);
+		}
+	}
 }
 
 void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(

@@ -922,6 +922,12 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 
 void AFlowCounter::NewSimTime(float UpdatedTime)
 {
+	// TODO: until we handle new sim time for large amounts of actors then we should only 
+	// update when there is an active flow counter
+	if (!bIsFlowCounterActive)
+	{
+		return;
+	}
 	FScopeLock _(&FlowStateCS);
 
 	const bool bRewind = (UpdatedTime < CurrentSimTime);
