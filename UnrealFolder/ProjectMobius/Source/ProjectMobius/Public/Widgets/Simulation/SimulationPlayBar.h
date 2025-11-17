@@ -236,6 +236,12 @@ public:
 	uint8 SimulationPaused : 1 = 1;
 private:
 
+	// Cached last displayed current time (for UI)
+	float LastDisplayedCurrentTime = TNumericLimits<float>::Lowest();
+
+	// Optional: cache the last formatted text if you want to be extra safe
+	FText LastCurrentTimeText;
+	
 	/** As the slider movement may occur when already paused to prevent un pausing another variable is used to calculate this */
 	UPROPERTY()
 	uint8 PreviouslyPaused : 1 = 1;// This needs to be set true as the simulation starts paused

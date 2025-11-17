@@ -48,9 +48,6 @@ public:
 	// Native Constructor 
 	virtual void NativeConstruct() override;
 
-	// Tick Method for in C++ for the widget
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-
 	/** Method to keep the design properties synchronized */
 	virtual void SynchronizeProperties() override;
 

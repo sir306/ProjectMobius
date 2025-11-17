@@ -41,10 +41,7 @@ public:
 #pragma region PUBLIC_METHODS
 	// Constructor 
 	virtual void NativeConstruct() override;
-
-	// Tick Method for in C++ for the widget
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-
+	
 	/**
 	 * Method to call when the SelectFileButton is clicked
 	 * It is overriden from the parent class to get the mesh data file

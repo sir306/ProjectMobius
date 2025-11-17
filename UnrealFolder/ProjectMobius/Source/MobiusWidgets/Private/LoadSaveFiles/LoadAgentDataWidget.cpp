@@ -31,11 +31,6 @@ void ULoadAgentDataWidget::NativeConstruct()
 	Super::NativeConstruct();
 }
 
-void ULoadAgentDataWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-}
-
 void ULoadAgentDataWidget::OnSelectFileButtonClicked()
 {
 

@@ -52,7 +52,15 @@ void UFlowCounterWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	
+	if (!bNeedsSectionStyleUpdate)
+		return;
+	
+	// ensure geometry has been computed
+	if (GetCachedGeometry().GetLocalSize().IsNearlyZero() ) {return;}
+	
 	UpdateFlowSectionCountersStyle();
+	
+	bNeedsSectionStyleUpdate = false;
 }
 
 int32 UFlowCounterWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
@@ -109,7 +117,8 @@ void UFlowCounterWidget::UpdateLiveAgentCountField()
 void UFlowCounterWidget::AddFlowSectionCounter()
 {
 	CurrentFlowDataSections++;
-	UpdateFlowSectionCountersStyle();
+	//UpdateFlowSectionCountersStyle();
+	bNeedsSectionStyleUpdate = true;
 }
 
 void UFlowCounterWidget::RemoveFlowSectionCounter()
@@ -121,7 +130,8 @@ void UFlowCounterWidget::RemoveFlowSectionCounter()
 	SetFlowDataSections(CurrentFlowDataSections);
 
 	// Update the style after changing the section count
-	UpdateFlowSectionCountersStyle();
+	//UpdateFlowSectionCountersStyle();
+	bNeedsSectionStyleUpdate = true;
 }
 
 void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
@@ -135,7 +145,6 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 	// ensure geometry has been computed
 	if (GetCachedGeometry().GetLocalSize().IsNearlyZero() ) {return;}
 	
-
 	// get the current number of children in the grid panel
 	const int32 CurrentChildren = FlowDataUniformGridPanel->GetChildrenCount();
 

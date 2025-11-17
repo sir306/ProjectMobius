@@ -86,6 +86,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
 	TSubclassOf<UFlowSectionCounter> FlowSectionCounterWidgetClass;
 	
+	bool bNeedsSectionStyleUpdate = true;
+
 protected:
 	/** Uniform Grid Panel for root component  */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties", meta = (BindWidget))

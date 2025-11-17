@@ -234,7 +234,7 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 		auto EntityMovement = EntityMovementFragment[i];
 		auto& EntityRendering = EntityRenderingFragment[i];
 		
-		if (!EntityRendering.bRenderAgent && EntityRendering.bReadyToDestroy)
+		if (!EntityRendering.bRenderAgent || EntityRendering.bReadyToDestroy) // changed from && to || as likely either condition is sufficient to skip
 		{
 			continue;
 		}
