@@ -136,7 +136,7 @@ bool UStatisticSubsystem::IsAgentLocationInAFlowCounterBand(const FVector& Agent
 
 bool UStatisticSubsystem::HasAgentBeenCountedInFlowCounter(const int32 AgentID, int32 FlowCounterID) const
 {
-	if (!ActiveFlowCounters.IsValidIndex(FlowCounterID))
+	if (!ActiveFlowCounters.IsValidIndex(FlowCounterID) && ActiveFlowCounters[FlowCounterID] != nullptr)
 	{
 		return false;
 	}

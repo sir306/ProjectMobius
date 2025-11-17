@@ -34,7 +34,7 @@ void UWidgetUtilHelpers::ClearComboBoxOptions(TObjectPtr<UComboBoxString> ComboB
 }
 
 void UWidgetUtilHelpers::UpdateComboBoxOptions(TObjectPtr<UComboBoxString> ComboBox, const TArray<FString>& Options,
-                                              const FString& SelectedOption)
+                                               const FString& SelectedOption)
 {
 	if (ComboBox->IsValidLowLevel() && Options.Num() > 0)
 	{
@@ -62,7 +62,7 @@ void UWidgetUtilHelpers::UpdateComboBoxOptions(TObjectPtr<UComboBoxString> Combo
 }
 
 void UWidgetUtilHelpers::FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option,
-                                                 bool bSetSelection)
+                                                  bool bSetSelection)
 {
 	if (ComboBox->IsValidLowLevel() && ComboBox->FindOptionIndex(Option) != INDEX_NONE)
 	{
@@ -118,7 +118,7 @@ void UWidgetUtilHelpers::UpdateVectorIfChanged(UFieldAndTextWidget* Widget, cons
 }
 
 void UWidgetUtilHelpers::SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign,
-                                             EVerticalAlignment VAlign)
+                                              EVerticalAlignment VAlign)
 {
 	if (!Widget)
 	{
@@ -140,7 +140,7 @@ void UWidgetUtilHelpers::SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignm
 }
 
 FUniformGridLayout UWidgetUtilHelpers::ComputeUniformGridLayout(const FVector2D& DrawSizePx, int32 NumItems,
-                                                               const FVector2D& MinCellPx, int32 PreferredColsHint)
+                                                                const FVector2D& MinCellPx, int32 PreferredColsHint)
 {
 	FUniformGridLayout Out;
 	Out.Columns = 1;
@@ -284,11 +284,11 @@ void UWidgetUtilHelpers::UpdateWidgetComponentScaleForScreenHeight(
 }
 
 int32 UWidgetUtilHelpers::FindFittingFontSize(const FText& Text,
-                                             const FSlateFontInfo& BaseFont,
-                                             const FVector2D& BoxPx,
-                                             int32 MinSize,
-                                             int32 MaxSize,
-                                             float PaddingScale)
+                                              const FSlateFontInfo& BaseFont,
+                                              const FVector2D& BoxPx,
+                                              int32 MinSize,
+                                              int32 MaxSize,
+                                              float PaddingScale)
 {
 	if (BoxPx.X <= 0.f || BoxPx.Y <= 0.f || MaxSize < MinSize)
 		return FMath::Max(MinSize, 0);
@@ -360,18 +360,18 @@ void UWidgetUtilHelpers::FillParentSlot(UWidget* Widget)
 }
 
 int32 UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(class UFieldAndTextWidget* W, const FVector2D& BoxPx,
-	int32 MinSize, int32 MaxSize, float PaddingScale)
+                                                             int32 MinSize, int32 MaxSize, float PaddingScale)
 {
 	if (!W || BoxPx.X <= 0.f || BoxPx.Y <= 0.f || MaxSize < MinSize)
 		return FMath::Max(MinSize, 0);
 
 	// Choose styles (or fallback to Core NormalText)
 	const FTextBlockStyle& TitleStyle = (W->TitleTextStyle)
-		? *W->TitleTextStyle->GetStyle<FTextBlockStyle>()
-		: FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
+		                                    ? *W->TitleTextStyle->GetStyle<FTextBlockStyle>()
+		                                    : FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
 	const FTextBlockStyle& FieldStyle = (W->FieldTextStyle)
-		? *W->FieldTextStyle->GetStyle<FTextBlockStyle>()
-		: FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
+		                                    ? *W->FieldTextStyle->GetStyle<FTextBlockStyle>()
+		                                    : FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
 
 	const FSlateFontInfo TitleBase = TitleStyle.Font;
 	const FSlateFontInfo FieldBase = FieldStyle.Font;
@@ -394,7 +394,7 @@ int32 UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(class UFieldAndText
 }
 
 FVector2D UWidgetUtilHelpers::MeasureFieldAndTextAtSize(const FText& Title, const FText& Field,
-	const FSlateFontInfo& TitleFontBase, const FSlateFontInfo& FieldFontBase, int32 SizePx, bool bVertical)
+                                                        const FSlateFontInfo& TitleFontBase, const FSlateFontInfo& FieldFontBase, int32 SizePx, bool bVertical)
 {
 	if (!FSlateApplication::IsInitialized())
 		return FVector2D::ZeroVector;
@@ -409,8 +409,8 @@ FVector2D UWidgetUtilHelpers::MeasureFieldAndTextAtSize(const FText& Title, cons
 	const FVector2D F = Measure->Measure(Field, FieldFont);
 
 	return bVertical
-		? FVector2D(FMath::Max(T.X, F.X), T.Y + F.Y)
-		: FVector2D(T.X + F.X, FMath::Max(T.Y, F.Y));
+		       ? FVector2D(FMath::Max(T.X, F.X), T.Y + F.Y)
+		       : FVector2D(T.X + F.X, FMath::Max(T.Y, F.Y));
 }
 
 void UWidgetUtilHelpers::SortScrollBoxChildrenByFloorAndCounter(
@@ -419,147 +419,275 @@ void UWidgetUtilHelpers::SortScrollBoxChildrenByFloorAndCounter(
 	bool bDescendingCounter)
 {
 	if (!ScrollBox)
-	{
 		return;
-	}
 
-	// Capture original children and preserve order for non-matching entries.
 	const TArray<UWidget*> OriginalChildren = ScrollBox->GetAllChildren();
 
 	struct FItem
 	{
 		UUserWidget* Widget = nullptr;
-		int32 Floor = 0;
-		int32 Counter = 0;
+		FFloorCounterKey Key;
 		int32 OriginalIndex = 0;
-		bool bHasValidKey = false;
 	};
 
 	TArray<FItem> Items;
 	Items.Reserve(OriginalChildren.Num());
 
-	for (int32 Index = 0; Index < OriginalChildren.Num(); ++Index)
+	for (int32 i = 0; i < OriginalChildren.Num(); ++i)
 	{
-		UWidget* Child = OriginalChildren[Index];
-
+		UUserWidget* UW = Cast<UUserWidget>(OriginalChildren[i]);
 		FItem Item;
-		Item.OriginalIndex = Index;
-		Item.Widget = Cast<UUserWidget>(Child);
-
-		if (Item.Widget)
-		{
-			Item.bHasValidKey = ExtractFloorAndCounterFromWidget(
-				Item.Widget,
-				Item.Floor,
-				Item.Counter);
-		}
-
+		Item.Widget = UW;
+		Item.OriginalIndex = i;
+		if (UW)
+			Item.Key = ExtractFloorCounterFromWidget(UW, TEXT("FC_NameTextBlock"));
 		Items.Add(Item);
 	}
 
-	// Sort with two groups:
-	//  1) Widgets with valid keys, sorted by Floor/Counter.
-	//  2) Widgets without keys, kept in original relative order at the end.
-	Items.Sort(
-		[bDescendingFloor, bDescendingCounter](const FItem& A, const FItem& B)
+	Items.Sort([bDescendingFloor, bDescendingCounter](const FItem& A, const FItem& B)
+	{
+		const auto& KA = A.Key;
+		const auto& KB = B.Key;
+
+		if (KA.bHasValidKey != KB.bHasValidKey)
 		{
-			// Non-valid always go after valids.
-			if (A.bHasValidKey != B.bHasValidKey)
-			{
-				return A.bHasValidKey && !B.bHasValidKey;
-			}
+			return KA.bHasValidKey && !KB.bHasValidKey;
+		}
 
-			// If neither has a valid key, keep original order stable.
-			if (!A.bHasValidKey && !B.bHasValidKey)
-			{
-				return A.OriginalIndex < B.OriginalIndex;
-			}
-
-			// Both have valid keys: compare Floor
-			if (A.Floor != B.Floor)
-			{
-				return bDescendingFloor
-					? (A.Floor > B.Floor)
-					: (A.Floor < B.Floor);
-			}
-
-			// Floors equal; compare Counter
-			if (A.Counter != B.Counter)
-			{
-				return bDescendingCounter
-					? (A.Counter > B.Counter)
-					: (A.Counter < B.Counter);
-			}
-
-			// Full tie: fall back to original index for deterministic order
+		if (!KA.bHasValidKey && !KB.bHasValidKey)
+		{
 			return A.OriginalIndex < B.OriginalIndex;
-		});
+		}
 
-	// Rebuild the ScrollBox with new order
+		// 1) Compare floor low first
+		if (KA.SortFloorLow != KB.SortFloorLow)
+		{
+			return bDescendingFloor
+				       ? (KA.SortFloorLow > KB.SortFloorLow)
+				       : (KA.SortFloorLow < KB.SortFloorLow);
+		}
+
+		// 2) Within the same low floor:
+		//    Single-floor entries (F1) should come before ranges (F1~F2).
+		const bool AIsRange = (KA.SortFloorLow != KA.SortFloorHigh);
+		const bool BIsRange = (KB.SortFloorLow != KB.SortFloorHigh);
+
+		if (AIsRange != BIsRange)
+		{
+			// false (single) < true (range)
+			return !AIsRange && BIsRange;
+		}
+
+		// 3) (Optional) if you want to sort by high floor inside ranges:
+		// if (KA.SortFloorHigh != KB.SortFloorHigh)
+		// {
+		//     return bDescendingFloor
+		//         ? (KA.SortFloorHigh > KB.SortFloorHigh)
+		//         : (KA.SortFloorHigh < KB.SortFloorHigh);
+		// }
+
+		// 4) Then compare counter
+		if (KA.Counter != KB.Counter)
+		{
+			return bDescendingCounter
+				       ? (KA.Counter > KB.Counter)
+				       : (KA.Counter < KB.Counter);
+		}
+
+		// 5) Stable fallback
+		return A.OriginalIndex < B.OriginalIndex;
+	});
+
 	ScrollBox->ClearChildren();
-
 	for (const FItem& Item : Items)
 	{
-		if (UWidget* Child = OriginalChildren.IsValidIndex(Item.OriginalIndex)
-			                     ? OriginalChildren[Item.OriginalIndex]
-			                     : nullptr)
-		{
-			ScrollBox->AddChild(Child);
-		}
+		if (Item.Widget)
+			ScrollBox->AddChild(Item.Widget);
 	}
 }
 
-bool UWidgetUtilHelpers::TryParseFloorAndCounterFromText(
-	const FString& InText,
-	int32& OutFloor,
-	int32& OutCounter)
+int32 UWidgetUtilHelpers::SortScrollBoxChildrenByFloorAndCounterWithNewPos(UScrollBox* ScrollBox, bool bDescendingFloor,
+                                                                           bool bDescendingCounter, UUserWidget* TargetWidget)
 {
-	OutFloor = 0;
-	OutCounter = 0;
+	if (!ScrollBox)
+		return INDEX_NONE;
 
-	FString Trimmed = InText.TrimStartAndEnd();
-	if (!Trimmed.StartsWith(TEXT("F")))
-		return false;
+	const TArray<UWidget*> OriginalChildren = ScrollBox->GetAllChildren();
 
-	Trimmed.RightChopInline(1); // drop 'F'
+	struct FItem
+	{
+		UUserWidget* Widget = nullptr;
+		FFloorCounterKey Key;
+		int32 OriginalIndex = 0;
+	};
 
-	FString FloorStr, CounterPart;
-	if (!Trimmed.Split(TEXT("Counter"), &FloorStr, &CounterPart))
-		return false;
+	TArray<FItem> Items;
+	Items.Reserve(OriginalChildren.Num());
 
-	FloorStr = FloorStr.TrimStartAndEnd();
-	CounterPart = CounterPart.TrimStartAndEnd();
+	for (int32 i = 0; i < OriginalChildren.Num(); ++i)
+	{
+		UUserWidget* UW = Cast<UUserWidget>(OriginalChildren[i]);
+		FItem Item;
+		Item.Widget = UW;
+		Item.OriginalIndex = i;
+		if (UW)
+			Item.Key = ExtractFloorCounterFromWidget(UW, TEXT("FC_NameTextBlock"));
+		Items.Add(Item);
+	}
 
-	if (!FloorStr.IsNumeric() || !CounterPart.IsNumeric())
-		return false;
+	// ---- Sort with the range fix ----
+	Items.Sort([bDescendingFloor, bDescendingCounter](const FItem& A, const FItem& B)
+	{
+		const auto& KA = A.Key;
+		const auto& KB = B.Key;
 
-	OutFloor   = FCString::Atoi(*FloorStr);
-	OutCounter = FCString::Atoi(*CounterPart);
-	return true;
+		if (KA.bHasValidKey != KB.bHasValidKey)
+			return KA.bHasValidKey && !KB.bHasValidKey;
+
+		if (!KA.bHasValidKey && !KB.bHasValidKey)
+			return A.OriginalIndex < B.OriginalIndex;
+
+		if (KA.SortFloorLow != KB.SortFloorLow)
+			return bDescendingFloor ? (KA.SortFloorLow > KB.SortFloorLow)
+				       : (KA.SortFloorLow < KB.SortFloorLow);
+
+		const bool AIsRange = (KA.SortFloorLow != KA.SortFloorHigh);
+		const bool BIsRange = (KB.SortFloorLow != KB.SortFloorHigh);
+
+		if (AIsRange != BIsRange)
+			return !AIsRange && BIsRange; // single-floor first
+
+		if (KA.Counter != KB.Counter)
+			return bDescendingCounter ? (KA.Counter > KB.Counter)
+				       : (KA.Counter < KB.Counter);
+
+		return A.OriginalIndex < B.OriginalIndex;
+	});
+
+	// ---- Rebuild ScrollBox ----
+	ScrollBox->ClearChildren();
+	for (const FItem& Item : Items)
+	{
+		if (Item.Widget)
+			ScrollBox->AddChild(Item.Widget);
+	}
+
+	// ---- Find new index of TargetWidget ----
+	if (TargetWidget)
+	{
+		for (int32 i = 0; i < Items.Num(); ++i)
+		{
+			if (Items[i].Widget == TargetWidget)
+				return i; // return the new sorted index
+		}
+	}
+
+	return INDEX_NONE;
 }
 
-bool UWidgetUtilHelpers::ExtractFloorAndCounterFromWidget(
-	UUserWidget* Widget,
-	int32& OutFloor,
-	int32& OutCounter)
+int32 UWidgetUtilHelpers::GetWidgetIndexInScrollBox(UScrollBox* ScrollBox, UUserWidget* Target)
 {
-	if (!Widget || !Widget->WidgetTree)
-		return false;
+	if (!ScrollBox || !Target)
+		return INDEX_NONE;
 
-	TArray<UWidget*> AllWidgets;
-	Widget->WidgetTree->GetAllWidgets(AllWidgets);
+	const TArray<UWidget*> Children = ScrollBox->GetAllChildren();
 
-	for (UWidget* ChildWidget : AllWidgets)
+	for (int32 i = 0; i < Children.Num(); ++i)
 	{
-		if (UTextBlock* TB = Cast<UTextBlock>(ChildWidget))
+		if (Children[i] == Target)
+			return i;
+	}
+
+	return INDEX_NONE;
+}
+
+UWidgetUtilHelpers::FFloorCounterKey UWidgetUtilHelpers::ParseFloorCounterText(const FString& InText)
+{
+	FFloorCounterKey Out;
+	FString Text = InText.TrimStartAndEnd();
+
+	// Common split
+	FString LeftPart, RightPart;
+	if (!Text.Split(TEXT("Counter"), &LeftPart, &RightPart))
+		return Out;
+
+	LeftPart = LeftPart.TrimStartAndEnd();
+	RightPart = RightPart.TrimStartAndEnd();
+
+	if (!RightPart.IsNumeric())
+		return Out;
+
+	Out.Counter = FCString::Atoi(*RightPart);
+
+	// Case 1: F3~F5
+	if (LeftPart.StartsWith("F") && LeftPart.Contains("~F"))
+	{
+		FString BottomStr, TopStr;
+		if (LeftPart.Split("~F", &BottomStr, &TopStr))
 		{
-			const FString Text = TB->GetText().ToString();
-			if (TryParseFloorAndCounterFromText(Text, OutFloor, OutCounter))
+			BottomStr.RightChopInline(1); // drop 'F' in front
+			if (BottomStr.IsNumeric() && TopStr.IsNumeric())
 			{
-				return true; // stop at first match
+				Out.SortFloorLow  = FCString::Atoi(*BottomStr);
+				Out.SortFloorHigh = FCString::Atoi(*TopStr);
+				Out.bHasValidKey  = true;
+				return Out;
 			}
 		}
 	}
 
-	return false;
+	// Case 2: F{num}
+	if (LeftPart.StartsWith("F"))
+	{
+		const FString NumStr = LeftPart.Mid(1).TrimStartAndEnd();
+		if (NumStr.IsNumeric())
+		{
+			const int32 Val = FCString::Atoi(*NumStr);
+			Out.SortFloorLow = Out.SortFloorHigh = Val;
+			Out.bHasValidKey = true;
+			return Out;
+		}
+	}
+
+	// Case 3: B{num}  -> basement floors (negative)
+	if (LeftPart.StartsWith("B"))
+	{
+		const FString NumStr = LeftPart.Mid(1).TrimStartAndEnd();
+		if (NumStr.IsNumeric())
+		{
+			const int32 Val = FCString::Atoi(*NumStr);
+			Out.SortFloorLow = Out.SortFloorHigh = -Val; // negative
+			Out.bHasValidKey = true;
+			return Out;
+		}
+	}
+
+	// Case 4: A{num}  -> attic/above floors (positive offset)
+	if (LeftPart.StartsWith("A"))
+	{
+		const FString NumStr = LeftPart.Mid(1).TrimStartAndEnd();
+		if (NumStr.IsNumeric())
+		{
+			const int32 Val = FCString::Atoi(*NumStr);
+			Out.SortFloorLow = Out.SortFloorHigh = 1000 + Val; // push above normal range
+			Out.bHasValidKey = true;
+			return Out;
+		}
+	}
+
+	return Out;
+}
+
+UWidgetUtilHelpers::FFloorCounterKey UWidgetUtilHelpers::ExtractFloorCounterFromWidget(UUserWidget* Widget,
+	const FName& TextBlockName)
+{
+	FFloorCounterKey Out;
+	if (!Widget || !Widget->WidgetTree)
+		return Out;
+
+	if (UTextBlock* TB = Cast<UTextBlock>(Widget->WidgetTree->FindWidget(TextBlockName)))
+	{
+		Out = ParseFloorCounterText(TB->GetText().ToString());
+	}
+	return Out;
 }

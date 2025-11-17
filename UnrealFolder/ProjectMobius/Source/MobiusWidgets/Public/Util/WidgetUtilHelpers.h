@@ -163,16 +163,36 @@ public:
 		UScrollBox* ScrollBox,
 		bool bDescendingFloor,
 		bool bDescendingCounter);
+	
+	UFUNCTION(BlueprintCallable, Category="Mobius|WidgetUtils")
+	int32 SortScrollBoxChildrenByFloorAndCounterWithNewPos(
+	UScrollBox* ScrollBox,
+	bool bDescendingFloor,
+	bool bDescendingCounter,
+	UUserWidget* TargetWidget);
+	
+	/**
+	 * Get the index of a target widget within a scroll box
+	 *
+	 * @param[UScrollBox] ScrollBox The scroll box to search
+	 * @param[UUserWidget] Target The target widget to find
+	 * @return The index of the target widget within the scroll box, or INDEX_NONE if not found
+	 */
+	UFUNCTION(BlueprintCallable, Category="Mobius|WidgetUtils")
+	int32 GetWidgetIndexInScrollBox(
+	UScrollBox* ScrollBox,
+	UUserWidget* Target);
 
 private:
 
-	static bool TryParseFloorAndCounterFromText(
-		const FString& InText,
-		int32& OutFloor,
-		int32& OutCounter);
+	struct FFloorCounterKey
+	{
+		int32 SortFloorLow = 0;
+		int32 SortFloorHigh = 0;
+		int32 Counter = 0;
+		bool bHasValidKey = false;
+	};
 
-	static bool ExtractFloorAndCounterFromWidget(
-		UUserWidget* Widget,
-		int32& OutFloor,
-		int32& OutCounter);
+	static FFloorCounterKey ParseFloorCounterText(const FString& InText);
+	static FFloorCounterKey ExtractFloorCounterFromWidget(UUserWidget* Widget, const FName& TextBlockName);
 };
