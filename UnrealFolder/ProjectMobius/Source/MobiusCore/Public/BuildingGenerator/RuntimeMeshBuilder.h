@@ -35,12 +35,9 @@
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
 
-/** Delegate for broadcasting auto flow counter spawns */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowCounterSpawned, AFlowCounter*, NewFlowCounter);
-/** Delegate for broadcasting all flow counters removed */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAllFlowCounterRemoved);
 
 /** Structs */
+/** */
 USTRUCT()
 struct FDatasmithMaterials
 {
@@ -53,6 +50,39 @@ struct FDatasmithMaterials
 	TArray<bool> bIsOpaque;
 };
 
+/** */
+USTRUCT()
+struct FResolvedMaterialParams
+{
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	TMap<FName, float>                ScalarParams;
+	
+	UPROPERTY()
+	TMap<FName, FLinearColor>         VectorParams;
+	
+	UPROPERTY()
+	TMap<FName, TObjectPtr<UTexture>> TextureParams;
+};
+	
+/** */
+USTRUCT()
+struct FSharedMIDCacheEntry
+{
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface>        SourceMaterial = nullptr;
+	
+	UPROPERTY()
+	FName                                 MasterPathKey{NAME_None};
+	
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic>  MID = nullptr;
+};
+
+/** */
 UCLASS()
 class MOBIUSCORE_API ARuntimeMeshBuilder : public AActor, public IAssimpInterface, public IProjectMobiusInterface
 {
@@ -179,31 +209,25 @@ private:
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial);
 	
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
-
-	/**
-	 * Auto Generates flow counters from door meta-data
-	 *
-	 * @param[UStaticMeshComponent] DoorMesh The mesh component of the door, used for generating the flow counters
-	 */
-	void GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh);
-
-	/** */
-	void RemoveFlowCounters() const;
-	
-	/** Queue a single door mesh for later flow counter spawn. */
-	void QueueDoorForFlowCounter(UStaticMeshComponent* DoorMesh);
-
-	/** Start processing the queue (called after Datasmith materials creation). */
-	void BeginDeferredFlowCounterSpawn();
-
-	/** Spawn up to InMaxToSpawn counters from the queue this frame. */
-	void ProcessPendingFlowCounters(int32 InMaxToSpawn);
 	
 	UMaterialInstanceConstant* GetOrLoadMasterMaterial(const FString& MaterialPath);
 	
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(
 		UMaterialInterface* InMaterial,
 		const FString&      MaterialPath);
+	
+	UMaterialInstanceDynamic* GetOrCreateSharedMID(UMaterialInterface* InMaterial,
+												   const FString&      MaterialPath);
+	
+	bool ResolveMaterialParams(UMaterialInterface* Material,
+							   FResolvedMaterialParams& OutParams) const;
+
+	bool AreMaterialsEquivalentForMIDReuse(UMaterialInterface* A,
+										   UMaterialInterface* B,
+										   float Tolerance = KINDA_SMALL_NUMBER) const;
+	
+	void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
+	void ProcessPendingCollisionEnables(float DeltaSeconds);
 	
 #pragma endregion PRIVATE_METHODS
 
@@ -212,6 +236,10 @@ public:
 	/** The Procedural Mesh Component used for generating meshes at runtime or on construction */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Component")
 	class UProceduralMeshComponent* MobiusProceduralMeshComponent;
+	
+	/** Flow Counter Spawner - handles spawning flow counters */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Component")
+	class UFlowCounterSpawnerComponent* FlowCounterSpawnerComponent;
 
 	/** Holds the filename to the mesh */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|MeshData")
@@ -241,12 +269,7 @@ public:
 	/** This bool is used for working out whether this is a datasmith asset or using the procedural mesh component */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Datasmith")
 	bool bIsDatasmithAsset = false;
-
-	UPROPERTY(EditAnywhere, BlueprintAssignable, Category = "MeshGenerator|Delegates")
-	FOnFlowCounterSpawned OnFlowCounterAutoSpawned;
-
-	UPROPERTY(EditAnywhere, BlueprintAssignable, Category = "MeshGenerator|Delegates")
-	FOnAllFlowCounterRemoved OnAllFlowCountersRemoved;
+	
 	
 	/*
 	* Array to store the Procedural Meshes UV0 to Generate 
@@ -269,7 +292,6 @@ public:
 	/***/
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|FlowCounter")
 	TSubclassOf<AFlowCounter> FlowCounterToAutoSpawn = nullptr;
-#pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 
 protected:
 	
@@ -288,6 +310,11 @@ protected:
 	UPROPERTY(Transient)
 	TMap<FName, TObjectPtr<UMaterialInstanceConstant>> MasterMaterialCache;
 	
+	/** We use an array so we can do a custom equivalence check instead of raw pointer equality. */
+	UPROPERTY(Transient)
+	TArray<FSharedMIDCacheEntry> SharedMIDCache;
+
+	
 private:
 	/** TODO: We eventually want to get the mesh material and apply our materials to it as a mask or material function to it
 	 * Material Instance Dynamic to apply to the Procedural Mesh Component after a mesh has been generated and set with
@@ -295,7 +322,16 @@ private:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Material", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UMaterialInstanceDynamic> MobiusMaterialInstanceDynamic = nullptr;
+	
+	// Components that still need collision turned on
+	UPROPERTY()
+	TArray<TWeakObjectPtr<UStaticMeshComponent>> PendingCollisionEnable;
 
+	// How many components we allow per frame
+	UPROPERTY(EditAnywhere, Category="Collision")
+	int32 MaxCollisionEnablesPerFrame = 10;
+	
+#pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 public:
 #pragma region GETTERS_SETTERS
 	/** Getters */

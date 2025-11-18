@@ -34,6 +34,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "DatasmithAssetUserData.h"
 #include "Actors/FlowCounter.h"
+#include "Components/FlowCounterSpawnerComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "PhysicsEngine/BodySetup.h"
@@ -46,6 +47,7 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	// Create the ProceduralMeshComponent
 	MobiusProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MobiusProceduralMeshComponent"));
@@ -63,6 +65,8 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
 
+	FlowCounterSpawnerComponent = CreateDefaultSubobject<UFlowCounterSpawnerComponent>(TEXT("FlowCounterSpawnerComponent"));
+	
 }
 
 // Called when the game starts or when spawned
@@ -96,28 +100,19 @@ void ARuntimeMeshBuilder::BeginPlay()
 	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
 	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'"));
 	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'"));
+	
+	// Assign the Flow Counter class to auto spawn
+	if (FlowCounterSpawnerComponent)
+	{
+		FlowCounterSpawnerComponent->FlowCounterClass = FlowCounterToAutoSpawn;
+	}
 }
 
 // Called every frame
 void ARuntimeMeshBuilder::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	// Smoothly spawn flow counters over multiple frames instead of all at once.
-	if (bIsSpawningFlowCounters && PendingDoorMeshes.Num() > 0)
-	{
-		ProcessPendingFlowCounters(MaxFlowCountersPerTick);
-
-		// When we run out of doors, stop.
-		if (PendingDoorMeshes.Num() == 0)
-		{
-			bIsSpawningFlowCounters = false;
-			// may need a broadcast to indicate done if ui issues
-			
-			// End the loading widget for flow counter loading
-			EndLoadingWidget();
-		}
-	}
+	ProcessPendingCollisionEnables(DeltaTime);
 }
 
 void ARuntimeMeshBuilder::OnConstruction(const FTransform& Transform)
@@ -270,7 +265,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	bIsDatasmithAsset = false;
 
 	// Remove any flow counters, as the mesh is changing
-	RemoveFlowCounters();
+	FlowCounterSpawnerComponent->RemoveAllFlowCounters();
 
 	// As we are now able to use Datasmith assets we need to check if the file is a .udatasmith file
 	if(MeshFileName.Contains(".udatasmith") || MeshFileName.Contains(".ifc"))
@@ -820,7 +815,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 							UE_LOG(LogTemp, Warning, TEXT("Element Category: %s"), *Data.Value);
 							
 							// Defer spawning to avoid frame hitches.
-							QueueDoorForFlowCounter(MeshComp);
+							FlowCounterSpawnerComponent->QueueDoorForFlowCounter(MeshComp);
 						}
 					}
 				}
@@ -936,10 +931,14 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 		}
 
 		// ensure we are blocking this channel so we can interact with the mesh if needed/manipulate door counters
-		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		Mesh->SetCollisionObjectType(ECC_WorldDynamic);
-		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		// Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		// Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+		// Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		// Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		
+		// ensure we are blocking this channel so we can interact with the mesh if needed/manipulate door counters
+		// (done in batches to avoid a huge hitch)
+		EnqueueCollisionEnable(Mesh.Get());
 		
 		// Get the local to world transform
 		FTransform LocalToWorldTransform = Mesh->GetComponentTransform();
@@ -1002,11 +1001,11 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 	// broadcast the mesh has been built
 	OnMeshBuilt.Broadcast(HeatmapOrigin, Bounds.GetExtent());
 
-	// begin the deferred flow counter spawn
-	BeginDeferredFlowCounterSpawn();
-	
 	// End the loading widget for datasmith mesh
 	EndLoadingWidget();
+	
+	// begin the deferred flow counter spawn
+	FlowCounterSpawnerComponent->BeginSpawning();
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstances(UMaterialInterface* InMaterial, const FString& MaterialPath)
@@ -1099,133 +1098,6 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeT
 	return CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath);
 }
 
-void ARuntimeMeshBuilder::GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh)
-{
-	// We can't spawn something that doesn't exist or gives valid data to use
-	if (DoorMesh == nullptr || FlowCounterToAutoSpawn == nullptr) return;
-
-	// Spawn location
-	FTransform DoorTransform = DoorMesh->GetComponentTransform();
-
-	// Spawn the flow counter at the world transform
-	auto SpawnedFlowCounter = GetWorld()->SpawnActor<AFlowCounter>(FlowCounterToAutoSpawn, DoorTransform);
-
-	SpawnedFlowCounter->SetActorLocation(DoorTransform.GetLocation());
-
-	OnFlowCounterAutoSpawned.Broadcast(SpawnedFlowCounter);
-
-	FVector MinBounds, MaxBounds;
-	
-	DoorMesh->GetLocalBounds(MinBounds, MaxBounds);
-
-	MaxBounds.Z = 0;
-	//MaxBounds.Y = MaxBounds.X;
-	//MaxBounds.X = 0;
-
-	// if x is bigger than y then set y to 0 else set x to 0
-	if (FMath::Abs(MaxBounds.X) > FMath::Abs(MaxBounds.Y))
-	{
-		MaxBounds.Y = 0;
-	}
-	else
-	{
-		MaxBounds.X = 0;
-	}
-
-	MaxBounds = RotateVector(MaxBounds, DoorTransform.GetRotation().Rotator());
-	
-	SpawnedFlowCounter->MoveGatePillarMeshToLocation(0, ((DoorTransform.GetLocation() - MaxBounds) + FVector(0,0,100)));
-	SpawnedFlowCounter->MoveGatePillarMeshToLocation(1, ((DoorTransform.GetLocation() + MaxBounds) + FVector(0,0,100)));
-
-	//SpawnedFlowCounter->SetActorRotation(DoorTransform.GetRotation());
-
-	// TODO: Manipulate the rotation, size etc to fit door
-}
-
-void ARuntimeMeshBuilder::RemoveFlowCounters() const
-{
-	if (GetWorld() == nullptr) return;
-
-	// get all flow counters
-	TArray<AActor*> FlowCounters;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFlowCounter::StaticClass(), FlowCounters);
-
-	for (AActor* FlowCounterActor : FlowCounters)
-	{
-		// we don't need to cast and check, so we can check its not null or pending kill
-		if (FlowCounterActor != nullptr && !FlowCounterActor->IsPendingKillPending())
-		{
-			FlowCounterActor->Destroy();
-		}
-	}
-	OnAllFlowCountersRemoved.Broadcast();
-}
-
-void ARuntimeMeshBuilder::QueueDoorForFlowCounter(UStaticMeshComponent* DoorMesh)
-{
-	// We only care about valid, non-destroying meshes.
-	if (DoorMesh == nullptr || DoorMesh->IsBeingDestroyed())
-	{
-		return;
-	}
-
-	PendingDoorMeshes.Add(DoorMesh);
-}
-
-void ARuntimeMeshBuilder::BeginDeferredFlowCounterSpawn()
-{
-	// If nothing to do, early out.
-	if (PendingDoorMeshes.Num() == 0)
-	{
-		return;
-	}
-
-	// Mark that we should start consuming the queue during Tick().
-	bIsSpawningFlowCounters = true;
-	
-	// Get the loading subsystem
-	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-
-	if(LoadingSubsystem)
-	{
-		// Start the load widget
-		LoadingSubsystem->SetLoadingUnknownDuration(true, FString::Printf(TEXT("Generating %d Flow Counters for Doors"), PendingDoorMeshes.Num()));
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("Deferred FlowCounter spawning started. Pending doors: %d"), PendingDoorMeshes.Num());
-}
-
-void ARuntimeMeshBuilder::ProcessPendingFlowCounters(int32 InMaxToSpawn)
-{
-	if (InMaxToSpawn <= 0)
-	{
-		return;
-	}
-
-	int32 SpawnedThisFrame = 0;
-
-	// We use RemoveAtSwap(0) so we can pop from the front without shifting everything.
-	while (PendingDoorMeshes.Num() > 0 && SpawnedThisFrame < InMaxToSpawn)
-	{
-		// Pop first entry
-		TWeakObjectPtr<UStaticMeshComponent> DoorMeshWeak = PendingDoorMeshes[0];
-		PendingDoorMeshes.RemoveAtSwap(0);
-
-		if (DoorMeshWeak.IsValid())
-		{
-			UStaticMeshComponent* DoorMesh = DoorMeshWeak.Get();
-			GenerateFlowCounterForDoor(DoorMesh);
-		}
-		else
-		{
-			// Door was destroyed/invalidated between queuing and spawning, just skip it.
-			UE_LOG(LogTemp, Verbose, TEXT("Skipping invalid door mesh while spawning FlowCounter."));
-		}
-
-		++SpawnedThisFrame;
-	}
-}
-
 UMaterialInstanceConstant* ARuntimeMeshBuilder::GetOrLoadMasterMaterial(const FString& MaterialPath)
 {
 	// Use the path as a key. FName is cheap to compare/hash.
@@ -1256,31 +1128,55 @@ UMaterialInstanceConstant* ARuntimeMeshBuilder::GetOrLoadMasterMaterial(const FS
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstancesUsingCache(
 	UMaterialInterface* InMaterial, const FString& MaterialPath)
 {
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> MaterialInstances;
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> Out;
 
+	if (UMaterialInstanceDynamic* MID = GetOrCreateSharedMID(InMaterial, MaterialPath))
+	{
+		Out.Add(MID);
+	}
+	return Out;
+}
+
+UMaterialInstanceDynamic* ARuntimeMeshBuilder::GetOrCreateSharedMID(UMaterialInterface* InMaterial,
+	const FString& MaterialPath)
+{
 	if (!InMaterial)
 	{
-		return MaterialInstances;
+		return nullptr;
 	}
 
-	// 1) Get (or lazily load) the master MIC template
+	const FName MasterKey(*MaterialPath);
+
+	// 1) Look for an existing entry with:
+	//    - same master material path
+	//    - equivalent parameters (same base material + values)
+	for (FSharedMIDCacheEntry& Entry : SharedMIDCache)
+	{
+		if (Entry.MasterPathKey == MasterKey &&
+		    Entry.SourceMaterial->IsValidLowLevel() &&
+		    AreMaterialsEquivalentForMIDReuse(InMaterial, Entry.SourceMaterial.Get()))
+		{
+			return Entry.MID;
+		}
+	}
+
+	// 2) No equivalent found: create a new shared MID for this parameter set.
+
 	UMaterialInstanceConstant* TemplateMIC = GetOrLoadMasterMaterial(MaterialPath);
 	if (!TemplateMIC)
 	{
-		// Error already logged in GetOrLoadMasterMaterial
-		return MaterialInstances;
+		return nullptr;
 	}
 
-	// 2) Create a MID from the cached template
 	UMaterialInstanceDynamic* DynamicMaterial =
 		UMaterialInstanceDynamic::Create(TemplateMIC, this);
 
 	if (!DynamicMaterial)
 	{
-		return MaterialInstances;
+		return nullptr;
 	}
 
-	// 3) Copy parameters from the original Datasmith material
+	// Copy params from this material into the new shared MID.
 	TArray<FMaterialParameterInfo> ScalarParams;
 	TArray<FMaterialParameterInfo> VectorParams;
 	TArray<FMaterialParameterInfo> TextureParams;
@@ -1292,34 +1188,225 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterial
 	InMaterial->GetAllVectorParameterInfo(VectorParams, VectorGuids);
 	InMaterial->GetAllTextureParameterInfo(TextureParams, TextureGuids);
 
-	for (const FMaterialParameterInfo& Param : ScalarParams)
+	for (const FMaterialParameterInfo& Info : ScalarParams)
 	{
 		float Value = 0.0f;
-		if (InMaterial->GetScalarParameterValue(Param.Name, Value))
+		if (InMaterial->GetScalarParameterValue(Info, Value))
 		{
-			DynamicMaterial->SetScalarParameterValue(Param.Name, Value);
+			DynamicMaterial->SetScalarParameterValue(Info.Name, Value);
 		}
 	}
 
-	for (const FMaterialParameterInfo& Param : VectorParams)
+	for (const FMaterialParameterInfo& Info : VectorParams)
 	{
 		FLinearColor Value;
-		if (InMaterial->GetVectorParameterValue(Param.Name, Value))
+		if (InMaterial->GetVectorParameterValue(Info, Value))
 		{
-			DynamicMaterial->SetVectorParameterValue(Param.Name, Value);
+			DynamicMaterial->SetVectorParameterValue(Info.Name, Value);
 		}
 	}
 
-	for (const FMaterialParameterInfo& Param : TextureParams)
+	for (const FMaterialParameterInfo& Info : TextureParams)
 	{
 		UTexture* Value = nullptr;
-		if (InMaterial->GetTextureParameterValue(Param.Name, Value))
+		if (InMaterial->GetTextureParameterValue(Info, Value))
 		{
-			DynamicMaterial->SetTextureParameterValue(Param.Name, Value);
+			DynamicMaterial->SetTextureParameterValue(Info.Name, Value);
 		}
 	}
 
-	MaterialInstances.Add(DynamicMaterial);
-	return MaterialInstances;
+	// 3) Cache this as the representative MID for this parameter set.
+	FSharedMIDCacheEntry NewEntry;
+	NewEntry.SourceMaterial = InMaterial;
+	NewEntry.MasterPathKey  = MasterKey;
+	NewEntry.MID            = DynamicMaterial;
+
+	SharedMIDCache.Add(MoveTemp(NewEntry));
+
+	return DynamicMaterial;
+}
+
+bool ARuntimeMeshBuilder::ResolveMaterialParams(UMaterialInterface* Material, FResolvedMaterialParams& OutParams) const
+{
+	OutParams.ScalarParams.Reset();
+	OutParams.VectorParams.Reset();
+	OutParams.TextureParams.Reset();
+
+	if (!Material)
+	{
+		return false;
+	}
+
+	TArray<FMaterialParameterInfo> ScalarInfos;
+	TArray<FMaterialParameterInfo> VectorInfos;
+	TArray<FMaterialParameterInfo> TextureInfos;
+	TArray<FGuid> ScalarGuids;
+	TArray<FGuid> VectorGuids;
+	TArray<FGuid> TextureGuids;
+
+	Material->GetAllScalarParameterInfo(ScalarInfos, ScalarGuids);
+	Material->GetAllVectorParameterInfo(VectorInfos, VectorGuids);
+	Material->GetAllTextureParameterInfo(TextureInfos, TextureGuids);
+
+	for (const FMaterialParameterInfo& Info : ScalarInfos)
+	{
+		float Value = 0.0f;
+		if (Material->GetScalarParameterValue(Info, Value))
+		{
+			OutParams.ScalarParams.Add(Info.Name, Value);
+		}
+	}
+
+	for (const FMaterialParameterInfo& Info : VectorInfos)
+	{
+		FLinearColor Value;
+		if (Material->GetVectorParameterValue(Info, Value))
+		{
+			OutParams.VectorParams.Add(Info.Name, Value);
+		}
+	}
+
+	for (const FMaterialParameterInfo& Info : TextureInfos)
+	{
+		UTexture* Value = nullptr;
+		if (Material->GetTextureParameterValue(Info, Value))
+		{
+			OutParams.TextureParams.Add(Info.Name, Value);
+		}
+	}
+
+	return true;
+}
+
+bool ARuntimeMeshBuilder::AreMaterialsEquivalentForMIDReuse(UMaterialInterface* A, UMaterialInterface* B,
+	float Tolerance) const
+{
+	if (A == B)
+	{
+		return true; // exactly the same object
+	}
+
+	if (!A || !B)
+	{
+		return false;
+	}
+
+	// Strong guard: base material must match.
+	if (A->GetMaterial() != B->GetMaterial())
+	{
+		return false;
+	}
+
+	FResolvedMaterialParams ParamsA;
+	FResolvedMaterialParams ParamsB;
+
+	if (!ResolveMaterialParams(A, ParamsA) ||
+		!ResolveMaterialParams(B, ParamsB))
+	{
+		return false;
+	}
+
+	// Quick size checks
+	if (ParamsA.ScalarParams.Num()  != ParamsB.ScalarParams.Num() ||
+		ParamsA.VectorParams.Num()  != ParamsB.VectorParams.Num() ||
+		ParamsA.TextureParams.Num() != ParamsB.TextureParams.Num())
+	{
+		return false;
+	}
+
+	// Scalars
+	for (const TPair<FName, float>& PairA : ParamsA.ScalarParams)
+	{
+		const float* BValue = ParamsB.ScalarParams.Find(PairA.Key);
+		if (!BValue)
+		{
+			return false;
+		}
+
+		if (FMath::Abs(PairA.Value - *BValue) > Tolerance)
+		{
+			return false;
+		}
+	}
+
+	// Vectors
+	for (const TPair<FName, FLinearColor>& PairA : ParamsA.VectorParams)
+	{
+		const FLinearColor* BValue = ParamsB.VectorParams.Find(PairA.Key);
+		if (!BValue)
+		{
+			return false;
+		}
+
+		const FLinearColor& CA = PairA.Value;
+		const FLinearColor& CB = *BValue;
+
+		if (FMath::Abs(CA.R - CB.R) > Tolerance ||
+			FMath::Abs(CA.G - CB.G) > Tolerance ||
+			FMath::Abs(CA.B - CB.B) > Tolerance ||
+			FMath::Abs(CA.A - CB.A) > Tolerance)
+		{
+			return false;
+		}
+	}
+
+	// Textures – pointer equality is fine here
+	for (const TPair<FName, TObjectPtr<UTexture>>& PairA : ParamsA.TextureParams)
+	{
+		const TObjectPtr<UTexture>* BValue = ParamsB.TextureParams.Find(PairA.Key);
+		if (!BValue)
+		{
+			return false;
+		}
+
+		if (PairA.Value.Get() != BValue->Get())
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void ARuntimeMeshBuilder::EnqueueCollisionEnable(UStaticMeshComponent* Mesh)
+{
+	if (!IsValid(Mesh))
+	{
+		return;
+	}
+
+	// Avoid duplicates
+	if (!PendingCollisionEnable.Contains(Mesh))
+	{
+		PendingCollisionEnable.Add(Mesh);
+	}
+}
+
+void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
+{
+	if (PendingCollisionEnable.Num() == 0 || MaxCollisionEnablesPerFrame <= 0)
+	{
+		return;
+	}
+
+	int32 ProcessedThisFrame = 0;
+
+	// Walk from the end so RemoveAtSwap is cheap
+	for (int32 Index = PendingCollisionEnable.Num() - 1;
+		 Index >= 0 && ProcessedThisFrame < MaxCollisionEnablesPerFrame;
+		 --Index)
+	{
+		if (UStaticMeshComponent* Mesh = PendingCollisionEnable[Index].Get())
+		{
+			// This is your original collision setup
+			Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+			Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+			Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		}
+
+		PendingCollisionEnable.RemoveAtSwap(Index, 1, /*bAllowShrinking=*/false);
+		++ProcessedThisFrame;
+	}
 }
 

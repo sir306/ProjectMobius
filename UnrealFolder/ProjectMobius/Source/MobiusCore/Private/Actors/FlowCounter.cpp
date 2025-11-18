@@ -337,6 +337,11 @@ AFlowCounter::AFlowCounter()
 
 	// (Optional) set a starting size before the proxy is created
 	CounterBarrierVisualMesh->Initialize(100.f, 100.f);
+	
+	// ensure no collision on the visual mesh
+	CounterBarrierVisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CounterBarrierVisualMesh->SetGenerateOverlapEvents(false);
+	CounterBarrierVisualMesh->SetCanEverAffectNavigation(false);
 
 	UpdateFlowCounterTriggerBox();
 

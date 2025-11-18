@@ -246,7 +246,7 @@ bool FMobiusIpcClient::Platform_Connect()
     const FString PipePath = FString::Printf(TEXT(R"(\\.\pipe\%s)"), *EndpointName);
     const FTCHARToUTF8 Ansi(*PipePath);
 
-    UE_LOG(LogTemp, Log, TEXT("IPC: Attempting to connect to pipe: %s"), *PipePath);
+    //UE_LOG(LogTemp, Log, TEXT("IPC: Attempting to connect to pipe: %s"), *PipePath);
 
     while (bRun)
     {
@@ -262,7 +262,7 @@ bool FMobiusIpcClient::Platform_Connect()
         if (H != INVALID_HANDLE_VALUE)
         {
             PipeHandle = H;
-            UE_LOG(LogTemp, Log, TEXT("IPC: Connected to pipe"));
+            //UE_LOG(LogTemp, Log, TEXT("IPC: Connected to pipe"));
             return true;
         }
 
@@ -273,7 +273,7 @@ bool FMobiusIpcClient::Platform_Connect()
             continue;
         }
 
-        UE_LOG(LogTemp, Error, TEXT("IPC: Failed to connect to pipe, error=%lu"), Err);
+        //UE_LOG(LogTemp, Error, TEXT("IPC: Failed to connect to pipe, error=%lu"), Err);
         break;
     }
     return false;
