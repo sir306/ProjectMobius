@@ -10,6 +10,34 @@
 #include "Subsystems/StatisticSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 
+// Shared base material for all FlowCounters (loaded once, reused).
+static TWeakObjectPtr<UMaterialInterface> GFlowCounterBaseMaterial;
+
+/** Get or load the flow counter base material. */
+static UMaterialInterface* GetOrLoadFlowCounterBaseMaterial()
+{
+	if (GFlowCounterBaseMaterial.IsValid())
+	{
+		return GFlowCounterBaseMaterial.Get();
+	}
+
+	// Hard-coded path for now – you can swap this to a soft reference later if you want.
+	UMaterialInterface* Loaded = LoadObject<UMaterialInterface>(
+		nullptr,
+		TEXT("/Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
+
+	if (!Loaded)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("FlowCounter: Failed to load base material M_FlowCounterPlane at expected path."));
+		return nullptr;
+	}
+
+	GFlowCounterBaseMaterial = Loaded;
+	return Loaded;
+}
+
+
 // TODO: Move these helpers to a utility class - likely will be useful elsewhere
 static FORCEINLINE FVector SafeHorizontal(const FVector& V)
 {
@@ -347,25 +375,25 @@ void AFlowCounter::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 
-	// Use whatever base material is currently on the quad; if none, load your asset.
-	UMaterialInterface* Base = CounterBarrierVisualMesh->GetMaterial(0);
-	if (!Base)
+	if (!CounterBarrierVisualMesh)
 	{
-		Base = LoadObject<UMaterialInterface>(nullptr,
-		                                      TEXT("/Game/01_Dev/LevelAssets/M_FlowCounterPlane.M_FlowCounterPlane"));
+		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: CounterBarrierVisualMesh is null in PostInitializeComponents"));
+		return;
 	}
+
+	// Get the shared base material
+	UMaterialInterface* Base = GetOrLoadFlowCounterBaseMaterial();
 
 	if (Base)
 	{
-		// Create a unique MID for this actor
-		FString UniqueName = FString::Printf(TEXT("FlowCounterMID_%s"), *GetName());
-		
-		// This both creates the MID and assigns it to slot 0 on the component.
-		CounterBarrierVisualMID = CounterBarrierVisualMesh->CreateDynamicMaterialInstance(0, Base, FName(*UniqueName));
+		// We keep per-instance MID because we may change params per counter.
+		const FString UniqueName = FString::Printf(TEXT("FlowCounterMID_%s"), *GetName());
+		CounterBarrierVisualMID =
+			CounterBarrierVisualMesh->CreateDynamicMaterialInstance(0, Base, FName(*UniqueName));
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("FlowPlane base material missing"));
+		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: FlowPlane base material missing and could not be loaded."));
 	}
 }
 

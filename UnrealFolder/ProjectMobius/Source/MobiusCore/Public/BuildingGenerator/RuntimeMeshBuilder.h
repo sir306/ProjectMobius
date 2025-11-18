@@ -190,6 +190,21 @@ private:
 	/** */
 	void RemoveFlowCounters() const;
 	
+	/** Queue a single door mesh for later flow counter spawn. */
+	void QueueDoorForFlowCounter(UStaticMeshComponent* DoorMesh);
+
+	/** Start processing the queue (called after Datasmith materials creation). */
+	void BeginDeferredFlowCounterSpawn();
+
+	/** Spawn up to InMaxToSpawn counters from the queue this frame. */
+	void ProcessPendingFlowCounters(int32 InMaxToSpawn);
+	
+	UMaterialInstanceConstant* GetOrLoadMasterMaterial(const FString& MaterialPath);
+	
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(
+		UMaterialInterface* InMaterial,
+		const FString&      MaterialPath);
+	
 #pragma endregion PRIVATE_METHODS
 
 #pragma region PUBLIC_PROPERTIES_AND_COMPONENTS
@@ -257,7 +272,22 @@ public:
 #pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 
 protected:
+	
+	/** Door meshes we still need to spawn counters for (weak to avoid dangling refs). */
+	UPROPERTY()
+	TArray<TWeakObjectPtr<UStaticMeshComponent>> PendingDoorMeshes;
 
+	/** How many flow counters to spawn per tick to smooth out hitches. */
+	UPROPERTY(EditAnywhere, Category="Flow Counters")
+	int32 MaxFlowCountersPerTick = 5;
+
+	/** Are we currently processing the pending door queue? */
+	bool bIsSpawningFlowCounters = false;
+	
+	// Cache of master MICs so we only LoadObject them once per path.
+	UPROPERTY(Transient)
+	TMap<FName, TObjectPtr<UMaterialInstanceConstant>> MasterMaterialCache;
+	
 private:
 	/** TODO: We eventually want to get the mesh material and apply our materials to it as a mask or material function to it
 	 * Material Instance Dynamic to apply to the Procedural Mesh Component after a mesh has been generated and set with

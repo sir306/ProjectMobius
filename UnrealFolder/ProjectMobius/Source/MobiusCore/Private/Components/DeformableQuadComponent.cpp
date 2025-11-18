@@ -124,22 +124,45 @@ public:
 		ensureAlwaysMsgf(Data.TextureCoordinatesSRV,     TEXT("TexCoord SRV null"));
 		ensureAlwaysMsgf(Data.ColorComponentsSRV,        TEXT("Color SRV null"));
 
-		// ---- 1) Bind streams/SRVs on RT ...
-		ENQUEUE_RENDER_COMMAND(SetDeformableQuadVFData)(
-			[VF=&Buffers->VertexFactory, Data](FRHICommandListImmediate& RHICmdList)
+		// // ---- 1) Bind streams/SRVs on RT ...
+		// ENQUEUE_RENDER_COMMAND(SetDeformableQuadVFData)(
+		// 	[VF=&Buffers->VertexFactory, Data](FRHICommandListImmediate& RHICmdList)
+		// 	{
+		// 		VF->SetData(RHICmdList, Data);
+		// 	});
+		//
+		// // ---- ... 2) Wait so SetData has executed ...
+		// { FRenderCommandFence Fence; Fence.BeginFence(); Fence.Wait(); }
+		//
+		// // ---- ... 3) Now init the VF resource (UBO will see valid SRVs)
+		// BeginInitResource(&Buffers->VertexFactory);
+		//
+		// // Optional: fence so first draw can happen immediately
+		// { FRenderCommandFence Fence; Fence.BeginFence(); Fence.Wait(); }
+		ENQUEUE_RENDER_COMMAND(InitDeformableQuadResources)(
+			[B = Buffers.Get()](FRHICommandListImmediate& RHICmdList)
 			{
-				VF->SetData(RHICmdList, Data);
+				if (!B) return;
+
+				FLocalVertexFactory::FDataType Data;
+
+				B->PositionBuffer.BindPositionVertexBuffer(&B->VertexFactory, Data);
+				B->StaticBuffer.BindTangentVertexBuffer(&B->VertexFactory, Data);
+				B->StaticBuffer.BindPackedTexCoordVertexBuffer(&B->VertexFactory, Data);
+				B->ColorBuffer.BindColorVertexBuffer(&B->VertexFactory, Data);
+
+				Data.NumTexCoords          = B->StaticBuffer.GetNumTexCoords();
+
+				// If you still want the MVF / SRV path, you can safely grab SRVs here
+				Data.PositionComponentSRV  = B->PositionBuffer.GetSRV();
+				Data.TangentsSRV           = B->StaticBuffer.GetTangentsSRV();
+				Data.TextureCoordinatesSRV = B->StaticBuffer.GetTexCoordsSRV();
+				Data.ColorComponentsSRV    = B->ColorBuffer.GetColorComponentsSRV();
+
+				B->VertexFactory.SetData(RHICmdList, Data);
+				B->VertexFactory.InitResource(RHICmdList);
 			});
-
-		// ---- ... 2) Wait so SetData has executed ...
-		{ FRenderCommandFence Fence; Fence.BeginFence(); Fence.Wait(); }
-
-		// ---- ... 3) Now init the VF resource (UBO will see valid SRVs)
-		BeginInitResource(&Buffers->VertexFactory);
-
-		// Optional: fence so first draw can happen immediately
-		{ FRenderCommandFence Fence; Fence.BeginFence(); Fence.Wait(); }
-
+		
 		Material = Comp->GetMaterial(0);
 		if (!Material) { Material = UMaterial::GetDefaultMaterial(MD_Surface); }
 	}

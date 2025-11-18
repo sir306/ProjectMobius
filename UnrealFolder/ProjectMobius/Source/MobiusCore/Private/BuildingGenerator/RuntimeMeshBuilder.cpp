@@ -88,6 +88,14 @@ void ARuntimeMeshBuilder::BeginPlay()
 		// TODO: Implement error to user that mesh generator will not work
 		UE_LOG(LogTemp, Error, TEXT("World is not valid, Mesh Generation will not work"));
 	}
+	
+	// Create the material cache
+	// Preload all master materials used, so streaming cost happens early.
+	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'"));
+	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
+	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
+	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'"));
+	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'"));
 }
 
 // Called every frame
@@ -95,6 +103,21 @@ void ARuntimeMeshBuilder::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Smoothly spawn flow counters over multiple frames instead of all at once.
+	if (bIsSpawningFlowCounters && PendingDoorMeshes.Num() > 0)
+	{
+		ProcessPendingFlowCounters(MaxFlowCountersPerTick);
+
+		// When we run out of doors, stop.
+		if (PendingDoorMeshes.Num() == 0)
+		{
+			bIsSpawningFlowCounters = false;
+			// may need a broadcast to indicate done if ui issues
+			
+			// End the loading widget for flow counter loading
+			EndLoadingWidget();
+		}
+	}
 }
 
 void ARuntimeMeshBuilder::OnConstruction(const FTransform& Transform)
@@ -795,7 +818,9 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 						if (Data.Key == TEXT("Element*Category") && Data.Value == TEXT("Doors"))
 						{
 							UE_LOG(LogTemp, Warning, TEXT("Element Category: %s"), *Data.Value);
-							GenerateFlowCounterForDoor(MeshComp);
+							
+							// Defer spawning to avoid frame hitches.
+							QueueDoorForFlowCounter(MeshComp);
 						}
 					}
 				}
@@ -977,6 +1002,10 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 	// broadcast the mesh has been built
 	OnMeshBuilt.Broadcast(HeatmapOrigin, Bounds.GetExtent());
 
+	// begin the deferred flow counter spawn
+	BeginDeferredFlowCounterSpawn();
+	
+	// End the loading widget for datasmith mesh
 	EndLoadingWidget();
 }
 
@@ -1042,7 +1071,7 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterial
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateOpaqueMaterials(UMaterialInterface* InMaterial)
 {
 	static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'");
-	return CreateMaterialInstances(InMaterial, OpaqueMaterialPath);
+	return CreateMaterialInstancesUsingCache(InMaterial, OpaqueMaterialPath);
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque)
@@ -1051,13 +1080,13 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateTransluc
 		                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'")
 		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'");
 
-	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
+	return CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath);
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial)
 {
 	static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'");
-	return CreateMaterialInstances(InMaterial, OpaqueMaterialPath);
+	return CreateMaterialInstancesUsingCache(InMaterial, OpaqueMaterialPath);
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque)
@@ -1066,7 +1095,8 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeT
 		                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
 		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
 	
-	return CreateMaterialInstances(InMaterial, TranslucentMaterialPath);
+	//return CreateMaterialInstances(InMaterial, TranslucentMaterialPath); - old way without cache
+	return CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath);
 }
 
 void ARuntimeMeshBuilder::GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh)
@@ -1130,3 +1160,166 @@ void ARuntimeMeshBuilder::RemoveFlowCounters() const
 	}
 	OnAllFlowCountersRemoved.Broadcast();
 }
+
+void ARuntimeMeshBuilder::QueueDoorForFlowCounter(UStaticMeshComponent* DoorMesh)
+{
+	// We only care about valid, non-destroying meshes.
+	if (DoorMesh == nullptr || DoorMesh->IsBeingDestroyed())
+	{
+		return;
+	}
+
+	PendingDoorMeshes.Add(DoorMesh);
+}
+
+void ARuntimeMeshBuilder::BeginDeferredFlowCounterSpawn()
+{
+	// If nothing to do, early out.
+	if (PendingDoorMeshes.Num() == 0)
+	{
+		return;
+	}
+
+	// Mark that we should start consuming the queue during Tick().
+	bIsSpawningFlowCounters = true;
+	
+	// Get the loading subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+
+	if(LoadingSubsystem)
+	{
+		// Start the load widget
+		LoadingSubsystem->SetLoadingUnknownDuration(true, FString::Printf(TEXT("Generating %d Flow Counters for Doors"), PendingDoorMeshes.Num()));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Deferred FlowCounter spawning started. Pending doors: %d"), PendingDoorMeshes.Num());
+}
+
+void ARuntimeMeshBuilder::ProcessPendingFlowCounters(int32 InMaxToSpawn)
+{
+	if (InMaxToSpawn <= 0)
+	{
+		return;
+	}
+
+	int32 SpawnedThisFrame = 0;
+
+	// We use RemoveAtSwap(0) so we can pop from the front without shifting everything.
+	while (PendingDoorMeshes.Num() > 0 && SpawnedThisFrame < InMaxToSpawn)
+	{
+		// Pop first entry
+		TWeakObjectPtr<UStaticMeshComponent> DoorMeshWeak = PendingDoorMeshes[0];
+		PendingDoorMeshes.RemoveAtSwap(0);
+
+		if (DoorMeshWeak.IsValid())
+		{
+			UStaticMeshComponent* DoorMesh = DoorMeshWeak.Get();
+			GenerateFlowCounterForDoor(DoorMesh);
+		}
+		else
+		{
+			// Door was destroyed/invalidated between queuing and spawning, just skip it.
+			UE_LOG(LogTemp, Verbose, TEXT("Skipping invalid door mesh while spawning FlowCounter."));
+		}
+
+		++SpawnedThisFrame;
+	}
+}
+
+UMaterialInstanceConstant* ARuntimeMeshBuilder::GetOrLoadMasterMaterial(const FString& MaterialPath)
+{
+	// Use the path as a key. FName is cheap to compare/hash.
+	const FName Key(*MaterialPath);
+
+	// check cache to see if already loaded
+	if (TObjectPtr<UMaterialInstanceConstant>* Found = MasterMaterialCache.Find(Key))
+	{
+		return Found->Get();
+	}
+
+	// not loaded so attempt to load the material
+	UMaterialInstanceConstant* LoadedMaterial =
+		LoadObject<UMaterialInstanceConstant>(nullptr, *MaterialPath);
+	
+	if (!LoadedMaterial)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to load master material: %s"), *MaterialPath);
+		return nullptr;
+	}
+
+	// add to cache
+	MasterMaterialCache.Add(Key, LoadedMaterial);
+
+	return LoadedMaterial;
+}
+
+TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstancesUsingCache(
+	UMaterialInterface* InMaterial, const FString& MaterialPath)
+{
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> MaterialInstances;
+
+	if (!InMaterial)
+	{
+		return MaterialInstances;
+	}
+
+	// 1) Get (or lazily load) the master MIC template
+	UMaterialInstanceConstant* TemplateMIC = GetOrLoadMasterMaterial(MaterialPath);
+	if (!TemplateMIC)
+	{
+		// Error already logged in GetOrLoadMasterMaterial
+		return MaterialInstances;
+	}
+
+	// 2) Create a MID from the cached template
+	UMaterialInstanceDynamic* DynamicMaterial =
+		UMaterialInstanceDynamic::Create(TemplateMIC, this);
+
+	if (!DynamicMaterial)
+	{
+		return MaterialInstances;
+	}
+
+	// 3) Copy parameters from the original Datasmith material
+	TArray<FMaterialParameterInfo> ScalarParams;
+	TArray<FMaterialParameterInfo> VectorParams;
+	TArray<FMaterialParameterInfo> TextureParams;
+	TArray<FGuid> ScalarGuids;
+	TArray<FGuid> VectorGuids;
+	TArray<FGuid> TextureGuids;
+
+	InMaterial->GetAllScalarParameterInfo(ScalarParams, ScalarGuids);
+	InMaterial->GetAllVectorParameterInfo(VectorParams, VectorGuids);
+	InMaterial->GetAllTextureParameterInfo(TextureParams, TextureGuids);
+
+	for (const FMaterialParameterInfo& Param : ScalarParams)
+	{
+		float Value = 0.0f;
+		if (InMaterial->GetScalarParameterValue(Param.Name, Value))
+		{
+			DynamicMaterial->SetScalarParameterValue(Param.Name, Value);
+		}
+	}
+
+	for (const FMaterialParameterInfo& Param : VectorParams)
+	{
+		FLinearColor Value;
+		if (InMaterial->GetVectorParameterValue(Param.Name, Value))
+		{
+			DynamicMaterial->SetVectorParameterValue(Param.Name, Value);
+		}
+	}
+
+	for (const FMaterialParameterInfo& Param : TextureParams)
+	{
+		UTexture* Value = nullptr;
+		if (InMaterial->GetTextureParameterValue(Param.Name, Value))
+		{
+			DynamicMaterial->SetTextureParameterValue(Param.Name, Value);
+		}
+	}
+
+	MaterialInstances.Add(DynamicMaterial);
+	return MaterialInstances;
+}
+
