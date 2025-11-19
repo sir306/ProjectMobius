@@ -22,7 +22,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "BuildingGenerator//RuntimeMeshBuilder.h"
+#include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "ProceduralMeshComponent.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -112,7 +112,7 @@ void ARuntimeMeshBuilder::BeginPlay()
 void ARuntimeMeshBuilder::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	ProcessPendingCollisionEnables(DeltaTime);
+	//ProcessPendingCollisionEnables(DeltaTime);
 }
 
 void ARuntimeMeshBuilder::OnConstruction(const FTransform& Transform)
@@ -931,14 +931,14 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 		}
 
 		// ensure we are blocking this channel so we can interact with the mesh if needed/manipulate door counters
-		// Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-		// Mesh->SetCollisionObjectType(ECC_WorldDynamic);
-		// Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-		// Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		
 		// ensure we are blocking this channel so we can interact with the mesh if needed/manipulate door counters
 		// (done in batches to avoid a huge hitch)
-		EnqueueCollisionEnable(Mesh.Get());
+		// EnqueueCollisionEnable(Mesh.Get());
 		
 		// Get the local to world transform
 		FTransform LocalToWorldTransform = Mesh->GetComponentTransform();

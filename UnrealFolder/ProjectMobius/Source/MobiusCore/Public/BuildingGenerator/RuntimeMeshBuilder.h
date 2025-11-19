@@ -32,6 +32,10 @@
 #include "RuntimeMeshBuilder.generated.h"
 
 
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
+class UMaterialInstanceConstant;
+
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
 
@@ -212,12 +216,9 @@ private:
 	
 	UMaterialInstanceConstant* GetOrLoadMasterMaterial(const FString& MaterialPath);
 	
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(
-		UMaterialInterface* InMaterial,
-		const FString&      MaterialPath);
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(UMaterialInterface* InMaterial, const FString& MaterialPath);
 	
-	UMaterialInstanceDynamic* GetOrCreateSharedMID(UMaterialInterface* InMaterial,
-												   const FString&      MaterialPath);
+	UMaterialInstanceDynamic* GetOrCreateSharedMID(UMaterialInterface* InMaterial, const FString& MaterialPath);
 	
 	bool ResolveMaterialParams(UMaterialInterface* Material,
 							   FResolvedMaterialParams& OutParams) const;
