@@ -342,14 +342,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// Add the tag to prevent collision updates
 	PedestrianTemplateData.AddTag<FPedestrianCollisionsDisabled>();
 
-	NumOfAgentsPerTimeStep = TArray<int32>();
-	NumOfAgentsPerTimeStep.SetNum(SimulationFragment.SimulationData.Num());
-	
-	// map the number of agents per time step
-	for (int32 i = 0; i < SimulationFragment.SimulationData.Num(); i++)
-	{
-		NumOfAgentsPerTimeStep[i] = SimulationFragment.SimulationData[i].Num();
-	}
+	NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
 
 	if (NumOfAgentsPerTimeStep.IsValidIndex(0))
 	{
@@ -359,7 +352,6 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Set the json object on the agent data subsystem
 	AgentDataSubsystem->JSONObject = JSONObjectLocal;
-	
 
 	// Get Time Dilation from the ProjectMobius Game Instance
 	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();

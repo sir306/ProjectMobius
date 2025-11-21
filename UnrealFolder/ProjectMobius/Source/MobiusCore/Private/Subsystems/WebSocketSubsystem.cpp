@@ -80,67 +80,69 @@ void UWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		FModuleManager::Get().LoadModule(TEXT("WebSockets"));
 	}
 
-	// if another instance of this application is already running then we don't want to start the server again
-	if (FPlatformProcess::IsProcRunning(WebSocketServerProcHandle))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WebSocket server is already running."));
-		
-	}
-	else // first application launched so need to start the server
-	{
-		// Start the WebSocket server
-		StartWebSocketServer();
-	}
+	// DEPRECEATED - we no longer start a server - and use an IPC protocol now, this is legacy code for others to use if they want to -- see MobiusIPCSubsystem
 	
-	// Create and hook up your socket. The port is read from Tools/NodeJS/config.json,
-	// falling back to 9090 if the file cannot be parsed.
-	const int32 Port = LoadWebSocketPort();
-	const FString Url = FString::Printf(TEXT("ws://127.0.0.1:%d"), Port);
-	Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
-
-	Socket->OnConnected().AddLambda([this]()
-	{
-		UE_LOG(LogTemp, Log, TEXT("WebSocket Connected"));
-		
-		// once we have the ID, we can send back the role of this
-		TSharedPtr<FJsonObject> Cmd = MakeShared<FJsonObject>();
-		Cmd->SetStringField(TEXT("type"), TEXT("register"));
-		Cmd->SetStringField(TEXT("role"), TEXT("unreal"));
-
-		// Send the command to the server
-		SendJsonMessage(Cmd);
-	});
-	Socket->OnConnectionError().AddLambda([](const FString& Err)
-	{
-		UE_LOG(LogTemp, Error, TEXT("WebSocket Error: %s"), *Err);
-	});
-	Socket->OnMessage().AddLambda([this](const FString& Msg)
-	{
-		UE_LOG(LogTemp, Log, TEXT("Received WS Message -► %s"), *Msg);
-
-		TSharedPtr<FJsonObject> Json;
-		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Msg);
-		if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
-		{
-			// look for the message that will assign us a MobiusAppID
-			const FString Type = Json->GetStringField(TEXT("type"));
-			if (Type == TEXT("assignId"))
-			{
-				// get the unique ID
-				UniqueMobiusAppID  = Json->GetStringField(TEXT("id"));
-
-				UE_LOG(LogTemp, Log, TEXT("➔ Assigned MobiusAppID = %s"),
-				       *UniqueMobiusAppID);
-
-				
-			
-			}
-
-			// If we need more message handling, we can add it here
-		}
-	});
-
-	Socket->Connect();
+	// // if another instance of this application is already running then we don't want to start the server again
+	// if (FPlatformProcess::IsProcRunning(WebSocketServerProcHandle))
+	// {
+	// 	UE_LOG(LogTemp, Warning, TEXT("WebSocket server is already running."));
+	// 	
+	// }
+	// else // first application launched so need to start the server
+	// {
+	// 	// Start the WebSocket server
+	// 	StartWebSocketServer();
+	// }
+	//
+	// // Create and hook up your socket. The port is read from Tools/NodeJS/config.json,
+	// // falling back to 9090 if the file cannot be parsed.
+	// const int32 Port = LoadWebSocketPort();
+	// const FString Url = FString::Printf(TEXT("ws://127.0.0.1:%d"), Port);
+	// Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
+	//
+	// Socket->OnConnected().AddLambda([this]()
+	// {
+	// 	UE_LOG(LogTemp, Log, TEXT("WebSocket Connected"));
+	// 	
+	// 	// once we have the ID, we can send back the role of this
+	// 	TSharedPtr<FJsonObject> Cmd = MakeShared<FJsonObject>();
+	// 	Cmd->SetStringField(TEXT("type"), TEXT("register"));
+	// 	Cmd->SetStringField(TEXT("role"), TEXT("unreal"));
+	//
+	// 	// Send the command to the server
+	// 	SendJsonMessage(Cmd);
+	// });
+	// Socket->OnConnectionError().AddLambda([](const FString& Err)
+	// {
+	// 	UE_LOG(LogTemp, Error, TEXT("WebSocket Error: %s"), *Err);
+	// });
+	// Socket->OnMessage().AddLambda([this](const FString& Msg)
+	// {
+	// 	UE_LOG(LogTemp, Log, TEXT("Received WS Message -► %s"), *Msg);
+	//
+	// 	TSharedPtr<FJsonObject> Json;
+	// 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Msg);
+	// 	if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
+	// 	{
+	// 		// look for the message that will assign us a MobiusAppID
+	// 		const FString Type = Json->GetStringField(TEXT("type"));
+	// 		if (Type == TEXT("assignId"))
+	// 		{
+	// 			// get the unique ID
+	// 			UniqueMobiusAppID  = Json->GetStringField(TEXT("id"));
+	//
+	// 			UE_LOG(LogTemp, Log, TEXT("➔ Assigned MobiusAppID = %s"),
+	// 			       *UniqueMobiusAppID);
+	//
+	// 			
+	// 		
+	// 		}
+	//
+	// 		// If we need more message handling, we can add it here
+	// 	}
+	// });
+	//
+	// Socket->Connect();
 	
 }
 

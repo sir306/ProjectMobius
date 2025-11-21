@@ -64,7 +64,7 @@ void UFlowCounterSpawnerComponent::BeginSpawning()
 	if(LoadingSubsystem)
 	{
 		// Start the load widget
-		LoadingSubsystem->SetLoadingUnknownDuration(true, FString::Printf(TEXT("Generating %d Flow Counters for Doors"), PendingDoorMeshes.Num()));
+		LoadingSubsystem->SetLoadingUnknownDuration(true, FString::Printf(TEXT("Remaining Flow Counters to create for doors: %d"), PendingDoorMeshes.Num()));
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("Deferred FlowCounter spawning started. Pending doors: %d"), PendingDoorMeshes.Num());
@@ -108,17 +108,27 @@ void UFlowCounterSpawnerComponent::TickComponent(float DeltaTime, ELevelTick Tic
 
 		SpawnedThisBatch++;
 	}
-
+	// Get the loading subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+	
 	if (PendingDoorMeshes.Num() == 0)
 	{
 		bSpawning = false;
 		
 		// End the load widget
-		auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+		
 
 		if(LoadingSubsystem)
 		{
 			LoadingSubsystem->SetLoadingUnknownDuration(false, TEXT(""));
+		}
+	}
+	else
+	{
+		if(LoadingSubsystem)
+		{
+			// Start the load widget
+			LoadingSubsystem->SetLoadingUnknownDuration(true, FString::Printf(TEXT("Remaining Flow Counters to create for doors: %d"), PendingDoorMeshes.Num()));
 		}
 	}
 }

@@ -300,6 +300,8 @@ public:
 	bool bIsRunning = false; // Flag to indicate if the thread is running
 	bool bReadyToDelete = false; // Flag to indicate if the thread is ready to be deleted
 	
+	TArray<int32> NumOfAgentsPerTimeStep = TArray<int32>();
+	
 protected:
 	/** Pointer to a thread */
 	FRunnableThread* Thread = nullptr;

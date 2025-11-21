@@ -463,6 +463,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 {
 	// get the simulation data array
 	TArray<TSharedPtr<FJsonValue>> JsonSimDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("simulation"));
+	
+	// reserve the num of sim data arrays for the num of agents per time step
+	NumOfAgentsPerTimeStep.Reserve(JsonSimDataArray.Num());
 
 	// keep looping until the thread is stopped or the current data count is equal to the target data count
 	while (!bShouldStop && CurrentDataCount <= TargetDataCount)
@@ -500,6 +503,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 
 		// get the sample array for this
 		TArray<TSharedPtr<FJsonValue>> JSONSampleArray = JSONSimDataObject->GetArrayField(StringCast<TCHAR>("samples"));
+		
+		// the number of samples should technically be how many entities there are for this time step
+		NumOfAgentsPerTimeStep.Add(JSONSampleArray.Num());
 
 		// log if the sample array is empty
 		if (JSONSampleArray.Num() == 0)
