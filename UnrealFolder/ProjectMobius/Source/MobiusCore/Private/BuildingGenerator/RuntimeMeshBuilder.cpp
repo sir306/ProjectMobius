@@ -42,8 +42,9 @@
 
 // Sets default values
 ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
-	MobiusProceduralMeshComponent(nullptr),
-	DatasmithMaterialsMap(TMap<TWeakObjectPtr<UStaticMeshComponent>, FDatasmithMaterials>())
+        MobiusProceduralMeshComponent(nullptr),
+        DatasmithMaterialsMap(TMap<TWeakObjectPtr<UStaticMeshComponent>, FDatasmithMaterials>()),
+        MaterialCache(this)
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
@@ -95,11 +96,11 @@ void ARuntimeMeshBuilder::BeginPlay()
 	
 	// Create the material cache
 	// Preload all master materials used, so streaming cost happens early.
-	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'"));
-	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
-	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
-	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'"));
-	GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'"));
+        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'"));
+        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
+        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
+        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'"));
+        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'"));
 	
 	// Assign the Flow Counter class to auto spawn
 	if (FlowCounterSpawnerComponent)
@@ -906,306 +907,33 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterial
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateOpaqueMaterials(UMaterialInterface* InMaterial)
 {
-	static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'");
-	return CreateMaterialInstancesUsingCache(InMaterial, OpaqueMaterialPath, true);
+        static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'");
+        return MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, OpaqueMaterialPath, true);
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque)
 {
-	const FString TranslucentMaterialPath = bIsOpaque
-		                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'")
-		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'");
+        const FString TranslucentMaterialPath = bIsOpaque
+                                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'")
+                                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'");
 
-	return CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
+        return MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial)
 {
-	static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'");
-	return CreateMaterialInstancesUsingCache(InMaterial, OpaqueMaterialPath, true);
+        static const FString OpaqueMaterialPath = TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'");
+        return MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, OpaqueMaterialPath, true);
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque)
 {
-	const FString TranslucentMaterialPath = bIsOpaque
-		                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
-		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
-	
-	//return CreateMaterialInstances(InMaterial, TranslucentMaterialPath); - old way without cache
-	return CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
-}
+        const FString TranslucentMaterialPath = bIsOpaque
+                                                        ? TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'")
+                                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
 
-UMaterialInstanceConstant* ARuntimeMeshBuilder::GetOrLoadMasterMaterial(const FString& MaterialPath)
-{
-	// Use the path as a key. FName is cheap to compare/hash.
-	const FName Key(*MaterialPath);
-
-	// check cache to see if already loaded
-	if (TObjectPtr<UMaterialInstanceConstant>* Found = MasterMaterialCache.Find(Key))
-	{
-		return Found->Get();
-	}
-
-	// not loaded so attempt to load the material
-	UMaterialInstanceConstant* LoadedMaterial =
-		LoadObject<UMaterialInstanceConstant>(nullptr, *MaterialPath);
-	
-	if (!LoadedMaterial)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to load master material: %s"), *MaterialPath);
-		return nullptr;
-	}
-
-	// add to cache
-	MasterMaterialCache.Add(Key, LoadedMaterial);
-
-	return LoadedMaterial;
-}
-
-TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstancesUsingCache(
-	UMaterialInterface* InMaterial,
-	const FString& MaterialPath,
-	bool bIsOpaque)
-{
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> Out;
-	
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("CreateMaterialInstancesUsingCache - called");
-	
-	if (UMaterialInstanceDynamic* MID = GetOrCreateSharedMID(InMaterial, MaterialPath, bIsOpaque))
-	{
-		Out.Add(MID);
-	}
-	return Out;
-}
-
-UMaterialInstanceDynamic* ARuntimeMeshBuilder::GetOrCreateSharedMID(UMaterialInterface* InMaterial,
-                                                                    const FString& MaterialPath,
-                                                                    bool bIsOpaque)
-{
-	if (!InMaterial)
-	{
-		return nullptr;
-	}
-
-	// Choose the right per-material cache for this family (opaque vs translucent)
-	TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey>& PerTypeCache =
-		bIsOpaque ? MaterialToOpaqueKeyCache : MaterialToTranslucentKeyCache;
-
-	// ---- 1) Fast path: do we already know the key for this (material, type)? ----
-	if (const FMaterialMIDKey* ExistingKey = PerTypeCache.Find(InMaterial))
-	{
-		if (TObjectPtr<UMaterialInstanceDynamic>* ExistingMID = SharedMIDByKey.Find(*ExistingKey))
-		{
-			return ExistingMID->Get();
-		}
-		// If the MID was GC’d or removed, we fall through and recreate.
-	}
-
-	// ---- 2) Get (or compute once) the resolved parameter set for this source material ----
-	FResolvedMaterialParams* ParamsPtr = MaterialParamsCache.Find(InMaterial);
-	if (!ParamsPtr)
-	{
-		FResolvedMaterialParams NewParams;
-		if (!ResolveMaterialParams(InMaterial, NewParams))
-		{
-			return nullptr;
-		}
-
-		ParamsPtr = &MaterialParamsCache.Add(InMaterial, MoveTemp(NewParams));
-	}
-	const FResolvedMaterialParams& ResolvedParams = *ParamsPtr;
-
-	// ---- 3) Build the key for this master + type using the shared params ----
-	FMaterialMIDKey Key;
-	Key.MasterPathKey = FName(*MaterialPath);
-	Key.BaseMaterial  = InMaterial->GetMaterial();
-	Key.bIsOpaque     = bIsOpaque;
-	Key.ParamsHash    = ComputeParamsHash(ResolvedParams);
-
-	// See if some *other* material resolved to the same parameter set already
-	if (TObjectPtr<UMaterialInstanceDynamic>* ExistingMID = SharedMIDByKey.Find(Key))
-	{
-		PerTypeCache.Add(InMaterial, Key);
-		return ExistingMID->Get();
-	}
-
-	// ---- 4) Create the new shared MID for this parameter set ----
-	UMaterialInstanceConstant* TemplateMIC = GetOrLoadMasterMaterial(MaterialPath);
-	if (!TemplateMIC)
-	{
-		return nullptr;
-	}
-
-	UMaterialInstanceDynamic* DynamicMaterial =
-		UMaterialInstanceDynamic::Create(TemplateMIC, this);
-	if (!DynamicMaterial)
-	{
-		return nullptr;
-	}
-
-	// Apply the cached params (one place to maintain)
-	for (const TPair<FName, float>& Pair : ResolvedParams.ScalarParams)
-	{
-		DynamicMaterial->SetScalarParameterValue(Pair.Key, Pair.Value);
-	}
-
-	for (const TPair<FName, FLinearColor>& Pair : ResolvedParams.VectorParams)
-	{
-		DynamicMaterial->SetVectorParameterValue(Pair.Key, Pair.Value);
-	}
-
-	for (const TPair<FName, TObjectPtr<UTexture>>& Pair : ResolvedParams.TextureParams)
-	{
-		DynamicMaterial->SetTextureParameterValue(Pair.Key, Pair.Value);
-	}
-
-	// ---- 5) Cache it ----
-	SharedMIDByKey.Add(Key, DynamicMaterial);
-	PerTypeCache.Add(InMaterial, Key);
-
-	return DynamicMaterial;
-}
-
-bool ARuntimeMeshBuilder::ResolveMaterialParams(UMaterialInterface* Material, FResolvedMaterialParams& OutParams) const
-{
-	OutParams.ScalarParams.Reset();
-	OutParams.VectorParams.Reset();
-	OutParams.TextureParams.Reset();
-
-	if (!Material)
-	{
-		return false;
-	}
-
-	TArray<FMaterialParameterInfo> ScalarInfos;
-	TArray<FMaterialParameterInfo> VectorInfos;
-	TArray<FMaterialParameterInfo> TextureInfos;
-	TArray<FGuid> ScalarGuids;
-	TArray<FGuid> VectorGuids;
-	TArray<FGuid> TextureGuids;
-
-	Material->GetAllScalarParameterInfo(ScalarInfos, ScalarGuids);
-	Material->GetAllVectorParameterInfo(VectorInfos, VectorGuids);
-	Material->GetAllTextureParameterInfo(TextureInfos, TextureGuids);
-
-	for (const FMaterialParameterInfo& Info : ScalarInfos)
-	{
-		float Value = 0.0f;
-		if (Material->GetScalarParameterValue(Info, Value))
-		{
-			OutParams.ScalarParams.Add(Info.Name, Value);
-		}
-	}
-
-	for (const FMaterialParameterInfo& Info : VectorInfos)
-	{
-		FLinearColor Value;
-		if (Material->GetVectorParameterValue(Info, Value))
-		{
-			OutParams.VectorParams.Add(Info.Name, Value);
-		}
-	}
-
-	for (const FMaterialParameterInfo& Info : TextureInfos)
-	{
-		UTexture* Value = nullptr;
-		if (Material->GetTextureParameterValue(Info, Value))
-		{
-			OutParams.TextureParams.Add(Info.Name, Value);
-		}
-	}
-
-	return true;
-}
-
-bool ARuntimeMeshBuilder::AreMaterialsEquivalentForMIDReuse(UMaterialInterface* A, UMaterialInterface* B,
-                                                            float Tolerance) const
-{
-	if (A == B)
-	{
-		return true; // exactly the same object
-	}
-
-	if (!A || !B)
-	{
-		return false;
-	}
-
-	// Strong guard: base material must match.
-	if (A->GetMaterial() != B->GetMaterial())
-	{
-		return false;
-	}
-
-	FResolvedMaterialParams ParamsA;
-	FResolvedMaterialParams ParamsB;
-
-	if (!ResolveMaterialParams(A, ParamsA) ||
-		!ResolveMaterialParams(B, ParamsB))
-	{
-		return false;
-	}
-
-	// Quick size checks
-	if (ParamsA.ScalarParams.Num()  != ParamsB.ScalarParams.Num() ||
-		ParamsA.VectorParams.Num()  != ParamsB.VectorParams.Num() ||
-		ParamsA.TextureParams.Num() != ParamsB.TextureParams.Num())
-	{
-		return false;
-	}
-
-	// Scalars
-	for (const TPair<FName, float>& PairA : ParamsA.ScalarParams)
-	{
-		const float* BValue = ParamsB.ScalarParams.Find(PairA.Key);
-		if (!BValue)
-		{
-			return false;
-		}
-
-		if (FMath::Abs(PairA.Value - *BValue) > Tolerance)
-		{
-			return false;
-		}
-	}
-
-	// Vectors
-	for (const TPair<FName, FLinearColor>& PairA : ParamsA.VectorParams)
-	{
-		const FLinearColor* BValue = ParamsB.VectorParams.Find(PairA.Key);
-		if (!BValue)
-		{
-			return false;
-		}
-
-		const FLinearColor& CA = PairA.Value;
-		const FLinearColor& CB = *BValue;
-
-		if (FMath::Abs(CA.R - CB.R) > Tolerance ||
-			FMath::Abs(CA.G - CB.G) > Tolerance ||
-			FMath::Abs(CA.B - CB.B) > Tolerance ||
-			FMath::Abs(CA.A - CB.A) > Tolerance)
-		{
-			return false;
-		}
-	}
-
-	// Textures – pointer equality is fine here
-	for (const TPair<FName, TObjectPtr<UTexture>>& PairA : ParamsA.TextureParams)
-	{
-		const TObjectPtr<UTexture>* BValue = ParamsB.TextureParams.Find(PairA.Key);
-		if (!BValue)
-		{
-			return false;
-		}
-
-		if (PairA.Value.Get() != BValue->Get())
-		{
-			return false;
-		}
-	}
-
-	return true;
+        //return CreateMaterialInstances(InMaterial, TranslucentMaterialPath); - old way without cache
+        return MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
 }
 
 void ARuntimeMeshBuilder::EnqueueCollisionEnable(UStaticMeshComponent* Mesh)
@@ -1248,121 +976,6 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
 		PendingCollisionEnable.RemoveAtSwap(Index, 1, /*bAllowShrinking=*/false);
 		++ProcessedThisFrame;
 	}
-}
-
-bool ARuntimeMeshBuilder::BuildMaterialMIDKey(UMaterialInterface* InMaterial, const FString& MaterialPath,
-                                              bool bIsOpaque, FMaterialMIDKey& OutKey, FResolvedMaterialParams* OutResolvedParams) const
-{
-	if (!InMaterial)
-	{
-		return false;
-	}
-
-	OutKey.MasterPathKey = FName(*MaterialPath);
-	OutKey.BaseMaterial  = InMaterial->GetMaterial();
-	OutKey.bIsOpaque     = bIsOpaque;
-
-	FResolvedMaterialParams LocalParams;
-	FResolvedMaterialParams* Params = OutResolvedParams ? OutResolvedParams : &LocalParams;
-
-	if (!ResolveMaterialParams(InMaterial, *Params))
-	{
-		return false;
-	}
-
-	OutKey.ParamsHash = ComputeParamsHash(*Params);
-	return true;
-}
-
-uint64 ARuntimeMeshBuilder::ComputeParamsHash(const FResolvedMaterialParams& Params) const
-{
-	// Simple 64-bit mixing function.
-	auto Mix = [](uint64& H, uint64 V)
-	{
-		H ^= V + 0x9e3779b97f4a7c15ull + (H << 6) + (H >> 2);
-	};
-
-	uint64 Hash = 1469598103934665603ull; // non-zero seed
-
-	// Hash an FName via its integer representation (no GetTypeHash(FName) needed).
-	auto MixName = [&Mix, &Hash](FName Name)
-	{
-		const uint64 NameInt = Name.ToUnstableInt();
-		Mix(Hash, NameInt);
-	};
-
-	// Hash a float by its bit pattern.
-	auto MixFloat = [&Mix, &Hash](float Value)
-	{
-		static_assert(sizeof(float) == sizeof(uint32), "Float must be 32-bit");
-		uint32 Bits = 0;
-		FMemory::Memcpy(&Bits, &Value, sizeof(uint32));
-		Mix(Hash, (uint64)Bits);
-	};
-
-	TArray<FName> Names;
-
-	// --- Scalars ---
-	Names.Reset();
-	Names.Reserve(Params.ScalarParams.Num());
-	Params.ScalarParams.GenerateKeyArray(Names);
-	Names.Sort(FNameLexicalLess());
-
-	for (FName Name : Names)
-	{
-		MixName(Name);
-		if (const float* Value = Params.ScalarParams.Find(Name))
-		{
-			MixFloat(*Value);
-		}
-	}
-
-	// --- Vectors ---
-	Names.Reset();
-	Names.Reserve(Params.VectorParams.Num());
-	Params.VectorParams.GenerateKeyArray(Names);
-	Names.Sort(FNameLexicalLess());
-
-	for (FName Name : Names)
-	{
-		MixName(Name);
-		if (const FLinearColor* Color = Params.VectorParams.Find(Name))
-		{
-			MixFloat(Color->R);
-			MixFloat(Color->G);
-			MixFloat(Color->B);
-			MixFloat(Color->A);
-		}
-	}
-
-	// --- Textures ---
-	Names.Reset();
-	Names.Reserve(Params.TextureParams.Num());
-	Params.TextureParams.GenerateKeyArray(Names);
-	Names.Sort(FNameLexicalLess());
-
-	for (FName Name : Names)
-	{
-		MixName(Name);
-
-		// NOTE: map value type is TObjectPtr<UTexture>
-		if (const TObjectPtr<UTexture>* TexPtr = Params.TextureParams.Find(Name))
-		{
-			if (UTexture* Texture = TexPtr->Get())
-			{
-				// Hash the pointer value – good enough for identity within this process.
-				const uint64 PtrBits = (uint64)(UPTRINT)Texture;
-				Mix(Hash, PtrBits);
-			}
-			else
-			{
-				// Distinguish explicit null from "no entry"
-				Mix(Hash, 0ull);
-			}
-		}
-	}
-
-	return Hash;
 }
 
 void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
