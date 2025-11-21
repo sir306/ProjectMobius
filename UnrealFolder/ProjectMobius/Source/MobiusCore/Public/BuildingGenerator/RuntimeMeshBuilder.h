@@ -43,6 +43,15 @@ class UTexture;
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
 
+// Which master family to use for a given mesh's slot classification
+enum class EDatasmithMasterType : uint8
+{
+	Unknown,
+	TMStdOpaque,
+	TMStdTranslucent,
+	RuntimeOpaque,
+	RuntimeTranslucent
+};
 
 /** Structs */
 /** */
@@ -56,6 +65,19 @@ struct FDatasmithMaterials
 
 	UPROPERTY()
 	TArray<bool> bIsOpaque;
+};
+
+// One pending mesh that still needs its Datasmith MIDs created/applied
+USTRUCT()
+struct FPendingDatasmithMesh
+{
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	TWeakObjectPtr<UStaticMeshComponent> Mesh;
+
+	// We just store the component; slots are processed inside the worker
+	// using the EDatasmithMasterType classification cache.
 };
 
 /** */
@@ -303,6 +325,9 @@ private:
 
 	uint64 ComputeParamsHash(const FResolvedMaterialParams& Params) const;
 	
+	void ProcessPendingDatasmithMeshes(float DeltaSeconds);
+	void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
+	
 #pragma endregion PRIVATE_METHODS
 
 #pragma region PUBLIC_PROPERTIES_AND_COMPONENTS
@@ -403,6 +428,16 @@ protected:
 	UPROPERTY(Transient)
 	TMap<TWeakObjectPtr<UMaterialInterface>, FResolvedMaterialParams> MaterialParamsCache;
 
+	/** Meshes that still need their Datasmith materials created/applied. */
+	UPROPERTY()
+	TArray<FPendingDatasmithMesh> PendingDatasmithMeshes;
+
+	/** How many Datasmith meshes we process per frame to avoid hitches. */
+	UPROPERTY(EditAnywhere, Category="MeshGenerator|Datasmith")
+	int32 MaxDatasmithMeshesPerFrame = 25;
+
+	/** Are we currently in the middle of batched Datasmith material setup? */
+	bool bDatasmithMaterialSetupInProgress = false;
 	
 private:
 	/** TODO: We eventually want to get the mesh material and apply our materials to it as a mask or material function to it

@@ -112,6 +112,7 @@ void ARuntimeMeshBuilder::BeginPlay()
 void ARuntimeMeshBuilder::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	ProcessPendingDatasmithMeshes(DeltaTime);
 	ProcessPendingCollisionEnables(DeltaTime);
 }
 
@@ -769,9 +770,13 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
     auto DataComps = RuntimeDatasmithAnchor->GetComponents();
     UE_LOG(LogTemp, Warning, TEXT("Number of Data Components: %d"), DataComps.Num());
 
+    PendingDatasmithMeshes.Reset();
+    bDatasmithMaterialSetupInProgress = false;
+
     if (DataComps.Num() == 0)
     {
         UE_LOG(LogTemp, Error, TEXT("Data Components are not valid"));
+        EndLoadingWidget();
         return;
     }
 
@@ -805,94 +810,25 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
                     }
                 }
 
-                FDatasmithMaterials DatasmithMaterials;
-                const int32 NumMats = MeshComp->GetNumMaterials();
-                DatasmithMaterials.MeshMaterials.Reserve(NumMats * 2);
-                DatasmithMaterials.bIsOpaque.Reserve(NumMats);
-
-                MeshComp->CastShadow = false;
-                UE_LOG(LogTemp, Warning, TEXT("Num Materials: %d"), NumMats);
-
-                for (int32 Index = 0; Index < NumMats; ++Index)
-                {
-                    UMaterialInterface* Material = MeshComp->GetMaterial(Index);
-                    if (!Material)
-                    {
-                        continue;
-                    }
-
-                    UMaterial* ParentMaterial = Material->GetMaterial();
-
-                    TArray<TObjectPtr<UMaterialInstanceDynamic>> MaterialInstances;
-                	
-                	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Creating Material Instances for current mesh");
-
-                    if (ParentMaterial->GetName() == "M_TMStdOpaque")
-                    {
-                        MaterialInstances.Append(CreateOpaqueMaterials(Material));
-                        MaterialInstances.Append(CreateTranslucentMaterials(Material, true));
-                        DatasmithMaterials.bIsOpaque.Add(true);
-                    }
-                    else if (ParentMaterial->GetName() == "M_TMStdTranslucentNEW")
-                    {
-                        MaterialInstances.Append(CreateOpaqueMaterials(Material));
-                        MaterialInstances.Append(CreateTranslucentMaterials(Material));
-                        DatasmithMaterials.bIsOpaque.Add(false);
-                    }
-                    else if (ParentMaterial->GetName() == "M_Opaque")
-                    {
-                        MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
-                        MaterialInstances.Append(CreateRuntimeTranslucentMaterials(Material, true));
-                        DatasmithMaterials.bIsOpaque.Add(true);
-                    }
-                    else if (ParentMaterial->GetName() == "M_Transparent")
-                    {
-                        MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
-                        MaterialInstances.Append(CreateRuntimeTranslucentMaterials(Material));
-                        DatasmithMaterials.bIsOpaque.Add(false);
-                    }
-                    else
-                    {
-                        continue; // unsupported master
-                    }
-
-                    DatasmithMaterials.MeshMaterials.Append(MaterialInstances);
-
-                    // Initial assignment: original Datasmith style
-                    if (DatasmithMaterials.bIsOpaque[Index])
-                    {
-                        MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2]);
-                    }
-                    else
-                    {
-                        MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2 + 1]);
-                    }
-                }
-
-                // Cache materials for later toggling
-                DatasmithMaterialsMap.Add(MeshComp, MoveTemp(DatasmithMaterials));
-
-                // ---- Collision + bounds in the same pass ----
-
-                // Queue collision enable (deferred per-frame as before)
-                EnqueueCollisionEnable(MeshComp);
-
-                // Expand global bounds with this mesh’s world-space bounds
+                // Accumulate world-space bounds now (independent of materials)
                 const FBoxSphereBounds CompBounds = MeshComp->Bounds;
                 GlobalBounds += CompBounds.GetBox();
+
+                // Queue this mesh for later material processing
+                FPendingDatasmithMesh& Pending = PendingDatasmithMeshes.AddDefaulted_GetRef();
+                Pending.Mesh = MeshComp;
             }
         }
     }
 
-    // If we never added anything, bail early
-    if (!GlobalBounds.IsValid)
+    if (!GlobalBounds.IsValid || PendingDatasmithMeshes.Num() == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("No valid mesh bounds found for Datasmith scene"));
+        UE_LOG(LogTemp, Warning, TEXT("No valid Datasmith meshes found"));
         EndLoadingWidget();
         return;
     }
 
-    // Origin/extents from the global box
+    // Compute origin/extents for the rest of the system (heatmap etc.)
     const FVector BoundsCenter = GlobalBounds.GetCenter();
     const FVector BoundsExtent = GlobalBounds.GetExtent();
 
@@ -903,8 +839,10 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
     OnMeshBuilt.Broadcast(HeatmapOrigin, BoundsExtent);
 
-    EndLoadingWidget();
-    FlowCounterSpawnerComponent->BeginSpawning();
+    // We now have a queue of meshes to process over multiple frames.
+    bDatasmithMaterialSetupInProgress = true;
+
+    // Do NOT call EndLoadingWidget or BeginSpawning here; we’ll do that when the queue is empty.
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstances(UMaterialInterface* InMaterial, const FString& MaterialPath)
@@ -1041,91 +979,91 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterial
 }
 
 UMaterialInstanceDynamic* ARuntimeMeshBuilder::GetOrCreateSharedMID(UMaterialInterface* InMaterial,
-		const FString& MaterialPath,
-		bool bIsOpaque)
+                                                                    const FString& MaterialPath,
+                                                                    bool bIsOpaque)
 {
 	if (!InMaterial)
-    {
-        return nullptr;
-    }
+	{
+		return nullptr;
+	}
 
-    // Choose the right per-material cache for this family (opaque vs translucent)
-    TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey>& PerTypeCache =
-        bIsOpaque ? MaterialToOpaqueKeyCache : MaterialToTranslucentKeyCache;
+	// Choose the right per-material cache for this family (opaque vs translucent)
+	TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey>& PerTypeCache =
+		bIsOpaque ? MaterialToOpaqueKeyCache : MaterialToTranslucentKeyCache;
 
-    // ---- 1) Fast path: do we already know the key for this (material, type)? ----
-    if (const FMaterialMIDKey* ExistingKey = PerTypeCache.Find(InMaterial))
-    {
-        if (TObjectPtr<UMaterialInstanceDynamic>* ExistingMID = SharedMIDByKey.Find(*ExistingKey))
-        {
-            return ExistingMID->Get();
-        }
-        // If the MID was GC’d or removed, we fall through and recreate.
-    }
+	// ---- 1) Fast path: do we already know the key for this (material, type)? ----
+	if (const FMaterialMIDKey* ExistingKey = PerTypeCache.Find(InMaterial))
+	{
+		if (TObjectPtr<UMaterialInstanceDynamic>* ExistingMID = SharedMIDByKey.Find(*ExistingKey))
+		{
+			return ExistingMID->Get();
+		}
+		// If the MID was GC’d or removed, we fall through and recreate.
+	}
 
-    // ---- 2) Get (or compute once) the resolved parameter set for this source material ----
-    FResolvedMaterialParams* ParamsPtr = MaterialParamsCache.Find(InMaterial);
-    if (!ParamsPtr)
-    {
-        FResolvedMaterialParams NewParams;
-        if (!ResolveMaterialParams(InMaterial, NewParams))
-        {
-            return nullptr;
-        }
+	// ---- 2) Get (or compute once) the resolved parameter set for this source material ----
+	FResolvedMaterialParams* ParamsPtr = MaterialParamsCache.Find(InMaterial);
+	if (!ParamsPtr)
+	{
+		FResolvedMaterialParams NewParams;
+		if (!ResolveMaterialParams(InMaterial, NewParams))
+		{
+			return nullptr;
+		}
 
-        ParamsPtr = &MaterialParamsCache.Add(InMaterial, MoveTemp(NewParams));
-    }
-    const FResolvedMaterialParams& ResolvedParams = *ParamsPtr;
+		ParamsPtr = &MaterialParamsCache.Add(InMaterial, MoveTemp(NewParams));
+	}
+	const FResolvedMaterialParams& ResolvedParams = *ParamsPtr;
 
-    // ---- 3) Build the key for this master + type using the shared params ----
-    FMaterialMIDKey Key;
-    Key.MasterPathKey = FName(*MaterialPath);
-    Key.BaseMaterial  = InMaterial->GetMaterial();
-    Key.bIsOpaque     = bIsOpaque;
-    Key.ParamsHash    = ComputeParamsHash(ResolvedParams);
+	// ---- 3) Build the key for this master + type using the shared params ----
+	FMaterialMIDKey Key;
+	Key.MasterPathKey = FName(*MaterialPath);
+	Key.BaseMaterial  = InMaterial->GetMaterial();
+	Key.bIsOpaque     = bIsOpaque;
+	Key.ParamsHash    = ComputeParamsHash(ResolvedParams);
 
-    // See if some *other* material resolved to the same parameter set already
-    if (TObjectPtr<UMaterialInstanceDynamic>* ExistingMID = SharedMIDByKey.Find(Key))
-    {
-        PerTypeCache.Add(InMaterial, Key);
-        return ExistingMID->Get();
-    }
+	// See if some *other* material resolved to the same parameter set already
+	if (TObjectPtr<UMaterialInstanceDynamic>* ExistingMID = SharedMIDByKey.Find(Key))
+	{
+		PerTypeCache.Add(InMaterial, Key);
+		return ExistingMID->Get();
+	}
 
-    // ---- 4) Create the new shared MID for this parameter set ----
-    UMaterialInstanceConstant* TemplateMIC = GetOrLoadMasterMaterial(MaterialPath);
-    if (!TemplateMIC)
-    {
-        return nullptr;
-    }
+	// ---- 4) Create the new shared MID for this parameter set ----
+	UMaterialInstanceConstant* TemplateMIC = GetOrLoadMasterMaterial(MaterialPath);
+	if (!TemplateMIC)
+	{
+		return nullptr;
+	}
 
-    UMaterialInstanceDynamic* DynamicMaterial =
-        UMaterialInstanceDynamic::Create(TemplateMIC, this);
-    if (!DynamicMaterial)
-    {
-        return nullptr;
-    }
+	UMaterialInstanceDynamic* DynamicMaterial =
+		UMaterialInstanceDynamic::Create(TemplateMIC, this);
+	if (!DynamicMaterial)
+	{
+		return nullptr;
+	}
 
-    // Apply the cached params (one place to maintain)
-    for (const TPair<FName, float>& Pair : ResolvedParams.ScalarParams)
-    {
-        DynamicMaterial->SetScalarParameterValue(Pair.Key, Pair.Value);
-    }
+	// Apply the cached params (one place to maintain)
+	for (const TPair<FName, float>& Pair : ResolvedParams.ScalarParams)
+	{
+		DynamicMaterial->SetScalarParameterValue(Pair.Key, Pair.Value);
+	}
 
-    for (const TPair<FName, FLinearColor>& Pair : ResolvedParams.VectorParams)
-    {
-        DynamicMaterial->SetVectorParameterValue(Pair.Key, Pair.Value);
-    }
+	for (const TPair<FName, FLinearColor>& Pair : ResolvedParams.VectorParams)
+	{
+		DynamicMaterial->SetVectorParameterValue(Pair.Key, Pair.Value);
+	}
 
-    for (const TPair<FName, TObjectPtr<UTexture>>& Pair : ResolvedParams.TextureParams)
-    {
-        DynamicMaterial->SetTextureParameterValue(Pair.Key, Pair.Value);
-    }
+	for (const TPair<FName, TObjectPtr<UTexture>>& Pair : ResolvedParams.TextureParams)
+	{
+		DynamicMaterial->SetTextureParameterValue(Pair.Key, Pair.Value);
+	}
 
-    // ---- 5) Cache it ----
-    SharedMIDByKey.Add(Key, DynamicMaterial);
-    PerTypeCache.Add(InMaterial, Key);
+	// ---- 5) Cache it ----
+	SharedMIDByKey.Add(Key, DynamicMaterial);
+	PerTypeCache.Add(InMaterial, Key);
 
-    return DynamicMaterial;
+	return DynamicMaterial;
 }
 
 bool ARuntimeMeshBuilder::ResolveMaterialParams(UMaterialInterface* Material, FResolvedMaterialParams& OutParams) const
@@ -1313,7 +1251,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
 }
 
 bool ARuntimeMeshBuilder::BuildMaterialMIDKey(UMaterialInterface* InMaterial, const FString& MaterialPath,
-	bool bIsOpaque, FMaterialMIDKey& OutKey, FResolvedMaterialParams* OutResolvedParams) const
+                                              bool bIsOpaque, FMaterialMIDKey& OutKey, FResolvedMaterialParams* OutResolvedParams) const
 {
 	if (!InMaterial)
 	{
@@ -1425,4 +1363,159 @@ uint64 ARuntimeMeshBuilder::ComputeParamsHash(const FResolvedMaterialParams& Par
 	}
 
 	return Hash;
+}
+
+void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
+{
+	if (!bDatasmithMaterialSetupInProgress || PendingDatasmithMeshes.Num() == 0)
+	{
+		return;
+	}
+
+	const int32 MaxPerFrame = FMath::Max(1, MaxDatasmithMeshesPerFrame);
+	int32 Processed = 0;
+
+	// Walk from the end so RemoveAtSwap is cheap
+	for (int32 Index = PendingDatasmithMeshes.Num() - 1;
+		 Index >= 0 && Processed < MaxPerFrame;
+		 --Index)
+	{
+		UStaticMeshComponent* Mesh = PendingDatasmithMeshes[Index].Mesh.Get();
+		PendingDatasmithMeshes.RemoveAtSwap(Index, 1, /*bAllowShrinking=*/false);
+
+		if (Mesh)
+		{
+			BuildDatasmithMaterialsForMesh(Mesh);
+		}
+
+		++Processed;
+	}
+
+	if (PendingDatasmithMeshes.Num() == 0)
+	{
+		// We’re done – clear the flag and finish up the “import finished” flow.
+		bDatasmithMaterialSetupInProgress = false;
+
+		EndLoadingWidget();
+		FlowCounterSpawnerComponent->BeginSpawning();
+	}
+}
+
+void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp)
+{
+	if (!MeshComp || MeshComp->IsBeingDestroyed())
+    {
+        return;
+    }
+
+    // Cache to avoid repeated string comparisons on master materials
+    static TMap<UMaterial*, EDatasmithMasterType> MasterTypeCache;
+
+    FDatasmithMaterials DatasmithMaterials;
+
+    const int32 NumMats = MeshComp->GetNumMaterials();
+    DatasmithMaterials.MeshMaterials.Reserve(NumMats * 2); // opaque+translucent pair per slot
+    DatasmithMaterials.bIsOpaque.Reserve(NumMats);
+
+    MeshComp->CastShadow = false;
+
+    TArray<TObjectPtr<UMaterialInstanceDynamic>> MaterialInstances;
+    MaterialInstances.Reserve(2);
+
+    for (int32 Index = 0; Index < NumMats; ++Index)
+    {
+        UMaterialInterface* Material = MeshComp->GetMaterial(Index);
+        if (!Material)
+        {
+            continue;
+        }
+
+        UMaterial* ParentMaterial = Material->GetMaterial();
+        if (!ParentMaterial)
+        {
+            continue;
+        }
+
+        // Classify master material using cached FName → enum mapping
+        EDatasmithMasterType MasterType = EDatasmithMasterType::Unknown;
+
+        if (EDatasmithMasterType* CachedType = MasterTypeCache.Find(ParentMaterial))
+        {
+            MasterType = *CachedType;
+        }
+        else
+        {
+            const FName MatName = ParentMaterial->GetFName();
+            EDatasmithMasterType NewType = EDatasmithMasterType::Unknown;
+
+            if (MatName == TEXT("M_TMStdOpaque"))
+            {
+                NewType = EDatasmithMasterType::TMStdOpaque;
+            }
+            else if (MatName == TEXT("M_TMStdTranslucentNEW"))
+            {
+                NewType = EDatasmithMasterType::TMStdTranslucent;
+            }
+            else if (MatName == TEXT("M_Opaque"))
+            {
+                NewType = EDatasmithMasterType::RuntimeOpaque;
+            }
+            else if (MatName == TEXT("M_Transparent"))
+            {
+                NewType = EDatasmithMasterType::RuntimeTranslucent;
+            }
+
+            MasterTypeCache.Add(ParentMaterial, NewType);
+            MasterType = NewType;
+        }
+
+        MaterialInstances.Reset();
+
+        switch (MasterType)
+        {
+        case EDatasmithMasterType::TMStdOpaque:
+            MaterialInstances.Append(CreateOpaqueMaterials(Material));
+            MaterialInstances.Append(CreateTranslucentMaterials(Material, /*bIsOpaque=*/true));
+            DatasmithMaterials.bIsOpaque.Add(true);
+            break;
+
+        case EDatasmithMasterType::TMStdTranslucent:
+            MaterialInstances.Append(CreateOpaqueMaterials(Material));
+            MaterialInstances.Append(CreateTranslucentMaterials(Material, /*bIsOpaque=*/false));
+            DatasmithMaterials.bIsOpaque.Add(false);
+            break;
+
+        case EDatasmithMasterType::RuntimeOpaque:
+            MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
+            MaterialInstances.Append(CreateRuntimeTranslucentMaterials(Material, /*bIsOpaque=*/true));
+            DatasmithMaterials.bIsOpaque.Add(true);
+            break;
+
+        case EDatasmithMasterType::RuntimeTranslucent:
+            MaterialInstances.Append(CreateRuntimeOpaqueMaterials(Material));
+            MaterialInstances.Append(CreateRuntimeTranslucentMaterials(Material, /*bIsOpaque=*/false));
+            DatasmithMaterials.bIsOpaque.Add(false);
+            break;
+
+        default:
+            continue;
+        }
+
+        DatasmithMaterials.MeshMaterials.Append(MaterialInstances);
+
+        if (DatasmithMaterials.bIsOpaque[Index])
+        {
+            MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2]);
+        }
+        else
+        {
+            MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2 + 1]);
+        }
+    }
+
+    // Cache for later toggling
+    DatasmithMaterialsMap.Add(MeshComp, MoveTemp(DatasmithMaterials));
+
+    // Enable collision for this mesh (still batched separately)
+    EnqueueCollisionEnable(MeshComp);
 }
