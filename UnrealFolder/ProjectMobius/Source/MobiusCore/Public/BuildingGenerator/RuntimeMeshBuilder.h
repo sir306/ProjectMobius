@@ -29,12 +29,16 @@
 #include "GameFramework/Actor.h"
 #include "Interfaces/AssimpInterface.h"
 #include "Interfaces/ProjectMobiusInterface.h"
+#include "UObject/NameTypes.h"        // FName + GetTypeHash(FName)
+#include "UObject/WeakObjectPtr.h"    // TWeakObjectPtr hashing (for safety)
 #include "RuntimeMeshBuilder.generated.h"
 
 
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UMaterialInstanceConstant;
+class UMaterial;
+class UTexture; 
 
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
@@ -53,6 +57,61 @@ struct FDatasmithMaterials
 	UPROPERTY()
 	TArray<bool> bIsOpaque;
 };
+
+/** */
+USTRUCT()
+struct FMaterialMIDKey
+{
+	GENERATED_BODY()
+
+	/** which master (opaque/translucent) */
+	UPROPERTY()
+	FName MasterPathKey{ NAME_None };
+
+	// Underlying base material – strong guard that we're comparing apples with apples
+	UPROPERTY()
+	TWeakObjectPtr<UMaterial> BaseMaterial;
+
+	UPROPERTY()
+	bool bIsOpaque = true;
+
+	// Hash of all scalar / vector / texture parameters
+	UPROPERTY()
+	uint64 ParamsHash = 0;
+
+	bool operator==(const FMaterialMIDKey& Other) const
+	{
+		return MasterPathKey == Other.MasterPathKey
+			&& BaseMaterial == Other.BaseMaterial
+			&& bIsOpaque == Other.bIsOpaque
+			&& ParamsHash == Other.ParamsHash;
+	}
+};
+
+// Global hash function so FMaterialMIDKey can be used as a TMap key.
+FORCEINLINE uint32 GetTypeHash(const FMaterialMIDKey& Key)
+{
+	auto Mix = [](uint64& H, uint64 V)
+	{
+		H ^= V + 0x9e3779b97f4a7c15ull + (H << 6) + (H >> 2);
+	};
+
+	uint64 H = 1469598103934665603ull;
+
+	// FName → uint64 (again, no GetTypeHash(FName))
+	Mix(H, Key.MasterPathKey.ToUnstableInt());
+
+	if (UMaterial* BaseMat = Key.BaseMaterial.Get())
+	{
+		uint64 PtrBits = (uint64)(UPTRINT)BaseMat;
+		Mix(H, PtrBits);
+	}
+
+	Mix(H, Key.bIsOpaque ? 1ull : 0ull);
+	Mix(H, Key.ParamsHash);
+
+	return static_cast<uint32>(H ^ (H >> 32));
+}
 
 /** */
 USTRUCT()
@@ -216,12 +275,17 @@ private:
 	
 	UMaterialInstanceConstant* GetOrLoadMasterMaterial(const FString& MaterialPath);
 	
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(UMaterialInterface* InMaterial, const FString& MaterialPath);
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(
+		UMaterialInterface* InMaterial,
+		const FString& MaterialPath,
+		bool bIsOpaque);
 	
-	UMaterialInstanceDynamic* GetOrCreateSharedMID(UMaterialInterface* InMaterial, const FString& MaterialPath);
+	UMaterialInstanceDynamic* GetOrCreateSharedMID(
+		UMaterialInterface* InMaterial,
+		const FString& MaterialPath,
+		bool bIsOpaque);
 	
-	bool ResolveMaterialParams(UMaterialInterface* Material,
-							   FResolvedMaterialParams& OutParams) const;
+	bool ResolveMaterialParams(UMaterialInterface* Material, FResolvedMaterialParams& OutParams) const;
 
 	bool AreMaterialsEquivalentForMIDReuse(UMaterialInterface* A,
 										   UMaterialInterface* B,
@@ -229,6 +293,15 @@ private:
 	
 	void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
 	void ProcessPendingCollisionEnables(float DeltaSeconds);
+	
+	bool BuildMaterialMIDKey(
+		UMaterialInterface* InMaterial,
+		const FString&      MaterialPath,
+		bool                bIsOpaque,
+		FMaterialMIDKey&    OutKey,
+		FResolvedMaterialParams* OutResolvedParams = nullptr) const;
+
+	uint64 ComputeParamsHash(const FResolvedMaterialParams& Params) const;
 	
 #pragma endregion PRIVATE_METHODS
 
@@ -314,6 +387,21 @@ protected:
 	/** We use an array so we can do a custom equivalence check instead of raw pointer equality. */
 	UPROPERTY(Transient)
 	TArray<FSharedMIDCacheEntry> SharedMIDCache;
+	
+	// New: map from parameter signature → shared MID
+	UPROPERTY(Transient)
+	TMap<FMaterialMIDKey, TObjectPtr<UMaterialInstanceDynamic>> SharedMIDByKey;
+
+	// One cache per “family” of master materials
+	UPROPERTY(Transient)
+	TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey> MaterialToOpaqueKeyCache;
+
+	UPROPERTY(Transient)
+	TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey> MaterialToTranslucentKeyCache;
+
+	// Optional: cache resolved params so we don’t recompute them twice
+	UPROPERTY(Transient)
+	TMap<TWeakObjectPtr<UMaterialInterface>, FResolvedMaterialParams> MaterialParamsCache;
 
 	
 private:
