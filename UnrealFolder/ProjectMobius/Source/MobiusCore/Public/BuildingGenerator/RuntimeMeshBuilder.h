@@ -31,6 +31,7 @@
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "UObject/NameTypes.h"        // FName + GetTypeHash(FName)
 #include "UObject/WeakObjectPtr.h"    // TWeakObjectPtr hashing (for safety)
+#include "Materials/MaterialCache.h"
 #include "RuntimeMeshBuilder.generated.h"
 
 
@@ -80,92 +81,6 @@ struct FPendingDatasmithMesh
 	// using the EDatasmithMasterType classification cache.
 };
 
-/** */
-USTRUCT()
-struct FMaterialMIDKey
-{
-	GENERATED_BODY()
-
-	/** which master (opaque/translucent) */
-	UPROPERTY()
-	FName MasterPathKey{ NAME_None };
-
-	// Underlying base material – strong guard that we're comparing apples with apples
-	UPROPERTY()
-	TWeakObjectPtr<UMaterial> BaseMaterial;
-
-	UPROPERTY()
-	bool bIsOpaque = true;
-
-	// Hash of all scalar / vector / texture parameters
-	UPROPERTY()
-	uint64 ParamsHash = 0;
-
-	bool operator==(const FMaterialMIDKey& Other) const
-	{
-		return MasterPathKey == Other.MasterPathKey
-			&& BaseMaterial == Other.BaseMaterial
-			&& bIsOpaque == Other.bIsOpaque
-			&& ParamsHash == Other.ParamsHash;
-	}
-};
-
-// Global hash function so FMaterialMIDKey can be used as a TMap key.
-FORCEINLINE uint32 GetTypeHash(const FMaterialMIDKey& Key)
-{
-	auto Mix = [](uint64& H, uint64 V)
-	{
-		H ^= V + 0x9e3779b97f4a7c15ull + (H << 6) + (H >> 2);
-	};
-
-	uint64 H = 1469598103934665603ull;
-
-	// FName → uint64 (again, no GetTypeHash(FName))
-	Mix(H, Key.MasterPathKey.ToUnstableInt());
-
-	if (UMaterial* BaseMat = Key.BaseMaterial.Get())
-	{
-		uint64 PtrBits = (uint64)(UPTRINT)BaseMat;
-		Mix(H, PtrBits);
-	}
-
-	Mix(H, Key.bIsOpaque ? 1ull : 0ull);
-	Mix(H, Key.ParamsHash);
-
-	return static_cast<uint32>(H ^ (H >> 32));
-}
-
-/** */
-USTRUCT()
-struct FResolvedMaterialParams
-{
-	GENERATED_BODY()
-	
-	UPROPERTY()
-	TMap<FName, float>                ScalarParams;
-	
-	UPROPERTY()
-	TMap<FName, FLinearColor>         VectorParams;
-	
-	UPROPERTY()
-	TMap<FName, TObjectPtr<UTexture>> TextureParams;
-};
-	
-/** */
-USTRUCT()
-struct FSharedMIDCacheEntry
-{
-	GENERATED_BODY()
-	
-	UPROPERTY()
-	TObjectPtr<UMaterialInterface>        SourceMaterial = nullptr;
-	
-	UPROPERTY()
-	FName                                 MasterPathKey{NAME_None};
-	
-	UPROPERTY()
-	TObjectPtr<UMaterialInstanceDynamic>  MID = nullptr;
-};
 
 /** */
 UCLASS()
@@ -295,38 +210,11 @@ private:
 	
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
 	
-	UMaterialInstanceConstant* GetOrLoadMasterMaterial(const FString& MaterialPath);
-	
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateMaterialInstancesUsingCache(
-		UMaterialInterface* InMaterial,
-		const FString& MaterialPath,
-		bool bIsOpaque);
-	
-	UMaterialInstanceDynamic* GetOrCreateSharedMID(
-		UMaterialInterface* InMaterial,
-		const FString& MaterialPath,
-		bool bIsOpaque);
-	
-	bool ResolveMaterialParams(UMaterialInterface* Material, FResolvedMaterialParams& OutParams) const;
+        void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
+        void ProcessPendingCollisionEnables(float DeltaSeconds);
 
-	bool AreMaterialsEquivalentForMIDReuse(UMaterialInterface* A,
-										   UMaterialInterface* B,
-										   float Tolerance = KINDA_SMALL_NUMBER) const;
-	
-	void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
-	void ProcessPendingCollisionEnables(float DeltaSeconds);
-	
-	bool BuildMaterialMIDKey(
-		UMaterialInterface* InMaterial,
-		const FString&      MaterialPath,
-		bool                bIsOpaque,
-		FMaterialMIDKey&    OutKey,
-		FResolvedMaterialParams* OutResolvedParams = nullptr) const;
-
-	uint64 ComputeParamsHash(const FResolvedMaterialParams& Params) const;
-	
-	void ProcessPendingDatasmithMeshes(float DeltaSeconds);
-	void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
+        void ProcessPendingDatasmithMeshes(float DeltaSeconds);
+        void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
 	
 #pragma endregion PRIVATE_METHODS
 
@@ -405,28 +293,8 @@ protected:
 	/** Are we currently processing the pending door queue? */
 	bool bIsSpawningFlowCounters = false;
 	
-	// Cache of master MICs so we only LoadObject them once per path.
-	UPROPERTY(Transient)
-	TMap<FName, TObjectPtr<UMaterialInstanceConstant>> MasterMaterialCache;
-	
-	/** We use an array so we can do a custom equivalence check instead of raw pointer equality. */
-	UPROPERTY(Transient)
-	TArray<FSharedMIDCacheEntry> SharedMIDCache;
-	
-	// New: map from parameter signature → shared MID
-	UPROPERTY(Transient)
-	TMap<FMaterialMIDKey, TObjectPtr<UMaterialInstanceDynamic>> SharedMIDByKey;
-
-	// One cache per “family” of master materials
-	UPROPERTY(Transient)
-	TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey> MaterialToOpaqueKeyCache;
-
-	UPROPERTY(Transient)
-	TMap<TWeakObjectPtr<UMaterialInterface>, FMaterialMIDKey> MaterialToTranslucentKeyCache;
-
-	// Optional: cache resolved params so we don’t recompute them twice
-	UPROPERTY(Transient)
-	TMap<TWeakObjectPtr<UMaterialInterface>, FResolvedMaterialParams> MaterialParamsCache;
+        /** Shared material cache used for Datasmith and runtime materials. */
+        FMaterialCache MaterialCache;
 
 	/** Meshes that still need their Datasmith materials created/applied. */
 	UPROPERTY()
