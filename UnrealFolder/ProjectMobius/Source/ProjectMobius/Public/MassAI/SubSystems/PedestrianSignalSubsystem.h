@@ -50,11 +50,16 @@ public:
 
 	/** */
 	void ActivateFlowCounter();
-
+	
 	/** */
 	void DeactivateFlowCounter();
-
-protected:
+	
+	private:
+	UMassEntitySpawnSubsystem* GetSpawnSubsystem();
+	
+	TWeakObjectPtr<UMassEntitySpawnSubsystem> CachedSpawnSubsystem;
+	
+	protected:
 	// USubsystem implementation Begin
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;

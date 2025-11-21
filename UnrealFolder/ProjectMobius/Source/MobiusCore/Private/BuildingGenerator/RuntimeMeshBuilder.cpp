@@ -51,19 +51,18 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	// Create the ProceduralMeshComponent
-	MobiusProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MobiusProceduralMeshComponent"));
+        MobiusProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MobiusProceduralMeshComponent"));
 
-	// Set the ProceduralMeshComponent as the RootComponent
-	RootComponent = MobiusProceduralMeshComponent;
+        // Set the ProceduralMeshComponent as the RootComponent
+        RootComponent = MobiusProceduralMeshComponent;
 
-	MobiusProceduralMeshComponent->bRenderInMainPass = true;
-	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
-	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
-	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
-	MobiusProceduralMeshComponent->bSelectable = true;
-	MobiusProceduralMeshComponent->Mobility = EComponentMobility::Movable;
-	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
-	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        MobiusProceduralMeshComponent->bRenderInMainPass = true;
+        MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+        MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
+        MobiusProceduralMeshComponent->bSelectable = true;
+        MobiusProceduralMeshComponent->Mobility = EComponentMobility::Movable;
+        MobiusProceduralMeshComponent->SetSimulatePhysics(false);
+        MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
 
 	FlowCounterSpawnerComponent = CreateDefaultSubobject<UFlowCounterSpawnerComponent>(TEXT("FlowCounterSpawnerComponent"));
@@ -134,18 +133,28 @@ void ARuntimeMeshBuilder::OnConstruction(const FTransform& Transform)
 
 void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<int32> InTriangles, TArray<FVector> InNormals)
 {
-	// TODO: Implement Input Validation Checks
+        const bool bHasValidVertexCounts = InVertices.Num() > 0 && InNormals.Num() == InVertices.Num();
+        const bool bHasValidTriangles   = InTriangles.Num() > 0 && InTriangles.Num() % 3 == 0;
 
-	// Clear the previous mesh -- TBD: If we want to clear all sections or a specific one
-	MobiusProceduralMeshComponent->ClearAllMeshSections();
+        if (!bHasValidVertexCounts || !bHasValidTriangles)
+        {
+                UE_LOG(LogTemp, Error, TEXT("GenerateMobiusMesh received invalid mesh data (Vertices: %d, Normals: %d, Triangles: %d)"), InVertices.Num(), InNormals.Num(), InTriangles.Num());
+                return;
+        }
 
-	//bp method calls this CreateMeshSection_LinearColor
+        ResetMeshCollisionAndPhysics();
 
-	MobiusProceduralMeshComponent->CreateMeshSection(0, InVertices, InTriangles, InNormals, TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+        MobiusProceduralMeshComponent->CreateMeshSection(0, InVertices, InTriangles, InNormals, TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
 }
 
 void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 {
+        if (MeshFileName.IsEmpty())
+        {
+                UE_LOG(LogTemp, Error, TEXT("MeshFileName is empty. Aborting mesh load."));
+                return;
+        }
+
 	// TEST
 	//FString FilePath = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\TechnicalSchool1000People\\Technical-School-For-Lab-3D.fbx";
 	//FString FilePath = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\ISO-Test-8-r25-ifc2x3-to.obj";
@@ -164,19 +173,25 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 	// this could be the memory issue as it clears and will mark as dirty and will be updated in the next frame
 	// the create mesh section also does the same thing and it could be causing the issue
 
-	if(IAssimpInterface::OpenMeshFileGetWithAssimp(MeshFileName, SectionCount, ErrorMessageCode, MVertices, MFaces, MNormals, MUV, MTangents, MeshRotationOffset))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Successfully opened the mesh file"));
-		UE_LOG(LogTemp, Warning, TEXT("Section Count: %d"), SectionCount);
-		UE_LOG(LogTemp, Warning, TEXT("Vertices Count: %d"), MVertices.Num());
-		UE_LOG(LogTemp, Warning, TEXT("Faces Count: %d"), MFaces.Num());
-		UE_LOG(LogTemp, Warning, TEXT("Normals Count: %d"), MNormals.Num());
-		UE_LOG(LogTemp, Warning, TEXT("Tangents Count: %d"), MTangents.Num());
-		UE_LOG(LogTemp, Warning, TEXT("UV Count: %d"), MUV.Num());
+        if(IAssimpInterface::OpenMeshFileGetWithAssimp(MeshFileName, SectionCount, ErrorMessageCode, MVertices, MFaces, MNormals, MUV, MTangents, MeshRotationOffset))
+        {
+                UE_LOG(LogTemp, Warning, TEXT("Successfully opened the mesh file"));
+                UE_LOG(LogTemp, Warning, TEXT("Section Count: %d"), SectionCount);
+                UE_LOG(LogTemp, Warning, TEXT("Vertices Count: %d"), MVertices.Num());
+                UE_LOG(LogTemp, Warning, TEXT("Faces Count: %d"), MFaces.Num());
+                UE_LOG(LogTemp, Warning, TEXT("Normals Count: %d"), MNormals.Num());
+                UE_LOG(LogTemp, Warning, TEXT("Tangents Count: %d"), MTangents.Num());
+                UE_LOG(LogTemp, Warning, TEXT("UV Count: %d"), MUV.Num());
 
-		// A mesh section should only be created if successful
-		MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, MVertices, MFaces, MNormals, MUV,
-		                                                             TArray<FLinearColor>(),
+                if (SectionCount == 0 || MVertices.Num() == 0 || MFaces.Num() == 0)
+                {
+                        UE_LOG(LogTemp, Error, TEXT("Mesh file returned no usable data (Sections: %d, Vertices: %d, Faces: %d)."), SectionCount, MVertices.Num(), MFaces.Num());
+                        return;
+                }
+
+                // A mesh section should only be created if successful
+                MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, MVertices, MFaces, MNormals, MUV,
+                                                                             TArray<FLinearColor>(),
 		                                                             TArray<FProcMeshTangent>(),
 		                                                             false);
 	}
@@ -209,8 +224,8 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 
 void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 {
-	// 1. Turn off async cooking for deterministic behavior here (optional but recommended), ensures it will update
-	MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+        // 1. Turn off async cooking for deterministic behavior here (optional but recommended), ensures it will update
+        MobiusProceduralMeshComponent->bUseAsyncCooking = false;
 
 	// 2. Clear all generated geometry + convex collision
 	MobiusProceduralMeshComponent->ClearAllMeshSections();          // Empties sections + UpdateCollision()
@@ -230,8 +245,6 @@ void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 	// 4. Force physics state to be recreated on the component
 	MobiusProceduralMeshComponent->RecreatePhysicsState();
 
-	// 5. Reactivate the async cooking
-	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
 }
 
 void ARuntimeMeshBuilder::UpdateMeshFileName()

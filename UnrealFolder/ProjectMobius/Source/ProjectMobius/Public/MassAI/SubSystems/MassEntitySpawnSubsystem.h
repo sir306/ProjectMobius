@@ -30,6 +30,7 @@
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Templates/UniquePtr.h"
 #include "MassEntitySpawnSubsystem.generated.h"
 
 class FJsonDataRunnable;
@@ -100,9 +101,9 @@ public:
 	/**
 	 * Clean up method to kill the FJsonDataRunnable and clean up resources associated with it
 	 *
-	 * @param ToKill The FJsonDataRunnable to kill and clean up resources associated with it
-	 */
-	void AgentDataRunnableCleanup(FJsonDataRunnable* ToKill);
+         * @param ToKill The FJsonDataRunnable to kill and clean up resources associated with it
+         */
+        void AgentDataRunnableCleanup(TUniquePtr<FJsonDataRunnable>& ToKill);
 	
 	/**
 	* Create the archetype for the pedestrian entity
@@ -146,9 +147,11 @@ public:
 	TArray<int32> NumOfAgentsPerTimeStep;
 	
 	// The agent data subsystem for getting the data for the pedestrians
-	UPROPERTY()
-	UAgentDataSubsystem* AgentDataSubsystem;
+        UPROPERTY()
+        UAgentDataSubsystem* AgentDataSubsystem;
 
-	UPROPERTY()
-	FOnPedestrianDataLoaded OnPedestrianDataReadyToSpawn; // Delegate to broadcast when the pedestrian data is loaded and processed
+        UPROPERTY()
+        FOnPedestrianDataLoaded OnPedestrianDataReadyToSpawn; // Delegate to broadcast when the pedestrian data is loaded and processed
+
+        bool bHasResetFlowCounters = false;
 };

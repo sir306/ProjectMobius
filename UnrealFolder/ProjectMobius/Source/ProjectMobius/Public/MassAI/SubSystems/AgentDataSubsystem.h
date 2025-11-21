@@ -32,6 +32,7 @@
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "HAL/Runnable.h" // FRunnable - for threading so we can get the data in the background
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "Templates/UniquePtr.h"
 #include "AgentDataSubsystem.generated.h"
 
 
@@ -154,8 +155,8 @@ protected:
 
 #pragma region PROPERTIES
 public:
-	/** Pointer to the FRunnable JSON Parser */
-	FJsonDataRunnable* JsonDataRunnable = nullptr;
+        /** Pointer to the FRunnable JSON Parser */
+        TUniquePtr<FJsonDataRunnable> JsonDataRunnable;
 	
 	/** JSON Object */
 	TSharedPtr<FJsonObject> JSONObject;

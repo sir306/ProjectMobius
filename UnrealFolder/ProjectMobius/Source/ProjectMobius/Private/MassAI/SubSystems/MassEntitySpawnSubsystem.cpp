@@ -54,9 +54,10 @@
 class UTimeDilationSubSystem;
 
 UMassEntitySpawnSubsystem::UMassEntitySpawnSubsystem() :
-	SpawnedEntityPedestrianHandles(TArray<FMassEntityHandle>()),
-	PedestrianTemplateData(FMassEntityTemplateData()),
-	AgentDataSubsystem(nullptr)
+        SpawnedEntityPedestrianHandles(TArray<FMassEntityHandle>()),
+        PedestrianTemplateData(FMassEntityTemplateData()),
+        AgentDataSubsystem(nullptr),
+        bHasResetFlowCounters(false)
 {
 }
 
@@ -121,7 +122,7 @@ void UMassEntitySpawnSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestriansToSpawn, FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
 {
-	auto PedestrianArchetypeHandle = CreatePedestrianArchetype();
+        auto PedestrianArchetypeHandle = CreatePedestrianArchetype();
 	
 	// check shared fragment values are sorted and sort if not
 	// -- this has been debugged and is redundant but in place as a safety measure
@@ -130,17 +131,20 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
 		ArchetypeSharedFragmentValues.Sort();
 	}
 
-	// TODO: this reset for flow needs better implementation but will work for now
-	if (auto StatSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>())
-	{
-		StatSubsystem->ResetFlowCounters();
-	}
+        if (!bHasResetFlowCounters)
+        {
+                if (auto StatSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>())
+                {
+                        StatSubsystem->ResetFlowCounters();
+                        bHasResetFlowCounters = true;
+                }
+        }
 
 	//TODO: We dont want to simulate time till this is done, also we need a better way to build shared fragment and update the archetype on data changes
 	EntityManager->BatchCreateEntities(PedestrianArchetypeHandle, ArchetypeSharedFragmentValues, NumberOfPedestriansToSpawn, SpawnedEntityPedestrianHandles);
 
-	// Cleanup any existing runnable to avoid memory leaks
-	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+        // Cleanup any existing runnable to avoid memory leaks
+        AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 }
 
 void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
@@ -172,20 +176,21 @@ void UMassEntitySpawnSubsystem::DestroySpawnedPedestrians(TConstArrayView<FMassE
 
 void UMassEntitySpawnSubsystem::DestroyAllSpawnedPedestrians()
 {
-	// check if the template data and archetype handle are not null
-	if (!PedestrianTemplateData.IsEmpty() || !SpawnedEntityPedestrianHandles.IsEmpty())
-	{
-		// log that the data is already created
-		UE_LOG(LogTemp, Warning, TEXT("PedestrianTemplateData Already Created"));
+        // check if the template data and archetype handle are not null
+        if (!PedestrianTemplateData.IsEmpty() || !SpawnedEntityPedestrianHandles.IsEmpty())
+        {
+                // log that the data is already created
+                UE_LOG(LogTemp, Warning, TEXT("PedestrianTemplateData Already Created"));
 
-		EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
-		// Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
-		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearExecutionData();
-		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).ClearEntityCollection();
-		EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds()).FlushDeferred();
-		EntityManager->FlushCommands();
-		//EntityManager.Reset();
-	}
+                EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
+                // Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
+                FMassExecutionContext& ExecutionContext = EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds());
+                ExecutionContext.ClearExecutionData();
+                ExecutionContext.ClearEntityCollection();
+                ExecutionContext.FlushDeferred();
+                EntityManager->FlushCommands();
+                //EntityManager.Reset();
+        }
 }
 
 void UMassEntitySpawnSubsystem::ClearNiagaraSim()
@@ -199,9 +204,9 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 	}
 }
 
-void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(FJsonDataRunnable* ToKill)
+void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FJsonDataRunnable>& ToKill)
 {
-	if (!ToKill) return;
+        if (!ToKill) return;
 
 	// 1) Stop on calling thread
 	ToKill->Stop();
@@ -216,12 +221,8 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(FJsonDataRunnable* ToKi
 	AgentDataSubsystem->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	//AgentDataSubsystem->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
-	// 4) Delete
-	delete ToKill;
-	AgentDataSubsystem->JsonDataRunnable = nullptr;
-
-	// Optional GC
-	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+        // 4) Delete
+        ToKill.Reset();
 }
 
 FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
@@ -241,8 +242,10 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
-	// Cleanup any existing runnable to avoid memory leaks
-	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+        // Cleanup any existing runnable to avoid memory leaks
+        AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+
+        bHasResetFlowCounters = false;
 	
 	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
 	// capsule components are cleared and marked for destruction so that we don't have memory leaks
@@ -296,7 +299,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
 	// Get the JSON Data File using the FRunnable class to get the data asynchronously
-	AgentDataSubsystem->JsonDataRunnable = new FJsonDataRunnable(JSONDataFile, AgentDataSubsystem);
+        AgentDataSubsystem->JsonDataRunnable = MakeUnique<FJsonDataRunnable>(JSONDataFile, AgentDataSubsystem);
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	//AgentDataSubsystem->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
