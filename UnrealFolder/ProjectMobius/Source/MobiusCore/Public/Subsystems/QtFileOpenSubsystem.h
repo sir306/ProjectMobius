@@ -45,6 +45,8 @@ public:
 	///TODO: only need to call different get functions and configure the qt app to set file get path
 	UQtFileOpenSubsystem();
 
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 	/** Launch the Qt file dialog application */
 	UFUNCTION(BlueprintCallable, Category = "File Dialog")
 	void LaunchQtDialogApp();
@@ -73,6 +75,9 @@ protected:
 private:
 	void OnFileDialogRequested(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
 	void OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
+	void HandleEngineExitCleanup();
+	void ForceCloseQtApp();
+	void KillStaleQtProcessesIfAny();
 
 	/** Build the absolute path to the Qt app executable for the host platform */
 	FString ResolveQtAppExecutablePath() const;

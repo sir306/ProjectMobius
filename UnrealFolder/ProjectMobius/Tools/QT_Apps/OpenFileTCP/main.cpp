@@ -9,6 +9,36 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <csignal>
+#include <cerrno>
+
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
+static bool IsProcessAlive(qint64 pid)
+{
+    if (pid <= 0) {
+        return false;
+    }
+
+#ifdef Q_OS_WIN
+    HANDLE processHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+    if (!processHandle) {
+        return false;
+    }
+
+    DWORD exitCode = 0;
+    const bool gotCode = GetExitCodeProcess(processHandle, &exitCode);
+    CloseHandle(processHandle);
+    return gotCode && exitCode == STILL_ACTIVE;
+#else
+    // kill with signal 0 checks if the process exists. EPERM still indicates it exists.
+    const int result = kill(static_cast<pid_t>(pid), 0);
+    return result == 0 || errno == EPERM;
+#endif
+}
 
 
 // Simple file dialog application
@@ -38,12 +68,14 @@ int main(int argc, char *argv[])
 
     // Add `--initialDir=<dir>` option
     parser.addOption({{"d", "initialDir"}, "Initial directory to load from", "initialDir"});
+    parser.addOption({{"p", "parentPid"}, "Parent process id to monitor", "parentPid"});
 
     // Process the arguments
     parser.process(app);
 
     // Read the value
     const QString initialDir = parser.value("initialDir");
+    const qint64 parentPid = parser.value("parentPid").toLongLong();
 
     dialogBox.setDirectory(initialDir);
 
@@ -114,6 +146,18 @@ int main(int argc, char *argv[])
 
     // Ensure app doesn't close too soon
     app.setQuitOnLastWindowClosed(false);
+
+    // Watchdog to shut down if the Unreal parent process disappears (e.g., forced quit).
+    if (parentPid > 0) {
+        QTimer* parentWatchdog = new QTimer(&app);
+        QObject::connect(parentWatchdog, &QTimer::timeout, [&app, parentPid]() {
+            if (!IsProcessAlive(parentPid)) {
+                qWarning() << "[Qt] Parent Unreal process not detected. Quitting Qt dialog helper.";
+                QTimer::singleShot(50, &app, &QCoreApplication::quit);
+            }
+        });
+        parentWatchdog->start(1000);
+    }
 
     // method to configure dialog box
     auto ShowDialogWithFilter = [&](const QString& title, const QString& nameFilter) {

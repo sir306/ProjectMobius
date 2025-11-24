@@ -30,6 +30,7 @@
 #include "Misc/OutputDeviceNull.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Misc/CoreDelegates.h"
 
 
 // Utility: map UE platform to the folder your superbuild uses
@@ -51,6 +52,28 @@ UQtFileOpenSubsystem::UQtFileOpenSubsystem():
 {
 	bSelectionInProgress = false;
 	PollTimerHandle.Invalidate();
+}
+
+void UQtFileOpenSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+
+	KillStaleQtProcessesIfAny();
+
+	FCoreDelegates::OnEnginePreExit.AddUObject(this, &UQtFileOpenSubsystem::HandleEngineExitCleanup);
+	FCoreDelegates::OnExit.AddUObject(this, &UQtFileOpenSubsystem::HandleEngineExitCleanup);
+	FCoreDelegates::OnHandleSystemError.AddUObject(this, &UQtFileOpenSubsystem::HandleEngineExitCleanup);
+}
+
+void UQtFileOpenSubsystem::Deinitialize()
+{
+	FCoreDelegates::OnEnginePreExit.RemoveAll(this);
+	FCoreDelegates::OnExit.RemoveAll(this);
+	FCoreDelegates::OnHandleSystemError.RemoveAll(this);
+
+	HandleEngineExitCleanup();
+
+	Super::Deinitialize();
 }
 
 void UQtFileOpenSubsystem::LaunchQtDialogApp()
@@ -191,6 +214,7 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
 			// user cancelled
 			UE_LOG(LogTemp, Error, TEXT("User Cancelled => Response: %s"), *ResponseString);
 			OnFileSelected.Execute(TEXT(""),TEXT(""),false,false);
+			RequestQuitQtApp();
 			return;
 		}
         
@@ -206,6 +230,7 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
 
 			if (OnFileSelected.IsBound())
 				OnFileSelected.Execute(TEXT(""),TEXT(""),false,false);
+			RequestQuitQtApp();
 			return;
 		}
 
@@ -223,6 +248,8 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
 		{
 			OnFileSelected.Execute(AgentPath, MeshPath, bAgentSuccess,bMeshSuccess);
 		}
+
+		RequestQuitQtApp();
 	}
 	else
 	{
@@ -235,6 +262,8 @@ void UQtFileOpenSubsystem::OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpR
 		// Notify of failure
 		if (OnFileSelected.IsBound())
 			OnFileSelected.Execute(TEXT(""),TEXT(""),false,false);
+
+		RequestQuitQtApp();
 	}
 }
 
@@ -315,9 +344,10 @@ FString UQtFileOpenSubsystem::BuildQtArgs() const
 	// Use project root as initial directory (quote it for safety)
 	const FString InitialDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 	const FString QuotedInitialDir = FString::Printf(TEXT("\"%s\""), *InitialDir);
+	const uint32 ParentPid = FPlatformProcess::GetCurrentProcessId();
 
 	// Add more args as your Qt app grows (port, endpoints, presets, etc.)
-	return FString::Printf(TEXT("--initialDir=%s"), *QuotedInitialDir);
+	return FString::Printf(TEXT("--initialDir=%s --parentPid=%u"), *QuotedInitialDir, ParentPid);
 }
 
 void UQtFileOpenSubsystem::RequestQuitQtApp()
@@ -339,23 +369,85 @@ void UQtFileOpenSubsystem::RequestQuitQtApp()
 			// Clean up the process handle
 			FPlatformProcess::CloseProc(QtProcessHandle);
 			QtProcessHandle.Reset();
+			QtProcessID = 0;
 		}
 		else
 		{
 			UE_LOG(LogTemp, Error, TEXT("Failed to send shutdown request to Qt app."));
+			ForceCloseQtApp();
 		}
 	});
 
 	Request->ProcessRequest();
 }
 
+void UQtFileOpenSubsystem::ForceCloseQtApp()
+{
+	bSelectionInProgress = false;
+
+	if (PollTimerHandle.IsValid())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(PollTimerHandle);
+		}
+		PollTimerHandle.Invalidate();
+	}
+
+	if (QtProcessHandle.IsValid())
+	{
+		if (FPlatformProcess::IsProcRunning(QtProcessHandle))
+		{
+			FPlatformProcess::TerminateProc(QtProcessHandle, true);
+		}
+
+		FPlatformProcess::CloseProc(QtProcessHandle);
+		QtProcessHandle.Reset();
+		QtProcessID = 0;
+	}
+}
+
+void UQtFileOpenSubsystem::HandleEngineExitCleanup()
+{
+	ForceCloseQtApp();
+}
+
+void UQtFileOpenSubsystem::KillStaleQtProcessesIfAny()
+{
+#if PLATFORM_WINDOWS
+	const TCHAR* ProcessName = TEXT("OpenFileTCP.exe");
+#elif PLATFORM_MAC
+	const TCHAR* ProcessName = TEXT("OpenFileTCP");
+#else
+	const TCHAR* ProcessName = TEXT("OpenFileTCP");
+#endif
+
+	// Fast path: nothing to do
+	if (!FPlatformProcess::IsApplicationRunning(ProcessName))
+	{
+		return;
+	}
+
+#if PLATFORM_WINDOWS
+	int32 ReturnCode = 0;
+	FString StdOut;
+	FString StdErr;
+	FPlatformProcess::ExecProcess(TEXT("taskkill"), TEXT("/IM OpenFileTCP.exe /T /F"), &ReturnCode, &StdOut, &StdErr);
+	UE_LOG(LogTemp, Warning, TEXT("[QtFileOpenSubsystem] Killed lingering Qt process (code=%d). stdout: %s stderr: %s"), ReturnCode, *StdOut, *StdErr);
+#elif PLATFORM_MAC
+	int32 ReturnCode = 0;
+	FString StdOut;
+	FString StdErr;
+	FPlatformProcess::ExecProcess(TEXT("/usr/bin/killall"), TEXT("OpenFileTCP"), &ReturnCode, &StdOut, &StdErr);
+	UE_LOG(LogTemp, Warning, TEXT("[QtFileOpenSubsystem] Killed lingering Qt process (code=%d). stdout: %s stderr: %s"), ReturnCode, *StdOut, *StdErr);
+#else
+	UE_LOG(LogTemp, Warning, TEXT("[QtFileOpenSubsystem] Lingering Qt process detected (%s) but no platform kill implemented."), ProcessName);
+#endif
+}
+
 void UQtFileOpenSubsystem::BeginDestroy()
 {
 	Super::BeginDestroy();
     
-	// Make sure we clean up the Qt app when this object is destroyed
-	if (IsQtAppRunning())
-	{
-		RequestQuitQtApp();
-	}
+	HandleEngineExitCleanup();
 }
