@@ -402,3 +402,12 @@ uint64 FMaterialCache::ComputeParamsHash(const FResolvedMaterialParams& Params) 
         return Hash;
 }
 
+void FMaterialCache::Reset()
+{
+        MasterMaterialCache.Reset();
+        SharedMIDByKey.Reset();
+        MaterialToOpaqueKeyCache.Reset();
+        MaterialToTranslucentKeyCache.Reset();
+        MaterialParamsCache.Reset();
+}
+

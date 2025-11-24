@@ -158,6 +158,9 @@ public:
                 FMaterialMIDKey&          OutKey,
                 FResolvedMaterialParams* OutResolvedParams = nullptr) const;
 
+        /** Clears all cached master materials and MIDs. */
+        void Reset();
+
         /**
          * Computes a stable hash value for a set of resolved material parameters, ensuring that the order
          * of parameters does not affect the resulting hash. The method processes scalar, vector, and

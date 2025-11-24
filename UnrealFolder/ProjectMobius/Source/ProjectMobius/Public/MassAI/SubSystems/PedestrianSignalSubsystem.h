@@ -8,6 +8,8 @@
 #include "MassExternalSubsystemTraits.h"
 #include "PedestrianSignalSubsystem.generated.h"
 
+class UMassEntitySpawnSubsystem;
+
 /** */
 namespace PedestrianDataSignals::Signals
 {

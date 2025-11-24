@@ -184,7 +184,7 @@ void UMassEntitySpawnSubsystem::DestroyAllSpawnedPedestrians()
 
                 EntityManager->BatchDestroyEntities(SpawnedEntityPedestrianHandles);
                 // Clear the associated data for the entity manager, if we don't then the entity manager will keep the data in memory
-                FMassExecutionContext& ExecutionContext = EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds());
+                FMassExecutionContext ExecutionContext = EntityManager->CreateExecutionContext(GetWorld()->GetDeltaSeconds());
                 ExecutionContext.ClearExecutionData();
                 ExecutionContext.ClearEntityCollection();
                 ExecutionContext.FlushDeferred();
