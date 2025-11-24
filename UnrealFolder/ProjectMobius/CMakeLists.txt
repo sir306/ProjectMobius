@@ -79,13 +79,19 @@ if(WIN32)
     -DASSIMP_INCLUDE_INSTALL_DIR=include   
   )
 elseif(APPLE)
+  # Build Assimp as arm64 (Apple Silicon) and install libs under lib/Mac so the
+  # UE_Assimp plugin's Build.cs and SDK checks can find them without hacks.
   list(APPEND _assimp_cmake_args
     -DASSIMP_BUILD_ZLIB=OFF
     -DCMAKE_MACOSX_RPATH=ON
     -DCMAKE_INSTALL_NAME_DIR=@rpath
     -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-    -DASSIMP_LIB_INSTALL_DIR=lib          # let it live in lib/
+
+    # Assimp on UNIX derives ASSIMP_LIB_INSTALL_DIR from CMAKE_INSTALL_LIBDIR.
+    # Force libs into lib/Mac to match UE_Assimp expectations.
+    -DCMAKE_INSTALL_LIBDIR=lib/Mac
+
     -DASSIMP_INCLUDE_INSTALL_DIR=include
   )
 else()
