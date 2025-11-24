@@ -112,14 +112,13 @@ void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UAgentDataSubsystem::Deinitialize()
 {
-	if (JsonDataRunnable)
-	{
-		JsonDataRunnable->Stop();
-		JsonDataRunnable->Exit();
-		delete JsonDataRunnable;
-		JsonDataRunnable = nullptr;
-	}
-	Super::Deinitialize();
+        if (JsonDataRunnable)
+        {
+                JsonDataRunnable->Stop();
+                JsonDataRunnable->Exit();
+                JsonDataRunnable.Reset();
+        }
+        Super::Deinitialize();
 }
 
 void UAgentDataSubsystem::Tick(float DeltaTime)

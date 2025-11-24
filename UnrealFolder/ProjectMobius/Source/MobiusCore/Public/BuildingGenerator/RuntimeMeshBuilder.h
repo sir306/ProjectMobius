@@ -95,6 +95,8 @@ public:
 
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -322,6 +324,10 @@ private:
 	// How many components we allow per frame
 	UPROPERTY(EditAnywhere, Category="Collision")
 	int32 MaxCollisionEnablesPerFrame = 10;
+	
+	// Are we currently resetting / swapping out the mesh and Datasmith anchor?
+	UPROPERTY(Transient)
+	bool bIsResettingForNewLoad = false;
 	
 #pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 public:

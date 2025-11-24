@@ -38,6 +38,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "PhysicsEngine/BodyInstance.h"
 #include "Subsystems/LoadingSubsystem.h"
 
 // Sets default values
@@ -51,19 +52,18 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 	PrimaryActorTick.bStartWithTickEnabled = true;
 
 	// Create the ProceduralMeshComponent
-	MobiusProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MobiusProceduralMeshComponent"));
+        MobiusProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("MobiusProceduralMeshComponent"));
 
-	// Set the ProceduralMeshComponent as the RootComponent
-	RootComponent = MobiusProceduralMeshComponent;
+        // Set the ProceduralMeshComponent as the RootComponent
+        RootComponent = MobiusProceduralMeshComponent;
 
-	MobiusProceduralMeshComponent->bRenderInMainPass = true;
-	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
-	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
-	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
-	MobiusProceduralMeshComponent->bSelectable = true;
-	MobiusProceduralMeshComponent->Mobility = EComponentMobility::Movable;
-	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
-	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        MobiusProceduralMeshComponent->bRenderInMainPass = true;
+        MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+        MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
+        MobiusProceduralMeshComponent->bSelectable = true;
+        MobiusProceduralMeshComponent->Mobility = EComponentMobility::Movable;
+        MobiusProceduralMeshComponent->SetSimulatePhysics(false);
+        MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
 
 	FlowCounterSpawnerComponent = CreateDefaultSubobject<UFlowCounterSpawnerComponent>(TEXT("FlowCounterSpawnerComponent"));
@@ -109,10 +109,26 @@ void ARuntimeMeshBuilder::BeginPlay()
 	}
 }
 
+void ARuntimeMeshBuilder::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Clear any pending items
+	PendingCollisionEnable.Reset();
+	PendingDatasmithMeshes.Reset();
+	
+	Super::EndPlay(EndPlayReason);
+}
+
 // Called every frame
 void ARuntimeMeshBuilder::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	
+	// Don’t touch queues while we’re in the middle of a reset
+	if (bIsResettingForNewLoad)
+	{
+		return;
+	}
+	
 	ProcessPendingDatasmithMeshes(DeltaTime);
 	ProcessPendingCollisionEnables(DeltaTime);
 }
@@ -134,18 +150,28 @@ void ARuntimeMeshBuilder::OnConstruction(const FTransform& Transform)
 
 void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<int32> InTriangles, TArray<FVector> InNormals)
 {
-	// TODO: Implement Input Validation Checks
+        const bool bHasValidVertexCounts = InVertices.Num() > 0 && InNormals.Num() == InVertices.Num();
+        const bool bHasValidTriangles   = InTriangles.Num() > 0 && InTriangles.Num() % 3 == 0;
 
-	// Clear the previous mesh -- TBD: If we want to clear all sections or a specific one
-	MobiusProceduralMeshComponent->ClearAllMeshSections();
+        if (!bHasValidVertexCounts || !bHasValidTriangles)
+        {
+                UE_LOG(LogTemp, Error, TEXT("GenerateMobiusMesh received invalid mesh data (Vertices: %d, Normals: %d, Triangles: %d)"), InVertices.Num(), InNormals.Num(), InTriangles.Num());
+                return;
+        }
 
-	//bp method calls this CreateMeshSection_LinearColor
+        ResetMeshCollisionAndPhysics();
 
-	MobiusProceduralMeshComponent->CreateMeshSection(0, InVertices, InTriangles, InNormals, TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+        MobiusProceduralMeshComponent->CreateMeshSection(0, InVertices, InTriangles, InNormals, TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
 }
 
 void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 {
+        if (MeshFileName.IsEmpty())
+        {
+                UE_LOG(LogTemp, Error, TEXT("MeshFileName is empty. Aborting mesh load."));
+                return;
+        }
+
 	// TEST
 	//FString FilePath = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\TechnicalSchool1000People\\Technical-School-For-Lab-3D.fbx";
 	//FString FilePath = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\ISO-Test-8-r25-ifc2x3-to.obj";
@@ -164,19 +190,25 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 	// this could be the memory issue as it clears and will mark as dirty and will be updated in the next frame
 	// the create mesh section also does the same thing and it could be causing the issue
 
-	if(IAssimpInterface::OpenMeshFileGetWithAssimp(MeshFileName, SectionCount, ErrorMessageCode, MVertices, MFaces, MNormals, MUV, MTangents, MeshRotationOffset))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Successfully opened the mesh file"));
-		UE_LOG(LogTemp, Warning, TEXT("Section Count: %d"), SectionCount);
-		UE_LOG(LogTemp, Warning, TEXT("Vertices Count: %d"), MVertices.Num());
-		UE_LOG(LogTemp, Warning, TEXT("Faces Count: %d"), MFaces.Num());
-		UE_LOG(LogTemp, Warning, TEXT("Normals Count: %d"), MNormals.Num());
-		UE_LOG(LogTemp, Warning, TEXT("Tangents Count: %d"), MTangents.Num());
-		UE_LOG(LogTemp, Warning, TEXT("UV Count: %d"), MUV.Num());
+        if(IAssimpInterface::OpenMeshFileGetWithAssimp(MeshFileName, SectionCount, ErrorMessageCode, MVertices, MFaces, MNormals, MUV, MTangents, MeshRotationOffset))
+        {
+                UE_LOG(LogTemp, Warning, TEXT("Successfully opened the mesh file"));
+                UE_LOG(LogTemp, Warning, TEXT("Section Count: %d"), SectionCount);
+                UE_LOG(LogTemp, Warning, TEXT("Vertices Count: %d"), MVertices.Num());
+                UE_LOG(LogTemp, Warning, TEXT("Faces Count: %d"), MFaces.Num());
+                UE_LOG(LogTemp, Warning, TEXT("Normals Count: %d"), MNormals.Num());
+                UE_LOG(LogTemp, Warning, TEXT("Tangents Count: %d"), MTangents.Num());
+                UE_LOG(LogTemp, Warning, TEXT("UV Count: %d"), MUV.Num());
 
-		// A mesh section should only be created if successful
-		MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, MVertices, MFaces, MNormals, MUV,
-		                                                             TArray<FLinearColor>(),
+                if (SectionCount == 0 || MVertices.Num() == 0 || MFaces.Num() == 0)
+                {
+                        UE_LOG(LogTemp, Error, TEXT("Mesh file returned no usable data (Sections: %d, Vertices: %d, Faces: %d)."), SectionCount, MVertices.Num(), MFaces.Num());
+                        return;
+                }
+
+                // A mesh section should only be created if successful
+                MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, MVertices, MFaces, MNormals, MUV,
+                                                                             TArray<FLinearColor>(),
 		                                                             TArray<FProcMeshTangent>(),
 		                                                             false);
 	}
@@ -209,8 +241,8 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 
 void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 {
-	// 1. Turn off async cooking for deterministic behavior here (optional but recommended), ensures it will update
-	MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+        // 1. Turn off async cooking for deterministic behavior here (optional but recommended), ensures it will update
+        MobiusProceduralMeshComponent->bUseAsyncCooking = false;
 
 	// 2. Clear all generated geometry + convex collision
 	MobiusProceduralMeshComponent->ClearAllMeshSections();          // Empties sections + UpdateCollision()
@@ -230,12 +262,18 @@ void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 	// 4. Force physics state to be recreated on the component
 	MobiusProceduralMeshComponent->RecreatePhysicsState();
 
-	// 5. Reactivate the async cooking
-	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
 }
 
 void ARuntimeMeshBuilder::UpdateMeshFileName()
 {
+	// Mark that we’re about to tear things down
+	bIsResettingForNewLoad = true;
+
+	// Drop any queued work that still references old components
+	PendingCollisionEnable.Reset();
+	PendingDatasmithMeshes.Reset();
+    MaterialCache.Reset();
+	
 	// Get the game instance
 	UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld());
 
@@ -257,11 +295,16 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	// Make sure no residual data of the procedural mesh comp exists  
 	ResetMeshCollisionAndPhysics();
 	
-	if (RuntimeDatasmithAnchor)
-	{
-		RuntimeDatasmithAnchor->Destroy();
-		RuntimeDatasmithAnchor = nullptr;
-	}
+    if (RuntimeDatasmithAnchor)
+    {
+    	auto ActorToDestroy = RuntimeDatasmithAnchor;
+        ActorToDestroy->Destroy();
+        RuntimeDatasmithAnchor = nullptr;
+    }
+
+    // Double-flush queues in case async work enqueued new items during teardown
+    PendingCollisionEnable.Reset();
+    PendingDatasmithMeshes.Reset();
 	
 	DatasmithMaterialsMap.Empty();
 	bIsDatasmithAsset = false;
@@ -332,6 +375,8 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 					      CreateDatasmithMaterials();
 					      // lights imported by datasmith can cause performance issues, so may need to disable cast shadows or reduce
 					      // the size of point light radius and intensitys
+				      	
+				      	bIsResettingForNewLoad = false;
 				      });
 				
 			      });
@@ -373,7 +418,10 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	{		
 		//GetMeshDataFromFile(FRotator(0.0f, 0.0f, 90.0f));
 		AsyncUpdateMesh(MeshFileName);
+		bIsResettingForNewLoad = false;
 	}
+	
+	
 }
 
 void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
@@ -952,38 +1000,137 @@ void ARuntimeMeshBuilder::EnqueueCollisionEnable(UStaticMeshComponent* Mesh)
 
 void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
 {
-	if (PendingCollisionEnable.Num() == 0 || MaxCollisionEnablesPerFrame <= 0)
-	{
-		return;
-	}
+	// If we are resetting for a new load or being torn down, drop the queue and bail
+    if (bIsResettingForNewLoad || IsActorBeingDestroyed() || !GetWorld())
+    {
+        PendingCollisionEnable.Reset();
+        return;
+    }
 
-	int32 ProcessedThisFrame = 0;
+    if (PendingCollisionEnable.Num() == 0 || MaxCollisionEnablesPerFrame <= 0)
+    {
+        return;
+    }
 
-	// Walk from the end so RemoveAtSwap is cheap
-	for (int32 Index = PendingCollisionEnable.Num() - 1;
-	     Index >= 0 && ProcessedThisFrame < MaxCollisionEnablesPerFrame;
-	     --Index)
-	{
-		if (UStaticMeshComponent* Mesh = PendingCollisionEnable[Index].Get())
-		{
-			// This is your original collision setup
-			Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-			Mesh->SetCollisionObjectType(ECC_WorldDynamic);
-			Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-			Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-		}
+    const int32 MaxPerFrame = FMath::Max(1, MaxCollisionEnablesPerFrame);
+    int32 ProcessedThisFrame = 0;
 
-		PendingCollisionEnable.RemoveAtSwap(Index, 1, /*bAllowShrinking=*/false);
-		++ProcessedThisFrame;
-	}
+    // Walk from the end so removals do not shift earlier indices
+    for (int32 Index = PendingCollisionEnable.Num() - 1;
+         Index >= 0 && ProcessedThisFrame < MaxPerFrame;
+         --Index)
+    {
+        TWeakObjectPtr<UStaticMeshComponent>& WeakMesh = PendingCollisionEnable[Index];
+
+        if (!WeakMesh.IsValid())
+        {
+            WeakMesh.Reset();
+            PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+            continue;
+        }
+
+        UStaticMeshComponent* Mesh = WeakMesh.Get();
+
+        // Drop anything that is clearly unsafe to touch
+        if (!Mesh
+            || !IsValid(Mesh)
+            || Mesh->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed)
+            || !Mesh->IsRenderStateCreated()
+            || !Mesh->IsRegistered()
+            || !Mesh->GetWorld()
+            || Mesh->GetWorld() != GetWorld())
+        {
+            WeakMesh.Reset();
+            PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+            continue;
+        }
+
+        if (AActor* MeshOwner = Mesh->GetOwner())
+        {
+            if (MeshOwner->IsActorBeingDestroyed())
+            {
+                WeakMesh.Reset();
+                PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                continue;
+            }
+        }
+    	if (UStaticMesh* StaticMesh = Mesh->GetStaticMesh())
+    	{
+            if (StaticMesh->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+            {
+                WeakMesh.Reset();
+                PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                continue;
+            }
+
+    		if (UBodySetup* BodySetup = StaticMesh->GetBodySetup())
+    		{
+                if (BodySetup->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+                {
+                    WeakMesh.Reset();
+                    PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                    continue;
+                }
+
+                // If the body instance is not valid, avoid touching collision settings
+                FBodyInstance* BodyInstance = Mesh->GetBodyInstance();
+                if (!BodyInstance || !BodyInstance->IsValidBodyInstance())
+                {
+                    WeakMesh.Reset();
+                    PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                    continue;
+                }
+
+    			// You can add debug logs here if you want to see which door is which
+    			// UE_LOG(LogTemp, Warning, TEXT("Enabling collision on %s (%s)"),
+    			//        *MeshComp->GetName(),
+    			//        StaticMesh->GetPathName());
+
+    			Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    			Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+    			Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+    			Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    		}
+            else
+            {
+                WeakMesh.Reset();
+                PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                continue;
+            }
+    	}
+        else
+        {
+            WeakMesh.Reset();
+            PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+            continue;
+        }
+        WeakMesh.Reset();
+    	PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+    	++ProcessedThisFrame;
+        
+        // Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        // Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+        // Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+        // Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+
+       
+    }
 }
 
 void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 {
-	if (!bDatasmithMaterialSetupInProgress || PendingDatasmithMeshes.Num() == 0)
+	if (!bDatasmithMaterialSetupInProgress || PendingDatasmithMeshes.Num() == 0 || bIsResettingForNewLoad || IsActorBeingDestroyed())
 	{
+        PendingDatasmithMeshes.Reset();
 		return;
 	}
+
+    if (!RuntimeDatasmithAnchor || RuntimeDatasmithAnchor->IsActorBeingDestroyed())
+    {
+        PendingDatasmithMeshes.Reset();
+        bDatasmithMaterialSetupInProgress = false;
+        return;
+    }
 
 	const int32 MaxPerFrame = FMath::Max(1, MaxDatasmithMeshesPerFrame);
 	int32 Processed = 0;
@@ -1016,7 +1163,15 @@ void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 
 void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp)
 {
-	if (!MeshComp || MeshComp->IsBeingDestroyed())
+    if (!MeshComp
+        || !IsValid(MeshComp)
+        || MeshComp->IsBeingDestroyed()
+        || MeshComp->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed)
+        || !MeshComp->IsRegistered()
+        || !MeshComp->IsRenderStateCreated()
+        || !MeshComp->GetWorld()
+        || MeshComp->GetWorld() != GetWorld()
+        || (RuntimeDatasmithAnchor && RuntimeDatasmithAnchor->IsActorBeingDestroyed()))
     {
         return;
     }
@@ -1027,6 +1182,14 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
     FDatasmithMaterials DatasmithMaterials;
 
     const int32 NumMats = MeshComp->GetNumMaterials();
+
+	// Number of materials must be > 0
+	if (NumMats <= 0)
+    {
+        DatasmithMaterialsMap.Remove(MeshComp);
+        return;
+    }
+	
     DatasmithMaterials.MeshMaterials.Reserve(NumMats * 2); // opaque+translucent pair per slot
     DatasmithMaterials.bIsOpaque.Reserve(NumMats);
 
@@ -1035,8 +1198,16 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
     TArray<TObjectPtr<UMaterialInstanceDynamic>> MaterialInstances;
     MaterialInstances.Reserve(2);
 
-    for (int32 Index = 0; Index < NumMats; ++Index)
+    for (int32 Index = 0; Index < MeshComp->GetNumMaterials(); ++Index)
     {
+        if (!IsValid(MeshComp)
+            || MeshComp->IsBeingDestroyed()
+            || MeshComp->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed)
+            || MeshComp->GetNumMaterials() <= Index)
+        {
+            break;
+        }
+
         UMaterialInterface* Material = MeshComp->GetMaterial(Index);
         if (!Material)
         {
@@ -1116,13 +1287,21 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
 
         DatasmithMaterials.MeshMaterials.Append(MaterialInstances);
 
-        if (DatasmithMaterials.bIsOpaque[Index])
+        if (MeshComp->GetNumMaterials() <= Index)
         {
-            MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2]);
+            break;
         }
-        else
+
+        UMaterialInterface* const OpaqueMat      = DatasmithMaterials.MeshMaterials.IsValidIndex(Index * 2) ? DatasmithMaterials.MeshMaterials[Index * 2] : nullptr;
+        UMaterialInterface* const TranslucentMat = DatasmithMaterials.MeshMaterials.IsValidIndex(Index * 2 + 1) ? DatasmithMaterials.MeshMaterials[Index * 2 + 1] : nullptr;
+
+        if (DatasmithMaterials.bIsOpaque[Index] && OpaqueMat)
         {
-            MeshComp->SetMaterial(Index, DatasmithMaterials.MeshMaterials[Index * 2 + 1]);
+            MeshComp->SetMaterial(Index, OpaqueMat);
+        }
+        else if (!DatasmithMaterials.bIsOpaque[Index] && TranslucentMat)
+        {
+            MeshComp->SetMaterial(Index, TranslucentMat);
         }
     }
 

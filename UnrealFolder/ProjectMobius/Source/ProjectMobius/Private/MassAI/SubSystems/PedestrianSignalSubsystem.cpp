@@ -12,6 +12,16 @@ UPedestrianSignalSubsystem::UPedestrianSignalSubsystem()
 {
 }
 
+UMassEntitySpawnSubsystem* UPedestrianSignalSubsystem::GetSpawnSubsystem()
+{
+        if (!CachedSpawnSubsystem.IsValid() && GetWorld())
+        {
+                CachedSpawnSubsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+        }
+
+        return CachedSpawnSubsystem.Get();
+}
+
 void UPedestrianSignalSubsystem::CollisionsSettingChanged(uint8 EnableDisable)
 {
 	UE_LOG(LogTemp, Display, TEXT("Pedestrian CollisionsSettingChanged"));
@@ -31,9 +41,9 @@ void UPedestrianSignalSubsystem::CollisionsSettingChanged(uint8 EnableDisable)
 
 void UPedestrianSignalSubsystem::ActivateCollisions()
 {
-	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>(); //TODO: convert to a pointer that we can use to avoid multiple calls to GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>()
+        UMassEntitySpawnSubsystem* spawnSub = GetSpawnSubsystem();
 
-	TArray<FMassEntityHandle> EntitiesToSignal;
+        TArray<FMassEntityHandle> EntitiesToSignal;
 
 	if (spawnSub)
 	{
@@ -58,7 +68,7 @@ void UPedestrianSignalSubsystem::ActivateCollisions()
 
 void UPedestrianSignalSubsystem::DeactivateCollisions()
 {
-	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+        UMassEntitySpawnSubsystem* spawnSub = GetSpawnSubsystem();
 	
 	TArray<FMassEntityHandle> EntitiesToSignal;
 	
@@ -102,7 +112,7 @@ void UPedestrianSignalSubsystem::FlowCounterSettingChanged(uint8 EnableDisable)
 
 void UPedestrianSignalSubsystem::ActivateFlowCounter()
 {
-	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+        UMassEntitySpawnSubsystem* spawnSub = GetSpawnSubsystem();
 	
 	TArray<FMassEntityHandle> EntitiesToSignal;
 	
@@ -129,7 +139,7 @@ void UPedestrianSignalSubsystem::ActivateFlowCounter()
 
 void UPedestrianSignalSubsystem::DeactivateFlowCounter()
 {
-	auto spawnSub = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+        UMassEntitySpawnSubsystem* spawnSub = GetSpawnSubsystem();
 	
 	TArray<FMassEntityHandle> EntitiesToSignal;
 	
@@ -161,5 +171,6 @@ void UPedestrianSignalSubsystem::Initialize(FSubsystemCollectionBase& Collection
 
 void UPedestrianSignalSubsystem::Deinitialize()
 {
-	Super::Deinitialize();
+        CachedSpawnSubsystem.Reset();
+        Super::Deinitialize();
 }
