@@ -85,7 +85,7 @@ elseif(APPLE)
     -DCMAKE_INSTALL_NAME_DIR=@rpath
     -DCMAKE_OSX_ARCHITECTURES=x86_64\;arm64
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-    -DASSIMP_LIB_INSTALL_DIR=lib/Mac       
+    -DASSIMP_LIB_INSTALL_DIR=lib          # let it live in lib/
     -DASSIMP_INCLUDE_INSTALL_DIR=include
   )
 else()
@@ -134,11 +134,19 @@ if(WIN32)
     COMMENT "Staging Assimp DLLs to ${ASSIMP_STAGE_DIR}"
   )
 elseif(APPLE)
+  # Assimp 5.x layouts differ a bit between versions.
+  # Prefer lib/Mac if it exists (old layout), otherwise fall back to lib/.
+  if(EXISTS "${ASSIMP_INST}/lib/Mac")
+    set(ASSIMP_MAC_LIB_DIR "${ASSIMP_INST}/lib/Mac")
+  else()
+    set(ASSIMP_MAC_LIB_DIR "${ASSIMP_INST}/lib")
+  endif()
+
   add_custom_command(TARGET assimp_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${ASSIMP_STAGE_DIR}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSIMP_STAGE_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${ASSIMP_INST}/lib/Mac" "${ASSIMP_STAGE_DIR}"
+            "${ASSIMP_MAC_LIB_DIR}" "${ASSIMP_STAGE_DIR}"
     COMMENT "Staging Assimp dylibs to ${ASSIMP_STAGE_DIR}"
   )
 else()
