@@ -3,3 +3,9 @@ cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=
 cmake --build _superbuild --config Release --parallel
 
 ## Apple Zsh Terminal
+# Qt 6.9.3 (or any 6.9.x) installed under $HOME/Qt
+cmake -S . -B _superbuild -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$HOME/Qt/6.9.3/macos"
+
+cmake --build _superbuild --parallel
