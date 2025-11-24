@@ -101,6 +101,8 @@ bool FMobiusIpcClient::Send(const TArray<uint8>& Payload)
 
 uint32 FMobiusIpcClient::Run()
 {
+    // Worker thread: connect, then loop sending queued messages and reading frames.
+    // Each frame is length-prefixed (u32 little-endian) so we know how many bytes to read.
     while (bRun)
     {
         if (!Platform_Connect())
@@ -279,30 +281,56 @@ bool FMobiusIpcClient::Platform_Connect()
     return false;
 
 #elif PLATFORM_MAC
-    int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
+    auto AttemptConnect = [this](const FString& Path) -> bool
     {
-        UE_LOG(LogTemp, Error, TEXT("IPC: Failed to create socket"));
+        // Mac/Linux use Unix Domain Sockets. Qt's QLocalServer defaults to /tmp/<name>
+        // on macOS; older builds may suffix ".sock", so we try both.
+        int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        if (fd < 0)
+        {
+            UE_LOG(LogTemp, Error, TEXT("IPC: Failed to create socket"));
+            return false;
+        }
+
+        sockaddr_un addr;
+        FMemory::Memzero(&addr, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+
+        FTCHARToUTF8 Utf8Path(*Path);
+        const size_t MaxLen = sizeof(addr.sun_path) - 1;
+        FCStringAnsi::Strncpy(addr.sun_path, Utf8Path.Get(), MaxLen);
+        addr.sun_path[MaxLen] = '\0';
+
+        UE_LOG(LogTemp, Log, TEXT("IPC: Attempting to connect to socket: %s"), *Path);
+
+        if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0)
+        {
+            SocketFd = fd;
+            UE_LOG(LogTemp, Log, TEXT("IPC: Connected to socket"));
+            return true;
+        }
+
+        UE_LOG(LogTemp, Warning, TEXT("IPC: Failed to connect to socket %s, errno=%d"), *Path, errno);
+        ::close(fd);
         return false;
-    }
+    };
 
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    FString Path = FString::Printf(TEXT("/tmp/%s.sock"), *EndpointName);
-    FTCHARToUTF8 P(*Path);
-    std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", P.Get());
+    // Qt's QLocalServer on macOS creates sockets in /tmp/<name>. Try the canonical
+    // path first, then fall back to ".sock" for older builds or manual servers.
+    const FString CanonicalPath = FString::Printf(TEXT("/tmp/%s"), *EndpointName);
+    const FString SockPath = CanonicalPath + TEXT(".sock");
 
-    UE_LOG(LogTemp, Log, TEXT("IPC: Attempting to connect to socket: %s"), *Path);
-
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0)
+    if (AttemptConnect(CanonicalPath))
     {
-        SocketFd = fd;
-        UE_LOG(LogTemp, Log, TEXT("IPC: Connected to socket"));
         return true;
     }
 
-    UE_LOG(LogTemp, Error, TEXT("IPC: Failed to connect to socket, errno=%d"), errno);
-    ::close(fd);
+    if (AttemptConnect(SockPath))
+    {
+        return true;
+    }
+
+    UE_LOG(LogTemp, Error, TEXT("IPC: Unable to connect to socket after trying %s and %s"), *CanonicalPath, *SockPath);
     return false;
 #endif
 }

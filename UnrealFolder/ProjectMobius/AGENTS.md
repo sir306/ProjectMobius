@@ -14,6 +14,7 @@
 ## Coding Style & Naming Conventions
 - Follow Unreal style: 4-space indent, brace-on-new-line for functions, `UE_LOG`/`ensure` for runtime checks, and minimal `#include` scope.
 - Types use prefixes (`U` objects, `A` actors, `F` structs, `I` interfaces, `S` Slate widgets). Functions and methods are PascalCase; locals are camelCase. Align module API in `Public/` with matching `Private` implementations.
+- Document source with Doxygen-style block comments where applicable (new params/methods or complex functions), e.g. `/** ... @param ParamName description */`.
 
 ## Testing Guidelines
 - Favor Unreal automation tests colocated with the feature module; name files `*Tests.cpp` and register with the Automation framework. Place sample data in `UnitTestSampleData/` when needed.
@@ -26,4 +27,4 @@
 
 ## Asset & Config Tips
 - Organize new assets in `Content/FeatureName/` and avoid committing oversized binaries unless required. Document any imported licenses.
-- Keep `Config/*.ini` changes minimal; explain default changes in the PR. Never edit generated `Intermediate/`, `Saved/`, or `DerivedDataCache/` content.
+- Keep `Config/*.ini` changes minimal; explain default changes in the PR. Never edit generated `Intermediate/`, `Saved/`, or `DerivedDataCache` content.

@@ -26,6 +26,8 @@ void UIpcSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	// Load endpoint name from Tools/IPC/config.json so artists/testers can change it
+	// without rebuilding the game. Defaults to "MobiusIpc" if not present.
 	// If you want the endpoint to be configurable:
 	// Tools/IPC/config.json { "endpoint": "MobiusIpc" }
 	{
@@ -69,7 +71,8 @@ void UIpcSubsystem::Deinitialize()
 
 void UIpcSubsystem::StartIpcClient()
 {
-	// Bind message callback first so we can receive immediately after connect
+	// Bind message callback first so we can receive immediately after connect.
+	// The client handles its own worker thread internally.
 	IpcClient = MakeShared<FMobiusIpcClient>(
 		EndpointName,
 		FOnIpcMessage::CreateUObject(this, &UIpcSubsystem::OnIpcMessage));
@@ -81,7 +84,8 @@ void UIpcSubsystem::StartIpcClient()
 		return;
 	}
 
-	// Send a lightweight registration message (mirrors your WebSocket behavior)
+	// Send a lightweight registration message so the Qt side knows Unreal is alive.
+	// This mirrors the previous WebSocket handshake and keeps the protocols similar.
 	{
 		TSharedPtr<FJsonObject> Cmd = MakeShared<FJsonObject>();
 		Cmd->SetStringField(TEXT("type"), TEXT("register"));

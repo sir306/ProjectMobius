@@ -20,32 +20,55 @@ class MOBIUSCORE_API UIpcSubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
-	// Subsystem lifecycle
+	/**
+	 * Initialize the IPC subsystem and start the background client thread.
+	 *
+	 * @param Collection Subsystem collection this instance belongs to.
+	 */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+
+	/**
+	 * Shutdown the IPC subsystem, stopping the client thread and cleaning resources.
+	 */
 	virtual void Deinitialize() override;
 
-	/** Open or close the Qt stats app (unchanged external contract) */
+	/**
+	 * Open or close the Qt stats app (unchanged external contract).
+	 */
 	UFUNCTION(BlueprintCallable)
 	void OpenOrCloseQtStatApp();
 
-	/** Convenience: send a single “(time, count)” point as JSON */
+	/**
+	 * Convenience: send a single "(time, count)" point as JSON.
+	 *
+	 * @param CurrentSimTime Simulation time for the data point.
+	 * @param AgentCount     Value to plot at that time.
+	 */
 	UFUNCTION(BlueprintCallable)
 	void SendAgentDataCount(float CurrentSimTime, int32 AgentCount);
 
-	/** Generic: send any JSON object */
+	/**
+	 * Generic: send any JSON object.
+	 *
+	 * @param JsonObject JSON payload to send over IPC.
+	 */
 	void SendJsonMessage(const TSharedPtr<FJsonObject>& JsonObject) const;
 
-	/** Optional: set custom endpoint before Initialize runs (e.g. from config) */
+	/**
+	 * Optional: set custom endpoint before Initialize runs (e.g. from config).
+	 *
+	 * @param InName Endpoint to use for the IPC channel.
+	 */
 	void SetEndpointName(const FString& InName) { EndpointName = InName; }
 
 private:
-	/** Starts the background IPC client thread and performs initial registration */
+	/** Starts the background IPC client thread and performs initial registration. */
 	void StartIpcClient();
 
-	/** UE thread callback for new raw message frames from the client thread */
+	/** UE thread callback for new raw message frames from the client thread. */
 	void OnIpcMessage(const TArray<uint8>& Bytes);
 
-	/** Launch the Qt app (reused from your old subsystem, path logic intact) */
+	/** Launch the Qt app (reused from your old subsystem, path logic intact). */
 	void LaunchQtStatsAppOrToggle();
 
 private:
