@@ -5,6 +5,15 @@ project(MobiusSuperbuild LANGUAGES C CXX)
 option(SUPERBUILD_ENABLE_TESTS "Generate simple staging checks for built tools" ON)
 option(SUPERBUILD_RUN_TESTS "Run ctest after staging completes" ON)
 set(SUPERBUILD_CTEST_CONFIG "Release" CACHE STRING "Configuration to use when invoking ctest in multi-config generators")
+# Optional Unreal automation hooks (off by default; require user-provided commands/paths)
+option(SUPERBUILD_ENABLE_UE_AUTOMATION "Add a ctest to run Unreal automation (UAT/UnrealEditor-Cmd)" OFF)
+set(UE_AUTOMATION_EXE "" CACHE STRING "Path to UnrealEditor-Cmd.exe (or platform equivalent)")
+set(UE_AUTOMATION_ARGS "" CACHE STRING "Arguments for Unreal automation (e.g. -run=Automation -Test=All -unattended -nop4 -log)")
+option(SUPERBUILD_ENABLE_UE_GENBUILD "Add ctests to GenerateProjectFiles and build the editor target" OFF)
+set(UE_GENERATE_FILES_EXE "" CACHE STRING "Path to GenerateProjectFiles.bat/sh")
+set(UE_GENERATE_FILES_ARGS "" CACHE STRING "Args for GenerateProjectFiles (e.g. -project=ProjectMobius.uproject -game -engine)")
+set(UE_BUILD_EXE "" CACHE STRING "Path to the UE build helper (e.g. Engine/Build/BatchFiles/Build.bat)")
+set(UE_BUILD_ARGS "" CACHE STRING "Args for UE build (e.g. ProjectMobiusEditor Win64 Development -project=ProjectMobius.uproject -game -engine -progress)")
 if(SUPERBUILD_ENABLE_TESTS)
   enable_testing()
 
@@ -407,6 +416,52 @@ if(SUPERBUILD_ENABLE_TESTS)
         COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}/bin"
                 "${ASSIMP_BUILD}/bin/unit")
       set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
+    endif()
+  endif()
+
+  # Optional Unreal automation and GenerateProjectFiles/build checks
+  if(SUPERBUILD_ENABLE_UE_AUTOMATION AND NOT UE_AUTOMATION_EXE STREQUAL "")
+    if(EXISTS "${UE_AUTOMATION_EXE}")
+      separate_arguments(_UE_AUTOMATION_ARGS NATIVE_COMMAND "${UE_AUTOMATION_ARGS}")
+      add_test(NAME ue_automation
+        COMMAND "${UE_AUTOMATION_EXE}" ${_UE_AUTOMATION_ARGS})
+      set_tests_properties(ue_automation PROPERTIES TIMEOUT 900)
+    else()
+      message(STATUS "UE automation exe not found at '${UE_AUTOMATION_EXE}'. Skipping ue_automation test.")
+    endif()
+  endif()
+
+  if(SUPERBUILD_ENABLE_UE_GENBUILD AND NOT UE_GENERATE_FILES_EXE STREQUAL "" AND NOT UE_BUILD_EXE STREQUAL "")
+    if(EXISTS "${UE_GENERATE_FILES_EXE}")
+      separate_arguments(_UE_GPF_ARGS NATIVE_COMMAND "${UE_GENERATE_FILES_ARGS}")
+      if("${UE_GENERATE_FILES_EXE}" MATCHES "\\.bat$" OR "${UE_GENERATE_FILES_EXE}" MATCHES "\\.cmd$")
+        add_test(NAME ue_generate_project_files
+          COMMAND cmd /c "\"${UE_GENERATE_FILES_EXE}\"" ${_UE_GPF_ARGS}
+          WORKING_DIRECTORY "${UE_ROOT}")
+      else()
+        add_test(NAME ue_generate_project_files
+          COMMAND "${UE_GENERATE_FILES_EXE}" ${_UE_GPF_ARGS}
+          WORKING_DIRECTORY "${UE_ROOT}")
+      endif()
+      set_tests_properties(ue_generate_project_files PROPERTIES TIMEOUT 900)
+    else()
+      message(STATUS "GenerateProjectFiles not found at '${UE_GENERATE_FILES_EXE}'. Skipping ue_generate_project_files test.")
+    endif()
+
+    if(EXISTS "${UE_BUILD_EXE}")
+      separate_arguments(_UE_BUILD_ARGS NATIVE_COMMAND "${UE_BUILD_ARGS}")
+      if("${UE_BUILD_EXE}" MATCHES "\\.bat$" OR "${UE_BUILD_EXE}" MATCHES "\\.cmd$")
+        add_test(NAME ue_build_editor
+          COMMAND cmd /c "\"${UE_BUILD_EXE}\"" ${_UE_BUILD_ARGS}
+          WORKING_DIRECTORY "${UE_ROOT}")
+      else()
+        add_test(NAME ue_build_editor
+          COMMAND "${UE_BUILD_EXE}" ${_UE_BUILD_ARGS}
+          WORKING_DIRECTORY "${UE_ROOT}")
+      endif()
+      set_tests_properties(ue_build_editor PROPERTIES TIMEOUT 1800)
+    else()
+      message(STATUS "UE build helper not found at '${UE_BUILD_EXE}'. Skipping ue_build_editor test.")
     endif()
   endif()
 
