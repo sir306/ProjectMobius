@@ -1,6 +1,47 @@
 cmake_minimum_required(VERSION 3.21)
 project(MobiusSuperbuild LANGUAGES C CXX)
 
+# Optional superbuild verification (ctest) flags.
+option(SUPERBUILD_ENABLE_TESTS "Generate simple staging checks for built tools" ON)
+option(SUPERBUILD_RUN_TESTS "Run ctest after staging completes" ON)
+set(SUPERBUILD_CTEST_CONFIG "Release" CACHE STRING "Configuration to use when invoking ctest in multi-config generators")
+if(SUPERBUILD_ENABLE_TESTS)
+  enable_testing()
+
+  # Small helper script to summarize gtest XML into a text file for non-dev readers.
+  set(_ASSIMP_SUMMARY_SCRIPT "${CMAKE_BINARY_DIR}/Testing/gen_assimp_summary.cmake")
+  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Testing")
+  set(_ASSIMP_SUMMARY_SCRIPT_CONTENT "
+if(NOT DEFINED XML OR NOT DEFINED OUT)
+  message(FATAL_ERROR \"Expected -DXML and -DOUT\")
+endif()
+if(NOT EXISTS \"\${XML}\")
+  file(WRITE \"\${OUT}\" \"Assimp unit test summary\\n\")
+  file(APPEND \"\${OUT}\" \"Result: no XML produced (tests may have failed to run).\\n\")
+  return()
+endif()
+file(READ \"\${XML}\" CONTENT)
+string(REGEX MATCHALL \"<testcase[^>]*>\" TESTS \"\${CONTENT}\")
+list(LENGTH TESTS TOTAL)
+string(REGEX MATCHALL \"<failure[^>]*>\" FAILS \"\${CONTENT}\")
+list(LENGTH FAILS FAIL_COUNT)
+file(WRITE \"\${OUT}\" \"Assimp unit test summary\\n\")
+file(APPEND \"\${OUT}\" \"Total tests: \${TOTAL}\\n\")
+file(APPEND \"\${OUT}\" \"Failed tests: \${FAIL_COUNT}\\n\")
+if(FAIL_COUNT GREATER 0)
+  string(REGEX MATCHALL \"<testcase[^>]*name=\\\"([^\\\"]+)\\\"[^>]*>[^<]*<failure\" FAIL_CASES \"\${CONTENT}\")
+  if(FAIL_CASES)
+    file(APPEND \"\${OUT}\" \"Failed test names:\\n\")
+    foreach(F \${FAIL_CASES})
+      string(REGEX REPLACE \".*name=\\\"([^\\\"]+)\\\".*\" \"\\1\" NAME \"\${F}\")
+      file(APPEND \"\${OUT}\" \" - \${NAME}\\n\")
+    endforeach()
+  endif()
+endif()
+")
+  file(WRITE "${_ASSIMP_SUMMARY_SCRIPT}" "${_ASSIMP_SUMMARY_SCRIPT_CONTENT}")
+endif()
+
 # ======================
 # Global build settings
 # ======================
@@ -61,10 +102,16 @@ set(ASSIMP_BUILD "${CMAKE_BINARY_DIR}/assimp-build")
 set(ASSIMP_INST "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
 
 # Common args
+if(SUPERBUILD_RUN_TESTS)
+  set(_assimp_build_tests ON)
+else()
+  set(_assimp_build_tests OFF)
+endif()
+
 set(_assimp_cmake_args
   -DCMAKE_BUILD_TYPE=Release
   -DBUILD_SHARED_LIBS=ON
-  -DASSIMP_BUILD_TESTS=OFF
+  -DASSIMP_BUILD_TESTS=${_assimp_build_tests}
   -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
   -DASSIMP_BUILD_SAMPLES=OFF
   -DCMAKE_INSTALL_PREFIX=${ASSIMP_INST}
@@ -112,6 +159,33 @@ ExternalProject_Add(assimp_ep
   INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install --config Release --parallel
   UPDATE_DISCONNECTED 1
 )
+
+# Optionally run assimp ctests when enabled
+if(SUPERBUILD_RUN_TESTS)
+  if(WIN32)
+    set(_ASSIMP_UNIT_EXE "${ASSIMP_BUILD}/bin/${SUPERBUILD_CTEST_CONFIG}/unit.exe")
+    set(_ASSIMP_UNIT_WORKDIR "${ASSIMP_BUILD}/bin/${SUPERBUILD_CTEST_CONFIG}")
+  elseif(APPLE)
+    set(_ASSIMP_UNIT_EXE "${ASSIMP_BUILD}/bin/unit")
+    set(_ASSIMP_UNIT_WORKDIR "${ASSIMP_BUILD}/bin")
+  else()
+    set(_ASSIMP_UNIT_EXE "${ASSIMP_BUILD}/bin/unit")
+    set(_ASSIMP_UNIT_WORKDIR "${ASSIMP_BUILD}/bin")
+  endif()
+
+  set(_ASSIMP_XML "${CMAKE_BINARY_DIR}/Testing/assimp-unit.xml")
+  set(_ASSIMP_TXT "${CMAKE_BINARY_DIR}/Testing/assimp-unit-summary.txt")
+
+  ExternalProject_Add_Step(assimp_ep run_tests
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Testing"
+    COMMAND ${CMAKE_COMMAND} --build . --config ${SUPERBUILD_CTEST_CONFIG} --target unit --parallel
+    COMMAND ${CMAKE_COMMAND} -E env GTEST_OUTPUT=xml:${_ASSIMP_XML} "${_ASSIMP_UNIT_EXE}"
+    COMMAND ${CMAKE_COMMAND} -DXML=${_ASSIMP_XML} -DOUT=${_ASSIMP_TXT} -P "${_ASSIMP_SUMMARY_SCRIPT}"
+    DEPENDEES build
+    WORKING_DIRECTORY "${ASSIMP_BUILD}"
+    COMMENT "Running Assimp unit tests (xml: ${_ASSIMP_XML}, summary: ${_ASSIMP_TXT})"
+  )
+endif()
 
 # Ensure generated headers (revision.h, config.h) exist under include/assimp after install.
 # Upstream generates them in the build tree; copy them into our install include tree.
@@ -264,8 +338,103 @@ add_dependencies(all_external
   OpenFileTCP_ep
 )
 
+# ------------------------------------------------------------
+# Basic staging checks (ctest)
+# ------------------------------------------------------------
+if(SUPERBUILD_ENABLE_TESTS)
+  # Helper to add file/directory existence checks without relying on cmake -E test_path
+  function(add_path_exists_test Name PathToCheck)
+    set(_script "${CMAKE_BINARY_DIR}/Testing/${Name}-check.cmake")
+    file(WRITE "${_script}"
+      "if(NOT EXISTS \"${PathToCheck}\")\n"
+      "  message(FATAL_ERROR \"Missing staged artifact: ${PathToCheck}\")\n"
+      "else()\n"
+      "  message(STATUS \"Found staged artifact: ${PathToCheck}\")\n"
+      "endif()\n")
+    add_test(NAME ${Name} COMMAND ${CMAKE_COMMAND} -P "${_script}")
+  endfunction()
+
+  # Helper to add a selftest launch (expects the binary to accept --selftest and exit quickly).
+  function(add_selftest Name WorkingDir ExecutablePath)
+    add_test(NAME ${Name}
+      COMMAND ${CMAKE_COMMAND} -E chdir "${WorkingDir}"
+              "${ExecutablePath}" --selftest)
+    set_tests_properties(${Name} PROPERTIES TIMEOUT 30)
+  endfunction()
+
+  add_path_exists_test(stage_tools_bin_exists "${TOOLS_STAGE_DIR}")
+
+  if(WIN32)
+    set(_OpenFileTCP_exe "${TOOLS_STAGE_DIR}/OpenFileTCP/OpenFileTCP.exe")
+    set(_PlotUE_Data_exe "${TOOLS_STAGE_DIR}/PlotUE_Data/appPlotUE_Data.exe")
+    add_path_exists_test(stage_OpenFileTCP_exists "${_OpenFileTCP_exe}")
+    add_path_exists_test(stage_PlotUE_Data_exists "${_PlotUE_Data_exe}")
+    add_selftest(run_OpenFileTCP_selftest "${TOOLS_STAGE_DIR}/OpenFileTCP" "${_OpenFileTCP_exe}")
+    add_selftest(run_PlotUE_Data_selftest "${TOOLS_STAGE_DIR}/PlotUE_Data" "${_PlotUE_Data_exe}")
+
+    if(SUPERBUILD_RUN_TESTS)
+      add_test(NAME run_assimp_unit
+        COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}/bin/${SUPERBUILD_CTEST_CONFIG}"
+                "${ASSIMP_BUILD}/bin/${SUPERBUILD_CTEST_CONFIG}/unit.exe")
+      set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
+    endif()
+
+  elseif(APPLE)
+    set(_OpenFileTCP_exe "${TOOLS_STAGE_DIR}/OpenFileTCP.app/Contents/MacOS/OpenFileTCP")
+    set(_PlotUE_Data_exe "${TOOLS_STAGE_DIR}/PlotUE_Data.app/Contents/MacOS/appPlotUE_Data")
+    add_path_exists_test(stage_OpenFileTCP_exists "${_OpenFileTCP_exe}")
+    add_path_exists_test(stage_PlotUE_Data_exists "${_PlotUE_Data_exe}")
+    add_selftest(run_OpenFileTCP_selftest "${TOOLS_STAGE_DIR}/OpenFileTCP.app/Contents/MacOS" "${_OpenFileTCP_exe}")
+    add_selftest(run_PlotUE_Data_selftest "${TOOLS_STAGE_DIR}/PlotUE_Data.app/Contents/MacOS" "${_PlotUE_Data_exe}")
+
+    if(SUPERBUILD_RUN_TESTS)
+      add_test(NAME run_assimp_unit
+        COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}/bin"
+                "${ASSIMP_BUILD}/bin/unit")
+      set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
+    endif()
+
+  else()
+    set(_OpenFileTCP_exe "${TOOLS_STAGE_DIR}/OpenFileTCP/OpenFileTCP")
+    set(_PlotUE_Data_exe "${TOOLS_STAGE_DIR}/PlotUE_Data/appPlotUE_Data")
+    add_path_exists_test(stage_OpenFileTCP_exists "${_OpenFileTCP_exe}")
+    add_path_exists_test(stage_PlotUE_Data_exists "${_PlotUE_Data_exe}")
+    add_selftest(run_OpenFileTCP_selftest "${TOOLS_STAGE_DIR}/OpenFileTCP" "${_OpenFileTCP_exe}")
+    add_selftest(run_PlotUE_Data_selftest "${TOOLS_STAGE_DIR}/PlotUE_Data" "${_PlotUE_Data_exe}")
+
+    if(SUPERBUILD_RUN_TESTS)
+      add_test(NAME run_assimp_unit
+        COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}/bin"
+                "${ASSIMP_BUILD}/bin/unit")
+      set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
+    endif()
+  endif()
+
+  add_custom_target(superbuild_tests ALL
+    DEPENDS assimp_stage OpenFileTCP_stage PlotUE_Data_stage
+    COMMENT "Running superbuild staging checks"
+  )
+
+  if(SUPERBUILD_RUN_TESTS)
+    # Multi-config generators (e.g., MSVC) need an explicit configuration for ctest.
+    if(CMAKE_CONFIGURATION_TYPES)
+      set(_CTEST_CONFIG_ARGS -C ${SUPERBUILD_CTEST_CONFIG})
+    else()
+      set(_CTEST_CONFIG_ARGS)
+    endif()
+
+    add_custom_command(TARGET superbuild_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Testing"
+      COMMAND ${CMAKE_CTEST_COMMAND}
+              --output-on-failure
+              --output-log "${CMAKE_BINARY_DIR}/Testing/superbuild-ctest.log"
+              ${_CTEST_CONFIG_ARGS}
+      COMMENT "Executing ctest for staged tool bundles (log: ${CMAKE_BINARY_DIR}/Testing/superbuild-ctest.log)"
+    )
+  endif()
+endif()
+
 # ======================
 # Convenience messages
 # ======================
 message(STATUS "Superbuild will stage outputs in: ${CMAKE_BINARY_DIR}")
-message(STATUS "Node bundle output: ${CMAKE_BINARY_DIR}/nodejs-build/bundle")

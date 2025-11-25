@@ -1,6 +1,7 @@
 ## Windows Powershell
 cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.9.2/msvc2022_64"
 cmake --build _superbuild --config Release --parallel
+# optional: disable tests with -DSUPERBUILD_ENABLE_TESTS=OFF or skip running them with -DSUPERBUILD_RUN_TESTS=OFF
 
 ## Apple Zsh Terminal
 # Qt 6.9.3 (or any 6.9.x) installed under $HOME/Qt

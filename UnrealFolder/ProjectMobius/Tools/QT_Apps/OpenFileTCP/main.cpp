@@ -44,6 +44,21 @@ static bool IsProcessAlive(qint64 pid)
 // Simple file dialog application
 int main(int argc, char *argv[])
 {
+    // Lightweight arg scan for self-test (avoids GUI/plugin requirements)
+    bool bSelfTest = false;
+    for (int i = 1; i < argc; ++i) {
+        const QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg == "--selftest") {
+            bSelfTest = true;
+            break;
+        }
+    }
+
+    if (bSelfTest) {
+        QCoreApplication coreApp(argc, argv);
+        return 0; // Successful startup/shutdown path for ctest
+    }
+
     // Create application with GUI support
     QApplication app(argc, argv);
     QHttpServer server;
@@ -69,6 +84,7 @@ int main(int argc, char *argv[])
     // Add `--initialDir=<dir>` option
     parser.addOption({{"d", "initialDir"}, "Initial directory to load from", "initialDir"});
     parser.addOption({{"p", "parentPid"}, "Parent process id to monitor", "parentPid"});
+    parser.addOption({{"t", "selftest"}, "Launch, then exit immediately for CI checks"});
 
     // Process the arguments
     parser.process(app);

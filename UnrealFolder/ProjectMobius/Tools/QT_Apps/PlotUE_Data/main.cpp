@@ -22,6 +22,7 @@
  * IN THE SOFTWARE.
  */
 
+#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -40,9 +41,24 @@
 #include <QWindow>
 #include <QTimer>
 
-// …
+// ƒ?İ
 
 int main(int argc, char *argv[]) {
+    // Lightweight self-test path (no GUI/plugins needed)
+    bool bSelfTest = false;
+    for (int i = 1; i < argc; ++i) {
+        const QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg == "--selftest") {
+            bSelfTest = true;
+            break;
+        }
+    }
+
+    if (bSelfTest) {
+        QCoreApplication coreApp(argc, argv);
+        return 0;
+    }
+
     QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
 
@@ -56,8 +72,9 @@ int main(int argc, char *argv[]) {
 
     // Parse command line
     QCommandLineParser parser;
-    parser.addOption({{"p","pairId"},  "Mobius App ID (unused for IPC)", "pairId", ""}); // ✅ Default to empty
+    parser.addOption({{"p","pairId"},  "Mobius App ID (unused for IPC)", "pairId", ""}); // ƒo. Default to empty
     parser.addOption({{"e","endpoint"},"QLocalServer name", "endpoint", "MobiusIpc"});
+    parser.addOption({{"t","selftest"},"Launch, then exit immediately for CI checks"});
     parser.process(app);
 
     const QString pairId  = parser.value("pairId");  // Will be empty, that's fine
@@ -66,7 +83,7 @@ int main(int argc, char *argv[]) {
     // IPC server - pairId is ignored now
     IpcServerManager ipcMgr(
         endpoint,
-        pairId,      // ✅ Can be empty string, not used anymore
+        pairId,      // ƒo. Can be empty string, not used anymore
         &model,
         &axisSettings,
         &chartSettings,
