@@ -6,6 +6,9 @@
 #include "EnumsAndStructs/AvatarScalabilityEnum.h"
 #include "EnumsAndStructs/ScalabilityEnums.h"
 #include "GameFramework/GameUserSettings.h"
+#include "HAL/PlatformTime.h"
+#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Engine/Engine.h"
 
 UPerformanceUtilSubsystem::UPerformanceUtilSubsystem()
 {
@@ -20,6 +23,13 @@ UPerformanceUtilSubsystem::~UPerformanceUtilSubsystem()
 
 void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	const double InitStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("PerformanceUtilSubsystem::Initialize begin"));
+	}
+
 	Super::Initialize(Collection);
 	
 	// Get the game user setting
@@ -38,6 +48,12 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Game User Settings not found!"));
 		}
+	}
+
+	if (StartupLogger)
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - InitStart) * 1000.0;
+		StartupLogger->EnqueueTimedMessage(TEXT("PerformanceUtilSubsystem::Initialize"), DurationMs);
 	}
 }
 
@@ -147,6 +163,13 @@ void UPerformanceUtilSubsystem::CalculateCurrentFPS(float DeltaTime)
 void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel,
                                                       const TEnumAsByte<EScalabilityCategories> ScalabilityCategory)
 {
+	const double ApplyStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("ApplyScalabilityLevel -> Level:%d Category:%d"), static_cast<int32>(ScalabilityLevel.GetValue()), static_cast<int32>(ScalabilityCategory.GetValue())));
+	}
+
 	// check if GameUserSettings is valid
 	if (!GameUserSettings)
 	{
@@ -197,10 +220,23 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();
+
+	if (StartupLogger)
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - ApplyStart) * 1000.0;
+		StartupLogger->EnqueueTimedMessage(TEXT("PerformanceUtilSubsystem::ApplyScalabilityLevel"), DurationMs);
+	}
 }
 
 void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel)
 {
+	const double ApplyStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("ApplyScalabilityLevelToAll -> Level:%d"), static_cast<int32>(ScalabilityLevel.GetValue())));
+	}
+
 	// check if GameUserSettings is valid
 	if (!GameUserSettings)
 	{
@@ -224,6 +260,12 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<ESc
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();
+
+	if (StartupLogger)
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - ApplyStart) * 1000.0;
+		StartupLogger->EnqueueTimedMessage(TEXT("PerformanceUtilSubsystem::ApplyScalabilityLevelToAll"), DurationMs);
+	}
 }
 
 EScalabilitySettings UPerformanceUtilSubsystem::GetScalabilityLevel(
@@ -334,6 +376,13 @@ void UPerformanceUtilSubsystem::UpdateScreenResolutions(FIntPoint NewResolution)
 
 void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlobalScalabilitySettings> NewSetting)
 {
+	const double UpdateStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("UpdateGlobalScalabilitySetting -> %d"), static_cast<int32>(NewSetting.GetValue())));
+	}
+
 	// check if GameUserSettings is valid
 	if (!GameUserSettings)
 	{
@@ -374,6 +423,12 @@ void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlob
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();
+
+	if (StartupLogger)
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - UpdateStart) * 1000.0;
+		StartupLogger->EnqueueTimedMessage(TEXT("PerformanceUtilSubsystem::UpdateGlobalScalabilitySetting"), DurationMs);
+	}
 }
 
 TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulativeScalabilitySetting() const
@@ -455,6 +510,13 @@ void UPerformanceUtilSubsystem::SetCurrentPedestrianAvatarType(EPedestrianScalab
 
 void UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS()
 {
+	const double ApplyStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("ApplyOptimizationsBasedOnFPS triggered"));
+	}
+
 	// Clear the timer handle if it is valid
 	if (AutoScalabilityTimerHandle.IsValid())
 	{
@@ -474,6 +536,12 @@ void UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS()
 
 	// Notify listeners that auto scalability has changed
 	OnAutoScalabilityChanged.Broadcast();
+
+	if (StartupLogger)
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - ApplyStart) * 1000.0;
+		StartupLogger->EnqueueTimedMessage(TEXT("PerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS"), DurationMs);
+	}
 }
 
 //TODO: Our check for FPS is simplistic and only checks if the FPS is below a threshold. - we may want a range tolerance as well
@@ -486,6 +554,11 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 			// Start the timer to trigger auto scalability adjustments
 			GetWorld()->GetTimerManager().SetTimer(AutoScalabilityTimerHandle, this,
 			&UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS, 5.0f, false);
+
+			if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+			{
+				StartupLogger->EnqueueLogMessage(TEXT("Low FPS detected, auto-optimization timer started"));
+			}
 		}
 	}
 	else
@@ -495,6 +568,11 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 		{
 			GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
 			AutoScalabilityTimerHandle.Invalidate();
+
+			if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+			{
+				StartupLogger->EnqueueLogMessage(TEXT("FPS recovered, auto-optimization timer cleared"));
+			}
 		}
 	}
 }

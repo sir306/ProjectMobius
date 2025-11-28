@@ -40,6 +40,18 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Subsystems/LoadingSubsystem.h"
+#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Engine/Engine.h"
+#include "HAL/PlatformTime.h"
+#include "Misc/ScopeExit.h"
+
+namespace
+{
+	UMobiusStartupLoggerSubsystem* GetStartupLogger()
+	{
+		return GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	}
+}
 
 // Sets default values
 ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
@@ -73,6 +85,22 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 // Called when the game starts or when spawned
 void ARuntimeMeshBuilder::BeginPlay()
 {
+	const double BeginPlayStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("RuntimeMeshBuilder BeginPlay started"));
+	}
+
+	ON_SCOPE_EXIT
+	{
+		if (StartupLogger)
+		{
+			const double DurationMs = (FPlatformTime::Seconds() - BeginPlayStart) * 1000.0;
+			StartupLogger->EnqueueTimedMessage(TEXT("RuntimeMeshBuilder::BeginPlay"), DurationMs);
+		}
+	};
+
 	Super::BeginPlay();
 
 	// As mesh generation needs to happen when the game starts and the world is required the delegate is bound here
@@ -166,6 +194,22 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 
 void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 {
+	const double SyncLoadStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("RuntimeMeshBuilder::GetMeshDataFromFile start -> %s"), *MeshFileName));
+	}
+
+	ON_SCOPE_EXIT
+	{
+		if (StartupLogger)
+		{
+			const double DurationMs = (FPlatformTime::Seconds() - SyncLoadStart) * 1000.0;
+			StartupLogger->EnqueueTimedMessage(TEXT("RuntimeMeshBuilder::GetMeshDataFromFile"), DurationMs);
+		}
+	};
+
         if (MeshFileName.IsEmpty())
         {
                 UE_LOG(LogTemp, Error, TEXT("MeshFileName is empty. Aborting mesh load."));
@@ -266,7 +310,18 @@ void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 
 void ARuntimeMeshBuilder::UpdateMeshFileName()
 {
-	// Mark that we’re about to tear things down
+	const double UpdateStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	ON_SCOPE_EXIT
+	{
+		if (StartupLogger)
+		{
+			const double DurationMs = (FPlatformTime::Seconds() - UpdateStart) * 1000.0;
+			StartupLogger->EnqueueTimedMessage(TEXT("RuntimeMeshBuilder::UpdateMeshFileName"), DurationMs);
+		}
+	};
+
+	// Mark that we're about to tear things down
 	bIsResettingForNewLoad = true;
 
 	// Drop any queued work that still references old components
@@ -282,6 +337,11 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 
 	// get the clean file name
 	FString LoadingFileName = GameInst->GetSimulationMeshFileName();
+
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("RuntimeMeshBuilder::UpdateMeshFileName -> %s"), *MeshFileName));
+	}
 
 	// Get the loading subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
@@ -426,6 +486,22 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 
 void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 {
+	const double AsyncUpdateStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("RuntimeMeshBuilder::AsyncUpdateMesh start -> %s"), *PathToMesh));
+	}
+
+	ON_SCOPE_EXIT
+	{
+		if (StartupLogger)
+		{
+			const double DurationMs = (FPlatformTime::Seconds() - AsyncUpdateStart) * 1000.0;
+			StartupLogger->EnqueueTimedMessage(TEXT("RuntimeMeshBuilder::AsyncUpdateMesh"), DurationMs);
+		}
+	};
+
 	// As this is game thread dependent we need to ensure this is called on the game thread and return if not
 	if(!IsInGameThread())
 	{
@@ -461,6 +537,22 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 
 void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 {
+	const double ReceiveStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("RuntimeMeshBuilder::GetTheAsyncMeshData received"));
+	}
+
+	ON_SCOPE_EXIT
+	{
+		if (StartupLogger)
+		{
+			const double DurationMs = (FPlatformTime::Seconds() - ReceiveStart) * 1000.0;
+			StartupLogger->EnqueueTimedMessage(TEXT("RuntimeMeshBuilder::GetTheAsyncMeshData"), DurationMs);
+		}
+	};
+
 	// TODO:check valid data
 	//AsyncAssimpLoader->MeshLoaderRunnable
 
@@ -808,6 +900,22 @@ void ARuntimeMeshBuilder::EndLoadingWidget()
 
 void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 {
+	const double DatasmithStart = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("RuntimeMeshBuilder::CreateDatasmithMaterials start"));
+	}
+
+	ON_SCOPE_EXIT
+	{
+		if (StartupLogger)
+		{
+			const double DurationMs = (FPlatformTime::Seconds() - DatasmithStart) * 1000.0;
+			StartupLogger->EnqueueTimedMessage(TEXT("RuntimeMeshBuilder::CreateDatasmithMaterials"), DurationMs);
+		}
+	};
+
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Datasmith Import Completed, Performing Material Setup");
 
     if (RuntimeDatasmithAnchor == nullptr)

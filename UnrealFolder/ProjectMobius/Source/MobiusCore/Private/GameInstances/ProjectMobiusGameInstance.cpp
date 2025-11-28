@@ -24,6 +24,9 @@
 
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Engine/DataTable.h"
+#include "Engine/Engine.h"
+#include "HAL/PlatformTime.h"
+#include "Subsystems/MobiusStartupLoggerSubsystem.h"
 #include "Subsystems/WebSocketSubsystem.h"
 
 UProjectMobiusGameInstance::UProjectMobiusGameInstance():
@@ -43,6 +46,13 @@ UProjectMobiusGameInstance::UProjectMobiusGameInstance():
 
 void UProjectMobiusGameInstance::Init()
 {
+	const double InitStartSeconds = FPlatformTime::Seconds();
+	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	if (StartupLogger)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("ProjectMobiusGameInstance::Init begin"));
+	}
+
 	Super::Init();
 
 	IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("t.IdleWhenNotForeground"));
@@ -72,6 +82,11 @@ void UProjectMobiusGameInstance::Init()
 		UE_LOG(LogTemp, Warning, TEXT("CVar t.MaxFPS not found!"));
 	}
 
+	if (StartupLogger)
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - InitStartSeconds) * 1000.0;
+		StartupLogger->EnqueueTimedMessage(TEXT("ProjectMobiusGameInstance::Init"), DurationMs);
+	}
 }
 
 void UProjectMobiusGameInstance::Shutdown()
