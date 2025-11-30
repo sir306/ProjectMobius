@@ -122,14 +122,6 @@ void ARuntimeMeshBuilder::BeginPlay()
 		UE_LOG(LogTemp, Error, TEXT("World is not valid, Mesh Generation will not work"));
 	}
 	
-	// Create the material cache
-	// Preload all master materials used, so streaming cost happens early.
-        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked.MI_DatasmithOpaqueMasked'"));
-        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
-        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/WindowsGlass/MI_DatasmithTranslucent.MI_DatasmithTranslucent'"));
-        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque.MI_Opaque'"));
-        MaterialCache.GetOrLoadMasterMaterial(TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'"));
-	
 	// Assign the Flow Counter class to auto spawn
 	if (FlowCounterSpawnerComponent)
 	{
