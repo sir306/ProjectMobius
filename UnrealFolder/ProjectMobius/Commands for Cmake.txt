@@ -3,6 +3,22 @@ cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=
 cmake --build _superbuild --config Release --parallel
 # optional: disable tests with -DSUPERBUILD_ENABLE_TESTS=OFF or skip running them with -DSUPERBUILD_RUN_TESTS=OFF
 
+  # Reconfigure with your correct UE paths (binary engine)
+  cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 `
+    -DCMAKE_PREFIX_PATH="C:/Qt/6.9.2/msvc2022_64" `
+    -DSUPERBUILD_ENABLE_UE_GENBUILD=ON `
+    -DUE_BUILD_EXE="D:/UE_Engines/UE_5.5/Engine/Build/BatchFiles/Build.bat" `
+    -DUE_BUILD_ARGS="ProjectMobiusEditor Win64 Development 
+  -Project=E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/ProjectMobius.uproject -WaitMutex -architecture=x64"
+
+  # Build
+  cmake --build _superbuild --config Release
+
+  # Run tests (including UE build test)
+  cd _superbuild
+  ctest -C Release --output-on-failure
+
+
 ## Apple Zsh Terminal
 # Qt 6.9.3 (or any 6.9.x) installed under $HOME/Qt
 cmake -S . -B _superbuild -G Ninja \
