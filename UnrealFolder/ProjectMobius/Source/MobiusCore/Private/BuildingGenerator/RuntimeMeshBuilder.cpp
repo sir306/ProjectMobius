@@ -40,16 +40,16 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Subsystems/LoadingSubsystem.h"
-#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/ScopeExit.h"
 
 namespace
 {
-	UMobiusStartupLoggerSubsystem* GetStartupLogger()
+	UMobiusCustomLoggerSubsystem* GetStartupLogger()
 	{
-		return GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+		return GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	}
 }
 
@@ -86,7 +86,7 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 void ARuntimeMeshBuilder::BeginPlay()
 {
 	const double BeginPlayStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("RuntimeMeshBuilder BeginPlay started"));
@@ -187,7 +187,7 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 {
 	const double SyncLoadStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("RuntimeMeshBuilder::GetMeshDataFromFile start -> %s"), *MeshFileName));
@@ -303,7 +303,7 @@ void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 void ARuntimeMeshBuilder::UpdateMeshFileName()
 {
 	const double UpdateStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	ON_SCOPE_EXIT
 	{
 		if (StartupLogger)
@@ -479,7 +479,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 {
 	const double AsyncUpdateStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("RuntimeMeshBuilder::AsyncUpdateMesh start -> %s"), *PathToMesh));
@@ -530,7 +530,7 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 {
 	const double ReceiveStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("RuntimeMeshBuilder::GetTheAsyncMeshData received"));
@@ -893,7 +893,7 @@ void ARuntimeMeshBuilder::EndLoadingWidget()
 void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 {
 	const double DatasmithStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GetStartupLogger();
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("RuntimeMeshBuilder::CreateDatasmithMaterials start"));

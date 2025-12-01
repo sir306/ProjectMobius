@@ -1,6 +1,6 @@
 // Lightweight startup logger implementation.
 
-#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
 
 #include "Containers/Ticker.h"
 #include "Containers/StringConv.h"
@@ -16,36 +16,36 @@
 
 namespace
 {
-	UMobiusStartupLoggerSubsystem* GetStartupLoggerSubsystem()
+	UMobiusCustomLoggerSubsystem* GetStartupLoggerSubsystem()
 	{
-		return GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+		return GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	}
 }
 
-UMobiusStartupLoggerSubsystem::UMobiusStartupLoggerSubsystem()
+UMobiusCustomLoggerSubsystem::UMobiusCustomLoggerSubsystem()
 	: bIsFlushing(false)
 {
 }
 
-void UMobiusStartupLoggerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+void UMobiusCustomLoggerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
 	const FString LaunchDir = FPaths::ConvertRelativePathToFull(FPaths::LaunchDir());
-	LogFilePath = FPaths::Combine(LaunchDir, TEXT("MobiusStartupLog.txt"));
+	LogFilePath = FPaths::Combine(LaunchDir, TEXT("MobiusCustomLog.txt"));
 
 	// Ensure the directory exists in case LaunchDir is relative during testing.
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	PlatformFile.CreateDirectoryTree(*FPaths::GetPath(LogFilePath));
 
 	FlushTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateUObject(this, &UMobiusStartupLoggerSubsystem::PumpLogs),
+		FTickerDelegate::CreateUObject(this, &UMobiusCustomLoggerSubsystem::PumpLogs),
 		0.25f); // flush 4x per second to keep overhead tiny
 
-	EnqueueLogMessage(FString::Printf(TEXT("Startup logger initialised. Writing to %s"), *LogFilePath));
+	EnqueueLogMessage(FString::Printf(TEXT("Custom logger initialised. Writing to %s"), *LogFilePath));
 }
 
-void UMobiusStartupLoggerSubsystem::Deinitialize()
+void UMobiusCustomLoggerSubsystem::Deinitialize()
 {
 	if (FlushTickerHandle.IsValid())
 	{
@@ -57,36 +57,36 @@ void UMobiusStartupLoggerSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UMobiusStartupLoggerSubsystem::EnqueueLogMessage(const FString& Message)
+void UMobiusCustomLoggerSubsystem::EnqueueLogMessage(const FString& Message)
 {
 	const FString Line = BuildTimestampedLine(Message);
 	FScopeLock Lock(&QueueMutex);
 	PendingMessages.Enqueue(Line);
 }
 
-void UMobiusStartupLoggerSubsystem::EnqueueTimedMessage(const FString& EventName, float DurationMilliseconds)
+void UMobiusCustomLoggerSubsystem::EnqueueTimedMessage(const FString& EventName, float DurationMilliseconds)
 {
 	const FString Line = FString::Printf(TEXT("%s completed in %.2f ms"), *EventName, DurationMilliseconds);
 	EnqueueLogMessage(Line);
 }
 
-void UMobiusStartupLoggerSubsystem::FlushQueuedMessages()
+void UMobiusCustomLoggerSubsystem::FlushQueuedMessages()
 {
 	FlushToDisk();
 }
 
-UMobiusStartupLoggerSubsystem* UMobiusStartupLoggerSubsystem::Get(const UObject* WorldContextObject)
+UMobiusCustomLoggerSubsystem* UMobiusCustomLoggerSubsystem::Get(const UObject* WorldContextObject)
 {
 	return GetStartupLoggerSubsystem();
 }
 
-bool UMobiusStartupLoggerSubsystem::PumpLogs(float DeltaTime)
+bool UMobiusCustomLoggerSubsystem::PumpLogs(float DeltaTime)
 {
 	FlushToDisk();
 	return true; // keep ticking
 }
 
-void UMobiusStartupLoggerSubsystem::FlushToDisk()
+void UMobiusCustomLoggerSubsystem::FlushToDisk()
 {
 	if (bIsFlushing || LogFilePath.IsEmpty())
 	{
@@ -136,7 +136,7 @@ void UMobiusStartupLoggerSubsystem::FlushToDisk()
 	Handle->Flush();
 }
 
-FString UMobiusStartupLoggerSubsystem::BuildTimestampedLine(const FString& Message) const
+FString UMobiusCustomLoggerSubsystem::BuildTimestampedLine(const FString& Message) const
 {
 	const FDateTime Now = FDateTime::Now();
 	const FString Timestamp = FString::Printf(TEXT("%04d-%02d-%02d %02d:%02d:%02d.%03d"),

@@ -27,7 +27,7 @@
 //#include "MobiusWidgetSubsystem.h"
 #include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Kismet/GameplayStatics.h"
-#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
 
 UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
@@ -36,7 +36,7 @@ UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
 
 void UHeatmapSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("HeatmapSubsystem::Initialize begin"));
 	}
@@ -63,7 +63,7 @@ void UHeatmapSubsystem::Deinitialize()
 
 void UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize(const FVector& SpawnOrigin, const FVector& BoundExtents)
 {
-	if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
 	{
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("HeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize Origin:%s Extent:%s"), *SpawnOrigin.ToCompactString(), *BoundExtents.ToCompactString()));
 	}
@@ -109,7 +109,7 @@ void UHeatmapSubsystem::CreateHeatmap(const FVector& Location, int32 HeatmapInde
 	// Check if the world is valid
 	if (GetWorld())
 	{
-		if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+		if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
 		{
 			StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("HeatmapSubsystem::CreateHeatmap index:%d location:%s"), HeatmapIndex, *Location.ToCompactString()));
 		}

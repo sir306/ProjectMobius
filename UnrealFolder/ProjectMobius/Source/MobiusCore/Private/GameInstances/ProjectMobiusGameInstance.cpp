@@ -26,7 +26,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
-#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Subsystems/WebSocketSubsystem.h"
 
 UProjectMobiusGameInstance::UProjectMobiusGameInstance():
@@ -47,7 +47,7 @@ UProjectMobiusGameInstance::UProjectMobiusGameInstance():
 void UProjectMobiusGameInstance::Init()
 {
 	const double InitStartSeconds = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("ProjectMobiusGameInstance::Init begin"));

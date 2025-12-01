@@ -192,7 +192,7 @@ protected:
 
 	/** Low FPS threshold, when we hit this threshold we need to start auto triggering optimization techniques */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
-	float LowFPSThreshold = 30.0f;
+	float LowFPSThreshold = 15.0f;
 
 	/** Timer handle used to trigger auto scalability if prolonged low fps occurs */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")

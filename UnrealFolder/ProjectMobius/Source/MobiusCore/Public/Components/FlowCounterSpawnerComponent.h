@@ -7,6 +7,8 @@
 #include "Actors/FlowCounter.h"
 #include "FlowCounterSpawnerComponent.generated.h"
 
+class UMobiusCustomLoggerSubsystem;
+
 /** Delegate for broadcasting auto flow counter spawns */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFlowCounterSpawned, AFlowCounter*, NewFlowCounter);
 
@@ -51,10 +53,19 @@ protected:
 							   FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
-	TArray<TWeakObjectPtr<UStaticMeshComponent>> PendingDoorMeshes;
+	struct FPendingDoorEntry
+	{
+		TWeakObjectPtr<UStaticMeshComponent> DoorMesh;
+		int32 DoorId = INDEX_NONE;
+	};
+
+	TArray<FPendingDoorEntry> PendingDoorMeshes;
+	int32 NextDoorSpawnId = 1;
 	bool bSpawning = false;
 
-	void GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh);
+    void GenerateFlowCounterForDoor(UStaticMeshComponent* DoorMesh, int32 DoorId);
+    UMobiusCustomLoggerSubsystem* GetCustomLogger() const;
+    void LogToCustomLogger(const FString& Message) const;
 	
 	double LastSpawnTime = 0.0;
 

@@ -1,4 +1,4 @@
-Ôªø// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Subsystems/PerformanceUtilSubsystem.h"
@@ -7,7 +7,7 @@
 #include "EnumsAndStructs/ScalabilityEnums.h"
 #include "GameFramework/GameUserSettings.h"
 #include "HAL/PlatformTime.h"
-#include "Subsystems/MobiusStartupLoggerSubsystem.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
 
 UPerformanceUtilSubsystem::UPerformanceUtilSubsystem()
@@ -24,7 +24,7 @@ UPerformanceUtilSubsystem::~UPerformanceUtilSubsystem()
 void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	const double InitStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("PerformanceUtilSubsystem::Initialize begin"));
@@ -90,7 +90,7 @@ void UPerformanceUtilSubsystem::Tick(float DeltaTime)
 
 static bool ParseCVarString(const FString& InString, FString& OutName, FString& OutValue)
 {
-	// Split only on the first ‚Äú=‚Äù
+	// Split only on the first ì=î
 	if (!InString.Split(TEXT("="), &OutName, &OutValue))
 	{
 		return false;
@@ -164,7 +164,7 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
                                                       const TEnumAsByte<EScalabilityCategories> ScalabilityCategory)
 {
 	const double ApplyStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("ApplyScalabilityLevel -> Level:%d Category:%d"), static_cast<int32>(ScalabilityLevel.GetValue()), static_cast<int32>(ScalabilityCategory.GetValue())));
@@ -231,7 +231,7 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<EScalabilitySettings> ScalabilityLevel)
 {
 	const double ApplyStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("ApplyScalabilityLevelToAll -> Level:%d"), static_cast<int32>(ScalabilityLevel.GetValue())));
@@ -377,7 +377,7 @@ void UPerformanceUtilSubsystem::UpdateScreenResolutions(FIntPoint NewResolution)
 void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlobalScalabilitySettings> NewSetting)
 {
 	const double UpdateStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("UpdateGlobalScalabilitySetting -> %d"), static_cast<int32>(NewSetting.GetValue())));
@@ -511,7 +511,7 @@ void UPerformanceUtilSubsystem::SetCurrentPedestrianAvatarType(EPedestrianScalab
 void UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS()
 {
 	const double ApplyStart = FPlatformTime::Seconds();
-	UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr;
+	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
 		StartupLogger->EnqueueLogMessage(TEXT("ApplyOptimizationsBasedOnFPS triggered"));
@@ -553,9 +553,9 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 		{
 			// Start the timer to trigger auto scalability adjustments
 			GetWorld()->GetTimerManager().SetTimer(AutoScalabilityTimerHandle, this,
-			&UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS, 5.0f, false);
+			&UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS, 10.0f, false);
 
-			if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+			if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
 			{
 				StartupLogger->EnqueueLogMessage(TEXT("Low FPS detected, auto-optimization timer started"));
 			}
@@ -569,7 +569,7 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 			GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
 			AutoScalabilityTimerHandle.Invalidate();
 
-			if (UMobiusStartupLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusStartupLoggerSubsystem>() : nullptr)
+			if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
 			{
 				StartupLogger->EnqueueLogMessage(TEXT("FPS recovered, auto-optimization timer cleared"));
 			}

@@ -8,19 +8,19 @@
 #include "HAL/CriticalSection.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Subsystems/EngineSubsystem.h"
-#include "MobiusStartupLoggerSubsystem.generated.h"
+#include "MobiusCustomLoggerSubsystem.generated.h"
 
 /**
  * Engine-level logger that opens a text file next to the launched executable and writes messages via a queue.
  * Designed to be cheap to call from BeginPlay (including blueprints) to spot startup stalls.
  */
 UCLASS()
-class MOBIUSCORE_API UMobiusStartupLoggerSubsystem : public UEngineSubsystem
+class MOBIUSCORE_API UMobiusCustomLoggerSubsystem : public UEngineSubsystem
 {
 	GENERATED_BODY()
 
 public:
-	UMobiusStartupLoggerSubsystem();
+	UMobiusCustomLoggerSubsystem();
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
@@ -39,7 +39,7 @@ public:
 
 	/** Convenience accessor so blueprints can fetch the subsystem directly. */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Logging", meta = (WorldContext = "WorldContextObject"))
-	static UMobiusStartupLoggerSubsystem* Get(const UObject* WorldContextObject);
+	static UMobiusCustomLoggerSubsystem* Get(const UObject* WorldContextObject);
 
 private:
 	FString LogFilePath;
