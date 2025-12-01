@@ -46,6 +46,7 @@
 #include "MassAI/Actors/PedestrianCollisionHolder.h"
 
 #include "Subsystems/HeatmapSubsystem.h"
+#include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 UPedestrianInitializeMOP::UPedestrianInitializeMOP()
@@ -103,8 +104,26 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 	// Create a float array to hold all the unique Z values of the agents
 	TArray<float> UniqueZValues;
 	
+	// get the mobius widget subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
 	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, &EntityIndexOffset, CurrentTimeStep, &UniqueZValues](FMassExecutionContext& Context) {
+	// check if the widget subsystem is valid
+	if (LoadingSubsystem)
+	{
+
+		FString LoadingText = FString::Printf(TEXT("Building Pedestrian Movement AI Data..."));
+		
+		// Set the loading text and title
+		LoadingSubsystem->SetLoadingText(true, LoadingText);
+		LoadingSubsystem->BroadcastNewLoadPercent(0.0f);
+	}
+	
+	// Get Max Agent Count from Agent Data Subsystem
+	UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();
+	int32 MaxAgentCount = AgentDataSubsystem->GetMaxAgents();
+	
+	
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, &EntityIndexOffset, CurrentTimeStep, &UniqueZValues, LoadingSubsystem, MaxAgentCount](FMassExecutionContext& Context) {
 
 		//UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute"));
 
@@ -208,6 +227,16 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			EntityCollisions[i].Capsule->SetWorldLocation(SpawnLocation);
 			
 			EntityIndexOffset++;
+			
+			// check if the widget subsystem is valid
+			if (LoadingSubsystem)
+			{
+				// Calculate load percent
+				float LoadPercent = (float)(EntityIndexOffset) / (float)(MaxAgentCount);
+				
+				// Broadcast the load percent
+				LoadingSubsystem->BroadcastNewLoadPercent(LoadPercent);
+			}
 		}
 		
 		

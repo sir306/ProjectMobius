@@ -40,6 +40,7 @@
 #include "SubSystems/TimeDilationSubSystem.h"
 #include "HeatmapVisualization/Public/QuadTree.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
+#include "Subsystems/LoadingSubsystem.h"
 
 
 void UAgentDataSubsystem::ParseEntityInfo(const TSharedPtr<FJsonObject>& InJsonObject, FEntityInfoFragment& OutInfo)
@@ -133,6 +134,21 @@ void UAgentDataSubsystem::Tick(float DeltaTime)
 	while (MaxAgentsQueue.Dequeue(MaxAgents))
 	{
 		OnMaxAgentCount.Broadcast(MaxAgents);
+	}
+	
+	// This temp fix but as we only should be changing loading text at a few key points this should be ok for now
+	while (LoadingTaskQueue.Dequeue(CurrentLoadingTask))
+	{
+		// Get loading ui
+		if (UWorld* World = GetWorld())
+		{
+			//TODO: this is a temp fix but we need to find a better way to update loading text from this subsystems
+			// Look into interface or use a event dispatcher or something better
+			if (ULoadingSubsystem* LoadingSubsystem = World->GetSubsystem<ULoadingSubsystem>())
+			{
+				LoadingSubsystem->SetLoadingText(true, CurrentLoadingTask);
+			}
+		}
 	}
 
 	if (bIsDataLoaded)
@@ -666,9 +682,11 @@ void FJsonDataRunnable::FinalizeProgress()
 	{
 		return;
 	}
+	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get();
+	
 	// Perform Animation Preprocessing data here
 	// Broadcast the current percentage of the data loaded
-	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+	if (Subsys)
 	{
 		Subsys->ProgressQueue.Enqueue(1.0f);
 		Subsys->ProgressQueue.Enqueue(0.0f);// TODO: NEED to broadcast new load text here
@@ -677,6 +695,10 @@ void FJsonDataRunnable::FinalizeProgress()
 	if (bShouldStop)
 	{
 		return;
+	}
+	if (Subsys)
+	{
+		Subsys->LoadingTaskQueue.Enqueue(TEXT("Calculating Smoothed Step Movement Brackets..."));
 	}
 	
 	CalcSmoothedStepMovementBrackets(AgentDataArray);
@@ -690,7 +712,7 @@ void FJsonDataRunnable::FinalizeProgress()
 	}
 
 	// Broadcast that the simulation data has been loaded -- this is done on the game thread
-	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+	if (Subsys)
 	{
 		if (bShouldStop)
 		{
@@ -707,13 +729,17 @@ void FJsonDataRunnable::FinalizeProgress()
 uint32 FJsonDataRunnable:: Run()
 {
 	bIsRunning = true;
+	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get(); //TODO: this may need to be a weak ptr check/and/or variable
 	// Broadcast the current percentage of the data loaded
-	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+	if (Subsys)
 	{
 		Subsys->ProgressQueue.Enqueue(0.0f);
+		
+		// First loading task
+		Subsys->LoadingTaskQueue.Enqueue(TEXT("Loading Simulation Data From File..."));
 	}
 
-
+	// TODO: this has no way to know progress of loading file at the moment so we need to think on how to do this better
 	if (!LoadFileAndDeserialize())
 	{
 		bIsRunning = false;
@@ -722,10 +748,15 @@ uint32 FJsonDataRunnable:: Run()
 
 	bool bCalculateTimeBetweenSteps = true;
 	bool bCalculateMaxTime = true;
+	
+	if (Subsys)
+	{
+		Subsys->LoadingTaskQueue.Enqueue(TEXT("Processing Simulation Metadata..."));
+	}
 
 	ProcessMetadata(bCalculateTimeBetweenSteps, bCalculateMaxTime);
 	
-	if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+	if (Subsys)
 	{
 		Subsys->MaxAgentsQueue.Enqueue(MaxAgents);
 	}
@@ -741,6 +772,10 @@ uint32 FJsonDataRunnable:: Run()
 	if (bShouldStop)
 	{
 		return 0;
+	}
+	if (Subsys)
+	{
+		Subsys->LoadingTaskQueue.Enqueue(TEXT("Parsing Simulation Data..."));
 	}
 
 	// Run the main simulation loop

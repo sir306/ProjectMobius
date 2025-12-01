@@ -177,6 +177,7 @@ public:
 	bool bIsDataLoaded = false; // Flag to indicate if the data has been loaded
 
 	TQueue<float,EQueueMode::Mpsc> ProgressQueue; // Queue to hold progress updates
+	TQueue<FString,EQueueMode::Mpsc> LoadingTaskQueue; // Queue to hold loading task updates and inform current loading task
 	TQueue<int32,EQueueMode::Mpsc> MaxAgentsQueue;
 	
 protected:
@@ -207,6 +208,9 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	float LoadProgress;
+
+	UPROPERTY(EditAnywhere)
+	FString CurrentLoadingTask = FString();
 
 	
 	

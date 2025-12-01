@@ -242,6 +242,19 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
+	// get the mobius widget subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+	
+	// check if the widget subsystem is valid
+	if (LoadingSubsystem)
+	{
+
+		FString LoadingText = FString::Printf(TEXT("Clearing Old Data..."));
+		
+		// Set the loading text and title
+		LoadingSubsystem->SetLoadingText(true, LoadingText);
+	}
+	
         // Cleanup any existing runnable to avoid memory leaks
         AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
@@ -277,6 +290,19 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 
 void UMassEntitySpawnSubsystem::LoadPedestrianData()
 {
+	// get the mobius widget subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+	
+	// check if the widget subsystem is valid
+	if (LoadingSubsystem)
+	{
+
+		FString LoadingText = FString::Printf(TEXT("Fetching Pedestrian Data File..."));
+		
+		// Set the loading text and title
+		LoadingSubsystem->SetLoadingText(true, LoadingText);
+	}
+	
 	FString JSONDataFile = "";
 	// Get the Game Instance 
 	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
@@ -291,9 +317,6 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		// error log
 		UE_LOG(LogTemp, Error, TEXT("Agent Data Subsystem is not valid"));
 	}
-
-	// get the mobius widget subsystem
-	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
 
 	// Cleanup any existing runnable to avoid memory leaks
 	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
@@ -324,6 +347,20 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
+	
+	// get the mobius widget subsystem
+	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
+	
+	// check if the widget subsystem is valid
+	if (LoadingSubsystem)
+	{
+
+		FString LoadingText = FString::Printf(TEXT("Building Pedestrian Movement AI Data..."));
+		
+		// Set the loading text and title
+		LoadingSubsystem->SetLoadingText(true, LoadingText);
+		LoadingSubsystem->BroadcastNewLoadPercent(0.0f);
+	}
 
 	FSimulationFragment SimulationFragment;
 	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> JSONObjectLocal;
