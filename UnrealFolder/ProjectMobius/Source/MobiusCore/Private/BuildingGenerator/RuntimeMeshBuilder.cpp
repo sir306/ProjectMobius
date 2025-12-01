@@ -395,7 +395,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			FDatasmithRuntimeImportOptions ImportOptions;// TODO: set the import options
 
 			// For thesis, I don't want collisions
-			ImportOptions.BuildCollisions = ECollisionEnabled::Type::NoCollision;
+			ImportOptions.BuildCollisions = ECollisionEnabled::Type::QueryOnly;
 			ImportOptions.CollisionType = ECollisionTraceFlag::CTF_UseSimpleAndComplex;
 			ImportOptions.TessellationOptions.bUseCADKernel = true;
 			ImportOptions.TessellationOptions.StitchingTechnique = EDatasmithCADStitchingTechnique::StitchingHeal;
