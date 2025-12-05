@@ -17,6 +17,14 @@
 #include <windows.h>
 #endif
 
+/**
+ * @brief Cross-platform helper to confirm a parent process is still running.
+ *
+ * Qt beginners: this is used to auto-close the dialog app if Unreal has
+ * already quit. On Windows we query the process handle; on POSIX we probe with
+ * @c kill(pid, 0), which never delivers a signal but reports whether the PID
+ * exists.
+ */
 static bool IsProcessAlive(qint64 pid)
 {
     if (pid <= 0) {
@@ -41,7 +49,13 @@ static bool IsProcessAlive(qint64 pid)
 }
 
 
-// Simple file dialog application
+/**
+ * @brief HTTP-driven file dialog helper for Unreal tooling.
+ *
+ * Unreal calls into this helper over localhost to present native file pickers
+ * (agent and mesh files). The app stays alive even if its window closes and
+ * will self-terminate if the parent Unreal PID disappears.
+ */
 int main(int argc, char *argv[])
 {
     // Lightweight arg scan for self-test (avoids GUI/plugin requirements)

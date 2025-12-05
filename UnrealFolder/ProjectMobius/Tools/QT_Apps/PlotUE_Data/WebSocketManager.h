@@ -36,11 +36,27 @@ class ChartSettings;     // ← forward
 class QWebSocket;
 class QTimer;
 
+/**
+ * @brief Handles the WebSocket transport used to feed Unreal data into QML.
+ *
+ * WebSocketManager owns the socket connection plus a worker-threaded
+ * MessageProcessor so heavy JSON parsing happens off the GUI thread. It emits
+ * @c connectionStatus changes for QML to display connection diagnostics.
+ */
 class WebSocketManager : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString connectionStatus READ connectionStatus NOTIFY connectionStatusChanged)
 
 public:
+    /**
+     * @brief Create a WebSocket client wired up to the charting objects.
+     * @param url Remote endpoint, typically the Unreal editor WebSocket URL.
+     * @param unrealEngineID Identifier registered with the Unreal side.
+     * @param model Target chart model receiving point data.
+     * @param axisSettings Axis metadata bound in QML.
+     * @param chartSettings Chart UI state (title, playbar, status text).
+     * @param parent Owning QObject.
+     */
     explicit WebSocketManager(const QUrl &url,
                               const QString& unrealEngineID,
                               ChartTableModel *model,
@@ -54,6 +70,11 @@ public:
     QString connectionStatus() const { return m_status; }
 
 public slots:
+    /**
+     * @brief Poll for new data or reconnect if the socket drops.
+     *
+     * Triggered by a QTimer (100 Hz) to keep the UI in sync with the sim.
+     */
     void sendPoll();
 
 

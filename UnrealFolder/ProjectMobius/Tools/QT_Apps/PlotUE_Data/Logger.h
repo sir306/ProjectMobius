@@ -9,6 +9,13 @@
 #include <QStandardPaths>
 #include <QDebug>
 
+/**
+ * @brief Lightweight, thread-safe file logger for the Qt helpers.
+ *
+ * Logger writes to the OS temp directory (PlotUE_Data.log) and mirrors output
+ * to qDebug for convenience during development. Access via the static
+ * @ref instance() singleton and helper macros below.
+ */
 class Logger : public QObject
 {
     Q_OBJECT
@@ -19,6 +26,11 @@ public:
         return inst;
     }
 
+    /**
+     * @brief Write a single formatted line to the log file and console.
+     * @param level Short severity label (e.g., INFO, WARN).
+     * @param message Message text; newlines are not required.
+     */
     void log(const QString& level, const QString& message)
     {
         QMutexLocker locker(&m_mutex);

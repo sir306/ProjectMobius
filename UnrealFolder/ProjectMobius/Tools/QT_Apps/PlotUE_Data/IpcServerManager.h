@@ -11,18 +11,32 @@
 #include <QHash>
 #include "MessageProcessor.h"
 
-// Simple local IPC server replacing WebSocketManager.
-// - Listens on a QLocalServer name (e.g., "MobiusIpc")
-// - Speaks length-prefixed frames: [u32_le size][UTF-8 JSON]
 class ChartTableModel;
 class AxisSettings;
 class ChartSettings;
 
+/**
+ * @brief Local socket server that feeds Unreal telemetry into the Qt UI.
+ *
+ * IpcServerManager replaces the WebSocket path with a simpler QLocalServer.
+ * Each connected client sends length-prefixed JSON frames of the form
+ * [u32_le size][UTF-8 JSON]. Messages are forwarded to MessageProcessor on a
+ * worker thread so parsing does not block the GUI event loop.
+ */
 class IpcServerManager : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString connectionStatus READ connectionStatus NOTIFY connectionStatusChanged)
 public:
+    /**
+     * @brief Construct an IPC server bound to a named endpoint.
+     * @param endpointName Name passed to QLocalServer::listen (e.g., "MobiusIpc").
+     * @param unrealEngineID Identifier forwarded back to Unreal when registering.
+     * @param model Target chart model receiving point data.
+     * @param axisSettings Axis metadata bound in QML.
+     * @param chartSettings Chart UI state (title, playbar, status text).
+     * @param parent Owning QObject.
+     */
     explicit IpcServerManager(const QString& endpointName,
                               const QString& unrealEngineID,
                               ChartTableModel* model,
@@ -42,13 +56,34 @@ signals:
     void connectionStatusChanged();
 
 private slots:
+    /**
+     * @brief Accept a pending client and send the initial registration message.
+     */
     void onNewConnection();
+    /**
+     * @brief Read and reassemble length-prefixed frames from a socket.
+     * @param s Socket that has data available.
+     *
+     * Buffers partial frames until a full [len][payload] pair is present, then
+     * forwards the UTF-8 JSON payload to MessageProcessor on the worker thread.
+     */
     void onReadyRead(QLocalSocket* s);
+    /**
+     * @brief Remove socket bookkeeping when a client disconnects.
+     */
     void onDisconnected(QLocalSocket* s);
 
 private:
     void startListening();
+    /**
+     * @brief Send a single length-prefixed JSON payload to a client.
+     * @param s Connected socket.
+     * @param payload Raw JSON bytes to deliver.
+     */
     void sendFrame(QLocalSocket* s, const QByteArray& payload);
+    /**
+     * @brief Send the same payload to all connected clients.
+     */
     void broadcast(const QByteArray& payload);
     static QByteArray MakeJson(const QJsonObject& obj);
 

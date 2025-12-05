@@ -83,22 +83,38 @@ class ChartTableModel;
 class AxisSettings;
 class ChartSettings;
 
+/**
+ * @brief Parses incoming JSON commands and routes them to chart/axis objects.
+ *
+ * MessageProcessor lives on a worker thread so the GUI thread stays responsive
+ * when large messages arrive from Unreal. Built-in actions are dispatched via
+ * a constexpr hash table for speed, and additional actions can be registered at
+ * runtime with @ref registerHandler.
+ */
 class MessageProcessor : public QObject {
     Q_OBJECT
 
 public:
     MessageProcessor(ChartTableModel* model, AxisSettings* axis, ChartSettings* settings);
 
-    /// Runtime extension of handler table
+    /**
+     * @brief Register a runtime handler for a custom @c action string.
+     * @param actionName The JSON @c action to respond to (e.g., "customEvent").
+     * @param handler    Functor executed with the parsed object payload.
+     */
     void registerHandler(QStringView actionName, std::function<void(const QJsonObject&)> handler);
 
 public slots:
+    /**
+     * @brief Parse a raw JSON payload and dispatch to built-in or dynamic handlers.
+     * @param msg UTF-8 JSON object containing an @c action field.
+     */
     void handleMessage(const QString &msg);
 
 private:
-
-
-    // Static handler dispatch
+    /**
+     * @brief Dispatch built-in actions hashed at compile time.
+     */
     void handleBuiltIn(ActionType type, const QJsonObject& obj);
 
     // Registered dynamic handlers

@@ -22,13 +22,21 @@
  * IN THE SOFTWARE.
  */
 
-// AxisSettings.h
 #pragma once
 
 #include <QObject>
 #include <qqml.h>
 #include <cmath>
 
+/**
+ * @brief Exposes axis metadata to QML and keeps the rendered ranges "nice".
+ *
+ * AxisSettings is owned by the QQmlEngine and surfaced to QML via
+ * @c Q_PROPERTY bindings so labels and grid visibility can be tweaked from
+ * either the Qt scene or an IPC/WebSocket message. The helper functions
+ * recompute rounded chart maxima whenever an input range changes, which keeps
+ * axis ticks aligned to friendly values for novice users.
+ */
 class AxisSettings : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -48,6 +56,12 @@ class AxisSettings : public QObject {
 public:
     explicit AxisSettings(QObject* parent = nullptr) : QObject(parent) {}
 
+    /**
+     * @brief Compute a "nice" rounded maximum for a numeric range.
+     * @param min Minimum value currently displayed.
+     * @param max Maximum value currently displayed.
+     * @return Rounded up maximum so tick marks land on simple numbers.
+     */
     static qreal calcNiceMax(qreal min, qreal max)
     {
         qreal range = max - min;
@@ -86,12 +100,17 @@ public slots:
         }
     }
 
-    void setYTitle(const QString &t) { if (m_yTitle != t) { m_yTitle = t; emit yTitleChanged(t);} }
+    void setYTitle(const QString &t) { if (m_yTitle != t) { m_yTitle = t; qDebug() << "AxisSettings::setYTitle:" << t; emit yTitleChanged(t);} }
     void setYGridVisible(bool b)  { if (m_yGridVisible != b) { m_yGridVisible = b; emit yGridVisibleChanged(b);} }
 
+    /**
+     * @brief Recompute and broadcast a rounded X maximum for the plot.
+     *
+     * Called whenever the incoming X range changes so the QML chart can keep
+     * its grid aligned to clean tick marks.
+     */
     void calcChartXMax()
     {
-
         qreal newMax = calcNiceMax(m_xMin, m_xMax);
 
         if (!qFuzzyCompare(newMax, m_xChartMax)) {
@@ -100,9 +119,11 @@ public slots:
         }
     }
 
+    /**
+     * @brief Recompute and broadcast a rounded Y maximum for the plot.
+     */
     void calcChartYMax()
     {
-
         qreal newMax = calcNiceMax(m_yMin, m_yMax);
 
         if (!qFuzzyCompare(newMax, m_yChartMax)) {

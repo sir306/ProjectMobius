@@ -27,6 +27,12 @@
 
 #include <QObject>
 
+/**
+ * @brief Placeholder for future serial transport support.
+ *
+ * Left intentionally minimal; keep the class so QML/IPC signatures remain
+ * stable if a serial implementation is added later.
+ */
 class SerialManager : public QObject
 {
     Q_OBJECT

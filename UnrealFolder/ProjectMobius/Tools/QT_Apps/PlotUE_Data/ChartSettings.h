@@ -28,10 +28,18 @@
 #include <qqml.h>
 #include <QTimer>
 
+/**
+ * @brief Captures the playback/visual state for the chart QML scene.
+ *
+ * ChartSettings exposes values such as the axis title, the current simulation
+ * time, and the playhead position as QML properties. The setters are designed
+ * to be called from worker threads via @c QMetaObject::invokeMethod so that
+ * IPC/WebSocket handlers can update the UI without blocking the GUI thread.
+ */
 class ChartSettings : public QObject {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(QString title MEMBER m_title NOTIFY titleChanged)
+    Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY titleChanged)
 
     // flag for showing all the scatter points or only the major y points
     Q_PROPERTY(bool showAllPoints READ showAllPoints WRITE setShowAllPoints NOTIFY showAllPointsChanged)
@@ -64,6 +72,13 @@ public:
         return m_statusDisplay;
     }
 
+    /**
+     * @brief Build the human-readable status string shown under the chart.
+     *
+     * The incoming time arrives as tenths of a second; this helper normalizes
+     * it to seconds with one decimal place and injects the latest agent count.
+     * Keeping formatting here avoids duplicating formatting code in QML.
+     */
     void buildUpdatedStatusDisplay() {
         double trimmedTime = m_currentIntTime / 10.0;
         m_statusDisplay = QStringLiteral("%1 occupants at time: %2s")
@@ -77,7 +92,7 @@ public:
     qreal plotWidth() const    { return m_plotWidth; }
     qreal axisMin()     const { return m_playbarMin; }
     qreal axisMax()     const { return m_playbarMax; }
-
+    QString title() const { return m_title; }
 public slots:
     void setTitle(const QString& t) {
         if (m_title != t) {
@@ -106,6 +121,14 @@ public slots:
         }
     }
 
+    /**
+     * @brief Receive live playback state pushed from Unreal.
+     * @param time Simulation time in tenths of a second.
+     * @param count Agent count at that timestamp.
+     *
+     * This is the primary entry point used by IPC/WebSocket message handlers
+     * to keep the UI synchronized without duplicating update logic.
+     */
     void updateLiveData(qint32 time, qint32 count){
         if(time != m_currentIntTime || count != m_currentAgentCount)
         {
@@ -125,7 +148,16 @@ public slots:
         recomputePlaybarX();
     }
 
-    // batch‐update all four metrics whenever ANY of them changes
+    /**
+     * @brief Batch-update geometry and axis values after layout changes.
+     *
+     * Keeping all four fields in a single call prevents multiple recomputes of
+     * the playhead when the window resizes or the axis limits animate.
+     * @param originX Screen-space X coordinate of the plot origin.
+     * @param width   Screen-space width of the plot region.
+     * @param min     Current minimum of the time axis.
+     * @param max     Current maximum of the time axis.
+     */
     Q_INVOKABLE void setPlotMetrics(qreal originX, qreal width, qreal min, qreal max)
     {
         // check if all already equal
@@ -196,6 +228,13 @@ signals:
 
 private:
 
+    /**
+     * @brief Convert the current axis range into a pixel-per-unit scale.
+     *
+     * Guard against zero or inverted ranges so downstream math never produces
+     * NaNs; in those cases the scale is clamped to 0 and the playhead will sit
+     * at the origin until new bounds arrive.
+     */
     void recomputeScale() {
         qreal range = m_playbarMax - m_playbarMin;
         m_scale = (range>0) ? (m_plotWidth / range) : 0;

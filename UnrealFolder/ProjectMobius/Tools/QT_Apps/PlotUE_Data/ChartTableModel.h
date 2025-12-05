@@ -26,6 +26,14 @@
 #include <QAbstractTableModel>
 #include <QPointF>
 
+/**
+ * @brief Minimal table model exposing XY points to QML charts.
+ *
+ * The model keeps points sorted on the X axis and rejects duplicate X values
+ * so charting components can assume monotonic input. It is intentionally small
+ * to make it easy for Qt newcomers to trace how data flows from IPC into the
+ * view layer.
+ */
 class ChartTableModel : public QAbstractTableModel {
     Q_OBJECT
 public:
@@ -40,8 +48,25 @@ public:
         return idx.column() == 0 ? QVariant(p.x()) : QVariant(p.y());
     }
 
+    /**
+     * @brief Insert a new XY point while maintaining sorted order.
+     * @param x X-coordinate (time).
+     * @param y Y-coordinate (agent count).
+     *
+     * If a point with the same X already exists it is ignored to keep the data
+     * set stable for Qt Charts.
+     */
     Q_INVOKABLE void appendPoint(double x, double y);
+
+    /**
+     * @brief Replace the entire data set with a new sorted list.
+     * @param pts Collection of points (unsorted is fine; we sort internally).
+     */
     Q_INVOKABLE void setPoints(const QList<QPointF> &pts);
+
+    /**
+     * @brief Remove all points and reset the view.
+     */
     Q_INVOKABLE void resetData();
 
 private:
