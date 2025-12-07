@@ -1125,7 +1125,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
         if (!WeakMesh.IsValid())
         {
             WeakMesh.Reset();
-            PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+            PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
             continue;
         }
 
@@ -1141,7 +1141,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
             || Mesh->GetWorld() != GetWorld())
         {
             WeakMesh.Reset();
-            PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+            PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
             continue;
         }
 
@@ -1150,7 +1150,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
             if (MeshOwner->IsActorBeingDestroyed())
             {
                 WeakMesh.Reset();
-                PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
                 continue;
             }
         }
@@ -1159,7 +1159,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
             if (StaticMesh->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
             {
                 WeakMesh.Reset();
-                PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
                 continue;
             }
 
@@ -1168,7 +1168,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
                 if (BodySetup->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
                 {
                     WeakMesh.Reset();
-                    PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                    PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
                     continue;
                 }
 
@@ -1177,7 +1177,7 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
                 if (!BodyInstance || !BodyInstance->IsValidBodyInstance())
                 {
                     WeakMesh.Reset();
-                    PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                    PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
                     continue;
                 }
 
@@ -1189,23 +1189,23 @@ void ARuntimeMeshBuilder::ProcessPendingCollisionEnables(float DeltaSeconds)
     			Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     			Mesh->SetCollisionObjectType(ECC_WorldDynamic);
     			Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
-    			Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-    		}
+                Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+            }
             else
             {
                 WeakMesh.Reset();
-                PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+                PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
                 continue;
             }
     	}
         else
         {
             WeakMesh.Reset();
-            PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+            PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
             continue;
         }
         WeakMesh.Reset();
-    	PendingCollisionEnable.RemoveAt(Index, 1, /*bAllowShrinking=*/false);
+    	PendingCollisionEnable.RemoveAt(Index, 1, EAllowShrinking::No);
     	++ProcessedThisFrame;
         
         // Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -1241,7 +1241,7 @@ void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 		 --Index)
 	{
 		UStaticMeshComponent* Mesh = PendingDatasmithMeshes[Index].Mesh.Get();
-		PendingDatasmithMeshes.RemoveAtSwap(Index, 1, /*bAllowShrinking=*/false);
+		PendingDatasmithMeshes.RemoveAtSwap(Index, 1, EAllowShrinking::No);
 
 		if (Mesh)
 		{
