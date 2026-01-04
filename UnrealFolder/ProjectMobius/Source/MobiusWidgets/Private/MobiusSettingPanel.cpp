@@ -22,13 +22,13 @@
  * IN THE SOFTWARE.
  */
 
-#include "MobiusUI.h"
+#include "MobiusSettingPanel.h"
 #include "Engine/GameEngine.h"
 #include "EngineGlobals.h"
 #include "SlateCore.h"
 #include "Framework/Application/NavigationConfig.h"
 
-void UMobiusUI::NativePreConstruct()
+void UMobiusSettingPanel::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 
@@ -45,22 +45,22 @@ void UMobiusUI::NativePreConstruct()
 	NavigationConfig.KeyActionRules.Empty();
 }
 
-void UMobiusUI::NativeConstruct()
+void UMobiusSettingPanel::NativeConstruct()
 {
 	Super::NativeConstruct();
 }
 
-void UMobiusUI::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+void UMobiusSettingPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 }
 
-void UMobiusUI::SynchronizeProperties()
+void UMobiusSettingPanel::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
 }
 
-void UMobiusUI::MinimizeGameWindow()
+void UMobiusSettingPanel::MinimizeGameWindow()
 {
 #if !WITH_EDITOR
 	// Get the game engine

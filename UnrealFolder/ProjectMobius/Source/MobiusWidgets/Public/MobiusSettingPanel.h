@@ -26,13 +26,13 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "MobiusUI.generated.h"
+#include "MobiusSettingPanel.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UMobiusUI : public UUserWidget
+class MOBIUSWIDGETS_API UMobiusSettingPanel : public UUserWidget
 {
 	GENERATED_BODY()
 
@@ -53,7 +53,7 @@ public:
 	/**
 	 * Minimize the game window to the taskbar, this only works in standalone mode and not in the editor
 	 */
-	UFUNCTION(BlueprintCallable, Category = "MobiusUI|Methods")
+	UFUNCTION(BlueprintCallable, Category = "MobiusSettingPanel|Methods")
 	void MinimizeGameWindow();
 #pragma endregion PUBLIC_METHODS
 };
