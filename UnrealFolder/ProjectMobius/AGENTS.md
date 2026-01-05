@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `Source/` contains Unreal C++ modules such as `ProjectMobius` (core gameplay), `MobiusWidgets`, `Visualization`, `HeatmapVisualization`, `HIT_ThesisWork`, and `ErrorHandling`. Keep public headers in `Public/` and implementation in `Private/`.
+- `Source/` contains Unreal C++ modules such as `ProjectMobius` (core gameplay), `MobiusWidgets`, `Visualization`, `HeatmapVisualization`, and `HIT_ThesisWork`. Keep public headers in `Public/` and implementation in `Private/`.
 - `Content/` holds assets; `Config/` stores project .ini files; `Plugins/` carries third-party code (e.g., assimp/OpenCV) and should be kept lean.
 - `BuildDocs/` tracks licensing artifacts for distribution; `_superbuild/` is a CMake build tree for Qt utilities; `Tools/QT_Apps/` contains the Qt apps, and `Tools/bin/Win64/` houses their packaged binaries.
 - `Intermediate/`, `Saved/`, `DerivedDataCache/`, and `Binaries/` are generated; do not hand-edit or commit them.

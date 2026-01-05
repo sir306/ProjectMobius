@@ -23,7 +23,8 @@
  */
 
 #include "UI/LoadSave/LoadAgentDataWidget.h"
-#include "MobiusCore/Public/Subsystems/QtFileOpenSubsystem.h"
+#include "Subsystems/NativeFileDialogSubsystem.h"
+#include "Core/MobiusWidgetSubsystem.h"
 //#include "MassAI/Subsystems/TimeDilationSubSystem.h"
 
 void ULoadAgentDataWidget::NativeConstruct()
@@ -34,24 +35,19 @@ void ULoadAgentDataWidget::NativeConstruct()
 void ULoadAgentDataWidget::OnSelectFileButtonClicked()
 {
 
-	if (UQtFileOpenSubsystem* QtFileOpenSubsystem = GetWorld()->GetSubsystem<UQtFileOpenSubsystem>())
+	if (UNativeFileDialogSubsystem* FileDialogSubsystem = GetWorld()->GetSubsystem<UNativeFileDialogSubsystem>())
 	{
-		if (QtFileOpenSubsystem->IsQtAppRunning() == false)
-		{
-			QtFileOpenSubsystem->LaunchQtDialogApp();
-		}
 		FOnFileSelectedDelegate OnFileSelectedDelegate;
-		
+
 		// Bind the delegate to DialogClosed before requesting
 		OnFileSelectedDelegate.BindDynamic(this, &ULoadAgentDataWidget::DialogClosed);
 
-		QtFileOpenSubsystem->RequestFileDialogFromQt(
-		OnFileSelectedDelegate, TEXT("openAgentFile"));
+		FileDialogSubsystem->RequestAgentFileDialog(OnFileSelectedDelegate);
 
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("QtFileOpenSubsystem not available"));
+		UE_LOG(LogTemp, Error, TEXT("NativeFileDialogSubsystem not available"));
 	}
 	
 	// Calling super here ensures the game view port has focus
@@ -96,6 +92,12 @@ void ULoadAgentDataWidget::UpdateMobiusGameInstanceData()
 void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FString& MeshFilePath, bool bAgentSuccess,
 	bool bMeshSuccess)
 {
+	if (AgentFilePath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("File dialog canceled."));
+		return;
+	}
+
 	// check if the file was successfully opened
 	if (bAgentSuccess)
 	{
@@ -114,6 +116,14 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 	}
 	else
 	{
+		if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
+		{
+			WidgetSubsystem->DisplayErrorWidget(
+				FText::FromString("Invalid Agent Data File"),
+				FText::FromString("Unsupported agent data file type selected."),
+				FText::FromString("Supported types: .json"),
+				FText::FromString("Load Agent Data"));
+		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));
 	}
 }

@@ -23,7 +23,8 @@
  */
 
 #include "UI/LoadSave/LoadMeshWidget.h"
-#include "Subsystems/QtFileOpenSubsystem.h"
+#include "Subsystems/NativeFileDialogSubsystem.h"
+#include "Core/MobiusWidgetSubsystem.h"
 
 void ULoadMeshWidget::NativeConstruct()
 {
@@ -36,24 +37,19 @@ void ULoadMeshWidget::OnSelectFileButtonClicked()
 
 	//TODO: IMPLEMENT SPECIFIC HTTP REQUESTS!!!
 	
-	if (UQtFileOpenSubsystem* QtFileOpenSubsystem = GetWorld()->GetSubsystem<UQtFileOpenSubsystem>())
+	if (UNativeFileDialogSubsystem* FileDialogSubsystem = GetWorld()->GetSubsystem<UNativeFileDialogSubsystem>())
 	{
-		if (QtFileOpenSubsystem->IsQtAppRunning() == false)
-		{
-			QtFileOpenSubsystem->LaunchQtDialogApp();
-		}
 		FOnFileSelectedDelegate OnFileSelectedDelegate;
-		
+
 		// Bind the delegate to DialogClosed before requesting
 		OnFileSelectedDelegate.BindDynamic(this, &ULoadMeshWidget::DialogClosed);
 
-		QtFileOpenSubsystem->RequestFileDialogFromQt(
-			OnFileSelectedDelegate);
+		FileDialogSubsystem->RequestMeshFileDialog(OnFileSelectedDelegate);
 
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("QtFileOpenSubsystem not available"));
+		UE_LOG(LogTemp, Error, TEXT("NativeFileDialogSubsystem not available"));
 	}
 
 	
@@ -100,6 +96,12 @@ void ULoadMeshWidget::UpdateMobiusGameInstanceData()
 void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& MeshFilePath, bool bAgentSuccess,
 	bool bMeshSuccess)
 {
+	if (MeshFilePath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("File dialog canceled."));
+		return;
+	}
+
 	// check if the file was successfully opened
 	if (bMeshSuccess)
 	{
@@ -117,6 +119,14 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 	}
 	else
 	{
+		if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
+		{
+			WidgetSubsystem->DisplayErrorWidget(
+				FText::FromString("Invalid Mesh File"),
+				FText::FromString("Unsupported mesh file type selected."),
+				FText::FromString("Supported types: .fbx, .obj, .udatasmith, .ifc, .wkt"),
+				FText::FromString("Load Mesh"));
+		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));
 	}
 }

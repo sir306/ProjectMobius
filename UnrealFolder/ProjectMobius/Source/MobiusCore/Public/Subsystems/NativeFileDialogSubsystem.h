@@ -26,9 +26,20 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
-#include "Interfaces/IHttpRequest.h"
-#include "Interfaces/IHttpResponse.h"
-#include "QtFileOpenSubsystem.generated.h"
+
+#ifndef __APPLE__
+#define __APPLE__ 0
+#endif
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4191)
+#endif
+#include "PortableFileDialogs/portable-file-dialogs.h"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+#include "NativeFileDialogSubsystem.generated.h"
 
 // Delegate for file selection callback
 DECLARE_DYNAMIC_DELEGATE_FourParams(FOnFileSelectedDelegate, const FString&, AgentFilePath, const FString&, MeshFilePath,bool, bAgentSuccess, bool, bMeshSuccess);
@@ -37,53 +48,78 @@ DECLARE_DYNAMIC_DELEGATE_FourParams(FOnFileSelectedDelegate, const FString&, Age
  * 
  */
 UCLASS()
-class MOBIUSCORE_API UQtFileOpenSubsystem : public UWorldSubsystem
+class MOBIUSCORE_API UNativeFileDialogSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
 public:
-	///TODO: only need to call different get functions and configure the qt app to set file get path
-	UQtFileOpenSubsystem();
+	/** Default constructor. */
+	UNativeFileDialogSubsystem();
 
+	/**
+	 * Initialize the subsystem.
+	 * @param Collection Subsystem collection for dependencies.
+	 */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+
+	/**
+	 * Deinitialize the subsystem and stop any pending dialogs.
+	 */
 	virtual void Deinitialize() override;
-	/** Launch the Qt file dialog application */
+
+	/**
+	 * Request the agent data file dialog.
+	 * @param OnFileSelectedCallback Callback executed when the dialog completes.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "File Dialog")
-	void LaunchQtDialogApp();
-    
-	/** Request a file selection dialog, with callback when file is selected */
-	UFUNCTION(Category = "File Dialog")
-	void RequestFileDialogFromQt(FOnFileSelectedDelegate OnFileSelectedCallback, FString HttpAddress = TEXT("openMeshFile"));
-    
-	/** Manually poll for selected file (called automatically by timer) */
+	void RequestAgentFileDialog(FOnFileSelectedDelegate OnFileSelectedCallback);
+
+	/**
+	 * Request the mesh file dialog.
+	 * @param OnFileSelectedCallback Callback executed when the dialog completes.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "File Dialog")
-	void PollSelectedFileFromQt();
-    
-	/** Request the Qt application to shut down */
-	UFUNCTION(BlueprintCallable, Category = "File Dialog")
-	void RequestQuitQtApp();
-    
-	/** Check if the Qt application is running */
-	UFUNCTION(BlueprintPure, Category = "File Dialog")
-	bool IsQtAppRunning();
+	void RequestMeshFileDialog(FOnFileSelectedDelegate OnFileSelectedCallback);
 
 	UPROPERTY()
 	FOnFileSelectedDelegate OnFileSelected;
+
 protected:
+	/**
+	 * Release any pending dialogs and timers.
+	 */
 	virtual void BeginDestroy() override;
 
 private:
-	void OnFileDialogRequested(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
-	void OnFilePollComplete(FHttpRequestPtr RequestPtr, FHttpResponsePtr Response, bool bSuccess);
-	void HandleEngineExitCleanup();
-	void ForceCloseQtApp();
-	void KillStaleQtProcessesIfAny();
+	/** Dialog type used to interpret results. */
+	enum class EDialogType : uint8
+	{
+		AgentFile,
+		MeshFile
+	};
 
-	/** Build the absolute path to the Qt app executable for the host platform */
-	FString ResolveQtAppExecutablePath() const;
+	/**
+	 * Create a dialog and begin polling for completion.
+	 * @param DialogType Dialog type to show.
+	 * @param OnFileSelectedCallback Callback executed when the dialog completes.
+	 */
+	void StartDialog(EDialogType DialogType, FOnFileSelectedDelegate OnFileSelectedCallback);
 
-	/** Build CLI args safely (handles quoting paths) */
-	FString BuildQtArgs() const;
+	/**
+	 * Poll the async dialog state and emit the callback once ready.
+	 */
+	void PollDialog();
+
+	/**
+	 * Convert dialog results into agent/mesh outputs and fire the delegate.
+	 * @param SelectedFiles Files chosen by the user.
+	 */
+	void HandleDialogResult(const TArray<FString>& SelectedFiles);
+
+	/**
+	 * Clear any pending dialog state.
+	 */
+	void ResetDialogState();
 
 private:
 	UPROPERTY()
@@ -91,9 +127,8 @@ private:
 
 	UPROPERTY()
 	FTimerHandle PollTimerHandle;
-    
-	FProcHandle QtProcessHandle;
 
-	UPROPERTY()
-	uint32 QtProcessID;
+	EDialogType ActiveDialogType;
+
+	TUniquePtr<pfd::open_file> ActiveDialog;
 };

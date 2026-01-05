@@ -38,6 +38,11 @@ public class MobiusCore : ModuleRules
 		});
 
 
+		PublicIncludePaths.AddRange(new[]
+		{
+			"MobiusCore/ThirdParty",
+		});
+
 		PrivateIncludePaths.AddRange(new[]
 		{
 			"MobiusCore/Public",
