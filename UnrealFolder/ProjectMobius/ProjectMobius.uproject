@@ -27,11 +27,6 @@
 			]
 		},
 		{
-			"Name": "ErrorHandling",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
 			"Name": "MobiusWidgets",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"

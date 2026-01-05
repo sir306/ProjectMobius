@@ -44,7 +44,6 @@ public class MobiusWidgets : ModuleRules
                 "Json", 
                 "JsonUtilities",
                 "MobiusCore", "Niagara",
-                "ErrorHandling",
             }
         );
     }

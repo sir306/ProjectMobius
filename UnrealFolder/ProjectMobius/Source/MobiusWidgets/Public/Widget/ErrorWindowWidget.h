@@ -11,7 +11,7 @@ class SErrorWindowWidget;
  * 
  */
 UCLASS()
-class ERRORHANDLING_API UErrorWindowWidget : public UWidget
+class MOBIUSWIDGETS_API UErrorWindowWidget : public UWidget
 {
 	GENERATED_BODY()
 	

@@ -32,6 +32,8 @@ void UTopMainUiWrapper::NativeConstruct()
 	if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
 	{
 		WidgetSubsystem->AddErrorWidget(ErrorWindowWidget);
+		// Debug Test
+		//ErrorWindowWidget->ShowErrorWindow();
 	}
 }
 

@@ -13,7 +13,7 @@ class SWidget;
 /**
  * 
  */
-class ERRORHANDLING_API SErrorWindowWidget final : public SCompoundWidget
+class MOBIUSWIDGETS_API SErrorWindowWidget final : public SCompoundWidget
 {
 public:
 	/**  */
