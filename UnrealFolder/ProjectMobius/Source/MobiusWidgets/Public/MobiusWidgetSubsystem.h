@@ -41,8 +41,15 @@ class MOBIUSWIDGETS_API UMobiusWidgetSubsystem : public UWorldSubsystem
 public:
 	UMobiusWidgetSubsystem();
 
+	/**
+	 * Initialize the subsystem and bind loading delegates.
+	 * @param Collection Subsystem collection for dependencies.
+	 */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
+	/**
+	 * Deinitialize the subsystem and unbind delegates.
+	 */
 	virtual void Deinitialize() override;
 
 	/**
@@ -74,19 +81,31 @@ public:
 	void DisplayErrorWidget(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
 		const FText& ErrorLocation = FText::GetEmpty());
 
-	/** Update the title bar text for the error window. */
+	/**
+	 * Update the title bar text for the error window.
+	 * @param TitleBarText Text displayed in the window title bar.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
 	void SetErrorTitleBarText(const FText& TitleBarText);
 
-	/** Update the error title text. */
+	/**
+	 * Update the error title text.
+	 * @param ErrorTitle Error title to display.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
 	void SetErrorTitleText(const FText& ErrorTitle);
 
-	/** Update the error message text. */
+	/**
+	 * Update the error message text.
+	 * @param ErrorMessage Error message to display.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
 	void SetErrorMessageText(const FText& ErrorMessage);
 
-	/** Update the optional error location text. */
+	/**
+	 * Update the optional error location text.
+	 * @param ErrorLocation Optional location text for where the error occurred.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
 	void SetErrorLocationText(const FText& ErrorLocation);
 
@@ -123,6 +142,12 @@ public:
 	UFUNCTION()
 	void SetLoadingText(bool bIsLoadingBar, FString NewLoadingText);
 
+	/**
+	 * Update the loading widget when the duration is unknown.
+	 *
+	 * @param bIsLoading True if loading is active.
+	 * @param NewLoadingText New loading text to display.
+	 */
 	UFUNCTION()
 	void UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText);
 

@@ -21,30 +21,48 @@ public:
 		{}
 	SLATE_END_ARGS()
 	
+	/** Default constructor. */
 	SErrorWindowWidget();
+	/** Destructor. */
 	~SErrorWindowWidget();
 	
-	/** Constructs and initializes the widget
+	/**
+	 * Constructs and initializes the widget.
 	 * @param InArgs The declaration data for this widget
 	 */
 	void Construct(const FArguments& InArgs);
 
-	/** Update the window title bar text. */
+	/**
+	 * Update the window title bar text.
+	 * @param TitleText Text to display in the title bar.
+	 */
 	void SetTitleBarText(const FText& TitleText);
 
-	/** Update the error title text. */
+	/**
+	 * Update the error title text.
+	 * @param TitleText Error title to display.
+	 */
 	void SetErrorTitleText(const FText& TitleText);
 
-	/** Update the error message text. */
+	/**
+	 * Update the error message text.
+	 * @param MessageText Error message to display.
+	 */
 	void SetErrorMessageText(const FText& MessageText);
 
-	/** Update the optional error location text. */
+	/**
+	 * Update the optional error location text.
+	 * @param LocationText Optional location text for where the error occurred.
+	 */
 	void SetErrorLocationText(const FText& LocationText);
 
-	/** Ensure the window is visible and in front. */
+	/**
+	 * Ensure the window is visible and in front.
+	 */
 	void ShowErrorWindow();
 	
-	/** Paints this widget in the game viewport
+	/**
+	 * Paints this widget in the game viewport.
 	  * @param Args The paint arguments
 	  * @param AllottedGeometry The space allotted for this widget
 	  * @param MyCullingRect The culling rect for this widget

@@ -19,22 +19,44 @@ class ERRORHANDLING_API UErrorWindowWidget : public UWidget
 protected:
 	TSharedPtr<SErrorWindowWidget> ErrorWindowWidget;
 	
+	/**
+	 * Builds the underlying Slate widget.
+	 * @return The constructed Slate widget.
+	 */
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	/**
+	 * Release Slate resources and reset any cached widget state.
+	 * @param bReleaseChildren True to release child widgets as well.
+	 */
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 
 public:
-	/** Update the title bar text for the error window. */
+	/**
+	 * Update the title bar text for the error window.
+	 * @param TitleText Text to display in the title bar.
+	 */
 	void SetTitleBarText(const FText& TitleText);
 
-	/** Update the error title text. */
+	/**
+	 * Update the error title text.
+	 * @param TitleText Error title to display.
+	 */
 	void SetErrorTitleText(const FText& TitleText);
 
-	/** Update the error message text. */
+	/**
+	 * Update the error message text.
+	 * @param MessageText Error message to display.
+	 */
 	void SetErrorMessageText(const FText& MessageText);
 
-	/** Update the optional error location text. */
+	/**
+	 * Update the optional error location text.
+	 * @param LocationText Optional location text for where the error occurred.
+	 */
 	void SetErrorLocationText(const FText& LocationText);
 
-	/** Ensure the error window is visible and focused. */
+	/**
+	 * Ensure the error window is visible and focused.
+	 */
 	void ShowErrorWindow();
 };
