@@ -14,9 +14,13 @@ public:
 			  , _FieldTextStyle( &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>( "NormalText" ) )
 			  , _VerticalStacking(false)
 			  , _AutoCenterTextToWidget(false)
-		{
-		
-		}
+		  , _TitleAutoWrapText(false)
+		  , _FieldAutoWrapText(false)
+		  , _TitlePadding(FMargin(0.0f))
+		  , _FieldPadding(FMargin(0.0f))
+	{
+	
+	}
 		/** The text to display in the field */
 		SLATE_ATTRIBUTE(FText, FieldText)
 
@@ -31,10 +35,22 @@ public:
 		/** Whether the title is above the field or to the left */
 		SLATE_ATTRIBUTE(bool, VerticalStacking)
 
-		/** Whether we want to auto align the text to the center of the widget */
-		SLATE_ATTRIBUTE(bool, AutoCenterTextToWidget)
-		
-	SLATE_END_ARGS()
+	/** Whether we want to auto align the text to the center of the widget */
+	SLATE_ATTRIBUTE(bool, AutoCenterTextToWidget)
+
+	/** Whether the title text should automatically wrap. */
+	SLATE_ATTRIBUTE(bool, TitleAutoWrapText)
+
+	/** Whether the field text should automatically wrap. */
+	SLATE_ATTRIBUTE(bool, FieldAutoWrapText)
+
+	/** Optional padding applied to the title text block. */
+	SLATE_ATTRIBUTE(FMargin, TitlePadding)
+
+	/** Optional padding applied to the field text block. */
+	SLATE_ATTRIBUTE(FMargin, FieldPadding)
+
+SLATE_END_ARGS()
 
 	/** Default constructor for SFieldAndTitleText */
 	SFieldAndTitleText();

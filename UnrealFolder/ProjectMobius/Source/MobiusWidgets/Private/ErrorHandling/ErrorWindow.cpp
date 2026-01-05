@@ -3,13 +3,12 @@
 
 #include "ErrorHandling/ErrorWindow.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Framework/Application/SWindowTitleBar.h"
+#include "Slate/Components/SWindowContentPanel.h"
+#include "Slate/Components/SWindowTitleBarWidget.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Text/STextBlock.h"
 
 
 SErrorWindowWidget::SErrorWindowWidget()
@@ -41,41 +40,33 @@ void SErrorWindowWidget::SetTitleBarText(const FText& TitleText)
 		ErrorWindowPtr->SetTitle(TitleText);
 	}
 
-	if (TitleBarTextBlock.IsValid())
+	if (TitleBarWidget.IsValid())
 	{
-		TitleBarTextBlock->SetText(TitleText);
+		TitleBarWidget->SetTitleText(TitleText);
 	}
 }
 
 void SErrorWindowWidget::SetErrorTitleText(const FText& TitleText)
 {
-	if (ErrorTitleTextBlock.IsValid())
+	if (ContentPanel.IsValid())
 	{
-		ErrorTitleTextBlock->SetText(TitleText);
+		ContentPanel->SetTitleText(TitleText);
 	}
 }
 
 void SErrorWindowWidget::SetErrorMessageText(const FText& MessageText)
 {
-	if (ErrorMessageTextBlock.IsValid())
+	if (ContentPanel.IsValid())
 	{
-		ErrorMessageTextBlock->SetText(MessageText);
+		ContentPanel->SetMessageText(MessageText);
 	}
 }
 
-void SErrorWindowWidget::SetErrorLocationText(const FText& LocationText)
+void SErrorWindowWidget::SetErrorLocationText(const FText& LocationText)        
 {
-	const bool bHasLocation = !LocationText.IsEmptyOrWhitespace();
-
-	if (ErrorLocationTextBlock.IsValid())
+	if (ContentPanel.IsValid())
 	{
-		ErrorLocationTextBlock->SetText(LocationText);
-		ErrorLocationTextBlock->SetVisibility(bHasLocation ? EVisibility::Visible : EVisibility::Collapsed);
-	}
-
-	if (ErrorLocationContainer.IsValid())
-	{
-		ErrorLocationContainer->SetVisibility(bHasLocation ? EVisibility::Visible : EVisibility::Collapsed);
+		ContentPanel->SetLocationText(LocationText);
 	}
 }
 
@@ -106,6 +97,14 @@ void SErrorWindowWidget::OpenErrorWindow()
 		.AutoCenter(EAutoCenter::PreferredWorkArea)
 		.HasCloseButton(true);
 
+	const FTextBlockStyle TitleStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+		.SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 18));
+	const FTextBlockStyle MessageStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
+	const FTextBlockStyle LocationStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11))
+		.SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.1f, 0.1f)));
+
 	ErrorWindowPtr->SetContent(
 		SNew(SBorder)
 		.Padding(FMargin(16.0f))
@@ -115,31 +114,13 @@ void SErrorWindowWidget::OpenErrorWindow()
 			+ SVerticalBox::Slot()
 			.AutoHeight()
 			[
-				SAssignNew(ErrorTitleTextBlock, STextBlock)
-				.Text(FText::FromString("Error Window (Test)"))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 18))
-			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(FMargin(0.0f, 8.0f, 0.0f, 0.0f))
-			[
-				SAssignNew(ErrorMessageTextBlock, STextBlock)
-				.Text(FText::FromString("This is a test popup for error handling."))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
-				.AutoWrapText(true)
-			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(FMargin(0.0f, 8.0f, 0.0f, 0.0f))
-			[
-				SAssignNew(ErrorLocationContainer, SBox)
-				[
-					SAssignNew(ErrorLocationTextBlock, STextBlock)
-					.Text(FText::GetEmpty())
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 11))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.1f, 0.1f)))
-					.AutoWrapText(true)
-				]
+				SAssignNew(ContentPanel, SWindowContentPanel)
+				.TitleText(FText::FromString("Error Window (Test)"))
+				.MessageText(FText::FromString("This is a test popup for error handling."))
+				.LocationText(FText::GetEmpty())
+				.TitleTextStyle(&TitleStyle)
+				.MessageTextStyle(&MessageStyle)
+				.LocationTextStyle(&LocationStyle)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()
@@ -153,21 +134,23 @@ void SErrorWindowWidget::OpenErrorWindow()
 		]
 	);
 
-	SAssignNew(TitleBarTextBlock, STextBlock)
-		.Text(FText::FromString("Error Window"))
-		.ColorAndOpacity(FSlateColor(FLinearColor::White))
-		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12));
-
 	ErrorWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
 	ErrorWindowStyle.ActiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.8f, 0.1f, 0.1f));
 	ErrorWindowStyle.InactiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.6f, 0.1f, 0.1f));
 	ErrorWindowStyle.FlashTitleBrush.TintColor = FSlateColor(FLinearColor(0.9f, 0.2f, 0.2f));
 	ErrorWindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::White);
 
-	TSharedRef<SWindowTitleBar> TitleBar = SNew(SWindowTitleBar, ErrorWindowPtr.ToSharedRef(), TitleBarTextBlock, HAlign_Center)
-		.Style(&ErrorWindowStyle)
+	SAssignNew(TitleBarWidget, SWindowTitleBarWidget)
+		.OwnerWindow(ErrorWindowPtr)
+		.TitleText(FText::FromString("Error Window"))
+		.TitleTextStyle(&ErrorWindowStyle.TitleTextStyle)
+		.WindowStyle(&ErrorWindowStyle)
+		.TitleAlignment(HAlign_Center)
 		.ShowAppIcon(false);
-	ErrorWindowPtr->SetTitleBar(TitleBar);
+	if (TitleBarWidget.IsValid())
+	{
+		ErrorWindowPtr->SetTitleBar(TitleBarWidget->GetTitleBar());
+	}
 
 	FSlateApplication::Get().AddWindow(ErrorWindowPtr.ToSharedRef());
 

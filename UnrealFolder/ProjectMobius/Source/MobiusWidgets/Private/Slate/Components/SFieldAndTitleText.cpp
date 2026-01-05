@@ -2,6 +2,7 @@
 #include "Slate/Components/SFieldAndTitleText.h"
 
 #include "Fonts/FontMeasure.h"
+#include "Widgets/Layout/SBox.h"
 
 SFieldAndTitleText::SFieldAndTitleText()
 {
@@ -51,15 +52,29 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 	SAssignNew(TitleTextBlock, STextBlock)
 	.Text(InArgs._TitleText)
 	.Justification(JustifyText(bVerticalStacking, bAutoCenterTextToWidget, true));
-	
+
 	// Field Text
 	SAssignNew(FieldTextBlock, STextBlock)
 	.Text(InArgs._FieldText)
 	.Justification(JustifyText(bVerticalStacking, bAutoCenterTextToWidget, false));
 
+	TitleTextBlock->SetAutoWrapText(InArgs._TitleAutoWrapText.Get());
+	FieldTextBlock->SetAutoWrapText(InArgs._FieldAutoWrapText.Get());
+
 	TitleTextBlock->SetTextStyle(InArgs._TitleTextStyle);
 	FieldTextBlock->SetTextStyle(InArgs._FieldTextStyle);
-	
+
+	TSharedRef<SWidget> TitleWidget = SNew(SBox)
+		.Padding(InArgs._TitlePadding.Get())
+		[
+			TitleTextBlock.ToSharedRef()
+		];
+	TSharedRef<SWidget> FieldWidget = SNew(SBox)
+		.Padding(InArgs._FieldPadding.Get())
+		[
+			FieldTextBlock.ToSharedRef()
+		];
+
 	if (!bVerticalStacking)
 	{
 		if (bAutoCenterTextToWidget)
@@ -69,11 +84,11 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 			GridPanel->AddSlot(1, 0)
 			         .HAlign(HAlign_Fill).VAlign(VAlign_Center)
 			         .Padding(FMargin(5.f, 0.f, 2.f, 0.f))
-				[ TitleTextBlock.ToSharedRef() ];
+			[ TitleWidget ];
 			GridPanel->AddSlot(2, 0)
 			         .HAlign(HAlign_Fill).VAlign(VAlign_Center)
 			         .Padding(FMargin(2.f, 0.f, 5.f, 0.f))
-				[ FieldTextBlock.ToSharedRef() ];
+			[ FieldWidget ];
 			GridPanel->AddSlot(3, 0)[ SNullWidget::NullWidget ]; // right spacer
 
 			GridPanel->SetColumnFill(0, 1.f); // spacers eat leftover width equally
@@ -88,11 +103,11 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 			GridPanel->AddSlot(0, 0)
 			         .HAlign(HAlign_Fill).VAlign(VAlign_Fill)
 			         .Padding(FMargin(5.f, 0.f, 5.f, 0.f))
-				[ TitleTextBlock.ToSharedRef() ];
+				[ TitleWidget ];
 			GridPanel->AddSlot(1, 0)
 			         .HAlign(HAlign_Fill).VAlign(VAlign_Fill)
 			         .Padding(FMargin(5.f, 0.f, 5.f, 0.f))
-				[ FieldTextBlock.ToSharedRef() ];
+				[ FieldWidget ];
 
 			// keep your old fill weights (change to whatever you had)
 			GridPanel->SetColumnFill(0, 0.5f);
@@ -110,9 +125,9 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-				[ TitleTextBlock.ToSharedRef() ]
+				[ TitleWidget ]
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-				[ FieldTextBlock.ToSharedRef() ]
+				[ FieldWidget ]
 			];
 			GridPanel->AddSlot(0, 2)[ SNullWidget::NullWidget ];   // bottom spacer
 
@@ -126,10 +141,10 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 			// --- Your previous vertical behavior (two rows) ---
 			GridPanel->AddSlot(0, 0)
 			         .HAlign(HAlign_Center).VAlign(VAlign_Bottom)
-				[ TitleTextBlock.ToSharedRef() ];
+				[ TitleWidget ];
 			GridPanel->AddSlot(0, 1)
 			         .HAlign(HAlign_Center).VAlign(VAlign_Top)
-				[ FieldTextBlock.ToSharedRef() ];
+				[ FieldWidget ];
 
 			GridPanel->SetRowFill(0, 0.5f);
 			GridPanel->SetRowFill(1, 0.5f);

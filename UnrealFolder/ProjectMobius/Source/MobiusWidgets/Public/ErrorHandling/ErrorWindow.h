@@ -7,8 +7,8 @@
 #include "Styling/SlateTypes.h"
 #include "Widgets/SCompoundWidget.h"
 
-class STextBlock;
-class SWidget;
+class SWindowContentPanel;
+class SWindowTitleBarWidget;
 
 /**
  * 
@@ -86,10 +86,7 @@ private:
 	FReply HandleCloseClicked();
 
 	TSharedPtr<SWindow> ErrorWindowPtr;
-	TSharedPtr<STextBlock> TitleBarTextBlock;
-	TSharedPtr<STextBlock> ErrorTitleTextBlock;
-	TSharedPtr<STextBlock> ErrorMessageTextBlock;
-	TSharedPtr<STextBlock> ErrorLocationTextBlock;
-	TSharedPtr<SWidget> ErrorLocationContainer;
+	TSharedPtr<SWindowTitleBarWidget> TitleBarWidget;
+	TSharedPtr<SWindowContentPanel> ContentPanel;
 	FWindowStyle ErrorWindowStyle;
 };
