@@ -28,8 +28,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "MobiusWidgetSubsystem.generated.h"
 
-class UMoveableErrorWidget;
 class UImprovedLoadingNotifyWidget;
+class UErrorWindowWidget;
 /**
  * 
  */
@@ -52,7 +52,7 @@ public:
 	 * @param NewErrorWidget - New Error Widget to add to the Subsystem - by design there is only ever one error widget
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
-	void AddErrorWidget(UMoveableErrorWidget* NewErrorWidget);
+	void AddErrorWidget(UErrorWindowWidget* NewErrorWidget);
 
 	/**
 	 * Method to get the Error Widget
@@ -60,16 +60,35 @@ public:
 	 * @return Error Widget
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
-	UMoveableErrorWidget* GetErrorWidget() const;
+	UErrorWindowWidget* GetErrorWidget() const;
 
 	/**
 	 * Display Error Widget with the new title and message
 	 *
-	 * @param Title - Title of the Error
-	 * @param Message - Message of the Error
+	 * @param TitleBarText - Text displayed in the window title bar
+	 * @param ErrorTitle - Title of the Error
+	 * @param ErrorMessage - Message of the Error
+	 * @param ErrorLocation - Optional location text for where the error occurred
 	 */
+	UFUNCTION(BlueprintCallable, Category = "Error Widget", meta = (AdvancedDisplay = "ErrorLocation"))
+	void DisplayErrorWidget(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
+		const FText& ErrorLocation = FText::GetEmpty());
+
+	/** Update the title bar text for the error window. */
 	UFUNCTION(BlueprintCallable, Category = "Error Widget")
-	void DisplayErrorWidget(const FText Title, const FText Message);
+	void SetErrorTitleBarText(const FText& TitleBarText);
+
+	/** Update the error title text. */
+	UFUNCTION(BlueprintCallable, Category = "Error Widget")
+	void SetErrorTitleText(const FText& ErrorTitle);
+
+	/** Update the error message text. */
+	UFUNCTION(BlueprintCallable, Category = "Error Widget")
+	void SetErrorMessageText(const FText& ErrorMessage);
+
+	/** Update the optional error location text. */
+	UFUNCTION(BlueprintCallable, Category = "Error Widget")
+	void SetErrorLocationText(const FText& ErrorLocation);
 
 	/**
 	 * Add the loading widget to the subsystem
@@ -131,7 +150,7 @@ private:
 public:
 	// Error Widget
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Error Widget")
-	UMoveableErrorWidget* ErrorWidget;
+	UErrorWindowWidget* ErrorWidget;
 
 	// Loading Notify Widget
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LoadingNotifyWidget")

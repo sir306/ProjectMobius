@@ -2,6 +2,8 @@
 
 
 #include "TopMainUiWrapper.h"
+#include "Widget/ErrorWindowWidget.h"
+#include "MobiusWidgetSubsystem.h"
 
 void UTopMainUiWrapper::SynchronizeProperties()
 {
@@ -21,6 +23,17 @@ void UTopMainUiWrapper::NativePreConstruct()
 void UTopMainUiWrapper::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	if (!ErrorWindowWidget)
+	{
+		ErrorWindowWidget = NewObject<UErrorWindowWidget>(this, UErrorWindowWidget::StaticClass());
+		ErrorWindowWidget->TakeWidget();
+	}
+
+	if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
+	{
+		WidgetSubsystem->AddErrorWidget(ErrorWindowWidget);
+	}
 }
 
 void UTopMainUiWrapper::NativeDestruct()

@@ -26,13 +26,8 @@
 
 #include "ImprovedLoadingNotifyWidget.h"
 #include "LoadingNotifyWidget.h"
-#include "MoveableErrorWidget.h"
-#include "Blueprint/WidgetLayoutLibrary.h"
-#include "Components/CanvasPanel.h"
-#include "Components/CanvasPanelSlot.h"
+#include "Widget/ErrorWindowWidget.h"
 #include "Components/PanelWidget.h"
-#include "Components/Overlay.h"
-#include "Components/OverlaySlot.h"
 #include "Subsystems/LoadingSubsystem.h"
 
 UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingNotifyWidget(nullptr)
@@ -83,36 +78,63 @@ void UMobiusWidgetSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UMobiusWidgetSubsystem::AddErrorWidget(UMoveableErrorWidget* NewErrorWidget)
+void UMobiusWidgetSubsystem::AddErrorWidget(UErrorWindowWidget* NewErrorWidget)
 {
 	// Set the error widget
 	ErrorWidget = NewErrorWidget;
-
-	// Get Error Widget Size and set the position to the center of the screen
-	UWidgetLayoutLibrary::SlotAsCanvasSlot(ErrorWidget->MoveableCanvas)->SetPosition(GetCenterPosForWidgetPanel(ErrorWidget->MoveableCanvas));
 }
 
-UMoveableErrorWidget* UMobiusWidgetSubsystem::GetErrorWidget() const
+UErrorWindowWidget* UMobiusWidgetSubsystem::GetErrorWidget() const
 {
-
-	return nullptr;
+	return ErrorWidget;
 }
 
-void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText Title, const FText Message)
+void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText& TitleBarText, const FText& ErrorTitle,
+	const FText& ErrorMessage, const FText& ErrorLocation)
 {
 	if(ErrorWidget == nullptr)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Error Widget is null, cannot display error"));
 		return;
 	}
-	// Set the variables and make the widget visible
-	ErrorWidget->SetErrorTitle(Title);
-	ErrorWidget->SetErrorMessage(Message);
+	// Set the variables and display the window
+	ErrorWidget->SetTitleBarText(TitleBarText);
+	ErrorWidget->SetErrorTitleText(ErrorTitle);
+	ErrorWidget->SetErrorMessageText(ErrorMessage);
+	ErrorWidget->SetErrorLocationText(ErrorLocation);
+	ErrorWidget->ShowErrorWindow();
+}
 
-	// Get Error Widget Size and set the position to the center of the screen
-	UWidgetLayoutLibrary::SlotAsCanvasSlot(ErrorWidget->MoveableCanvas)->SetPosition(GetCenterPosForWidgetPanel(ErrorWidget->MoveableCanvas));
+void UMobiusWidgetSubsystem::SetErrorTitleBarText(const FText& TitleBarText)
+{
+	if (ErrorWidget)
+	{
+		ErrorWidget->SetTitleBarText(TitleBarText);
+	}
+}
 
-	ErrorWidget->SetVisibility(ESlateVisibility::Visible);
+void UMobiusWidgetSubsystem::SetErrorTitleText(const FText& ErrorTitle)
+{
+	if (ErrorWidget)
+	{
+		ErrorWidget->SetErrorTitleText(ErrorTitle);
+	}
+}
+
+void UMobiusWidgetSubsystem::SetErrorMessageText(const FText& ErrorMessage)
+{
+	if (ErrorWidget)
+	{
+		ErrorWidget->SetErrorMessageText(ErrorMessage);
+	}
+}
+
+void UMobiusWidgetSubsystem::SetErrorLocationText(const FText& ErrorLocation)
+{
+	if (ErrorWidget)
+	{
+		ErrorWidget->SetErrorLocationText(ErrorLocation);
+	}
 }
 
 void UMobiusWidgetSubsystem::AddLoadingWidget(UImprovedLoadingNotifyWidget* NewLoadingWidget)
