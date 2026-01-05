@@ -39,6 +39,14 @@
 #define _WIN64 0
 #endif
 
+#ifndef __EMSCRIPTEN__
+#define __EMSCRIPTEN__ 0
+#endif
+
+#ifndef __NX__
+#define __NX__ 0
+#endif
+
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4191)
