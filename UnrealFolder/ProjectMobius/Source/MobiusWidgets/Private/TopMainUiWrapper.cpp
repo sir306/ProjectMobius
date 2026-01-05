@@ -27,7 +27,6 @@ void UTopMainUiWrapper::NativeConstruct()
 	if (!ErrorWindowWidget)
 	{
 		ErrorWindowWidget = NewObject<UErrorWindowWidget>(this, UErrorWindowWidget::StaticClass());
-		ErrorWindowWidget->TakeWidget();
 	}
 
 	if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)

@@ -52,6 +52,11 @@ void UErrorWindowWidget::SetErrorLocationText(const FText& LocationText)
 
 void UErrorWindowWidget::ShowErrorWindow()
 {
+	if (!ErrorWindowWidget.IsValid())
+	{
+		TakeWidget();
+	}
+
 	if (ErrorWindowWidget.IsValid())
 	{
 		ErrorWindowWidget->ShowErrorWindow();
