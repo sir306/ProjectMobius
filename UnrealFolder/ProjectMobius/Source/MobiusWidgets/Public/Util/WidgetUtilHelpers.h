@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "EnumsAndStructs/HelperStructs.h"
+#include "Data/HelperStructs.h"
 #include "WidgetUtilHelpers.generated.h"
 
 class UScrollBox;

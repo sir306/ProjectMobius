@@ -12,7 +12,7 @@
 #include "Components/TextBlock.h"
 #include "Components/UniformGridSlot.h"
 #include "Components/WidgetComponent.h"
-#include "Components/CustomSlateWidgets/FieldAndTextWidget.h"
+#include "UI/Components/FieldAndTextWidget.h"
 #include "Fonts/FontMeasure.h"
 
 
