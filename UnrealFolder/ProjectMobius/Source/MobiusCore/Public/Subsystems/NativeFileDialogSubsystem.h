@@ -31,6 +31,14 @@
 #define __APPLE__ 0
 #endif
 
+#ifndef _WIN32
+#define _WIN32 0
+#endif
+
+#ifndef _WIN64
+#define _WIN64 0
+#endif
+
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4191)
