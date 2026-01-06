@@ -34,6 +34,7 @@
 // Include AppKit for Mac
 #if PLATFORM_MAC
     #include <AppKit/AppKit.h>
+    #include <dispatch/dispatch.h>
 #endif
 
 // Helper functions (Windows/Linux only to prevent unused function warnings on Mac)
@@ -109,64 +110,66 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	// MAC NATIVE IMPLEMENTATION (NSOpenPanel)
 	// ==========================================================
 #if PLATFORM_MAC
-	AsyncTask(ENamedThreads::GameThread, [this, DialogType]()
-	{
-		NSOpenPanel* Panel = [NSOpenPanel openPanel];
-		[Panel setCanChooseFiles:YES];
-		[Panel setCanChooseDirectories:NO];
-		[Panel setAllowsMultipleSelection:NO];
-
-		NSMutableArray* AllowedTypes = [NSMutableArray array];
-
-                if (DialogType == EDialogType::AgentFile)
+        dispatch_async(dispatch_get_main_queue(), ^{
+                @autoreleasepool
                 {
-                        [Panel setMessage:@"Select Agent Data File"];
-                        [AllowedTypes addObject:@"json"];
-                        [AllowedTypes addObject:@"public.json"];
-                }
-		else
-		{
-			[Panel setMessage:@"Select Mesh File"];
-			[AllowedTypes addObject:@"fbx"];
-			[AllowedTypes addObject:@"obj"];
-			[AllowedTypes addObject:@"udatasmith"];
-			[AllowedTypes addObject:@"ifc"];
-			[AllowedTypes addObject:@"wkt"];
-		}
+                        NSOpenPanel* Panel = [NSOpenPanel openPanel];
+                        [Panel setCanChooseFiles:YES];
+                        [Panel setCanChooseDirectories:NO];
+                        [Panel setAllowsMultipleSelection:NO];
 
-        // Disable "Deprecated" warning for this specific line so it compiles cleanly
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-		[Panel setAllowedFileTypes:AllowedTypes];
-        #pragma clang diagnostic pop
+                        NSMutableArray* AllowedTypes = [NSMutableArray array];
 
-		[Panel beginWithCompletionHandler:^(NSInteger Result)
-		{
-			TArray<FString> SelectedFiles;
-
-                        if (Result == NSModalResponseOK)
+                        if (DialogType == EDialogType::AgentFile)
                         {
-                                for (NSURL* URL in [Panel URLs])
+                                [Panel setMessage:@"Select Agent Data File"];
+                                [AllowedTypes addObject:@"json"];
+                                [AllowedTypes addObject:@"public.json"];
+                        }
+                        else
+                        {
+                                [Panel setMessage:@"Select Mesh File"];
+                                [AllowedTypes addObject:@"fbx"];
+                                [AllowedTypes addObject:@"obj"];
+                                [AllowedTypes addObject:@"udatasmith"];
+                                [AllowedTypes addObject:@"ifc"];
+                                [AllowedTypes addObject:@"wkt"];
+                        }
+
+                        // Disable "Deprecated" warning for this specific line so it compiles cleanly
+                        #pragma clang diagnostic push
+                        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                        [Panel setAllowedFileTypes:AllowedTypes];
+                        #pragma clang diagnostic pop
+
+                        [Panel beginWithCompletionHandler:^(NSInteger Result)
+                        {
+                                TArray<FString> SelectedFiles;
+
+                                if (Result == NSModalResponseOK)
                                 {
-                                        if (URL)
+                                        for (NSURL* URL in [Panel URLs])
                                         {
-                                                NSString* Path = [URL path];
-                                                if (Path)
+                                                if (URL)
                                                 {
-                                                        SelectedFiles.Add(FString(UTF8_TO_TCHAR([Path UTF8String])));
+                                                        NSString* Path = [URL path];
+                                                        if (Path)
+                                                        {
+                                                                SelectedFiles.Add(FString(UTF8_TO_TCHAR([Path UTF8String])));
+                                                        }
                                                 }
                                         }
                                 }
-                        }
 
-			AsyncTask(ENamedThreads::GameThread, [this, SelectedFiles]()
-			{
-				this->HandleDialogResult(SelectedFiles);
-				this->ResetDialogState();
-			});
-		}];
-	});
-	return;
+                                AsyncTask(ENamedThreads::GameThread, [this, SelectedFiles]()
+                                {
+                                        this->HandleDialogResult(SelectedFiles);
+                                        this->ResetDialogState();
+                                });
+                        }];
+                }
+        });
+        return;
 #endif
 
 	// ==========================================================
