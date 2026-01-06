@@ -79,8 +79,8 @@ void UNativeFileDialogSubsystem::Deinitialize()
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
 	FCoreDelegates::OnEnginePreExit.RemoveAll(this);
 	FCoreDelegates::OnExit.RemoveAll(this);
-	ResetDialogState();
 #endif
+	ResetDialogState();
 	Super::Deinitialize();
 }
 
@@ -110,6 +110,8 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	// MAC NATIVE IMPLEMENTATION (NSOpenPanel)
 	// ==========================================================
 #if PLATFORM_MAC
+	TWeakObjectPtr<UNativeFileDialogSubsystem> WeakThis(this);
+	const EDialogType DialogTypeCopy = DialogType;
         dispatch_async(dispatch_get_main_queue(), ^{
                 @autoreleasepool
                 {
@@ -120,7 +122,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 
                         NSMutableArray* AllowedTypes = [NSMutableArray array];
 
-                        if (DialogType == EDialogType::AgentFile)
+                        if (DialogTypeCopy == EDialogType::AgentFile)
                         {
                                 [Panel setMessage:@"Select Agent Data File"];
                                 [AllowedTypes addObject:@"json"];
@@ -161,10 +163,14 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
                                         }
                                 }
 
-                                AsyncTask(ENamedThreads::GameThread, [this, SelectedFiles]()
+                                AsyncTask(ENamedThreads::GameThread, [WeakThis, SelectedFiles]()
                                 {
-                                        this->HandleDialogResult(SelectedFiles);
-                                        this->ResetDialogState();
+                                        if (!WeakThis.IsValid())
+                                        {
+                                                return;
+                                        }
+                                        WeakThis->HandleDialogResult(SelectedFiles);
+                                        WeakThis->ResetDialogState();
                                 });
                         }];
                 }
@@ -264,6 +270,7 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 void UNativeFileDialogSubsystem::ResetDialogState()
 {
 	bSelectionInProgress = false;
+	OnFileSelected.Unbind();
 
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
 	if (PollTimerHandle.IsValid())
