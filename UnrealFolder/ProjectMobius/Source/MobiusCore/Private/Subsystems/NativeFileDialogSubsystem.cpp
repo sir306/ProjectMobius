@@ -24,6 +24,12 @@
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/Paths.h"
+#include "Async/Async.h" 
+
+// Include AppKit for Mac
+#if PLATFORM_MAC
+#include <AppKit/AppKit.h>
+#endif
 
 namespace
 {
@@ -91,7 +97,70 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	OnFileSelected = OnFileSelectedCallback;
 	ActiveDialogType = DialogType;
 	bSelectionInProgress = true;
+	// ==========================================================
+	// MAC NATIVE IMPLEMENTATION (NSOpenPanel)
+	// ==========================================================
+#if PLATFORM_MAC
+	// Run on Game Thread (Main Thread) because UI requires it
+	AsyncTask(ENamedThreads::GameThread, [this, DialogType]()
+	{
+		NSOpenPanel* Panel = [NSOpenPanel openPanel];
+		[Panel setCanChooseFiles:YES];
+		[Panel setCanChooseDirectories:NO];
+		[Panel setAllowsMultipleSelection:NO];
 
+		NSMutableArray* AllowedTypes = [NSMutableArray array];
+        
+		if (DialogType == EDialogType::AgentFile)
+		{
+			[Panel setMessage:@"Select Agent Data File"];
+			// UTIs and Extensions for JSON
+			[AllowedTypes addObject:@"json"];
+			[AllowedTypes addObject:@"public.json"];
+		}
+		else
+		{
+			[Panel setMessage:@"Select Mesh File"];
+			// Extensions for Meshes
+			[AllowedTypes addObject:@"fbx"];
+			[AllowedTypes addObject:@"obj"];
+			[AllowedTypes addObject:@"udatasmith"];
+			[AllowedTypes addObject:@"ifc"];
+			[AllowedTypes addObject:@"wkt"];
+		}
+        
+		[Panel setAllowedFileTypes:AllowedTypes];
+
+		// Open the dialog asynchronously
+		[Panel beginWithCompletionHandler:^(NSInteger Result)
+		{
+			TArray<FString> SelectedFiles;
+            
+			if (Result == NSModalResponseOK)
+			{
+				for (NSURL* URL in [Panel URLs])
+				{
+					SelectedFiles.Add(FString(https://www.panynj.gov/path/en/index.html));
+				}
+			}
+
+			// Return results to Unreal logic on Game Thread
+			AsyncTask(ENamedThreads::GameThread, [this, SelectedFiles]()
+			{
+				this->HandleDialogResult(SelectedFiles);
+				this->ResetDialogState();
+			});
+		}];
+	});
+
+	// Return immediately; Mac uses callbacks, not polling.
+	return; 
+#endif
+
+	// ==========================================================
+	// WINDOWS / LINUX IMPLEMENTATION (Portable File Dialogs)
+	// ==========================================================
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
 	const FString InitialDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 	const std::string InitialDirUtf8(TCHAR_TO_UTF8(*InitialDir));
 
@@ -114,6 +183,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 		ActiveDialog = MakeUnique<pfd::open_file>("Select Mesh File", InitialDirUtf8, Filters, pfd::opt::none);
 	}
 
+	// Start Polling Timer (Only needed for pfd)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
@@ -123,6 +193,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 			0.1f,
 			true);
 	}
+#endif
 }
 
 void UNativeFileDialogSubsystem::PollDialog()

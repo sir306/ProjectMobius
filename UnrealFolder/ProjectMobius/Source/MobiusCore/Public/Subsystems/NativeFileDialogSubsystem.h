@@ -26,35 +26,33 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include "Subsystems/WorldSubsystem.h" // Added for UWorldSubsystem
 
-#ifndef __APPLE__
-#define __APPLE__ 0
-#endif
+// --- CHANGE 1: Only include PFD on Windows/Linux ---
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
+	#ifndef _WIN32
+	#define _WIN32 0
+	#endif
+    
+	#ifndef _WIN64
+	#define _WIN64 0
+	#endif
 
-#ifndef _WIN32
-#define _WIN32 0
-#endif
+	#ifndef __APPLE__
+	#define __APPLE__ 0
+	#endif
 
-#ifndef _WIN64
-#define _WIN64 0
+	// PFD Includes
+	#if defined(_MSC_VER)
+	#pragma warning(push)
+	#pragma warning(disable : 4191)
+	#endif
+	#include "PortableFileDialogs/portable-file-dialogs.h"
+	#if defined(_MSC_VER)
+	#pragma warning(pop)
+	#endif
 #endif
-
-#ifndef __EMSCRIPTEN__
-#define __EMSCRIPTEN__ 0
-#endif
-
-#ifndef __NX__
-#define __NX__ 0
-#endif
-
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4191)
-#endif
-#include "PortableFileDialogs/portable-file-dialogs.h"
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
+// ---------------------------------------------------
 #include "NativeFileDialogSubsystem.generated.h"
 
 // Delegate for file selection callback
@@ -146,5 +144,9 @@ private:
 
 	EDialogType ActiveDialogType;
 
+	// Only use PFD dialog pointer on Windows/Linux 
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
+	/** */
 	TUniquePtr<pfd::open_file> ActiveDialog;
+#endif
 };
