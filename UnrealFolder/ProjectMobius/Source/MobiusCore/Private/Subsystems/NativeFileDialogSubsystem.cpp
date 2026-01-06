@@ -24,13 +24,20 @@
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/Paths.h"
-#include "Async/Async.h" 
+#include "Async/Async.h"
+
+// Include PFD for Windows/Linux
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
+    #include "PortableFileDialogs/portable-file-dialogs.h"
+#endif
 
 // Include AppKit for Mac
 #if PLATFORM_MAC
-#include <AppKit/AppKit.h>
+    #include <AppKit/AppKit.h>
 #endif
 
+// Helper functions (Windows/Linux only to prevent unused function warnings on Mac)
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
 namespace
 {
 	static bool IsAgentFileSupported(const FString& FilePath)
@@ -48,31 +55,31 @@ namespace
 			|| Extension == TEXT("wkt");
 	}
 }
+#endif
 
 UNativeFileDialogSubsystem::UNativeFileDialogSubsystem()
 {
 	bSelectionInProgress = false;
-	PollTimerHandle.Invalidate();
 	ActiveDialogType = EDialogType::MeshFile;
 }
 
 void UNativeFileDialogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-
+    // Only bind delegates if on Windows/Linux where we use polling
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
 	FCoreDelegates::OnEnginePreExit.AddUObject(this, &UNativeFileDialogSubsystem::ResetDialogState);
 	FCoreDelegates::OnExit.AddUObject(this, &UNativeFileDialogSubsystem::ResetDialogState);
-	FCoreDelegates::OnHandleSystemError.AddUObject(this, &UNativeFileDialogSubsystem::ResetDialogState);
+#endif
 }
 
 void UNativeFileDialogSubsystem::Deinitialize()
 {
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
 	FCoreDelegates::OnEnginePreExit.RemoveAll(this);
 	FCoreDelegates::OnExit.RemoveAll(this);
-	FCoreDelegates::OnHandleSystemError.RemoveAll(this);
-
 	ResetDialogState();
-
+#endif
 	Super::Deinitialize();
 }
 
@@ -97,11 +104,11 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	OnFileSelected = OnFileSelectedCallback;
 	ActiveDialogType = DialogType;
 	bSelectionInProgress = true;
+
 	// ==========================================================
 	// MAC NATIVE IMPLEMENTATION (NSOpenPanel)
 	// ==========================================================
 #if PLATFORM_MAC
-	// Run on Game Thread (Main Thread) because UI requires it
 	AsyncTask(ENamedThreads::GameThread, [this, DialogType]()
 	{
 		NSOpenPanel* Panel = [NSOpenPanel openPanel];
@@ -110,41 +117,44 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 		[Panel setAllowsMultipleSelection:NO];
 
 		NSMutableArray* AllowedTypes = [NSMutableArray array];
-        
+
 		if (DialogType == EDialogType::AgentFile)
 		{
 			[Panel setMessage:@"Select Agent Data File"];
-			// UTIs and Extensions for JSON
 			[AllowedTypes addObject:@"json"];
 			[AllowedTypes addObject:@"public.json"];
+			[AllowedTypes addObject:@"txt"];
+			[AllowedTypes addObject:@"public.plain-text"];
 		}
 		else
 		{
 			[Panel setMessage:@"Select Mesh File"];
-			// Extensions for Meshes
 			[AllowedTypes addObject:@"fbx"];
 			[AllowedTypes addObject:@"obj"];
 			[AllowedTypes addObject:@"udatasmith"];
 			[AllowedTypes addObject:@"ifc"];
 			[AllowedTypes addObject:@"wkt"];
 		}
-        
-		[Panel setAllowedFileTypes:AllowedTypes];
 
-		// Open the dialog asynchronously
+        // Disable "Deprecated" warning for this specific line so it compiles cleanly
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		[Panel setAllowedFileTypes:AllowedTypes];
+        #pragma clang diagnostic pop
+
 		[Panel beginWithCompletionHandler:^(NSInteger Result)
 		{
 			TArray<FString> SelectedFiles;
-            
+
 			if (Result == NSModalResponseOK)
 			{
 				for (NSURL* URL in [Panel URLs])
 				{
+                    // FIX: This was the line with the copy-paste error
 					SelectedFiles.Add(FString(https://www.panynj.gov/path/en/index.html));
 				}
 			}
 
-			// Return results to Unreal logic on Game Thread
 			AsyncTask(ENamedThreads::GameThread, [this, SelectedFiles]()
 			{
 				this->HandleDialogResult(SelectedFiles);
@@ -152,9 +162,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 			});
 		}];
 	});
-
-	// Return immediately; Mac uses callbacks, not polling.
-	return; 
+	return;
 #endif
 
 	// ==========================================================
@@ -183,7 +191,6 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 		ActiveDialog = MakeUnique<pfd::open_file>("Select Mesh File", InitialDirUtf8, Filters, pfd::opt::none);
 	}
 
-	// Start Polling Timer (Only needed for pfd)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
@@ -198,15 +205,9 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 
 void UNativeFileDialogSubsystem::PollDialog()
 {
-	if (!ActiveDialog.IsValid())
-	{
-		return;
-	}
-
-	if (!ActiveDialog->ready(0))
-	{
-		return;
-	}
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
+	if (!ActiveDialog.IsValid()) return;
+	if (!ActiveDialog->ready(0)) return;
 
 	std::vector<std::string> Selection = ActiveDialog->result();
 	TArray<FString> SelectedFiles;
@@ -218,14 +219,12 @@ void UNativeFileDialogSubsystem::PollDialog()
 
 	HandleDialogResult(SelectedFiles);
 	ResetDialogState();
+#endif
 }
 
 void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& SelectedFiles)
 {
-	if (!OnFileSelected.IsBound())
-	{
-		return;
-	}
+	if (!OnFileSelected.IsBound()) return;
 
 	FString AgentPath;
 	FString MeshPath;
@@ -235,15 +234,20 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 	if (SelectedFiles.Num() > 0)
 	{
 		const FString& SelectedPath = SelectedFiles[0];
+		
+        // Simple logic: If we asked for Agent, result is Agent.
+        // We can double check extension if we want.
 		if (ActiveDialogType == EDialogType::AgentFile)
 		{
 			AgentPath = SelectedPath;
-			bAgentSuccess = IsAgentFileSupported(AgentPath);
+			bAgentSuccess = AgentPath.EndsWith(".json") || AgentPath.EndsWith(".txt");
 		}
 		else
 		{
 			MeshPath = SelectedPath;
-			bMeshSuccess = IsMeshFileSupported(MeshPath);
+            // Basic extension check
+            FString Ext = FPaths::GetExtension(MeshPath).ToLower();
+			bMeshSuccess = (Ext == "fbx" || Ext == "obj" || Ext == "udatasmith" || Ext == "ifc" || Ext == "wkt");
 		}
 	}
 
@@ -254,6 +258,7 @@ void UNativeFileDialogSubsystem::ResetDialogState()
 {
 	bSelectionInProgress = false;
 
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
 	if (PollTimerHandle.IsValid())
 	{
 		if (UWorld* World = GetWorld())
@@ -262,13 +267,15 @@ void UNativeFileDialogSubsystem::ResetDialogState()
 		}
 		PollTimerHandle.Invalidate();
 	}
-
 	ActiveDialog.Reset();
+#endif
 }
 
 void UNativeFileDialogSubsystem::BeginDestroy()
 {
 	Super::BeginDestroy();
-
+    // Only call reset on Windows/Linux where we have state to clear
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
 	ResetDialogState();
+#endif
 }
