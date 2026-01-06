@@ -37,37 +37,31 @@ public class MobiusCore : ModuleRules
 			"DatasmithContent",
 		});
 
+		PublicIncludePaths.AddRange(new[]
+		{
+			"MobiusCore/ThirdParty",
+		});
 		
 		PrivateIncludePaths.AddRange(new[]
 		{
 			"MobiusCore/Public",
 			"MobiusCore/Private",
+			"MobiusCore/ThirdParty",
 		});
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
-			PublicIncludePaths.AddRange(new[]
-			{
-				"MobiusCore/ThirdParty",
-			});
 
-			PrivateIncludePaths.AddRange(new[]
-			{
-				"MobiusCore/ThirdParty",
-			});
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicIncludePaths.AddRange(new[]
 			{
-				"MobiusCore/ThirdParty/earcut_hpp",
+				
 				// This tells the linker to include the AppKit framework (Cocoa) -> Apple's native GUI library
 				"AppKit",
 			});
-			PrivateIncludePaths.AddRange(new[]
-			{
-				"MobiusCore/ThirdParty/earcut_hpp",
-			});
+
 		}
 	}
 }
