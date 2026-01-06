@@ -118,14 +118,12 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 
 		NSMutableArray* AllowedTypes = [NSMutableArray array];
 
-		if (DialogType == EDialogType::AgentFile)
-		{
-			[Panel setMessage:@"Select Agent Data File"];
-			[AllowedTypes addObject:@"json"];
-			[AllowedTypes addObject:@"public.json"];
-			[AllowedTypes addObject:@"txt"];
-			[AllowedTypes addObject:@"public.plain-text"];
-		}
+                if (DialogType == EDialogType::AgentFile)
+                {
+                        [Panel setMessage:@"Select Agent Data File"];
+                        [AllowedTypes addObject:@"json"];
+                        [AllowedTypes addObject:@"public.json"];
+                }
 		else
 		{
 			[Panel setMessage:@"Select Mesh File"];
@@ -146,14 +144,20 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 		{
 			TArray<FString> SelectedFiles;
 
-			if (Result == NSModalResponseOK)
-			{
-				for (NSURL* URL in [Panel URLs])
-				{
-                    // FIX: This was the line with the copy-paste error
-					SelectedFiles.Add(FString(https://www.panynj.gov/path/en/index.html));
-				}
-			}
+                        if (Result == NSModalResponseOK)
+                        {
+                                for (NSURL* URL in [Panel URLs])
+                                {
+                                        if (URL)
+                                        {
+                                                NSString* Path = [URL path];
+                                                if (Path)
+                                                {
+                                                        SelectedFiles.Add(FString(UTF8_TO_TCHAR([Path UTF8String])));
+                                                }
+                                        }
+                                }
+                        }
 
 			AsyncTask(ENamedThreads::GameThread, [this, SelectedFiles]()
 			{
