@@ -32,6 +32,7 @@
 #include "Subsystems/IpcSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Subsystems//HeatmapSubsystem.h"
+#include "ImPlot/ImPlotVisualizationSubsystem.h"
 
 
 void UFloorStatsWidget::NativePreConstruct()
@@ -106,13 +107,19 @@ void UFloorStatsWidget::NativeConstruct()
 		}
 		
 		
-		IpcSubsystem = GetWorld()->GetGameInstance()->GetSubsystem<UIpcSubsystem>();
-		if (IpcSubsystem == nullptr)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("The IPC Subsystem is invalid"));
-		}
-
+	IpcSubsystem = GetWorld()->GetGameInstance()->GetSubsystem<UIpcSubsystem>();
+	if (IpcSubsystem == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("The IPC Subsystem is invalid"));
 	}
+
+	ImPlotSubsystem = GetWorld()->GetSubsystem<UImPlotVisualizationSubsystem>();
+	if (ImPlotSubsystem == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("The ImPlot Visualization Subsystem is invalid"));
+	}
+
+}
 
 	BuildFloorText();
 	if (FloorTextBlock && !FloorPrefixText.IsEmpty())
@@ -236,6 +243,11 @@ void UFloorStatsWidget::BuildQtAppChartTitle() const
 	ChartTitle->SetStringField(TEXT("chartTitle"), TEXT("Total Number of People Over Time"));
 
 	IpcSubsystem->SendJsonMessage(ChartTitle);
+
+	if (ImPlotSubsystem)
+	{
+		ImPlotSubsystem->SetChartTitle(FText::FromString("Total Number of People Over Time"));
+	}
 }
 
 void UFloorStatsWidget::BuildQtChartAxisSetting()
@@ -293,6 +305,17 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 	// }
 
 	IpcSubsystem->SendJsonMessage(AxisSettings);
+
+	if (ImPlotSubsystem)
+	{
+		ImPlotSubsystem->SetAxisSettings(
+			FText::FromString("Elapsed Time (s)"),
+			FText::FromString("Number of Occupants Evacuated"),
+			0.0,
+			MaxTime,
+			MinAgentCountToSend,
+			MaxAgentCount);
+	}
 }
 
 void UFloorStatsWidget::BuildQtChartGraphData() const
@@ -305,6 +328,15 @@ void UFloorStatsWidget::BuildQtChartGraphData() const
 			
 		CompleteDataMsg->SetArrayField(TEXT("points"), CompleteUIData);
 		IpcSubsystem->SendJsonMessage(CompleteDataMsg);
+
+		if (ImPlotSubsystem)
+		{
+			ImPlotSubsystem->SetPlotPoints(ImPlotPoints);
+		}
+	}
+	else if (ImPlotSubsystem)
+	{
+		ImPlotSubsystem->SetPlotPoints(TArray<FVector2D>());
 	}
 }
 
@@ -335,10 +367,15 @@ void UFloorStatsWidget::LaunchCloseQtApp()
 {
 	if (FloorNumber == -1 && IpcSubsystem != nullptr)
 	{
-		// launch or close the qt app
-		IpcSubsystem->OpenOrCloseQtStatApp();
+	// launch or close the qt app
+	IpcSubsystem->OpenOrCloseQtStatApp();
 
-		// TODO: change the open close method to return a bool so we can check if the app is open or not and then send the data if it is open
+	if (ImPlotSubsystem)
+	{
+		ImPlotSubsystem->ToggleOverlay();
+	}
+
+	// TODO: change the open close method to return a bool so we can check if the app is open or not and then send the data if it is open
 		
 		// build the data for the instant UI
 		BuildDataForInstantQtUI();
@@ -353,6 +390,7 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && IpcSubsystem != nullptr)
 	{
 		CompleteUIData.Reset();
+		ImPlotPoints.Reset();
 		
 		
 		if(auto MES_Subsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
@@ -360,12 +398,16 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 			
 	
 			// if we have no data then smallest count is 0
-			if (MES_Subsystem->NumOfAgentsPerTimeStep.Num() == 0)
+		if (MES_Subsystem->NumOfAgentsPerTimeStep.Num() == 0)
+		{
+			// send empty data
+			SendQtAppChartData();
+			if (ImPlotSubsystem)
 			{
-				// send empty data
-				SendQtAppChartData();
-				return;
+				ImPlotSubsystem->SetPlotPoints(ImPlotPoints);
 			}
+			return;
+		}
 	
 			CompleteUIData.Reserve(MES_Subsystem->NumOfAgentsPerTimeStep.Num()); // reserve some space for the data
 
@@ -399,7 +441,8 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 				
 				
 				// add to the array
-				CompleteUIData.Add(MakeShared<FJsonValueObject>(NewPoint));
+			CompleteUIData.Add(MakeShared<FJsonValueObject>(NewPoint));
+			ImPlotPoints.Add(FVector2D(CurrentTime, SampleCount));
 	
 				
 			}
@@ -465,6 +508,11 @@ void UFloorStatsWidget::UpdateAgentLiveData()
 	UpdateLiveDataMsg->SetNumberField(TEXT("currentTime"), LastSentTimeInt);
 	UpdateLiveDataMsg->SetNumberField(TEXT("count"), CurrentLiveAgentCount);
 	IpcSubsystem->SendJsonMessage(UpdateLiveDataMsg);
+
+	if (ImPlotSubsystem)
+	{
+		ImPlotSubsystem->UpdateLiveSample(LastSentTimeInt / 10.0, CurrentLiveAgentCount);
+	}
 }
 
 FText UFloorStatsWidget::FormatTextForTextBlock(const FText& Prefix, int32 Count)

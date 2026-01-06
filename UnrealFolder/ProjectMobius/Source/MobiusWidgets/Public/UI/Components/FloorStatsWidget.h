@@ -31,6 +31,7 @@
 
 class UBaseButton;
 class UTextBlock;
+class UImPlotVisualizationSubsystem;
 /**
  * 
  */
@@ -100,6 +101,10 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UTimeDilationSubSystem> TimeDilationSubSystem;
 
+	/** Pointer to the ImPlot visualization subsystem. */
+	UPROPERTY()
+	TObjectPtr<UImPlotVisualizationSubsystem> ImPlotSubsystem;
+
 	/** Current Active agent text */
 	UPROPERTY()
 	FText FloorPrefixText;
@@ -126,6 +131,9 @@ public:
 private:
 	/** Complete Sim data for Qt UI so can be sent at Launch */
 	TArray<TSharedPtr<FJsonValue>> CompleteUIData;
+
+	/** Cached plot points for the in-engine ImPlot overlay. */
+	TArray<FVector2D> ImPlotPoints;
 
 	/** The min number of agents to send to the Qt UI */
 	int32 MinAgentCountToSend = 0;

@@ -21,15 +21,22 @@ public class Visualization : ModuleRules
             {
                 "CoreUObject",
                 "Engine",
+                "InputCore",
                 "Slate",
-                "SlateCore", 
+                "SlateCore",
                 "RHI",
                 "RenderCore",
             }
         );
         
-        PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});
-        PrivateIncludePaths.AddRange(new string[] { "Visualization/Private" });
+        PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});     
+        PrivateIncludePaths.AddRange(new string[] { "Visualization/Private", "Visualization/Private/ImPlot" });
+
+        PublicIncludePaths.AddRange(new string[]
+        {
+            "Visualization/ThirdParty/ImGui",
+            "Visualization/ThirdParty/ImPlot",
+        });
         
         //TODO: Sort different build versions for different platforms and use the dll and libs from the ThirdParty folder not manually added
         // Add OpenCV dll and lib files

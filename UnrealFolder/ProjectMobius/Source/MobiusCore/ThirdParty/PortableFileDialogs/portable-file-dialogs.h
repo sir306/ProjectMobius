@@ -1052,7 +1052,7 @@ inline internal::file_dialog::file_dialog(type in_type,
             // Split the pattern list to check whether "*" is in there; if it
             // is, we have to disable filters because there is no mechanism in
             // OS X for the user to override the filter.
-            std::regex sep("\\s+");
+            std::regex sep("[\\s,;]+"); // FIX: Split by space, comma, OR semicolon
             std::string filter_list;
             bool has_filter = true;
             std::sregex_token_iterator iter(patterns.begin(), patterns.end(), sep, -1);
