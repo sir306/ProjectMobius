@@ -3,6 +3,7 @@
 
 #include "ErrorHandling/ErrorWindow.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Slate/Components/SMoveableWindow.h"
 #include "Slate/Components/SWindowContentPanel.h"
 #include "Slate/Components/SWindowTitleBarWidget.h"
 #include "Styling/CoreStyle.h"
@@ -87,7 +88,7 @@ void SErrorWindowWidget::OpenErrorWindow()
 		return;
 	}
 
-	SAssignNew(ErrorWindowPtr, SWindow)
+	SAssignNew(ErrorWindowPtr, SMoveableWindow)
 		.Title(FText::FromString("Error Window"))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)

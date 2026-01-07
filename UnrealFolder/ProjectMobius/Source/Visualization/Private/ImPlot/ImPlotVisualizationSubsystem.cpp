@@ -181,8 +181,8 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
          * 
          * below is a list of relevant delegates from SWindow.h that we can hook into and address the issue:
          * 
-         * Sets the delegate to execute right after the window has been moved
-         * SLATECORE_API void SetOnWindowMoved( const FOnWindowMoved& InDelegate);
+         * Invoked when the window is moved 
+         * FOnWindowMoved OnWindowMoved;
          * 
          * @return Returns true if the window is currently morphing to a new position, shape and/or opacity 
          * SLATECORE_API bool IsMorphing() const;

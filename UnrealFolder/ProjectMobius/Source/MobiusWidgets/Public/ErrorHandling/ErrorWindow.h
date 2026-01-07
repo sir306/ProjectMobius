@@ -7,6 +7,7 @@
 #include "Styling/SlateTypes.h"
 #include "Widgets/SCompoundWidget.h"
 
+class SMoveableWindow;
 class SWindowContentPanel;
 class SWindowTitleBarWidget;
 
@@ -85,7 +86,7 @@ private:
 	/** Handles the Close button click. */
 	FReply HandleCloseClicked();
 
-	TSharedPtr<SWindow> ErrorWindowPtr;
+	TSharedPtr<SMoveableWindow> ErrorWindowPtr;
 	TSharedPtr<SWindowTitleBarWidget> TitleBarWidget;
 	TSharedPtr<SWindowContentPanel> ContentPanel;
 	FWindowStyle ErrorWindowStyle;
