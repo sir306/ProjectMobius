@@ -175,6 +175,40 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
                 return;
         }
 
+        /** TODO: 
+         * need to pick up on slate events that when the window is moved or resized we pause the simulation and unpause
+         * this is so that the simulation doesn't continue running as the window for the simulation freezes while the other is being moved
+         * 
+         * below is a list of relevant delegates from SWindow.h that we can hook into and address the issue:
+         * 
+         * Sets the delegate to execute right after the window has been moved
+         * SLATECORE_API void SetOnWindowMoved( const FOnWindowMoved& InDelegate);
+         * 
+         * @return Returns true if the window is currently morphing to a new position, shape and/or opacity 
+         * SLATECORE_API bool IsMorphing() const;
+         *
+         * @return Returns true if the window is currently morphing and is morphing by size
+         * SLATECORE_API bool IsMorphingSize() const;
+         * 
+         * 
+         * Possible things to investigate that may help with this:
+         * 
+         * @return true if this is a vanilla window, or one being used for some special purpose: e.g. tooltip or menu 
+         * SLATECORE_API bool IsRegularWindow() const;
+         * 
+         * @return True if we expect the window size to change frequently. See description of bSizeWillChangeOften member variable.
+         * bool SizeWillChangeOften() const
+         *  
+         * SLATE_ARGUMENT( EWindowType, Type )
+         *  
+         * Use the default os look for the border of the window  
+         * SLATE_ARGUMENT( bool, UseOSWindowBorder )
+         * 
+         * 
+         *  
+         *         **/
+        
+        //
         if (!OverlayWindow.IsValid())
         {
                 SAssignNew(OverlayWindow, SWindow)
