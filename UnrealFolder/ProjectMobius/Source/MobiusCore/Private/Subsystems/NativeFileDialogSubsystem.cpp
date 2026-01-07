@@ -26,6 +26,9 @@
 #include "Misc/Paths.h"
 #include "Async/Async.h"
 
+// Define log category for file dialog operations
+DEFINE_LOG_CATEGORY_STATIC(LogNativeFileDialog, Log, All);
+
 // Include PFD for Windows/Linux
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
     #include "PortableFileDialogs/portable-file-dialogs.h"
@@ -110,72 +113,196 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	// MAC NATIVE IMPLEMENTATION (NSOpenPanel)
 	// ==========================================================
 #if PLATFORM_MAC
+	UE_LOG(LogNativeFileDialog, Log, TEXT("Starting Mac file dialog. Type: %s"),
+		DialogType == EDialogType::AgentFile ? TEXT("AgentFile") : TEXT("MeshFile"));
+
 	TWeakObjectPtr<UNativeFileDialogSubsystem> WeakThis(this);
 	const EDialogType DialogTypeCopy = DialogType;
-        dispatch_async(dispatch_get_main_queue(), ^{
-                @autoreleasepool
-                {
-                        NSOpenPanel* Panel = [NSOpenPanel openPanel];
-                        [Panel setCanChooseFiles:YES];
-                        [Panel setCanChooseDirectories:NO];
-                        [Panel setAllowsMultipleSelection:NO];
+	dispatch_async(dispatch_get_main_queue(), ^{
+		@autoreleasepool
+		{
+			UE_LOG(LogNativeFileDialog, Log, TEXT("Creating NSOpenPanel on main queue"));
 
-                        NSMutableArray* AllowedTypes = [NSMutableArray array];
+			NSOpenPanel* Panel = [NSOpenPanel openPanel];
+			if (Panel == nil)
+			{
+				UE_LOG(LogNativeFileDialog, Error, TEXT("Failed to create NSOpenPanel"));
+				AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+				{
+					if (WeakThis.IsValid())
+					{
+						WeakThis->ReportDialogError(
+							TEXT("Dialog Creation Failed"),
+							TEXT("Could not create the file selection dialog. This may be a system resource issue."));
+					}
+				});
+				return;
+			}
 
-                        if (DialogTypeCopy == EDialogType::AgentFile)
-                        {
-                                [Panel setMessage:@"Select Agent Data File"];
-                                [AllowedTypes addObject:@"json"];
-                                [AllowedTypes addObject:@"public.json"];
-                        }
-                        else
-                        {
-                                [Panel setMessage:@"Select Mesh File"];
-                                [AllowedTypes addObject:@"fbx"];
-                                [AllowedTypes addObject:@"obj"];
-                                [AllowedTypes addObject:@"udatasmith"];
-                                [AllowedTypes addObject:@"ifc"];
-                                [AllowedTypes addObject:@"wkt"];
-                        }
+			[Panel setCanChooseFiles:YES];
+			[Panel setCanChooseDirectories:NO];
+			[Panel setAllowsMultipleSelection:NO];
 
-                        // Disable "Deprecated" warning for this specific line so it compiles cleanly
-                        #pragma clang diagnostic push
-                        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                        [Panel setAllowedFileTypes:AllowedTypes];
-                        #pragma clang diagnostic pop
+			NSMutableArray* AllowedTypes = [NSMutableArray array];
 
-                        [Panel beginWithCompletionHandler:^(NSInteger Result)
-                        {
-                                TArray<FString> SelectedFiles;
+			if (DialogTypeCopy == EDialogType::AgentFile)
+			{
+				[Panel setMessage:@"Select Agent Data File"];
+				[AllowedTypes addObject:@"json"];
+				[AllowedTypes addObject:@"public.json"];
+			}
+			else
+			{
+				[Panel setMessage:@"Select Mesh File"];
+				[AllowedTypes addObject:@"fbx"];
+				[AllowedTypes addObject:@"obj"];
+				[AllowedTypes addObject:@"udatasmith"];
+				[AllowedTypes addObject:@"ifc"];
+				[AllowedTypes addObject:@"wkt"];
+			}
 
-                                if (Result == NSModalResponseOK)
-                                {
-                                        for (NSURL* URL in [Panel URLs])
-                                        {
-                                                if (URL)
-                                                {
-                                                        NSString* Path = [URL path];
-                                                        if (Path)
-                                                        {
-                                                                SelectedFiles.Add(FString(UTF8_TO_TCHAR([Path UTF8String])));
-                                                        }
-                                                }
-                                        }
-                                }
+			// Disable "Deprecated" warning for this specific line so it compiles cleanly
+			#pragma clang diagnostic push
+			#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+			[Panel setAllowedFileTypes:AllowedTypes];
+			#pragma clang diagnostic pop
 
-                                AsyncTask(ENamedThreads::GameThread, [WeakThis, SelectedFiles]()
-                                {
-                                        if (!WeakThis.IsValid())
-                                        {
-                                                return;
-                                        }
-                                        WeakThis->HandleDialogResult(SelectedFiles);
-                                        WeakThis->ResetDialogState();
-                                });
-                        }];
-                }
-        });
-        return;
+			// Window acquisition fallback chain
+			NSWindow* TargetWindow = nil;
+			const char* WindowMethod = "none";
+
+			// Attempt 1: Key window (current focused window)
+			TargetWindow = [NSApp keyWindow];
+			if (TargetWindow != nil)
+			{
+				WindowMethod = "keyWindow";
+			}
+
+			// Attempt 2: Main window
+			if (TargetWindow == nil)
+			{
+				TargetWindow = [NSApp mainWindow];
+				if (TargetWindow != nil)
+				{
+					WindowMethod = "mainWindow";
+				}
+			}
+
+			// Attempt 3: First ordered window
+			if (TargetWindow == nil)
+			{
+				NSArray<NSWindow*>* OrderedWindows = [NSApp orderedWindows];
+				if (OrderedWindows.count > 0)
+				{
+					TargetWindow = OrderedWindows[0];
+					WindowMethod = "orderedWindows[0]";
+				}
+			}
+
+			UE_LOG(LogNativeFileDialog, Log, TEXT("Window acquisition method: %s, Window valid: %s"),
+				UTF8_TO_TCHAR(WindowMethod),
+				TargetWindow != nil ? TEXT("Yes") : TEXT("No"));
+
+			if (TargetWindow != nil)
+			{
+				// Show as sheet attached to window
+				UE_LOG(LogNativeFileDialog, Log, TEXT("Presenting dialog as sheet modal"));
+				[Panel beginSheetModalForWindow:TargetWindow completionHandler:^(NSInteger Result)
+				{
+					UE_LOG(LogNativeFileDialog, Log, TEXT("Sheet dialog completed with result: %ld"), (long)Result);
+
+					// Retain the URLs array to safely pass to game thread
+					NSArray<NSURL*>* URLs = (Result == NSModalResponseOK) ? [[Panel URLs] retain] : nil;
+
+					AsyncTask(ENamedThreads::GameThread, [WeakThis, URLs]()
+					{
+						// Do all Unreal allocations on game thread to avoid memory corruption
+						TArray<FString> SelectedFiles;
+
+						if (URLs != nil)
+						{
+							for (NSURL* URL in URLs)
+							{
+								if (URL)
+								{
+									NSString* Path = [URL path];
+									if (Path)
+									{
+										SelectedFiles.Add(FString(UTF8_TO_TCHAR([Path UTF8String])));
+									}
+								}
+							}
+							[URLs release];
+						}
+
+						UE_LOG(LogNativeFileDialog, Log, TEXT("Processing %d selected files"), SelectedFiles.Num());
+
+						if (!WeakThis.IsValid())
+						{
+							UE_LOG(LogNativeFileDialog, Warning, TEXT("Subsystem no longer valid, discarding results"));
+							return;
+						}
+						WeakThis->HandleDialogResult(SelectedFiles);
+						WeakThis->ResetDialogState();
+					});
+				}];
+			}
+			else
+			{
+				// No window available - use runModal as reliable fallback
+				UE_LOG(LogNativeFileDialog, Warning, TEXT("No window available for sheet. Using runModal fallback."));
+
+				NSInteger Result = [Panel runModal];
+				UE_LOG(LogNativeFileDialog, Log, TEXT("runModal completed with result: %ld"), (long)Result);
+
+				// Process result immediately since runModal is synchronous
+				NSArray<NSURL*>* URLs = (Result == NSModalResponseOK) ? [Panel URLs] : nil;
+
+				// Copy paths before leaving autorelease pool
+				NSMutableArray<NSString*>* PathStrings = [NSMutableArray array];
+				if (URLs != nil)
+				{
+					for (NSURL* URL in URLs)
+					{
+						if (URL)
+						{
+							NSString* Path = [URL path];
+							if (Path)
+							{
+								[PathStrings addObject:[Path copy]];
+							}
+						}
+					}
+				}
+
+				// Retain paths array to pass to game thread
+				[PathStrings retain];
+
+				AsyncTask(ENamedThreads::GameThread, [WeakThis, PathStrings]()
+				{
+					TArray<FString> SelectedFiles;
+
+					for (NSString* Path in PathStrings)
+					{
+						SelectedFiles.Add(FString(UTF8_TO_TCHAR([Path UTF8String])));
+						[Path release];
+					}
+					[PathStrings release];
+
+					UE_LOG(LogNativeFileDialog, Log, TEXT("Processing %d selected files from runModal"), SelectedFiles.Num());
+
+					if (!WeakThis.IsValid())
+					{
+						UE_LOG(LogNativeFileDialog, Warning, TEXT("Subsystem no longer valid, discarding results"));
+						return;
+					}
+					WeakThis->HandleDialogResult(SelectedFiles);
+					WeakThis->ResetDialogState();
+				});
+			}
+		}
+	});
+	return;
 #endif
 
 	// ==========================================================
@@ -267,10 +394,25 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 	OnFileSelected.Execute(AgentPath, MeshPath, bAgentSuccess, bMeshSuccess);
 }
 
+void UNativeFileDialogSubsystem::ReportDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
+{
+	UE_LOG(LogNativeFileDialog, Error, TEXT("File Dialog Error: %s - %s"), *ErrorTitle, *ErrorMessage);
+
+	// Fire error delegate if bound
+	if (OnDialogError.IsBound())
+	{
+		OnDialogError.Execute(ErrorTitle, ErrorMessage);
+	}
+
+	// Reset dialog state since we encountered an error
+	ResetDialogState();
+}
+
 void UNativeFileDialogSubsystem::ResetDialogState()
 {
 	bSelectionInProgress = false;
 	OnFileSelected.Unbind();
+	OnDialogError.Unbind();
 
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
 	if (PollTimerHandle.IsValid())

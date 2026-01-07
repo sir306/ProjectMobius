@@ -58,6 +58,9 @@
 // Delegate for file selection callback
 DECLARE_DYNAMIC_DELEGATE_FourParams(FOnFileSelectedDelegate, const FString&, AgentFilePath, const FString&, MeshFilePath,bool, bAgentSuccess, bool, bMeshSuccess);
 
+// Delegate for dialog error callback
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnDialogErrorDelegate, const FString&, ErrorTitle, const FString&, ErrorMessage);
+
 /**
  * 
  */
@@ -97,6 +100,17 @@ public:
 
 	UPROPERTY()
 	FOnFileSelectedDelegate OnFileSelected;
+
+	/** Delegate invoked when the dialog fails to open or encounters an error. */
+	UPROPERTY()
+	FOnDialogErrorDelegate OnDialogError;
+
+	/**
+	 * Report a dialog error - logs the error and fires the OnDialogError delegate.
+	 * @param ErrorTitle Short title describing the error.
+	 * @param ErrorMessage Detailed error message.
+	 */
+	void ReportDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
 
 protected:
 	/**

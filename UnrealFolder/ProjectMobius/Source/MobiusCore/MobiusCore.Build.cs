@@ -55,13 +55,8 @@ public class MobiusCore : ModuleRules
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
-			PublicIncludePaths.AddRange(new[]
-			{
-				
-				// This tells the linker to include the AppKit framework (Cocoa) -> Apple's native GUI library
-				"AppKit",
-			});
-
+			// Add AppKit framework for NSOpenPanel file dialogs
+			PublicFrameworks.Add("AppKit");
 		}
 	}
 }

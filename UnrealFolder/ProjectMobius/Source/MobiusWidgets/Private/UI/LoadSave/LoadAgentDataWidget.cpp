@@ -42,6 +42,9 @@ void ULoadAgentDataWidget::OnSelectFileButtonClicked()
 		// Bind the delegate to DialogClosed before requesting
 		OnFileSelectedDelegate.BindDynamic(this, &ULoadAgentDataWidget::DialogClosed);
 
+		// Bind error delegate to show popup if dialog fails to open
+		FileDialogSubsystem->OnDialogError.BindDynamic(this, &ULoadAgentDataWidget::OnDialogError);
+
 		FileDialogSubsystem->RequestAgentFileDialog(OnFileSelectedDelegate);
 
 	}
@@ -126,5 +129,18 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));
 	}
+}
+
+void ULoadAgentDataWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
+{
+	if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
+	{
+		WidgetSubsystem->DisplayErrorWidget(
+			FText::FromString(TEXT("File Dialog Error")),
+			FText::FromString(ErrorTitle),
+			FText::FromString(ErrorMessage),
+			FText::FromString(TEXT("Load Agent Data")));
+	}
+	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
 }
 

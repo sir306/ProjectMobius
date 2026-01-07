@@ -62,6 +62,10 @@ public:
 	
 	UFUNCTION()
 	virtual void DialogClosed(const FString& AgentFilePath, const FString& MeshFilePath, bool bAgentSuccess, bool bMeshSuccess) override;
+
+	/** Handler for file dialog errors. Displays error popup to user. */
+	UFUNCTION()
+	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
 #pragma endregion PUBLIC_METHODS
 
 #pragma endregion METHODS
