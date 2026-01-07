@@ -33,6 +33,11 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 
+namespace
+{
+        constexpr bool bEnableQtApps = false;
+}
+
 // Utility: map UE platform to the folder your superbuild uses
 static const TCHAR* GetPlatformFolder()
 {
@@ -238,7 +243,11 @@ void UWebSocketSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCo
 
 void UWebSocketSubsystem::OpenOrCloseQtStatApp()
 {
-	// If already running, kill it (unchanged behavior)
+        if (!bEnableQtApps)
+        {
+                return;
+        }
+        // If already running, kill it (unchanged behavior)
 	if (QtProcessHandle.IsValid() && FPlatformProcess::IsProcRunning(QtProcessHandle))
 	{
 		FPlatformProcess::TerminateProc(QtProcessHandle);

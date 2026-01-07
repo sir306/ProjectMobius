@@ -24,16 +24,12 @@
 
 #include "UI/Components/FloorStatsWidget.h"
 
-#include "UI/Components/ButtonWithText.h"
 #include "Components/TextBlock.h"
-#include "GameInstances/ProjectMobiusGameInstance.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
-#include "Subsystems/IpcSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
-#include "Subsystems//HeatmapSubsystem.h"
-#include "ImPlot/ImPlotVisualizationSubsystem.h"
-
+#include "Subsystems/HeatmapSubsystem.h"
+#include "ImPlot/ImPlotDataSubsystem.h"
 
 void UFloorStatsWidget::NativePreConstruct()
 {
@@ -79,16 +75,16 @@ void UFloorStatsWidget::NativeConstruct()
 			UE_LOG(LogTemp, Warning, TEXT("The Mobius Widget Subsystem is invalid"));
 		}
 
-		// for the chart to show the current data for qt app we can listen to the delegate that broadcasts when file data changes
-		// and send the data to the qt app
+                // for the chart to show the current data for the overlay we can listen to the delegate
+                // that broadcasts when file data changes and send the data to the overlay
 
 		// bind the spawn subsystem -> when this delegate is called we know the data has been loaded and processed
 		if (auto SpawnSystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
 		{
 			// ensure that it is not already bound to the delegate
-			SpawnSystem->OnPedestrianDataReadyToSpawn.RemoveDynamic(this, &UFloorStatsWidget::BuildDataForInstantQtUI);
+                        SpawnSystem->OnPedestrianDataReadyToSpawn.RemoveDynamic(this, &UFloorStatsWidget::BuildDataForImPlotOverlay);
 			
-			SpawnSystem->OnPedestrianDataReadyToSpawn.AddDynamic(this, &UFloorStatsWidget::BuildDataForInstantQtUI);
+                        SpawnSystem->OnPedestrianDataReadyToSpawn.AddDynamic(this, &UFloorStatsWidget::BuildDataForImPlotOverlay);
 		}
 		
 		
@@ -107,19 +103,12 @@ void UFloorStatsWidget::NativeConstruct()
 		}
 		
 		
-	IpcSubsystem = GetWorld()->GetGameInstance()->GetSubsystem<UIpcSubsystem>();
-	if (IpcSubsystem == nullptr)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("The IPC Subsystem is invalid"));
-	}
-
-	ImPlotSubsystem = GetWorld()->GetSubsystem<UImPlotVisualizationSubsystem>();
-	if (ImPlotSubsystem == nullptr)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("The ImPlot Visualization Subsystem is invalid"));
-	}
-
-}
+                ImPlotDataSubsystem = GetWorld()->GetSubsystem<UImPlotDataSubsystem>();
+                if (ImPlotDataSubsystem == nullptr)
+                {
+                        UE_LOG(LogTemp, Warning, TEXT("The ImPlot Data Subsystem is invalid"));
+                }
+        }
 
 	BuildFloorText();
 	if (FloorTextBlock && !FloorPrefixText.IsEmpty())
@@ -144,7 +133,7 @@ void UFloorStatsWidget::NativeDestruct()
 	if (auto SpawnSystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
 	{
 		// ensure that it is not already bound to the delegate
-		SpawnSystem->OnPedestrianDataReadyToSpawn.RemoveDynamic(this, &UFloorStatsWidget::BuildDataForInstantQtUI);
+                SpawnSystem->OnPedestrianDataReadyToSpawn.RemoveDynamic(this, &UFloorStatsWidget::BuildDataForImPlotOverlay);
 	}
 	// Get the heatmap subsystem
 	if (UHeatmapSubsystem* HeatmapSubsystem = GetWorld()->GetSubsystem<UHeatmapSubsystem>())
@@ -199,7 +188,7 @@ void UFloorStatsWidget::UpdateFloorLiveStatCount(int32 InFloorNumber, int32 Agen
 			// we have to send a time that is float and divided by 10 to match the logic for the method
 			float NewTime = LastSentTimeInt / 10.0f;
 			
-			// we can do this as it ensures that the agent count is synced with QT app
+                        // we can do this as it ensures that the agent count is synced with the overlay
 			UpdateCurrentPlaybackTime(NewTime);
 		}
 		// maybe bring a live graph ui switch
@@ -234,33 +223,22 @@ void UFloorStatsWidget::BuildFloorText()
 	}
 }
 
-void UFloorStatsWidget::BuildQtAppChartTitle() const
+void UFloorStatsWidget::BuildImPlotChartTitle() const
 {
-	// build the headings
-	TSharedPtr<FJsonObject> ChartTitle = MakeShared<FJsonObject>();
-	ChartTitle->SetStringField(TEXT("action"),     TEXT("updateChartTitle"));
-	
-	ChartTitle->SetStringField(TEXT("chartTitle"), TEXT("Total Number of People Over Time"));
-
-	IpcSubsystem->SendJsonMessage(ChartTitle);
-
-	if (ImPlotSubsystem)
-	{
-		ImPlotSubsystem->SetChartTitle(FText::FromString("Total Number of People Over Time"));
-	}
+        if (ImPlotDataSubsystem)
+        {
+                ImPlotDataSubsystem->SetChartTitle(FText::FromString("Total Number of People Over Time"));
+        }
 }
 
-void UFloorStatsWidget::BuildQtChartAxisSetting()
+void UFloorStatsWidget::BuildImPlotAxisSetting()
 {
-	// calculate the min and max values for x and y axis
-	TSharedPtr<FJsonObject> AxisSettings = MakeShared<FJsonObject>();
-
-	// work out max time
-	float MaxTime = TimeDilationSubSystem->TotalTime;
+        // work out max time
+        float MaxTime = TimeDilationSubSystem->TotalTime;
 
 	// get the max agent count
 	int32 MaxAgentCount = 1; // default to 1 to avoid division by zero
-	if(auto AgentDataSubSystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>())
+        if (auto AgentDataSubSystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>())
 	{
 		MaxAgentCount = AgentDataSubSystem->GetMaxAgents();
 	}
@@ -290,129 +268,108 @@ void UFloorStatsWidget::BuildQtChartAxisSetting()
 		MaxTime = 1.0f;
 	}
 
-	AxisSettings->SetStringField(TEXT("action"), TEXT("updateAxis"));
-	AxisSettings->SetStringField(TEXT("xTitle"),TEXT("Elapsed Time (s)"));
-	AxisSettings->SetStringField(TEXT("yTitle"),TEXT("Number of Occupants Evacuated"));
-	AxisSettings->SetNumberField(TEXT("xMin"), 0.0); // for now assume always start at 0
-	AxisSettings->SetNumberField(TEXT("xMax"), MaxTime);
-	AxisSettings->SetNumberField(TEXT("yMin"), MinAgentCountToSend); // what was the smallest value we found in the data
-	AxisSettings->SetNumberField(TEXT("yMax"), MaxAgentCount);
-
 	// todo: need better place for this but we know, when time is 0 and count is 0 we want count to be max agent count
 	// if (CurrentLiveAgentCount != LastSentCount && LastSentTime == 0.0f)
 	// {
 	// 	CurrentLiveAgentCount = MaxAgentCount;
 	// }
 
-	IpcSubsystem->SendJsonMessage(AxisSettings);
-
-	if (ImPlotSubsystem)
-	{
-		ImPlotSubsystem->SetAxisSettings(
-			FText::FromString("Elapsed Time (s)"),
-			FText::FromString("Number of Occupants Evacuated"),
-			0.0,
-			MaxTime,
-			MinAgentCountToSend,
-			MaxAgentCount);
-	}
+        if (ImPlotDataSubsystem)
+        {
+                ImPlotDataSubsystem->SetAxisSettings(
+                        FText::FromString("Elapsed Time (s)"),
+                        FText::FromString("Number of Occupants Evacuated"),
+                        0.0,
+                        MaxTime,
+                        MinAgentCountToSend,
+                        MaxAgentCount);
+        }
 }
 
-void UFloorStatsWidget::BuildQtChartGraphData() const
+void UFloorStatsWidget::BuildImPlotGraphData() const
 {
-	// should only send point data if we have any
-	if (CompleteUIData.Num() != 0)
-	{
-		TSharedPtr<FJsonObject> CompleteDataMsg = MakeShared<FJsonObject>();
-		CompleteDataMsg->SetStringField(TEXT("action"), TEXT("setData"));
-			
-		CompleteDataMsg->SetArrayField(TEXT("points"), CompleteUIData);
-		IpcSubsystem->SendJsonMessage(CompleteDataMsg);
-
-		if (ImPlotSubsystem)
-		{
-			ImPlotSubsystem->SetPlotPoints(ImPlotPoints);
-		}
-	}
-	else if (ImPlotSubsystem)
-	{
-		ImPlotSubsystem->SetPlotPoints(TArray<FVector2D>());
-	}
+        if (ImPlotDataSubsystem)
+        {
+                ImPlotDataSubsystem->SetPlotPoints(ImPlotPoints);
+        }
 }
 
-void UFloorStatsWidget::SendQtAppChartData()
+void UFloorStatsWidget::SendImPlotChartData()
 {
-	// don't send data if subsystems are not valid or if this is not the total occupants widget
-	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && IpcSubsystem != nullptr)
-	{
-		BuildQtAppChartTitle();
+        // don't send data if subsystems are not valid or if this is not the total occupants widget
+        if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && ImPlotDataSubsystem != nullptr)
+        {
+                BuildImPlotChartTitle();
+                BuildImPlotAxisSetting();
 
-		BuildQtChartAxisSetting();
-
-		if (TimeDilationSubSystem->GetCurrentSimTime() == 0.0f && CurrentLiveAgentCount == 0)
-		{
-			UpdateCurrentPlaybackTime(0.0f);
+                if (TimeDilationSubSystem->GetCurrentSimTime() == 0.0f && CurrentLiveAgentCount == 0)
+                {
+                        UpdateCurrentPlaybackTime(0.0f);
 		}
 		else
 		{
 			// update live data
-			UpdateAgentLiveData();// may need to move checks into this method
+                        UpdateAgentLiveData(); // may need to move checks into this method
 		}
 		
-		BuildQtChartGraphData();
-	}
+                BuildImPlotGraphData();
+        }
 }
 
-void UFloorStatsWidget::LaunchCloseQtApp()
+void UFloorStatsWidget::ToggleImPlotOverlay()
 {
-	if (FloorNumber == -1 && IpcSubsystem != nullptr)
-	{
-	// launch or close the qt app
-	IpcSubsystem->OpenOrCloseQtStatApp();
+        if (FloorNumber == -1)
+        {
+                if (ImPlotDataSubsystem == nullptr)
+                {
+                        if (UWorld* World = GetWorld())
+                        {
+                                ImPlotDataSubsystem = World->GetSubsystem<UImPlotDataSubsystem>();
+                        }
+                }
 
-	if (ImPlotSubsystem)
-	{
-		ImPlotSubsystem->ToggleOverlay();
-	}
+                if (ImPlotDataSubsystem)
+                {
+                        ImPlotDataSubsystem->ToggleOverlay();
+                }
+                else
+                {
+                        UE_LOG(LogTemp, Warning, TEXT("ToggleImPlotOverlay failed: ImPlot Data Subsystem is invalid."));
+                        return;
+                }
 
-	// TODO: change the open close method to return a bool so we can check if the app is open or not and then send the data if it is open
-		
-		// build the data for the instant UI
-		BuildDataForInstantQtUI();
-		
-		SendQtAppChartData();
-	}
+                // build the data for the instant UI
+                BuildDataForImPlotOverlay();
+
+                SendImPlotChartData();
+        }
+        else
+        {
+                UE_LOG(LogTemp, Warning, TEXT("ToggleImPlotOverlay ignored: expected FloorNumber == -1 but got %d."), FloorNumber);
+        }
 }
 
-void UFloorStatsWidget::BuildDataForInstantQtUI()
+void UFloorStatsWidget::BuildDataForImPlotOverlay()
 {
-	// Only doing all data for now
-	if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && IpcSubsystem != nullptr)
-	{
-		CompleteUIData.Reset();
-		ImPlotPoints.Reset();
+        // Only doing all data for now
+        if (FloorNumber == -1 && TimeDilationSubSystem != nullptr)
+        {
+                ImPlotPoints.Reset();
 		
 		
-		if(auto MES_Subsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
-		{
-			
-	
-			// if we have no data then smallest count is 0
-		if (MES_Subsystem->NumOfAgentsPerTimeStep.Num() == 0)
-		{
-			// send empty data
-			SendQtAppChartData();
-			if (ImPlotSubsystem)
-			{
-				ImPlotSubsystem->SetPlotPoints(ImPlotPoints);
-			}
-			return;
-		}
-	
-			CompleteUIData.Reserve(MES_Subsystem->NumOfAgentsPerTimeStep.Num()); // reserve some space for the data
+                if (auto MES_Subsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
+                {
+                        // if we have no data then smallest count is 0
+                        if (MES_Subsystem->NumOfAgentsPerTimeStep.Num() == 0)
+                        {
+                                MinAgentCountToSend = 0;
+                                // send empty data
+                                SendImPlotChartData();
+                                return;
+                        }
 
-			// we want it to show number evacuated not number remaining
-			int32 MaxAgentCount = MES_Subsystem->AgentDataSubsystem->GetMaxAgents();
+                        // we want it to show number evacuated not number remaining
+                        int32 MaxAgentCount = MES_Subsystem->AgentDataSubsystem->GetMaxAgents();
 	
 			int32 SmallestFoundSampleCount = INT32_MAX;
 			
@@ -434,26 +391,16 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 				// time of current sample -> assumes no missing data
 				float CurrentTime = i * TimeBetweenSteps;
 	
-				// build the points array
-				auto NewPoint = MakeShared<FJsonObject>();
-				NewPoint->SetNumberField(TEXT("x"), CurrentTime);
-				NewPoint->SetNumberField(TEXT("y"), SampleCount);
-				
-				
-				// add to the array
-			CompleteUIData.Add(MakeShared<FJsonValueObject>(NewPoint));
-			ImPlotPoints.Add(FVector2D(CurrentTime, SampleCount));
-	
-				
-			}
+                                // build the points array
+                                ImPlotPoints.Add(FVector2D(CurrentTime, SampleCount));
+                        }
 			// Update the min agent count to send
 			MinAgentCountToSend = SmallestFoundSampleCount;
 			
-			// send the data in case the qt app is already open
-			SendQtAppChartData();
-		}
-		else
-		{
+                        SendImPlotChartData();
+                }
+                else
+                {
 			// log runnable null
 			UE_LOG(LogTemp, Warning, TEXT("The spawn system is null"));
 		}
@@ -463,16 +410,16 @@ void UFloorStatsWidget::BuildDataForInstantQtUI()
 
 void UFloorStatsWidget::UpdateCurrentPlaybackTime(float CurrentTime)
 {
+
+        // for now doing total so if floor number is not -1 then do nothing
+        if (FloorNumber != -1 || TimeDilationSubSystem == nullptr)
+        {
+                return;
+        }
 	
-	// for now doing total so if floor number is not -1 then do nothing
-	if (FloorNumber != -1 || IpcSubsystem == nullptr || TimeDilationSubSystem == nullptr)
-	{
-		return;
-	}
-	
-	// TODO: currently we have a limitation for updates that are sent to the Qt app,
+        // TODO: currently we have a limitation for updates that are sent to the overlay,
 	// We can only send updates when the time changes at 1dp (1 decimal place) to avoid sending too many updates
-	// Otherwise the Qt app updates too frequently and causes the UI to lag behind
+        // Otherwise the overlay updates too frequently and causes the UI to lag behind
 	int32 CurrentTimeCents = FMath::FloorToInt(CurrentTime * 10.0f);
 
 	// log the current timecents and last sent time cents
@@ -503,16 +450,40 @@ void UFloorStatsWidget::UpdateCurrentPlaybackTime(float CurrentTime)
 
 void UFloorStatsWidget::UpdateAgentLiveData()
 {
-	TSharedPtr<FJsonObject> UpdateLiveDataMsg = MakeShared<FJsonObject>();
-	UpdateLiveDataMsg->SetStringField(TEXT("action"), TEXT("updateLiveData"));
-	UpdateLiveDataMsg->SetNumberField(TEXT("currentTime"), LastSentTimeInt);
-	UpdateLiveDataMsg->SetNumberField(TEXT("count"), CurrentLiveAgentCount);
-	IpcSubsystem->SendJsonMessage(UpdateLiveDataMsg);
+        if (ImPlotDataSubsystem)
+        {
+                ImPlotDataSubsystem->UpdateLiveSample(LastSentTimeInt / 10.0, CurrentLiveAgentCount);
+        }
+}
 
-	if (ImPlotSubsystem)
-	{
-		ImPlotSubsystem->UpdateLiveSample(LastSentTimeInt / 10.0, CurrentLiveAgentCount);
-	}
+void UFloorStatsWidget::BuildQtAppChartTitle() const
+{
+        BuildImPlotChartTitle();
+}
+
+void UFloorStatsWidget::BuildQtChartAxisSetting()
+{
+        BuildImPlotAxisSetting();
+}
+
+void UFloorStatsWidget::BuildQtChartGraphData() const
+{
+        BuildImPlotGraphData();
+}
+
+void UFloorStatsWidget::SendQtAppChartData()
+{
+        SendImPlotChartData();
+}
+
+void UFloorStatsWidget::LaunchCloseQtApp()
+{
+        ToggleImPlotOverlay();
+}
+
+void UFloorStatsWidget::BuildDataForInstantQtUI()
+{
+        BuildDataForImPlotOverlay();
 }
 
 FText UFloorStatsWidget::FormatTextForTextBlock(const FText& Prefix, int32 Count)

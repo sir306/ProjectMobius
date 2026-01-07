@@ -174,8 +174,6 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
                         const double BandX[2] = { LiveX - HalfWidth, LiveX + HalfWidth };
                         const double BandYMin[2] = { PlotLimits.Y.Min, PlotLimits.Y.Min };
                         const double BandYMax[2] = { PlotLimits.Y.Max, PlotLimits.Y.Max };
-                        ImPlot::SetNextFillStyle(ImVec4(0.85f, 0.1f, 0.1f, 0.25f));
-                        ImPlot::PlotShaded("Live Window", BandX, BandYMin, BandYMax, 2);
                         ImPlot::SetNextLineStyle(ImVec4(0.85f, 0.1f, 0.1f, 0.9f), 1.5f);
                         ImPlot::PlotInfLines("Live", &LiveX, 1);
                 }

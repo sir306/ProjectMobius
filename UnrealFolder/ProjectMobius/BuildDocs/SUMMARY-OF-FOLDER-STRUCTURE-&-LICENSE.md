@@ -36,13 +36,8 @@
     │   │   ├─ MobiusServer.js  ← Your Node.js (MIT)
     │   │   ├─ package.json     ← (MIT for your entries; dependencies under their own)
     │   │   └─ package-lock.json
-    │   └─ QT_Apps/
-    │       ├─ OpenFileTCP/     ← First Qt app (your code under MIT; Qt libs under LGPL-3.0)
-    │       │   ├─ build/        ← CMake build files (ignore in Git; Qt under LGPL-3.0)
     │       │   ├─ CMakeLists.txt← (MIT)
     │       │   └─ main.cpp      ← (MIT)
-    │       └─ PlotUE_Data/      ← Second Qt app (your code under MIT; Qt libs under LGPL-3.0)
-    │           ├─ build/        ← CMake build (ignore in Git; Qt under LGPL-3.0)
     │           ├─ Shaders/      ← Your GLSL/HLSL (MIT)
     │           ├─ AppWindow.qml ← QML UI (MIT)
     │           ├─ AxisSettings.h← (MIT)

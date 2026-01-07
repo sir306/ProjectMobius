@@ -20,7 +20,6 @@ These are OFF by default to avoid surprise engine invocations.
 Pass the options/paths on configure, e.g. (PowerShell):
 ```powershell
 cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 `
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.9.2/msvc2022_64" `
   -DSUPERBUILD_ENABLE_TESTS=ON `
   -DSUPERBUILD_RUN_TESTS=ON `
   -DSUPERBUILD_ENABLE_UE_AUTOMATION=ON `

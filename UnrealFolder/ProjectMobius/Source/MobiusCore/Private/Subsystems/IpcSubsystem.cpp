@@ -8,6 +8,11 @@
 #include "Misc/FileHelper.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 
+namespace
+{
+        constexpr bool bEnableQtApps = false;
+}
+
 // ------- Small cross-platform helper (kept from your old code style) -------
 static const TCHAR* GetPlatformFolder()
 {
@@ -48,7 +53,10 @@ void UIpcSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		}
 	}
 
-	StartIpcClient();
+        if (bEnableQtApps)
+        {
+                StartIpcClient();
+        }
 }
 
 void UIpcSubsystem::Deinitialize()
@@ -71,7 +79,11 @@ void UIpcSubsystem::Deinitialize()
 
 void UIpcSubsystem::StartIpcClient()
 {
-	// Bind message callback first so we can receive immediately after connect.
+        if (!bEnableQtApps)
+        {
+                return;
+        }
+        // Bind message callback first so we can receive immediately after connect.
 	// The client handles its own worker thread internally.
 	IpcClient = MakeShared<FMobiusIpcClient>(
 		EndpointName,
@@ -163,8 +175,12 @@ void UIpcSubsystem::OnIpcMessage(const TArray<uint8>& Bytes)
 
 void UIpcSubsystem::SendJsonMessage(const TSharedPtr<FJsonObject>& JsonObject) const
 {
-	if (!IpcClient.IsValid() || !JsonObject.IsValid())
-		return;
+        if (!bEnableQtApps)
+        {
+                return;
+        }
+        if (!IpcClient.IsValid() || !JsonObject.IsValid())
+                return;
 
 	FString Out;
 	auto Writer = TJsonWriterFactory<>::Create(&Out);
@@ -180,10 +196,14 @@ void UIpcSubsystem::SendJsonMessage(const TSharedPtr<FJsonObject>& JsonObject) c
 	// UE_LOG(LogTemp, Verbose, TEXT("IPC Sent: %s"), *Out);
 }
 
-void UIpcSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCount)
+void UIpcSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCount)  
 {
-	TSharedPtr<FJsonObject> Msg = MakeShared<FJsonObject>();
-	Msg->SetStringField(TEXT("action"), TEXT("appendPoint"));
+        if (!bEnableQtApps)
+        {
+                return;
+        }
+        TSharedPtr<FJsonObject> Msg = MakeShared<FJsonObject>();
+        Msg->SetStringField(TEXT("action"), TEXT("appendPoint"));
 	Msg->SetNumberField(TEXT("x"), CurrentSimTime);
 	Msg->SetNumberField(TEXT("y"), AgentCount);
 	SendJsonMessage(Msg);
@@ -191,12 +211,20 @@ void UIpcSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCount)
 
 void UIpcSubsystem::OpenOrCloseQtStatApp()
 {
-	LaunchQtStatsAppOrToggle();
+        if (!bEnableQtApps)
+        {
+                return;
+        }
+        LaunchQtStatsAppOrToggle();
 }
 
 void UIpcSubsystem::LaunchQtStatsAppOrToggle()
 {
-	// If already running, kill it
+        if (!bEnableQtApps)
+        {
+                return;
+        }
+        // If already running, kill it
 	if (QtProcessHandle.IsValid() && FPlatformProcess::IsProcRunning(QtProcessHandle))
 	{
 		FPlatformProcess::TerminateProc(QtProcessHandle);

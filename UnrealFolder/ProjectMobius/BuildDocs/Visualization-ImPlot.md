@@ -1,6 +1,6 @@
 # ImPlot Overlay Integration
 
-This document tracks the in-engine ImPlot overlay used for side-by-side comparison with the Qt stats app.
+This document tracks the in-engine ImPlot overlay used for evacuation stats visualization.
 
 ## Third-Party Sources
 
@@ -17,4 +17,4 @@ Paths:
 
 ## Data Flow
 
-`UFloorStatsWidget` mirrors the Qt data and pushes the same title, axis, data points, and live samples into the overlay subsystem.
+`UFloorStatsWidget` pushes the chart title, axis, data points, and live samples into the overlay subsystem.

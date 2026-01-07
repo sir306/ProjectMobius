@@ -38,21 +38,17 @@ endif()
 message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
 
 # Usage (Windows VS generator):
-#   cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="C:/Qt/6.9.2/msvc2022_64"
+#   cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64
 #   cmake --build _superbuild --config Release --parallel
 #
 # Usage (macOS Ninja):
-#   cmake -S . -B _superbuild -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/Qt/6.9.2/macos"
+#   cmake -S . -B _superbuild -G Ninja -DCMAKE_BUILD_TYPE=Release
 #   cmake --build _superbuild --parallel
 
 include(ExternalProject)
 
 # --- Project roots (adjust if your tree differs) ---
 set(UE_ROOT "${CMAKE_SOURCE_DIR}")
-set(TOOLS_ROOT "${UE_ROOT}/Tools/QT_Apps")
-
-set(OPENFILETCP_SRC "${TOOLS_ROOT}/OpenFileTCP")     # has its own deploy target
-set(PLOTUE_SRC      "${TOOLS_ROOT}/PlotUE_Data")     # installs via `install()`
 set(ASSIMP_SRC      "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
 
 # --- Platform output folders Unreal expects ---
@@ -66,9 +62,6 @@ endif()
 
 # Plugin runtime dir where UBT/packager picks up DLLs/DYLIBs
 set(ASSIMP_STAGE_DIR "${UE_ROOT}/Plugins/UE4_Assimp/Binaries/${PLAT}")
-
-# Tools staging (so UE can launch them with CreateProc)
-set(TOOLS_STAGE_DIR  "${UE_ROOT}/Tools/bin/${PLAT}")
 
 # ---------------------------------------
 # 1) Build Assimp as shared and INSTALL into the plugin's ThirdParty layout
@@ -199,103 +192,13 @@ else()
   )
 endif()
 
-# ------------------------------------------------------------
-# 2) Build OpenFileTCP and run its deploy step (Win/Mac)
-#    OpenFileTCP CMake already defaults Qt paths & defines DeployOpenFileTCP.
-# ------------------------------------------------------------
-set(OPENFILETCP_BUILD "${CMAKE_BINARY_DIR}/OpenFileTCP-build")
-
-ExternalProject_Add(OpenFileTCP_ep
-  SOURCE_DIR  "${OPENFILETCP_SRC}"
-  BINARY_DIR  "${OPENFILETCP_BUILD}"
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=Release
-    # inherit a user-provided Qt path if given at superbuild configure time
-    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
-  BUILD_COMMAND   ${CMAKE_COMMAND} --build . --config Release --target OpenFileTCP --parallel
-  INSTALL_COMMAND ""   # deploy handled as a separate step
-  UPDATE_DISCONNECTED 1
-  DEPENDS assimp_stage
-)
-
-# Call the app's deploy target as a dedicated step (portable; no '&&')
-ExternalProject_Add_Step(OpenFileTCP_ep deploy
-  COMMAND ${CMAKE_COMMAND} --build . --config Release --target DeployOpenFileTCP --parallel
-  DEPENDEES build
-  WORKING_DIRECTORY "${OPENFILETCP_BUILD}"
-)
-
-# Stage deployed output to Tools/bin/<Platform>
-add_custom_target(OpenFileTCP_stage ALL
-  DEPENDS OpenFileTCP_ep
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${TOOLS_STAGE_DIR}"
-)
-
-if(WIN32)
-  add_custom_command(TARGET OpenFileTCP_stage POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${OPENFILETCP_BUILD}/WindowsExe" "${TOOLS_STAGE_DIR}/OpenFileTCP"
-  )
-elseif(APPLE)
-  add_custom_command(TARGET OpenFileTCP_stage POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${OPENFILETCP_BUILD}/MacExe/OpenFileTCP.app" "${TOOLS_STAGE_DIR}/OpenFileTCP.app"
-  )
-endif()
-
-# ------------------------------------------------------------
-# 3) Build PlotUE_Data, install it, then stage for UE
-#    (Forward parent CMAKE_PREFIX_PATH so 'find_package(Qt6 ... Graphs)' works.)
-# ------------------------------------------------------------
-set(PLOTUE_BUILD "${CMAKE_BINARY_DIR}/PlotUE_Data-build")
-
-ExternalProject_Add(PlotUE_Data_ep
-  SOURCE_DIR  "${PLOTUE_SRC}"
-  BINARY_DIR  "${PLOTUE_BUILD}"
-  CMAKE_ARGS
-    -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}   # forward Qt path
-  BUILD_COMMAND   ${CMAKE_COMMAND} --build . --config Release --target appPlotUE_Data --parallel
-  INSTALL_COMMAND ""   # deployment handled via custom target
-  UPDATE_DISCONNECTED 1
-)
-
-# invoke its deploy target (created in step 1)
-ExternalProject_Add_Step(PlotUE_Data_ep deploy
-  COMMAND ${CMAKE_COMMAND} --build . --config Release --target DeployPlotUE_Data --parallel
-  DEPENDEES build
-  WORKING_DIRECTORY "${PLOTUE_BUILD}"
-)
-
-add_custom_target(PlotUE_Data_stage ALL
-  DEPENDS PlotUE_Data_ep
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${TOOLS_STAGE_DIR}"
-)
-
-if(WIN32)
-  add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_BUILD}/WindowsExe" "${TOOLS_STAGE_DIR}/PlotUE_Data"
-    COMMENT "Staging PlotUE_Data to ${TOOLS_STAGE_DIR}/PlotUE_Data"
-  )
-elseif(APPLE)
-  add_custom_command(TARGET PlotUE_Data_stage POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PLOTUE_BUILD}/appPlotUE_Data.app"
-            "${TOOLS_STAGE_DIR}/PlotUE_Data.app"
-    COMMENT "Staging PlotUE_Data.app from ${PLOTUE_BUILD}"
-  )
-endif()
-
 # Convenience umbrella target
 add_custom_target(all_external
-  DEPENDS assimp_stage OpenFileTCP_stage PlotUE_Data_stage
+  DEPENDS assimp_stage
 )
 
 add_dependencies(all_external
   assimp_ep
-  PlotUE_Data_ep
-  OpenFileTCP_ep
 )
 
 # ------------------------------------------------------------
@@ -322,16 +225,7 @@ if(SUPERBUILD_ENABLE_TESTS)
     set_tests_properties(${Name} PROPERTIES TIMEOUT 30)
   endfunction()
 
-  add_path_exists_test(stage_tools_bin_exists "${TOOLS_STAGE_DIR}")
-
   if(WIN32)
-    set(_OpenFileTCP_exe "${TOOLS_STAGE_DIR}/OpenFileTCP/OpenFileTCP.exe")
-    set(_PlotUE_Data_exe "${TOOLS_STAGE_DIR}/PlotUE_Data/appPlotUE_Data.exe")
-    add_path_exists_test(stage_OpenFileTCP_exists "${_OpenFileTCP_exe}")
-    add_path_exists_test(stage_PlotUE_Data_exists "${_PlotUE_Data_exe}")
-    add_selftest(run_OpenFileTCP_selftest "${TOOLS_STAGE_DIR}/OpenFileTCP" "${_OpenFileTCP_exe}")
-    add_selftest(run_PlotUE_Data_selftest "${TOOLS_STAGE_DIR}/PlotUE_Data" "${_PlotUE_Data_exe}")
-
     if(SUPERBUILD_RUN_TESTS)
       add_test(NAME run_assimp_unit
         COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}"
@@ -340,13 +234,6 @@ if(SUPERBUILD_ENABLE_TESTS)
     endif()
 
   elseif(APPLE)
-    set(_OpenFileTCP_exe "${TOOLS_STAGE_DIR}/OpenFileTCP.app/Contents/MacOS/OpenFileTCP")
-    set(_PlotUE_Data_exe "${TOOLS_STAGE_DIR}/PlotUE_Data.app/Contents/MacOS/appPlotUE_Data")
-    add_path_exists_test(stage_OpenFileTCP_exists "${_OpenFileTCP_exe}")
-    add_path_exists_test(stage_PlotUE_Data_exists "${_PlotUE_Data_exe}")
-    add_selftest(run_OpenFileTCP_selftest "${TOOLS_STAGE_DIR}/OpenFileTCP.app/Contents/MacOS" "${_OpenFileTCP_exe}")
-    add_selftest(run_PlotUE_Data_selftest "${TOOLS_STAGE_DIR}/PlotUE_Data.app/Contents/MacOS" "${_PlotUE_Data_exe}")
-
     if(SUPERBUILD_RUN_TESTS)
       add_test(NAME run_assimp_unit
         COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}"
@@ -355,13 +242,6 @@ if(SUPERBUILD_ENABLE_TESTS)
     endif()
 
   else()
-    set(_OpenFileTCP_exe "${TOOLS_STAGE_DIR}/OpenFileTCP/OpenFileTCP")
-    set(_PlotUE_Data_exe "${TOOLS_STAGE_DIR}/PlotUE_Data/appPlotUE_Data")
-    add_path_exists_test(stage_OpenFileTCP_exists "${_OpenFileTCP_exe}")
-    add_path_exists_test(stage_PlotUE_Data_exists "${_PlotUE_Data_exe}")
-    add_selftest(run_OpenFileTCP_selftest "${TOOLS_STAGE_DIR}/OpenFileTCP" "${_OpenFileTCP_exe}")
-    add_selftest(run_PlotUE_Data_selftest "${TOOLS_STAGE_DIR}/PlotUE_Data" "${_PlotUE_Data_exe}")
-
     if(SUPERBUILD_RUN_TESTS)
       add_test(NAME run_assimp_unit
         COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}"
@@ -415,7 +295,7 @@ if(SUPERBUILD_ENABLE_TESTS)
   endif()
 
   add_custom_target(superbuild_tests
-    DEPENDS assimp_stage OpenFileTCP_stage PlotUE_Data_stage
+    DEPENDS assimp_stage
     COMMENT "Running superbuild staging checks"
   )
 

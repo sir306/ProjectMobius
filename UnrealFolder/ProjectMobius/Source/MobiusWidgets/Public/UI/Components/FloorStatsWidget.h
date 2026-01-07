@@ -31,9 +31,9 @@
 
 class UBaseButton;
 class UTextBlock;
-class UImPlotVisualizationSubsystem;
+class UImPlotDataSubsystem;
 /**
- * 
+ *
  */
 UCLASS()
 class MOBIUSWIDGETS_API UFloorStatsWidget : public UUserWidget, public IWidgetInterface
@@ -42,20 +42,25 @@ class MOBIUSWIDGETS_API UFloorStatsWidget : public UUserWidget, public IWidgetIn
 	
 #pragma region METHODS
 public:
-	// Native Pre Construct
-	virtual void NativePreConstruct() override;
+        /** Override to handle design-time setup. */
+        virtual void NativePreConstruct() override;
 
-	// Native Constructor 
-	virtual void NativeConstruct() override;
+        /** Override to bind runtime delegates and cache subsystems. */
+        virtual void NativeConstruct() override;
 
-	// Native Destruct
-	virtual void NativeDestruct() override;
+        /** Override to unbind runtime delegates. */
+        virtual void NativeDestruct() override;
 
-	// Tick Method for in C++ for the widget
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+        /**
+         * Override to tick the widget during runtime.
+         *
+         * @param MyGeometry Cached geometry for this widget.
+         * @param InDeltaTime Time elapsed since the last tick.
+         */
+        virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	/** Method to keep the design properties synchronized */
-	virtual void SynchronizeProperties() override;
+        /** Override to keep design-time properties synchronized. */
+        virtual void SynchronizeProperties() override;
 
 	/**
 	 * Update the agent count variable, is bound to the heatmap subsystem delegate
@@ -63,47 +68,98 @@ public:
 	 * @param[int32] InFloorNumber - The floor number to update
 	 * @param[int32] AgentCount - The number of agents on the floor
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void UpdateFloorLiveStatCount(int32 InFloorNumber, int32 AgentCount);
+        /**
+         * Update the agent count variable, is bound to the heatmap subsystem delegate.
+         *
+         * @param InFloorNumber The floor number to update.
+         * @param AgentCount The number of agents on the floor.
+         */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void UpdateFloorLiveStatCount(int32 InFloorNumber, int32 AgentCount);
 
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void BuildFloorText();
-	void BuildQtAppChartTitle() const;
-	void BuildQtChartAxisSetting();
-	void BuildQtChartGraphData() const;
+        /** Build the floor label prefix text. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void BuildFloorText();
 
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void SendQtAppChartData();
+        /** Build and send the chart title for the ImPlot overlay. */
+        void BuildImPlotChartTitle() const;
 
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void LaunchCloseQtApp();
+        /** Build and send axis settings for the ImPlot overlay. */
+        void BuildImPlotAxisSetting();
 
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void BuildDataForInstantQtUI();
+        /** Build and send the plot points for the ImPlot overlay. */
+        void BuildImPlotGraphData() const;
 
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void UpdateCurrentPlaybackTime(float CurrentTime);
+        /** Send all chart data to the ImPlot overlay. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void SendImPlotChartData();
 
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
-	void UpdateAgentLiveData();
+        /** Toggle the ImPlot overlay window for the chart. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void ToggleImPlotOverlay();
 
-	static FText FormatTextForTextBlock(const FText& Prefix, int32 Count);
+        /** Build the cached chart data for immediate display in the ImPlot overlay. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void BuildDataForImPlotOverlay();
+
+        /** Build and send the chart title for the overlay. */
+        UE_DEPRECATED(5.5, "Use BuildImPlotChartTitle instead.")
+        void BuildQtAppChartTitle() const;
+
+        /** Build and send axis settings for the overlay. */
+        UE_DEPRECATED(5.5, "Use BuildImPlotAxisSetting instead.")
+        void BuildQtChartAxisSetting();
+
+        /** Build and send the plot points for the overlay. */
+        UE_DEPRECATED(5.5, "Use BuildImPlotGraphData instead.")
+        void BuildQtChartGraphData() const;
+
+        /** Send all chart data to the overlay. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget",
+                meta = (DeprecatedFunction, DeprecationMessage = "Use SendImPlotChartData instead."))
+        void SendQtAppChartData();
+
+        /** Toggle the overlay window for the chart. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget",
+                meta = (DeprecatedFunction, DeprecationMessage = "Use ToggleImPlotOverlay instead."))
+        void LaunchCloseQtApp();
+
+        /** Build the cached chart data for immediate display. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget",
+                meta = (DeprecatedFunction, DeprecationMessage = "Use BuildDataForImPlotOverlay instead."))
+        void BuildDataForInstantQtUI();
+
+        /**
+         * Update the current playback time for live data updates.
+         *
+         * @param CurrentTime The current simulation time in seconds.
+         */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void UpdateCurrentPlaybackTime(float CurrentTime);
+
+        /** Update the live data sample sent to the overlay. */
+        UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
+        void UpdateAgentLiveData();
+
+        /**
+         * Format the text for the floor stats label.
+         *
+         * @param Prefix The prefix label text.
+         * @param Count The count to append.
+         */
+        static FText FormatTextForTextBlock(const FText& Prefix, int32 Count);
 	
 #pragma endregion METHODS
 
 #pragma region PROPERTYS
 
-	/** pointer to the websocket subsystem */
-	UPROPERTY()
-	TObjectPtr<class UIpcSubsystem> IpcSubsystem;
+        /** Pointer to the ImPlot data subsystem. */
+        UPROPERTY()
+        TObjectPtr<UImPlotDataSubsystem> ImPlotDataSubsystem;
 
-	/** pointer to the time subsystem */
-	UPROPERTY()
-	TObjectPtr<class UTimeDilationSubSystem> TimeDilationSubSystem;
-
-	/** Pointer to the ImPlot visualization subsystem. */
-	UPROPERTY()
-	TObjectPtr<UImPlotVisualizationSubsystem> ImPlotSubsystem;
+        /** pointer to the time subsystem */
+        UPROPERTY()
+        TObjectPtr<class UTimeDilationSubSystem> TimeDilationSubSystem;
 
 	/** Current Active agent text */
 	UPROPERTY()
@@ -129,11 +185,8 @@ public:
 	bool bIsBetweenFloorWidget = false;
 
 private:
-	/** Complete Sim data for Qt UI so can be sent at Launch */
-	TArray<TSharedPtr<FJsonValue>> CompleteUIData;
-
-	/** Cached plot points for the in-engine ImPlot overlay. */
-	TArray<FVector2D> ImPlotPoints;
+        /** Cached plot points for the in-engine ImPlot overlay. */
+        TArray<FVector2D> ImPlotPoints;
 
 	/** The min number of agents to send to the Qt UI */
 	int32 MinAgentCountToSend = 0;
