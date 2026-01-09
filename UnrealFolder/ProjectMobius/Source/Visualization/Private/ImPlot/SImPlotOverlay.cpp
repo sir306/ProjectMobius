@@ -75,8 +75,8 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 		return LayerId;
 	}
 
-        ImGui::SetCurrentContext(ImGuiContext);
-        ImPlot::SetCurrentContext(ImPlotContext);
+	ImGui::SetCurrentContext(ImGuiContext);
+	ImPlot::SetCurrentContext(ImPlotContext);
 
         ImGuiIO& IO = ImGui::GetIO();
         if (FSlateApplication::IsInitialized())

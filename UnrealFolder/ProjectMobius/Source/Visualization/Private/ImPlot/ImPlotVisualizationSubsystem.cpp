@@ -2,11 +2,9 @@
 
 #include "ImPlot/ImPlotVisualizationSubsystem.h"
 #include "ImPlot/SImPlotOverlay.h"
-#include "ImPlot/SImPlotWindowTitleBarWidget.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Styling/CoreStyle.h"
 
 void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -15,11 +13,10 @@ void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 void UImPlotVisualizationSubsystem::Deinitialize()
 {
-        ShowOverlay(false);
-        OverlayWidget.Reset();
-        OverlayWindow.Reset();
-        TitleBarWidget.Reset();
-        Super::Deinitialize();
+	ShowOverlay(false);
+	OverlayWidget.Reset();
+	OverlayWindow.Reset();
+	Super::Deinitialize();
 }
 
 void UImPlotVisualizationSubsystem::ShowOverlay(bool bShow)
@@ -185,41 +182,28 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
                 return;
         }
 
-        if (!OverlayWindow.IsValid())
-        {
-                SAssignNew(OverlayWindow, SMoveableWindow)
-                        .Title(FText::FromString(TEXT("UE Plot Overlay")))
-                        .SizingRule(ESizingRule::UserSized)
-                        .FocusWhenFirstShown(false)
-                        .ActivationPolicy(EWindowActivationPolicy::Never)
-                        .SupportsMaximize(true)
-                        .SupportsMinimize(true)
-                        .IsTopmostWindow(false)
-                        .CreateTitleBar(true)
-                        .HasCloseButton(true)
-                        .AutoCenter(EAutoCenter::PreferredWorkArea)
-                        .UseOSWindowBorder(false)
-                        .ClientSize(FVector2D(640.0f, 420.0f))
-                        .OnStatusMessage(FOnMoveableWindowStatusMessage::CreateUObject(this, &UImPlotVisualizationSubsystem::SetStatusMessage));
+	if (!OverlayWindow.IsValid())
+	{
+		SAssignNew(OverlayWindow, SMoveableWindow)
+			.Title(FText::FromString(TEXT("UE Plot Overlay")))
+			.SizingRule(ESizingRule::UserSized)
+			.FocusWhenFirstShown(false)
+			.ActivationPolicy(EWindowActivationPolicy::Never)
+			.SupportsMaximize(true)
+			.SupportsMinimize(true)
+			.IsTopmostWindow(false)
+			.CreateTitleBar(true)
+			.HasCloseButton(true)
+			.AutoCenter(EAutoCenter::PreferredWorkArea)
+			.UseOSWindowBorder(false)
+			.ClientSize(FVector2D(640.0f, 420.0f))
+			.OnStatusMessage(FOnMoveableWindowStatusMessage::CreateUObject(this, &UImPlotVisualizationSubsystem::SetStatusMessage));
 
-                OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
-                OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed));
+		OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
+		OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed));
 
-                const FWindowStyle WindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
-                SAssignNew(TitleBarWidget, SImPlotWindowTitleBarWidget)
-                        .OwnerWindow(OverlayWindow)
-                        .TitleText(FText::FromString(TEXT("UE Plot Overlay")))
-                        .TitleTextStyle(&WindowStyle.TitleTextStyle)
-                        .WindowStyle(&WindowStyle)
-                        .TitleAlignment(HAlign_Left)
-                        .ShowAppIcon(false);
-                if (TitleBarWidget.IsValid())
-                {
-                        OverlayWindow->SetTitleBar(TitleBarWidget->GetTitleBar());
-                }
-
-                FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
-        }
+		FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
+	}
         else
         {
                 OverlayWindow->BringToFront(true);
@@ -240,12 +224,11 @@ void UImPlotVisualizationSubsystem::CloseOverlayWindow()
 
 void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow)
 {
-        if (OverlayWindow == ClosedWindow)
-        {
-                OverlayWindow.Reset();
-                TitleBarWidget.Reset();
-                bOverlayVisible = false;
-        }
+	if (OverlayWindow == ClosedWindow)
+	{
+		OverlayWindow.Reset();
+		bOverlayVisible = false;
+	}
 }
 
 void UImPlotVisualizationSubsystem::InvalidateOverlay() const

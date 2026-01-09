@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Types/SlateEnums.h"
 #include "Widgets/SWindow.h"
 
 /** Emits status text for the owning window. */
@@ -40,10 +41,12 @@ public:
 		, _ShouldPreserveAspectRatio(false)
                 , _CreateTitleBar(true)
                 , _SaneWindowPlacement(true)
-                , _LayoutBorder(FMargin(5, 5, 5, 5))
-                , _UserResizeBorder(FMargin(5, 5, 5, 5))
-                , _OnStatusMessage()
-        {}
+		, _LayoutBorder(FMargin(5, 5, 5, 5))
+		, _UserResizeBorder(FMargin(5, 5, 5, 5))
+		, _TitleBarContent()
+		, _TitleBarContentAlignment(HAlign_Fill)
+		, _OnStatusMessage()
+	{}
                 SLATE_ARGUMENT(EWindowType, Type)
                 SLATE_STYLE_ARGUMENT(FWindowStyle, Style)
                 SLATE_ATTRIBUTE(FText, Title)
@@ -67,20 +70,37 @@ public:
 		SLATE_ARGUMENT(bool, ShouldPreserveAspectRatio)
                 SLATE_ARGUMENT(bool, CreateTitleBar)
                 SLATE_ARGUMENT(bool, SaneWindowPlacement)
-                SLATE_ARGUMENT(FMargin, LayoutBorder)
-                SLATE_ARGUMENT(FMargin, UserResizeBorder)
-                /** Status message emitter for this window. */
-                SLATE_EVENT(FOnMoveableWindowStatusMessage, OnStatusMessage)
-                SLATE_DEFAULT_SLOT(FArguments, Content)
-        SLATE_END_ARGS()
+	SLATE_ARGUMENT(FMargin, LayoutBorder)
+	SLATE_ARGUMENT(FMargin, UserResizeBorder)
+	/** Optional widget to display in the title bar's center slot. */
+	SLATE_ARGUMENT(TSharedPtr<SWidget>, TitleBarContent)
+	/** Alignment for the custom title bar content. */
+	SLATE_ARGUMENT(EHorizontalAlignment, TitleBarContentAlignment)
+	/** Status message emitter for this window. */
+	SLATE_EVENT(FOnMoveableWindowStatusMessage, OnStatusMessage)
+	SLATE_DEFAULT_SLOT(FArguments, Content)
+	SLATE_END_ARGS()
 
 	/** Constructs this widget with InArgs */
 	void Construct(const FArguments& InArgs);
 
         virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
+        virtual TSharedRef<SWidget> MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent,
+                EHorizontalAlignment TitleContentAlignment) override;
 
 private:
+        void HandleWindowMoved(const TSharedRef<SWindow>& Window);
+        EActiveTimerReturnType HandleIdleTimer(double InCurrentTime, float InDeltaTime);
+
         FOnMoveableWindowStatusMessage OnStatusMessage;
-	
+        TSharedPtr<SWidget> TitleBarContent;
+        EHorizontalAlignment TitleBarContentAlignment = HAlign_Fill;
+
 	FVector2D LastUpdatedPosition = FVector2D::ZeroVector;
+	FVector2D LastUpdatedSize = FVector2D::ZeroVector;
+	double LastMoveTimeSeconds = 0.0;
+	bool bHasLastPosition = false;
+	bool bHasLastSize = false;
+	bool bIsIdle = false;
+	bool bIdleTimerRegistered = false;
 };

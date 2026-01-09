@@ -7,7 +7,6 @@
 #include "ImPlotVisualizationSubsystem.generated.h"
 
 class SImPlotOverlay;
-class SImPlotWindowTitleBarWidget;
 class SMoveableWindow;
 class SWindow;
 
@@ -139,7 +138,6 @@ private:
 
         TSharedPtr<SImPlotOverlay> OverlayWidget;
         TSharedPtr<SMoveableWindow> OverlayWindow;
-        TSharedPtr<SImPlotWindowTitleBarWidget> TitleBarWidget;
 
         FText ChartTitle;
         FText StatusMessage;
