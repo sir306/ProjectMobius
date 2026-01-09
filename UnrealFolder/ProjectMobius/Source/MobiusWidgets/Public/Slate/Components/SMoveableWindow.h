@@ -1,14 +1,16 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Widgets/SWindow.h"
 
+/** Emits status text for the owning window. */
+DECLARE_DELEGATE_OneParam(FOnMoveableWindowStatusMessage, const FText&);
+
 /**
- * A window widget that extends SWindow with move/resize state tracking.
- * Use bIsMoving and bResizing to detect when the window is being moved or resized.
- * These can later be used to fire off delegates for custom behavior.
+ * A window widget that extends SWindow.
+ * This class forwards all SWindow arguments for convenient usage.
  */
 class MOBIUSWIDGETS_API SMoveableWindow : public SWindow
 {
@@ -36,14 +38,15 @@ public:
 		, _SupportsMaximize(true)
 		, _SupportsMinimize(true)
 		, _ShouldPreserveAspectRatio(false)
-		, _CreateTitleBar(true)
-		, _SaneWindowPlacement(true)
-		, _LayoutBorder(FMargin(5, 5, 5, 5))
-		, _UserResizeBorder(FMargin(5, 5, 5, 5))
-	{}
-		SLATE_ARGUMENT(EWindowType, Type)
-		SLATE_STYLE_ARGUMENT(FWindowStyle, Style)
-		SLATE_ATTRIBUTE(FText, Title)
+                , _CreateTitleBar(true)
+                , _SaneWindowPlacement(true)
+                , _LayoutBorder(FMargin(5, 5, 5, 5))
+                , _UserResizeBorder(FMargin(5, 5, 5, 5))
+                , _OnStatusMessage()
+        {}
+                SLATE_ARGUMENT(EWindowType, Type)
+                SLATE_STYLE_ARGUMENT(FWindowStyle, Style)
+                SLATE_ATTRIBUTE(FText, Title)
 		SLATE_ARGUMENT(bool, bDragAnywhere)
 		SLATE_ARGUMENT(EAutoCenter, AutoCenter)
 		SLATE_ARGUMENT(FVector2D, ScreenPosition)
@@ -62,38 +65,20 @@ public:
 		SLATE_ARGUMENT(bool, SupportsMaximize)
 		SLATE_ARGUMENT(bool, SupportsMinimize)
 		SLATE_ARGUMENT(bool, ShouldPreserveAspectRatio)
-		SLATE_ARGUMENT(bool, CreateTitleBar)
-		SLATE_ARGUMENT(bool, SaneWindowPlacement)
-		SLATE_ARGUMENT(FMargin, LayoutBorder)
-		SLATE_ARGUMENT(FMargin, UserResizeBorder)
-		SLATE_DEFAULT_SLOT(FArguments, Content)
-	SLATE_END_ARGS()
-
-	SMoveableWindow();
-	virtual ~SMoveableWindow();
+                SLATE_ARGUMENT(bool, CreateTitleBar)
+                SLATE_ARGUMENT(bool, SaneWindowPlacement)
+                SLATE_ARGUMENT(FMargin, LayoutBorder)
+                SLATE_ARGUMENT(FMargin, UserResizeBorder)
+                /** Status message emitter for this window. */
+                SLATE_EVENT(FOnMoveableWindowStatusMessage, OnStatusMessage)
+                SLATE_DEFAULT_SLOT(FArguments, Content)
+        SLATE_END_ARGS()
 
 	/** Constructs this widget with InArgs */
 	void Construct(const FArguments& InArgs);
 
-	//~ SWidget overrides
-	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
-
-	/** True when the window is actively being moved */
-	bool bIsMoving = false;
-
-	/** True when the window is actively being resized */
-	bool bResizing = false;
+        virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 private:
-	/** Called when the window finishes moving (bound to OnWindowMoved delegate) */
-	void HandleWindowMoved(const TSharedRef<SWindow>& Window);
-
-	/** Cached position from last tick for move detection */
-	FVector2D LastPosition = FVector2D::ZeroVector;
-
-	/** Cached size from last tick for resize detection */
-	FVector2D LastSize = FVector2D::ZeroVector;
-
-	/** Whether we've initialized the cached position/size */
-	bool bHasInitializedCache = false;
+        FOnMoveableWindowStatusMessage OnStatusMessage;
 };

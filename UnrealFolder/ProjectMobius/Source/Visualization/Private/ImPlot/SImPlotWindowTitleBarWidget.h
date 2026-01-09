@@ -59,12 +59,13 @@ public:
          * @param InArgs Slate argument data.
          */
         void Construct(const FArguments& InArgs);
-
+        
         /**
          * Update the title text at runtime.
          * @param InTitleText New title text.
          */
         void SetTitleText(const FText& InTitleText);
+        
 
         /**
          * Get the underlying title bar interface.

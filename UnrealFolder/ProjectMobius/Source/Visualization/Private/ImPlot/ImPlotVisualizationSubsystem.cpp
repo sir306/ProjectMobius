@@ -3,14 +3,10 @@
 #include "ImPlot/ImPlotVisualizationSubsystem.h"
 #include "ImPlot/SImPlotOverlay.h"
 #include "ImPlot/SImPlotWindowTitleBarWidget.h"
+#include "Slate/Components/SMoveableWindow.h"
 #include "Engine/Engine.h"
-#include "Engine/World.h"
-#include "HAL/PlatformTime.h"
-#include "Kismet/GameplayStatics.h"
-#include "Containers/Ticker.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
-#include "Widgets/SWindow.h"
 
 void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -23,7 +19,6 @@ void UImPlotVisualizationSubsystem::Deinitialize()
         OverlayWidget.Reset();
         OverlayWindow.Reset();
         TitleBarWidget.Reset();
-        StopWindowPolling();
         Super::Deinitialize();
 }
 
@@ -56,8 +51,18 @@ void UImPlotVisualizationSubsystem::CloseOverlay()
 
 void UImPlotVisualizationSubsystem::SetChartTitle(const FText& InTitle)
 {
-	ChartTitle = InTitle;
-	InvalidateOverlay();
+        ChartTitle = InTitle;
+        InvalidateOverlay();
+}
+
+void UImPlotVisualizationSubsystem::SetStatusMessage(const FText& InMessage)
+{
+        if (StatusMessage.EqualTo(InMessage))
+        {
+                return;
+        }
+        StatusMessage = InMessage;
+        InvalidateOverlay();
 }
 
 void UImPlotVisualizationSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
@@ -106,7 +111,12 @@ bool UImPlotVisualizationSubsystem::IsOverlayVisible() const
 
 const FText& UImPlotVisualizationSubsystem::GetChartTitle() const
 {
-	return ChartTitle;
+        return ChartTitle;
+}
+
+const FText& UImPlotVisualizationSubsystem::GetStatusMessage() const
+{
+        return StatusMessage;
 }
 
 const FText& UImPlotVisualizationSubsystem::GetXAxisTitle() const
@@ -175,43 +185,9 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
                 return;
         }
 
-        /** TODO: 
-         * need to pick up on slate events that when the window is moved or resized we pause the simulation and unpause
-         * this is so that the simulation doesn't continue running as the window for the simulation freezes while the other is being moved
-         * 
-         * below is a list of relevant delegates from SWindow.h that we can hook into and address the issue:
-         * 
-         * Invoked when the window is moved 
-         * FOnWindowMoved OnWindowMoved;
-         * 
-         * @return Returns true if the window is currently morphing to a new position, shape and/or opacity 
-         * SLATECORE_API bool IsMorphing() const;
-         *
-         * @return Returns true if the window is currently morphing and is morphing by size
-         * SLATECORE_API bool IsMorphingSize() const;
-         * 
-         * 
-         * Possible things to investigate that may help with this:
-         * 
-         * @return true if this is a vanilla window, or one being used for some special purpose: e.g. tooltip or menu 
-         * SLATECORE_API bool IsRegularWindow() const;
-         * 
-         * @return True if we expect the window size to change frequently. See description of bSizeWillChangeOften member variable.
-         * bool SizeWillChangeOften() const
-         *  
-         * SLATE_ARGUMENT( EWindowType, Type )
-         *  
-         * Use the default os look for the border of the window  
-         * SLATE_ARGUMENT( bool, UseOSWindowBorder )
-         * 
-         * 
-         *  
-         *         **/
-        
-        //
         if (!OverlayWindow.IsValid())
         {
-                SAssignNew(OverlayWindow, SWindow)
+                SAssignNew(OverlayWindow, SMoveableWindow)
                         .Title(FText::FromString(TEXT("UE Plot Overlay")))
                         .SizingRule(ESizingRule::UserSized)
                         .FocusWhenFirstShown(false)
@@ -223,11 +199,11 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
                         .HasCloseButton(true)
                         .AutoCenter(EAutoCenter::PreferredWorkArea)
                         .UseOSWindowBorder(false)
-                        .ClientSize(FVector2D(640.0f, 420.0f));
+                        .ClientSize(FVector2D(640.0f, 420.0f))
+                        .OnStatusMessage(FOnMoveableWindowStatusMessage::CreateUObject(this, &UImPlotVisualizationSubsystem::SetStatusMessage));
 
                 OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
                 OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed));
-                OverlayWindow->SetOnWindowMoved(FOnWindowMoved::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowMoved));
 
                 const FWindowStyle WindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
                 SAssignNew(TitleBarWidget, SImPlotWindowTitleBarWidget)
@@ -242,21 +218,7 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
                         OverlayWindow->SetTitleBar(TitleBarWidget->GetTitleBar());
                 }
 
-                TSharedPtr<SWindow> ParentWindow;
-                if (GEngine && GEngine->GameViewport)
-                {
-                        ParentWindow = GEngine->GameViewport->GetWindow();
-                }
-                if (ParentWindow.IsValid())
-                {
-                        FSlateApplication::Get().AddWindowAsNativeChild(OverlayWindow.ToSharedRef(), ParentWindow.ToSharedRef());
-                }
-                else
-                {
-                        FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
-                }
-
-                StartWindowPolling();
+                FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
         }
         else
         {
@@ -266,7 +228,6 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 
 void UImPlotVisualizationSubsystem::CloseOverlayWindow()
 {
-        StopWindowPolling();
         if (!OverlayWindow.IsValid() || !FSlateApplication::IsInitialized())
         {
                 OverlayWindow.Reset();
@@ -284,119 +245,6 @@ void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>
                 OverlayWindow.Reset();
                 TitleBarWidget.Reset();
                 bOverlayVisible = false;
-                StopWindowPolling();
-                ResumeAfterWindowInteraction();
-        }
-}
-
-void UImPlotVisualizationSubsystem::HandleWindowMoved(const TSharedRef<SWindow>& MovedWindow)
-{
-        if (OverlayWindow == MovedWindow)
-        {
-                PauseForWindowInteraction();
-                LastInteractionSeconds = FPlatformTime::Seconds();
-        }
-}
-
-bool UImPlotVisualizationSubsystem::TickOverlayWindow(float DeltaTime)
-{
-        if (!OverlayWindow.IsValid())
-        {
-                return false;
-        }
-
-        const FVector2D CurrentPosition = FVector2D(OverlayWindow->GetPositionInScreen());
-        const FVector2D CurrentSize = FVector2D(OverlayWindow->GetSizeInScreen());
-        if (!bHasLastWindowRect)
-        {
-                LastWindowPosition = CurrentPosition;
-                LastWindowSize = CurrentSize;
-                bHasLastWindowRect = true;
-                return true;
-        }
-
-        const bool bMoved = !CurrentPosition.Equals(LastWindowPosition, 0.1f);
-        const bool bResized = !CurrentSize.Equals(LastWindowSize, 0.1f);
-        if (bMoved || bResized)
-        {
-                PauseForWindowInteraction();
-                LastWindowPosition = CurrentPosition;
-                LastWindowSize = CurrentSize;
-                LastInteractionSeconds = FPlatformTime::Seconds();
-        }
-
-        if (bIsInteractionPaused)
-        {
-                const double NowSeconds = FPlatformTime::Seconds();
-                if (NowSeconds - LastInteractionSeconds >= 0.25)
-                {
-                        ResumeAfterWindowInteraction();
-                }
-        }
-
-        return true;
-}
-
-void UImPlotVisualizationSubsystem::StartWindowPolling()
-{
-        if (WindowPollHandle.IsValid())
-        {
-                return;
-        }
-
-        if (OverlayWindow.IsValid())
-        {
-                LastWindowPosition = FVector2D(OverlayWindow->GetPositionInScreen());
-                LastWindowSize = FVector2D(OverlayWindow->GetSizeInScreen());
-                bHasLastWindowRect = true;
-        }
-
-        WindowPollHandle = FTSTicker::GetCoreTicker().AddTicker(
-                FTickerDelegate::CreateUObject(this, &UImPlotVisualizationSubsystem::TickOverlayWindow));
-}
-
-void UImPlotVisualizationSubsystem::StopWindowPolling()
-{
-        if (!WindowPollHandle.IsValid())
-        {
-                return;
-        }
-
-        FTSTicker::GetCoreTicker().RemoveTicker(WindowPollHandle);
-        WindowPollHandle.Reset();
-        bHasLastWindowRect = false;
-}
-
-void UImPlotVisualizationSubsystem::PauseForWindowInteraction()
-{
-        if (!bIsInteractionPaused)
-        {
-                bIsInteractionPaused = true;
-                if (UWorld* World = GetWorld())
-                {
-                        bWasPausedBeforeInteraction = World->IsPaused();
-                        if (!bWasPausedBeforeInteraction)
-                        {
-                                UGameplayStatics::SetGamePaused(World, true);
-                        }
-                }
-        }
-}
-
-void UImPlotVisualizationSubsystem::ResumeAfterWindowInteraction()
-{
-        if (!bIsInteractionPaused)
-        {
-                return;
-        }
-
-        bIsInteractionPaused = false;
-        if (UWorld* World = GetWorld())
-        {
-                if (!bWasPausedBeforeInteraction)
-                {
-                        UGameplayStatics::SetGamePaused(World, false);
-                }
         }
 }
 

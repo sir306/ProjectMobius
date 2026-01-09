@@ -35,6 +35,21 @@ void UImPlotDataSubsystem::SetChartTitle(const FText& InTitle)
         }
 }
 
+void UImPlotDataSubsystem::SetStatusMessage(const FText& InMessage)
+{
+        if (!ImPlotSubsystem)
+        {
+                if (UWorld* World = GetWorld())
+                {
+                        ImPlotSubsystem = World->GetSubsystem<UImPlotVisualizationSubsystem>();
+                }
+        }
+        if (ImPlotSubsystem)
+        {
+                ImPlotSubsystem->SetStatusMessage(InMessage);
+        }
+}
+
 void UImPlotDataSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
 {
         if (!ImPlotSubsystem)

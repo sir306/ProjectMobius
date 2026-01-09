@@ -3,12 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/Ticker.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ImPlotVisualizationSubsystem.generated.h"
 
 class SImPlotOverlay;
 class SImPlotWindowTitleBarWidget;
+class SMoveableWindow;
 class SWindow;
 
 /**
@@ -48,8 +48,15 @@ public:
 	 * Set the chart title for the overlay.
 	 * @param InTitle Title text to display.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Visualization|ImPlot")
-	void SetChartTitle(const FText& InTitle);
+        UFUNCTION(BlueprintCallable, Category = "Visualization|ImPlot")
+        void SetChartTitle(const FText& InTitle);
+
+        /**
+         * Set a status message displayed above the chart title.
+         * @param InMessage Status message to display.
+         */
+        UFUNCTION(BlueprintCallable, Category = "Visualization|ImPlot")
+        void SetStatusMessage(const FText& InMessage);
 
 	/**
 	 * Set axis labels and limits for the plot.
@@ -81,9 +88,10 @@ public:
 	/** Whether the overlay is currently visible. */
 	bool IsOverlayVisible() const;
 
-	/** Accessors used by the overlay widget. */
-	const FText& GetChartTitle() const;
-	const FText& GetXAxisTitle() const;
+        /** Accessors used by the overlay widget. */
+        const FText& GetChartTitle() const;
+        const FText& GetStatusMessage() const;
+        const FText& GetXAxisTitle() const;
         const FText& GetYAxisTitle() const;
         void GetAxisLimits(double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const;
         bool HasAxisSettings() const;
@@ -113,25 +121,6 @@ private:
          * @param ClosedWindow The window that was closed.
          */
         void HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow);
-        /**
-         * Handle window move events.
-         * @param MovedWindow The window that moved.
-         */
-        void HandleWindowMoved(const TSharedRef<SWindow>& MovedWindow);
-        /**
-         * Tick the overlay window to detect move/resize interaction.
-         * @param DeltaTime Time since last tick.
-         * @return True to keep ticking.
-         */
-        bool TickOverlayWindow(float DeltaTime);
-        /** Start polling the overlay window for move/resize. */
-        void StartWindowPolling();
-        /** Stop polling the overlay window for move/resize. */
-        void StopWindowPolling();
-        /** Pause the simulation while the window is being moved or resized. */
-        void PauseForWindowInteraction();
-        /** Resume the simulation after a window interaction delay. */
-        void ResumeAfterWindowInteraction();
         /** Invalidate the overlay to refresh its rendering. */
         void InvalidateOverlay() const;
 
@@ -149,19 +138,13 @@ private:
         bool bHasLiveSampleThickness = false;
 
         TSharedPtr<SImPlotOverlay> OverlayWidget;
-        TSharedPtr<SWindow> OverlayWindow;
+        TSharedPtr<SMoveableWindow> OverlayWindow;
         TSharedPtr<SImPlotWindowTitleBarWidget> TitleBarWidget;
-        FTSTicker::FDelegateHandle WindowPollHandle;
-        FVector2D LastWindowPosition = FVector2D::ZeroVector;
-        FVector2D LastWindowSize = FVector2D::ZeroVector;
-        bool bHasLastWindowRect = false;
-        bool bIsInteractionPaused = false;
-        bool bWasPausedBeforeInteraction = false;
-        double LastInteractionSeconds = 0.0;
 
-	FText ChartTitle;
-	FText XAxisTitle;
-	FText YAxisTitle;
+        FText ChartTitle;
+        FText StatusMessage;
+        FText XAxisTitle;
+        FText YAxisTitle;
 	double XMin = 0.0;
 	double XMax = 1.0;
 	double YMin = 0.0;
