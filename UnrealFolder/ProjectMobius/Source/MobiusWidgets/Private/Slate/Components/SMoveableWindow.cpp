@@ -68,18 +68,16 @@ void SMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCur
         		const FText StatusText = FText::FromString(TEXT("SMoveableWindow::Tick (bIsAnimatingWindowSize)"));
         		OnStatusMessage.Execute(StatusText);
         	}
-        	else
-        	{
-        		const FText StatusText = IsMorphing()
-						? FText::FromString(TEXT("SMoveableWindow::Tick (morphing)"))
-						: FText::FromString(TEXT("SMoveableWindow::Tick (idle)"));
-        		OnStatusMessage.Execute(StatusText);
-        	}
               if (LastUpdatedPosition != GetPositionInScreen())
               {
               	const FText StatusText = FText::FromString(TEXT("SMoveableWindow::Tick (Has moved)"));
 			  	LastUpdatedPosition = GetPositionInScreen();
               	OnStatusMessage.Execute(StatusText);
               }  
+        	else
+        	{
+        		const FText StatusText = FText::FromString(TEXT("SMoveableWindow::Tick (idle)"));
+        		OnStatusMessage.Execute(StatusText);
+        	}
         }
 }
