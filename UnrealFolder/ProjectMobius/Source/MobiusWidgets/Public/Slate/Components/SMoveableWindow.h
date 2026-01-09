@@ -81,4 +81,6 @@ public:
 
 private:
         FOnMoveableWindowStatusMessage OnStatusMessage;
+	
+	FVector2D LastUpdatedPosition = FVector2D::ZeroVector;
 };

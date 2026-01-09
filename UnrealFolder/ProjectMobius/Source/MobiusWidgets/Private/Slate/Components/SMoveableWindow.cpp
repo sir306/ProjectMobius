@@ -75,6 +75,11 @@ void SMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCur
 						: FText::FromString(TEXT("SMoveableWindow::Tick (idle)"));
         		OnStatusMessage.Execute(StatusText);
         	}
-                
+              if (LastUpdatedPosition != GetPositionInScreen())
+              {
+              	const FText StatusText = FText::FromString(TEXT("SMoveableWindow::Tick (Has moved)"));
+			  	LastUpdatedPosition = GetPositionInScreen();
+              	OnStatusMessage.Execute(StatusText);
+              }  
         }
 }
