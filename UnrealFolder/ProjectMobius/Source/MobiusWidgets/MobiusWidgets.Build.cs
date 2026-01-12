@@ -12,6 +12,8 @@ public class MobiusWidgets : ModuleRules
                 "Core",
                 "UMG", 
                 "Synthesis", // Required for the synth2d component
+                
+                
             }
         );
 
@@ -21,7 +23,8 @@ public class MobiusWidgets : ModuleRules
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore", 
+                "SlateCore",
+                "InputCore",
                 "ProjectMobius", // the two files that cause the circular dependency are: FloorStatsWidget.cpp and BaseChangePedestrianMaterial.h
                 // The problematic file is the floor stats widget, which is a UMG widget that displays the stats of the floor
                 /* TODO:

@@ -3,19 +3,38 @@
 
 #include "ErrorHandling/ErrorWindowWidget.h"
 #include "ErrorHandling/ErrorWindow.h"
+#include "Core/MobiusWidgetSubsystem.h"
 
 TSharedRef<SWidget> UErrorWindowWidget::RebuildWidget()
 {
-	ErrorWindowWidget = SNew(SErrorWindowWidget);
-	
-	return ErrorWindowWidget.ToSharedRef();
+    ErrorWindowWidget = SNew(SErrorWindowWidget);
+    if (UWorld* World = GetWorld())
+    {
+        if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
+        {
+            MoveableWindowSubsystem = WidgetSubsystem;
+            WidgetSubsystem->RegisterMoveableWindowActivity();
+        }
+    }
+    return ErrorWindowWidget.ToSharedRef();
 }
 
 void UErrorWindowWidget::ReleaseSlateResources(bool bReleaseChildren)
 {
-	Super::ReleaseSlateResources(bReleaseChildren);
-
-	ErrorWindowWidget.Reset();
+    Super::ReleaseSlateResources(bReleaseChildren);
+    if (MoveableWindowSubsystem.IsValid())
+    {
+        MoveableWindowSubsystem->UnregisterMoveableWindowActivity();
+        MoveableWindowSubsystem.Reset();
+    }
+    else if (UWorld* World = GetWorld())
+    {
+        if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
+        {
+            WidgetSubsystem->UnregisterMoveableWindowActivity();
+        }
+    }
+    ErrorWindowWidget.Reset();
 }
 
 void UErrorWindowWidget::SetTitleBarText(const FText& TitleText)
@@ -62,3 +81,6 @@ void UErrorWindowWidget::ShowErrorWindow()
 		ErrorWindowWidget->ShowErrorWindow();
 	}
 }
+
+
+

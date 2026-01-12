@@ -28,7 +28,9 @@
 #include "UI/LoadingNotifyWidget.h"
 #include "ErrorHandling/ErrorWindowWidget.h"
 #include "Components/PanelWidget.h"
+#include "Slate/Components/SMoveableWindow.h"
 #include "Subsystems/LoadingSubsystem.h"
+#include "Widgets/Simulation/SimulationPlayBar.h"
 
 UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingNotifyWidget(nullptr)
 {
@@ -55,13 +57,46 @@ void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		// OnLoadingUnknownDurationChanged
 		LoadingSubsystem->OnLoadingUnknownDurationChanged.AddDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget);
 	}
-	
+
+	if (SimulationPlayBarConstructedHandle.IsValid())
+	{
+		USimulationPlayBar::OnPlayBarConstructed().Remove(SimulationPlayBarConstructedHandle);
+		SimulationPlayBarConstructedHandle.Reset();
+	}
+	if (SimulationPlayBarDestructedHandle.IsValid())
+	{
+		USimulationPlayBar::OnPlayBarDestructed().Remove(SimulationPlayBarDestructedHandle);
+		SimulationPlayBarDestructedHandle.Reset();
+	}
+	SimulationPlayBars.Reset();
+	SimulationPlayBarConstructedHandle = USimulationPlayBar::OnPlayBarConstructed().AddUObject(this, &UMobiusWidgetSubsystem::HandleSimulationPlayBarConstructed);
+	SimulationPlayBarDestructedHandle = USimulationPlayBar::OnPlayBarDestructed().AddUObject(this, &UMobiusWidgetSubsystem::HandleSimulationPlayBarDestructed);
+
 	Super::Initialize(Collection);
-	
+
 }
 
 void UMobiusWidgetSubsystem::Deinitialize()
 {
+        MoveableWindowActivityRefCount = 0;
+	if (MoveableWindowActivityHandle.IsValid())
+	{
+		SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
+		MoveableWindowActivityHandle.Reset();
+	}
+
+	if (SimulationPlayBarConstructedHandle.IsValid())
+	{
+		USimulationPlayBar::OnPlayBarConstructed().Remove(SimulationPlayBarConstructedHandle);
+		SimulationPlayBarConstructedHandle.Reset();
+	}
+	if (SimulationPlayBarDestructedHandle.IsValid())
+	{
+		USimulationPlayBar::OnPlayBarDestructed().Remove(SimulationPlayBarDestructedHandle);
+		SimulationPlayBarDestructedHandle.Reset();
+	}
+	SimulationPlayBars.Reset();
+
 	// Unbind all bound delegates from the loading subsystem
 	if (ULoadingSubsystem* LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>())
 	{
@@ -74,8 +109,97 @@ void UMobiusWidgetSubsystem::Deinitialize()
 		// OnLoadingUnknownDurationChanged
 		LoadingSubsystem->OnLoadingUnknownDurationChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget);
 	}
-	
-	Super::Deinitialize();
+
+        Super::Deinitialize();
+}
+
+void UMobiusWidgetSubsystem::Tick(float DeltaTime)
+{
+        Super::Tick(DeltaTime);
+
+        if (!bHasPendingMoveableWindowActivity)
+        {
+                return;
+        }
+        UE_LOG(LogTemp,Warning, TEXT("Ticking"));
+
+        bHasPendingMoveableWindowActivity = false;
+        ApplyMoveableWindowActivity(bPendingMoveableWindowActivity);
+}
+
+void UMobiusWidgetSubsystem::RegisterMoveableWindowActivity()
+{
+        ++MoveableWindowActivityRefCount;
+        if (MoveableWindowActivityRefCount == 1)
+        {
+                if (MoveableWindowActivityHandle.IsValid())
+                {
+                        SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
+                        MoveableWindowActivityHandle.Reset();
+                }
+                MoveableWindowActivityHandle = SMoveableWindow::OnActivityChanged().AddUObject(this, &UMobiusWidgetSubsystem::HandleMoveableWindowActivityChanged);
+        }
+}
+
+void UMobiusWidgetSubsystem::UnregisterMoveableWindowActivity()
+{
+        if (MoveableWindowActivityRefCount <= 0)
+        {
+                MoveableWindowActivityRefCount = 0;
+                return;
+        }
+
+        --MoveableWindowActivityRefCount;
+        if (MoveableWindowActivityRefCount == 0 && MoveableWindowActivityHandle.IsValid())
+        {
+                SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
+                MoveableWindowActivityHandle.Reset();
+        }
+}
+
+void UMobiusWidgetSubsystem::HandleMoveableWindowActivityChanged(bool bIsActive)
+{
+	bPendingMoveableWindowActivity = bIsActive;
+	bHasPendingMoveableWindowActivity = true;
+	UE_LOG(LogTemp, Warning, TEXT("Queued moveable window activity change: %s"), bIsActive ? TEXT("active") : TEXT("idle"));
+}
+
+void UMobiusWidgetSubsystem::ApplyMoveableWindowActivity(bool bIsActive)
+{
+	UE_LOG(LogTemp, Log, TEXT("Moveable window %s"), bIsActive ? TEXT("moving/resizing") : TEXT("idle"));
+	for (int32 Index = SimulationPlayBars.Num() - 1; Index >= 0; --Index)
+	{
+		USimulationPlayBar* PlayBar = SimulationPlayBars[Index].Get();
+		if (!PlayBar)
+		{
+			SimulationPlayBars.RemoveAt(Index);
+			continue;
+		}
+
+		PlayBar->HandleMoveableWindowActivityChanged(bIsActive);
+	}
+}
+
+void UMobiusWidgetSubsystem::HandleSimulationPlayBarConstructed(USimulationPlayBar* PlayBar)
+{
+	if (!PlayBar || PlayBar->GetWorld() != GetWorld())
+	{
+		return;
+	}
+
+	SimulationPlayBars.RemoveAll([](const TWeakObjectPtr<USimulationPlayBar>& PlayBarPtr)
+	{
+		return !PlayBarPtr.IsValid();
+	});
+	SimulationPlayBars.AddUnique(PlayBar);
+}
+
+void UMobiusWidgetSubsystem::HandleSimulationPlayBarDestructed(USimulationPlayBar* PlayBar)
+{
+	SimulationPlayBars.RemoveAll([PlayBar](const TWeakObjectPtr<USimulationPlayBar>& PlayBarPtr)
+	{
+		return !PlayBarPtr.IsValid() || PlayBarPtr.Get() == PlayBar;
+	});
 }
 
 void UMobiusWidgetSubsystem::AddErrorWidget(UErrorWindowWidget* NewErrorWidget)

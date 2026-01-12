@@ -30,11 +30,12 @@
 
 class UImprovedLoadingNotifyWidget;
 class UErrorWindowWidget;
+class USimulationPlayBar;
 /**
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UMobiusWidgetSubsystem : public UWorldSubsystem
+class MOBIUSWIDGETS_API UMobiusWidgetSubsystem : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
 #pragma region METHODS
@@ -47,10 +48,25 @@ public:
 	 */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
-	/**
-	 * Deinitialize the subsystem and unbind delegates.
-	 */
-	virtual void Deinitialize() override;
+        /**
+         * Deinitialize the subsystem and unbind delegates.
+         */
+        virtual void Deinitialize() override;
+
+        /** Tick -- fires every frame. */
+        virtual void Tick(float DeltaTime) override;
+
+        virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UMobiusWidgetSubsystem, STATGROUP_Tickables); }
+
+        /**
+         * Register this subsystem to receive moveable window activity changes.
+         */
+        void RegisterMoveableWindowActivity();
+
+        /**
+         * Unregister this subsystem from moveable window activity changes.
+         */
+        void UnregisterMoveableWindowActivity();
 
 	/**
 	 * Simple method to add the Error Widget to the Subsystem
@@ -152,9 +168,26 @@ public:
 	void UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText);
 
 private:
-	
-	/**
-	 * Internal method to get a center position of the screen for the specified widget
+        /**
+         * Handle move/resize activity updates from moveable windows.
+         * @param bIsActive True when moving/resizing, false when idle.
+         */
+        void HandleMoveableWindowActivityChanged(bool bIsActive);
+
+        /**
+         * Apply move/resize activity updates on the game thread.
+         * @param bIsActive True when moving/resizing, false when idle.
+         */
+        void ApplyMoveableWindowActivity(bool bIsActive);
+
+        /** Track new simulation play bars for move/resize handling. */
+        void HandleSimulationPlayBarConstructed(USimulationPlayBar* PlayBar);
+
+        /** Stop tracking a simulation play bar. */
+        void HandleSimulationPlayBarDestructed(USimulationPlayBar* PlayBar);
+
+        /**
+         * Internal method to get a center position of the screen for the specified widget
 	 *
 	 * @param Widget - Widget to get the center position for
 	 * @return Center Position of the Widget
@@ -178,7 +211,16 @@ public:
 	UErrorWindowWidget* ErrorWidget;
 
 	// Loading Notify Widget
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LoadingNotifyWidget")
-	UImprovedLoadingNotifyWidget* LoadingNotifyWidget;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LoadingNotifyWidget")
+        UImprovedLoadingNotifyWidget* LoadingNotifyWidget;
 #pragma endregion PROPERTIES
+
+private:
+        FDelegateHandle MoveableWindowActivityHandle;
+        int32 MoveableWindowActivityRefCount = 0;
+        bool bHasPendingMoveableWindowActivity = false;
+        bool bPendingMoveableWindowActivity = false;
+        FDelegateHandle SimulationPlayBarConstructedHandle;
+        FDelegateHandle SimulationPlayBarDestructedHandle;
+        TArray<TWeakObjectPtr<USimulationPlayBar>> SimulationPlayBars;
 };

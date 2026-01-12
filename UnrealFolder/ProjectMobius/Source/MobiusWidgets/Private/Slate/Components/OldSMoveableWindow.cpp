@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Slate/Components/SMoveableWindow.h"
+#include "Slate/Components/OldSMoveableWindow.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GenericPlatform/GenericWindow.h"
 #include "InputCoreTypes.h"
@@ -14,10 +14,10 @@ namespace
 {
 	constexpr float IdleTimerPeriodSeconds = 1.0f;
 	constexpr double IdleThresholdSeconds = 1.0;
-	const FText PositionChangedText = FText::FromString(TEXT("SMoveableWindow: Position changed"));
-	const FText ResizedText = FText::FromString(TEXT("SMoveableWindow: Resized"));
-	const FText IdleText = FText::FromString(TEXT("SMoveableWindow: Idle"));
-	const FText MouseHeldText = FText::FromString(TEXT("SMoveableWindow: Mouse held"));
+const FText PositionChangedText = FText::FromString(TEXT("OldSMoveableWindow: Position changed"));
+const FText ResizedText = FText::FromString(TEXT("OldSMoveableWindow: Resized"));
+const FText IdleText = FText::FromString(TEXT("OldSMoveableWindow: Idle"));
+const FText MouseHeldText = FText::FromString(TEXT("OldSMoveableWindow: Mouse held"));
 
         bool TryGetNativeWindowPosition(const TSharedPtr<FGenericWindow>& NativeWindow, FVector2D& OutPosition)
         {
@@ -47,13 +47,13 @@ namespace
 	}
 }
 
-FOnMoveableWindowActivityChanged& SMoveableWindow::OnActivityChanged()
+FOnMoveableWindowActivityChanged& SOldMoveableWindow::OnActivityChanged()
 {
         static FOnMoveableWindowActivityChanged ActivityDelegate;
         return ActivityDelegate;
 }
 
-void SMoveableWindow::BroadcastActivityIfChanged(bool bIsActive)
+void SOldMoveableWindow::BroadcastActivityIfChanged(bool bIsActive)
 {
         if (bHasActivityState && bWasActive == bIsActive)
         {
@@ -65,7 +65,7 @@ void SMoveableWindow::BroadcastActivityIfChanged(bool bIsActive)
 	OnActivityChanged().Broadcast(bIsActive);
 }
 
-void SMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
+void SOldMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
 {
 	if (bIsMouseHeld == bIsHeld)
 	{
@@ -75,7 +75,7 @@ void SMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
 	bIsMouseHeld = bIsHeld;
 	if (bIsMouseHeld)
 	{
-		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Mouse held"));
+                UE_LOG(LogTemp, Log, TEXT("OldSMoveableWindow: Mouse held"));
 		if (OnStatusMessage.IsBound())
 		{
 			OnStatusMessage.Execute(MouseHeldText);
@@ -83,7 +83,7 @@ void SMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
         }
         else
         {
-                UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Mouse released"));
+                UE_LOG(LogTemp, Log, TEXT("OldSMoveableWindow: Mouse released"));
                 if (OnStatusMessage.IsBound())
                 {
                         OnStatusMessage.Execute(IdleText);
@@ -91,12 +91,12 @@ void SMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
         }
 }
 
-void SMoveableWindow::SetTitleBarMouseHeld(bool bIsHeld)
+void SOldMoveableWindow::SetTitleBarMouseHeld(bool bIsHeld)
 {
 	UpdateMouseHeldState(bIsHeld);
 }
 
-void SMoveableWindow::Construct(const FArguments& InArgs)
+void SOldMoveableWindow::Construct(const FArguments& InArgs)
 {
 	// Build SWindow::FArguments from our arguments and construct the parent
 	SWindow::FArguments WindowArgs;
@@ -155,7 +155,7 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
         LastUpdatedSize = FVector2D(GetClientSizeInScreen());
         bHasLastSize = true;
 
-        SetOnWindowMoved(FOnWindowMoved::CreateSP(this, &SMoveableWindow::HandleWindowMoved));
+SetOnWindowMoved(FOnWindowMoved::CreateSP(this, &SOldMoveableWindow::HandleWindowMoved));
         LastMoveTimeSeconds = FPlatformTime::Seconds();
         bIsIdle = true;
         if (OnStatusMessage.IsBound())
@@ -167,7 +167,7 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
         {
                 RegisterActiveTimer(
                         IdleTimerPeriodSeconds,
-                        FWidgetActiveTimerDelegate::CreateSP(this, &SMoveableWindow::HandleIdleTimer));
+FWidgetActiveTimerDelegate::CreateSP(this, &SOldMoveableWindow::HandleIdleTimer));
                 bIdleTimerRegistered = true;
         }
 	
@@ -176,7 +176,7 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 	
 }
 
-void SMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+void SOldMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
         SWindow::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
@@ -201,7 +201,7 @@ void SMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCur
 	}
 }
 
-void SMoveableWindow::HandleWindowMoved(const TSharedRef<SWindow>& Window)
+void SOldMoveableWindow::HandleWindowMoved(const TSharedRef<SWindow>& Window)
 {
 	FVector2D CurrentPosition = Window->GetPositionInScreen();
 	FVector2D NativePosition;
@@ -224,7 +224,7 @@ void SMoveableWindow::HandleWindowMoved(const TSharedRef<SWindow>& Window)
 	}
 }
 
-EActiveTimerReturnType SMoveableWindow::HandleIdleTimer(double InCurrentTime, float InDeltaTime)
+EActiveTimerReturnType SOldMoveableWindow::HandleIdleTimer(double InCurrentTime, float InDeltaTime)
 {
         (void)InCurrentTime;
         (void)InDeltaTime;
@@ -243,8 +243,8 @@ EActiveTimerReturnType SMoveableWindow::HandleIdleTimer(double InCurrentTime, fl
         return EActiveTimerReturnType::Continue;
 }
 
-TSharedRef<SWidget> SMoveableWindow::MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent,
-	EHorizontalAlignment TitleContentAlignment)
+TSharedRef<SWidget> SOldMoveableWindow::MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent,
+        EHorizontalAlignment TitleContentAlignment)
 {
 	if (TitleBarContent.IsValid())
 	{

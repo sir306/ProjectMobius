@@ -31,9 +31,21 @@
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 
+FOnSimulationPlayBarLifecycle& USimulationPlayBar::OnPlayBarConstructed()
+{
+        static FOnSimulationPlayBarLifecycle Delegate;
+        return Delegate;
+}
+
+FOnSimulationPlayBarLifecycle& USimulationPlayBar::OnPlayBarDestructed()
+{
+        static FOnSimulationPlayBarLifecycle Delegate;
+        return Delegate;
+}
+
 void USimulationPlayBar::NativeConstruct()
 {
-	Super::NativeConstruct();
+        Super::NativeConstruct();
 
         // Configure the number format
         NumberFormat.MinimumIntegralDigits = 2;
@@ -86,12 +98,14 @@ void USimulationPlayBar::NativeConstruct()
 	}
 
 	// Get the project mobius game instance and bind the loading state to the play button
-	if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance, UGameInstance>(GetWorld()->GetGameInstance()))
-	{
-		// Bind the loading state to the play button
-		ProjectMobiusGameInstance->OnDataLoading.AddDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
-		ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.AddDynamic(this, &USimulationPlayBar::FileChanging);
-	}
+        if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance, UGameInstance>(GetWorld()->GetGameInstance()))
+        {
+                // Bind the loading state to the play button
+                ProjectMobiusGameInstance->OnDataLoading.AddDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
+                ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.AddDynamic(this, &USimulationPlayBar::FileChanging);
+        }
+
+        OnPlayBarConstructed().Broadcast(this);
 }
 
 void USimulationPlayBar::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -112,6 +126,8 @@ void USimulationPlayBar::SynchronizeProperties()
 void USimulationPlayBar::NativeDestruct()
 {
         Super::NativeDestruct();
+
+        OnPlayBarDestructed().Broadcast(this);
 
         // Unbind delegates from the time dilation subsystem
         if (TimeDilationSubsystem)
@@ -138,6 +154,41 @@ void USimulationPlayBar::NativeDestruct()
         {
                 ProjectMobiusGameInstance->OnDataLoading.RemoveDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
                 ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &USimulationPlayBar::FileChanging);
+        }
+}
+
+void USimulationPlayBar::HandleMoveableWindowActivityChanged(bool bIsActive)
+{
+        if (!TimeDilationSubsystem)
+        {
+                SetTimeDilationSubsystem();
+        }
+
+        if (!TimeDilationSubsystem)
+        {
+                return;
+        }
+
+        if (bIsActive)
+        {
+                if (SimulationPaused == 0)
+                {
+                        bPausedForWindowActivity = true;
+                        SimulationPaused = 1;
+                        TimeDilationSubsystem->bIsPaused = true;
+                        SetPlayButtonStyle();
+                }
+                else
+                {
+                        bPausedForWindowActivity = false;
+                }
+        }
+        else if (bPausedForWindowActivity)
+        {
+                bPausedForWindowActivity = false;
+                SimulationPaused = 0;
+                TimeDilationSubsystem->bIsPaused = false;
+                SetPlayButtonStyle();
         }
 }
 

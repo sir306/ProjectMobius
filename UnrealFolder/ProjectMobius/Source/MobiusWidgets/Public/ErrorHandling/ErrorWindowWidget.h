@@ -7,6 +7,7 @@
 #include "ErrorWindowWidget.generated.h"
 
 class SErrorWindowWidget;
+class UMobiusWidgetSubsystem;
 /**
  * 
  */
@@ -17,7 +18,8 @@ class MOBIUSWIDGETS_API UErrorWindowWidget : public UWidget
 	
 	
 protected:
-	TSharedPtr<SErrorWindowWidget> ErrorWindowWidget;
+        TSharedPtr<SErrorWindowWidget> ErrorWindowWidget;
+        TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
 	
 	/**
 	 * Builds the underlying Slate widget.

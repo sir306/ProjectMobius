@@ -15,11 +15,11 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnMoveableWindowActivityChanged, bool);
  * A window widget that extends SWindow.
  * This class forwards all SWindow arguments for convenient usage.
  */
-class MOBIUSWIDGETS_API SMoveableWindow : public SWindow
+class MOBIUSWIDGETS_API SOldMoveableWindow : public SWindow
 {
 public:
-	// Forward all SWindow arguments so SMoveableWindow can be used exactly like SWindow
-	SLATE_BEGIN_ARGS(SMoveableWindow)
+// Forward all SWindow arguments so SOldMoveableWindow can be used exactly like SWindow
+SLATE_BEGIN_ARGS(SOldMoveableWindow)
 		: _Type(EWindowType::Normal)
 		, _Style(&FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window"))
 		, _Title()

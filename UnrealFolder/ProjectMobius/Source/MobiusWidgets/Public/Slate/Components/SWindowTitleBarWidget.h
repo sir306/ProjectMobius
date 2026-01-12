@@ -8,7 +8,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class STextBlock;
-class SWindow;
+class SMoveableWindow;
 class SWindowTitleBar;
 class IWindowTitleBar;
 
@@ -30,7 +30,7 @@ public:
 	}
 
 	/** Window that owns this title bar. */
-	SLATE_ARGUMENT(TSharedPtr<SWindow>, OwnerWindow)
+	SLATE_ARGUMENT(TSharedPtr<SMoveableWindow>, OwnerWindow)
 
 	/** Text displayed in the title bar. */
 	SLATE_ATTRIBUTE(FText, TitleText)
@@ -73,7 +73,7 @@ public:
 	TSharedPtr<IWindowTitleBar> GetTitleBar() const;
 
 private:
-	TSharedPtr<SWindowTitleBar> TitleBarWidget;
-	TSharedPtr<STextBlock> TitleTextBlock;
-	FWindowStyle WindowStyle;
+        TSharedPtr<SWindowTitleBar> TitleBarWidget;
+        TSharedPtr<STextBlock> TitleTextBlock;
+        FWindowStyle WindowStyle;
 };

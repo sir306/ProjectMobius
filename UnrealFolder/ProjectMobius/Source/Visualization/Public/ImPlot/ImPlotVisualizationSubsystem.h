@@ -9,6 +9,8 @@
 class SImPlotOverlay;
 class SMoveableWindow;
 class SWindow;
+class UMobiusWidgetSubsystem;
+class SWindowTitleBarWidget;
 
 /**
  * World subsystem that owns ImPlot overlay state and data.
@@ -115,6 +117,10 @@ private:
         void OpenOverlayWindow();
         /** Close the standalone Slate window for the overlay. */
         void CloseOverlayWindow();
+        /** Register the overlay window with the widget subsystem. */
+        void RegisterMoveableWindowActivity();
+        /** Unregister the overlay window from the widget subsystem. */
+        void UnregisterMoveableWindowActivity();
         /**
          * Handle window close events to keep subsystem state in sync.
          * @param ClosedWindow The window that was closed.
@@ -135,9 +141,12 @@ private:
 
         UPROPERTY()
         bool bHasLiveSampleThickness = false;
-
-        TSharedPtr<SImPlotOverlay> OverlayWidget;
-        TSharedPtr<SMoveableWindow> OverlayWindow;
+        bool bMoveableWindowActivityRegistered = false;
+
+	TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
+	TSharedPtr<SImPlotOverlay> OverlayWidget;
+	TSharedPtr<SWindowTitleBarWidget> OverlayTitleBarWidget;
+	TSharedPtr<SMoveableWindow> OverlayWindow;
 
         FText ChartTitle;
         FText StatusMessage;
@@ -153,3 +162,5 @@ private:
         double LiveCount = 0.0;
         double LiveSampleThickness = 0.0;
 };
+
+

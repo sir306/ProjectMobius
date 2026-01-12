@@ -3,8 +3,11 @@
 #include "ImPlot/ImPlotVisualizationSubsystem.h"
 #include "ImPlot/SImPlotOverlay.h"
 #include "Slate/Components/SMoveableWindow.h"
+#include "Slate/Components/SWindowTitleBarWidget.h"
+#include "Core/MobiusWidgetSubsystem.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Styling/CoreStyle.h"
 
 void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -15,6 +18,7 @@ void UImPlotVisualizationSubsystem::Deinitialize()
 {
 	ShowOverlay(false);
 	OverlayWidget.Reset();
+	OverlayTitleBarWidget.Reset();
 	OverlayWindow.Reset();
 	Super::Deinitialize();
 }
@@ -184,8 +188,20 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 
 	if (!OverlayWindow.IsValid())
 	{
+		const FText WindowTitle = FText::FromString(TEXT("UE Plot Overlay"));
+		
+		SAssignNew(OverlayTitleBarWidget, SWindowTitleBarWidget)
+			.OwnerWindow(OverlayWindow)
+			.TitleText(WindowTitle)
+			.TitleTextStyle(&FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+			.WindowStyle(&FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window"))
+			.TitleAlignment(HAlign_Center)
+			.ShowAppIcon(false);
+		
 		SAssignNew(OverlayWindow, SMoveableWindow)
-			.Title(FText::FromString(TEXT("UE Plot Overlay")))
+			//.Title(WindowTitle)
+			//.Title(FText::FromString("TitleBar TEXT COMES FROM HERE NOT OUR WIDGET"))
+			.TitleBarContent(OverlayTitleBarWidget)
 			.SizingRule(ESizingRule::UserSized)
 			.FocusWhenFirstShown(false)
 			.ActivationPolicy(EWindowActivationPolicy::Never)
@@ -199,10 +215,26 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 			.ClientSize(FVector2D(640.0f, 420.0f))
 			.OnStatusMessage(FOnMoveableWindowStatusMessage::CreateUObject(this, &UImPlotVisualizationSubsystem::SetStatusMessage));
 
+		
+		if (OverlayTitleBarWidget.IsValid())
+		{
+			OverlayTitleBarWidget->SetTitleText(FText::FromString("HELLO TITLE BAR"));
+			OverlayTitleBarWidget->SetColorAndOpacity(FLinearColor(0.0f, 0.0f, 1.0f, 1.0f));
+			OverlayWindow->SetTitleBar(OverlayTitleBarWidget->GetTitleBar());
+			OverlayTitleBarWidget->SetColorAndOpacity(FLinearColor(1.0f, 0.0f, 0.0f, 1.0f));
+			
+			UE_LOG(LogTemp, Log, TEXT("OverlayTitleBarWidget is valid"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("OverlayTitleBarWidget Not valid"));
+		}
+
 		OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
 		OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed));
 
 		FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
+                RegisterMoveableWindowActivity();
 	}
         else
         {
@@ -212,14 +244,16 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 
 void UImPlotVisualizationSubsystem::CloseOverlayWindow()
 {
-        if (!OverlayWindow.IsValid() || !FSlateApplication::IsInitialized())
-        {
-                OverlayWindow.Reset();
-                return;
-        }
-
-        FSlateApplication::Get().RequestDestroyWindow(OverlayWindow.ToSharedRef());
-        OverlayWindow.Reset();
+	UnregisterMoveableWindowActivity();
+	if (!OverlayWindow.IsValid() || !FSlateApplication::IsInitialized())
+	{
+		OverlayTitleBarWidget.Reset();
+		OverlayWindow.Reset();
+		return;
+	}
+	FSlateApplication::Get().RequestDestroyWindow(OverlayWindow.ToSharedRef());
+	OverlayTitleBarWidget.Reset();
+	OverlayWindow.Reset();
 }
 
 void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow)
@@ -227,14 +261,57 @@ void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>
 	if (OverlayWindow == ClosedWindow)
 	{
 		OverlayWindow.Reset();
+		OverlayTitleBarWidget.Reset();
 		bOverlayVisible = false;
+		UnregisterMoveableWindowActivity();
 	}
 }
 
 void UImPlotVisualizationSubsystem::InvalidateOverlay() const
 {
         if (OverlayWidget.IsValid())
-	{
-		OverlayWidget->Invalidate(EInvalidateWidget::Paint);
-	}
+        {
+                OverlayWidget->Invalidate(EInvalidateWidget::Paint);
+        }
+}
+
+void UImPlotVisualizationSubsystem::RegisterMoveableWindowActivity()
+{
+        if (bMoveableWindowActivityRegistered)
+        {
+                return;
+        }
+
+        if (UWorld* World = GetWorld())
+        {
+                if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
+                {
+                        MoveableWindowSubsystem = WidgetSubsystem;
+                        WidgetSubsystem->RegisterMoveableWindowActivity();
+                        bMoveableWindowActivityRegistered = true;
+                }
+        }
+}
+
+void UImPlotVisualizationSubsystem::UnregisterMoveableWindowActivity()
+{
+        if (!bMoveableWindowActivityRegistered)
+        {
+                return;
+        }
+
+        if (MoveableWindowSubsystem.IsValid())
+        {
+                MoveableWindowSubsystem->UnregisterMoveableWindowActivity();
+                MoveableWindowSubsystem.Reset();
+        }
+        else if (UWorld* World = GetWorld())
+        {
+                if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
+                {
+                        WidgetSubsystem->UnregisterMoveableWindowActivity();
+                }
+        }
+
+        bMoveableWindowActivityRegistered = false;
 }
