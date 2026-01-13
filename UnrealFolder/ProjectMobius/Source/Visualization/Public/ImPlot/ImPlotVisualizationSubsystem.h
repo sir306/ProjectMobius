@@ -10,7 +10,6 @@ class SImPlotOverlay;
 class SMoveableWindow;
 class SWindow;
 class UMobiusWidgetSubsystem;
-class SWindowTitleBarWidget;
 
 /**
  * World subsystem that owns ImPlot overlay state and data.
@@ -145,7 +144,6 @@ private:
 
 	TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
 	TSharedPtr<SImPlotOverlay> OverlayWidget;
-	TSharedPtr<SWindowTitleBarWidget> OverlayTitleBarWidget;
 	TSharedPtr<SMoveableWindow> OverlayWindow;
 
         FText ChartTitle;

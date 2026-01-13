@@ -18,7 +18,6 @@ void UImPlotVisualizationSubsystem::Deinitialize()
 {
 	ShowOverlay(false);
 	OverlayWidget.Reset();
-	OverlayTitleBarWidget.Reset();
 	OverlayWindow.Reset();
 	Super::Deinitialize();
 }
@@ -189,19 +188,9 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 	if (!OverlayWindow.IsValid())
 	{
 		const FText WindowTitle = FText::FromString(TEXT("UE Plot Overlay"));
-		
-		SAssignNew(OverlayTitleBarWidget, SWindowTitleBarWidget)
-			.OwnerWindow(OverlayWindow)
-			.TitleText(WindowTitle)
-			.TitleTextStyle(&FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-			.WindowStyle(&FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window"))
-			.TitleAlignment(HAlign_Center)
-			.ShowAppIcon(false);
-		
+
 		SAssignNew(OverlayWindow, SMoveableWindow)
-			//.Title(WindowTitle)
-			//.Title(FText::FromString("TitleBar TEXT COMES FROM HERE NOT OUR WIDGET"))
-			.TitleBarContent(OverlayTitleBarWidget)
+			.Title(WindowTitle)
 			.SizingRule(ESizingRule::UserSized)
 			.FocusWhenFirstShown(false)
 			.ActivationPolicy(EWindowActivationPolicy::Never)
@@ -213,28 +202,15 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 			.AutoCenter(EAutoCenter::PreferredWorkArea)
 			.UseOSWindowBorder(false)
 			.ClientSize(FVector2D(640.0f, 420.0f))
+			.WindowPanelContent(OverlayWidget)
 			.OnStatusMessage(FOnMoveableWindowStatusMessage::CreateUObject(this, &UImPlotVisualizationSubsystem::SetStatusMessage));
 
-		
-		if (OverlayTitleBarWidget.IsValid())
-		{
-			OverlayTitleBarWidget->SetTitleText(FText::FromString("HELLO TITLE BAR"));
-			OverlayTitleBarWidget->SetColorAndOpacity(FLinearColor(0.0f, 0.0f, 1.0f, 1.0f));
-			OverlayWindow->SetTitleBar(OverlayTitleBarWidget->GetTitleBar());
-			OverlayTitleBarWidget->SetColorAndOpacity(FLinearColor(1.0f, 0.0f, 0.0f, 1.0f));
-			
-			UE_LOG(LogTemp, Log, TEXT("OverlayTitleBarWidget is valid"));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Log, TEXT("OverlayTitleBarWidget Not valid"));
-		}
-
-		OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
+		// Don't Set Content on windows as this sets the content for titlebar, and the window area
+		//OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
 		OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed));
 
 		FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
-                RegisterMoveableWindowActivity();
+		RegisterMoveableWindowActivity();
 	}
         else
         {
@@ -247,12 +223,10 @@ void UImPlotVisualizationSubsystem::CloseOverlayWindow()
 	UnregisterMoveableWindowActivity();
 	if (!OverlayWindow.IsValid() || !FSlateApplication::IsInitialized())
 	{
-		OverlayTitleBarWidget.Reset();
 		OverlayWindow.Reset();
 		return;
 	}
 	FSlateApplication::Get().RequestDestroyWindow(OverlayWindow.ToSharedRef());
-	OverlayTitleBarWidget.Reset();
 	OverlayWindow.Reset();
 }
 
@@ -261,7 +235,6 @@ void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>
 	if (OverlayWindow == ClosedWindow)
 	{
 		OverlayWindow.Reset();
-		OverlayTitleBarWidget.Reset();
 		bOverlayVisible = false;
 		UnregisterMoveableWindowActivity();
 	}
