@@ -49,86 +49,86 @@ namespace
 	}
 }
 
-FOnMoveableWindowActivityChanged& SMoveableWindow::OnActivityChanged()
-{
-	static FOnMoveableWindowActivityChanged ActivityDelegate;
-	return ActivityDelegate;
-}
+// FOnMoveableWindowActivityChanged& SMoveableWindow::OnActivityChanged()
+// {
+// 	static FOnMoveableWindowActivityChanged ActivityDelegate;
+// 	return ActivityDelegate;
+// }
 
-int32 SMoveableWindow::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
-	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
-{
-	// the parent SWindow::OnPaint is private, but we can call it in the same manner to ensure normal drawing happens
-	int32 MaxLayer = SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-	// 2. Check if the size has changed since the last frame
-	const FVector2D CurrentSize = AllottedGeometry.GetLocalSize();
-    
-	if (CurrentSize != LastPaintSize)
-	{
-		// Update the cache
-		LastPaintSize = CurrentSize;
+// int32 SMoveableWindow::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+// 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+// 	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+// {
+// 	// the parent SWindow::OnPaint is private, but we can call it in the same manner to ensure normal drawing happens
+// 	int32 MaxLayer = SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+// 	// 2. Check if the size has changed since the last frame
+// 	const FVector2D CurrentSize = AllottedGeometry.GetLocalSize();
+//     
+// 	if (CurrentSize != LastPaintSize)
+// 	{
+// 		// Update the cache
+// 		LastPaintSize = CurrentSize;
+//
+// 		// We need to cast 'this' to non-const to call your helper functions
+// 		// This is safe because we are only updating logic state, not rendering state
+// 		SMoveableWindow* MutableThis = const_cast<SMoveableWindow*>(this);
+//         
+// 		// 3. Trigger your existing activity logic (Pauses the Sim)
+// 		MutableThis->BroadcastActivityIfChanged(true);
+//         
+// 		// Optional: Update the timestamp so the Idle Timer knows we are busy
+// 		MutableThis->LastMoveTimeSeconds = FPlatformTime::Seconds();
+// 		MutableThis->bIsIdle = false;
+//
+// 		// Log or Status update
+// 		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Resizing via OnPaint (Size: %s)"), *CurrentSize.ToString());
+// 	}
+//
+// 	return MaxLayer;
+// }
 
-		// We need to cast 'this' to non-const to call your helper functions
-		// This is safe because we are only updating logic state, not rendering state
-		SMoveableWindow* MutableThis = const_cast<SMoveableWindow*>(this);
-        
-		// 3. Trigger your existing activity logic (Pauses the Sim)
-		MutableThis->BroadcastActivityIfChanged(true);
-        
-		// Optional: Update the timestamp so the Idle Timer knows we are busy
-		MutableThis->LastMoveTimeSeconds = FPlatformTime::Seconds();
-		MutableThis->bIsIdle = false;
+// void SMoveableWindow::BroadcastActivityIfChanged(bool bIsActive)
+// {
+// 	if (bHasActivityState && bWasActive == bIsActive)
+// 	{
+// 		return;
+// 	}
+//
+// 	bHasActivityState = true;
+// 	bWasActive = bIsActive;
+// 	OnActivityChanged().Broadcast(bIsActive);
+// }
 
-		// Log or Status update
-		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Resizing via OnPaint (Size: %s)"), *CurrentSize.ToString());
-	}
+// void SMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
+// {
+// 	if (bIsMouseHeld == bIsHeld)
+// 	{
+// 		return;
+// 	}
+//
+// 	bIsMouseHeld = bIsHeld;
+// 	if (bIsMouseHeld)
+// 	{
+// 		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Mouse held"));
+// 		if (OnStatusMessage.IsBound())
+// 		{
+// 			OnStatusMessage.Execute(MouseHeldText);
+// 		}
+// 	}
+// 	else
+// 	{
+// 		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Mouse released"));
+// 		if (OnStatusMessage.IsBound())
+// 		{
+// 			OnStatusMessage.Execute(IdleText);
+// 		}
+// 	}
+// }
 
-	return MaxLayer;
-}
-
-void SMoveableWindow::BroadcastActivityIfChanged(bool bIsActive)
-{
-	if (bHasActivityState && bWasActive == bIsActive)
-	{
-		return;
-	}
-
-	bHasActivityState = true;
-	bWasActive = bIsActive;
-	OnActivityChanged().Broadcast(bIsActive);
-}
-
-void SMoveableWindow::UpdateMouseHeldState(bool bIsHeld)
-{
-	if (bIsMouseHeld == bIsHeld)
-	{
-		return;
-	}
-
-	bIsMouseHeld = bIsHeld;
-	if (bIsMouseHeld)
-	{
-		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Mouse held"));
-		if (OnStatusMessage.IsBound())
-		{
-			OnStatusMessage.Execute(MouseHeldText);
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: Mouse released"));
-		if (OnStatusMessage.IsBound())
-		{
-			OnStatusMessage.Execute(IdleText);
-		}
-	}
-}
-
-void SMoveableWindow::SetTitleBarMouseHeld(bool bIsHeld)
-{
-	UpdateMouseHeldState(bIsHeld);
-}
+// void SMoveableWindow::SetTitleBarMouseHeld(bool bIsHeld)
+// {
+// 	UpdateMouseHeldState(bIsHeld);
+// }
 
 void SMoveableWindow::Construct(const FArguments& InArgs)
 {
@@ -214,11 +214,15 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 		
 		// Need to get the overlay as that is another area of clicking, resizing etc.
 		//WindowOverlay->
+		// TODO: The issue now seems to be related to the overlay part of the widget. and how it handles resizing and movement events.
+		// it seems to have a second to half second delay before it triggers the game tick pausing where as moving by the custom title bar is instant, but also does not cause the system to hang.
+		// In standalone game the simulation carries on like nothing is happening. but when i move the window by the edge it instantly freezes the simulation and causes the delay, which is what we want to avoid.
+		// it is also the same with resizing the window by the edges.
 
 		// Register the title bar interface for hit-testing and flash effects
 		if (TitleBarContent.IsValid())
 		{
-			//SetTitleBar(TitleBarContent->GetTitleBar());
+			SetTitleBar(TitleBarContent->GetTitleBar());
 			UE_LOG(LogTemp, Warning, TEXT("SMoveableWindow: Titlebar is valid"));
 		}
 		else
@@ -236,32 +240,32 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 		UE_LOG(LogTemp, Log, TEXT("SMoveableWindow: No title bar requested"));
 	}
 
-	FVector2D CurrentPosition = GetPositionInScreen();
-	FVector2D NativePosition;
-	if (TryGetNativeWindowPosition(GetNativeWindow(), NativePosition))
-	{
-		CurrentPosition = NativePosition;
-	}
-	LastUpdatedPosition = CurrentPosition;
-	bHasLastPosition = true;
-	LastUpdatedSize = FVector2D(GetClientSizeInScreen());
-	bHasLastSize = true;
+	// FVector2D CurrentPosition = GetPositionInScreen();
+	// FVector2D NativePosition;
+	// if (TryGetNativeWindowPosition(GetNativeWindow(), NativePosition))
+	// {
+	// 	CurrentPosition = NativePosition;
+	// }
+	// LastUpdatedPosition = CurrentPosition;
+	// bHasLastPosition = true;
+	// LastUpdatedSize = FVector2D(GetClientSizeInScreen());
+	// bHasLastSize = true;
 
-	SetOnWindowMoved(FOnWindowMoved::CreateSP(this, &SMoveableWindow::HandleWindowMoved));
-	LastMoveTimeSeconds = FPlatformTime::Seconds();
-	bIsIdle = true;
-	if (OnStatusMessage.IsBound())
-	{
-		OnStatusMessage.Execute(IdleText);
-	}
+	//SetOnWindowMoved(FOnWindowMoved::CreateSP(this, &SMoveableWindow::HandleWindowMoved));
+	// LastMoveTimeSeconds = FPlatformTime::Seconds();
+	// bIsIdle = true;
+	// if (OnStatusMessage.IsBound())
+	// {
+	// 	OnStatusMessage.Execute(IdleText);
+	// }
 
-	if (!bIdleTimerRegistered)
-	{
-		RegisterActiveTimer(
-			IdleTimerPeriodSeconds,
-			FWidgetActiveTimerDelegate::CreateSP(this, &SMoveableWindow::HandleIdleTimer));
-		bIdleTimerRegistered = true;
-	}
+	// if (!bIdleTimerRegistered)
+	// {
+	// 	RegisterActiveTimer(
+	// 		IdleTimerPeriodSeconds,
+	// 		FWidgetActiveTimerDelegate::CreateSP(this, &SMoveableWindow::HandleIdleTimer));
+	// 	bIdleTimerRegistered = true;
+	// }
 
 	// Default window DOESN'T TICK so we need to override that behavior after calling the parent construct
 	SetCanTick(true);
@@ -271,65 +275,65 @@ void SMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCur
 {
 	SWindow::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-	if (FSlateApplication::IsInitialized())
-	{
-		const bool bLeftMouseButtonDown = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
-		UpdateMouseHeldState(bLeftMouseButtonDown);
-	}
-
-	const FVector2D CurrentSize = FVector2D(GetClientSizeInScreen());       
-	if (!bHasLastSize || !CurrentSize.Equals(LastUpdatedSize))
-	{
-		LastUpdatedSize = CurrentSize;
-		bHasLastSize = true;
-		LastMoveTimeSeconds = FPlatformTime::Seconds();
-		bIsIdle = false;
-		BroadcastActivityIfChanged(true);
-		if (OnStatusMessage.IsBound())
-		{
-			OnStatusMessage.Execute(bIsMouseHeld ? MouseHeldText : ResizedText);
-		}
-	}
+	// if (FSlateApplication::IsInitialized())
+	// {
+	// 	const bool bLeftMouseButtonDown = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
+	// 	UpdateMouseHeldState(bLeftMouseButtonDown);
+	// }
+	//
+	// const FVector2D CurrentSize = FVector2D(GetClientSizeInScreen());       
+	// if (!bHasLastSize || !CurrentSize.Equals(LastUpdatedSize))
+	// {
+	// 	LastUpdatedSize = CurrentSize;
+	// 	bHasLastSize = true;
+	// 	LastMoveTimeSeconds = FPlatformTime::Seconds();
+	// 	bIsIdle = false;
+	// 	BroadcastActivityIfChanged(true);
+	// 	if (OnStatusMessage.IsBound())
+	// 	{
+	// 		OnStatusMessage.Execute(bIsMouseHeld ? MouseHeldText : ResizedText);
+	// 	}
+	// }
 }
 
-void SMoveableWindow::HandleWindowMoved(const TSharedRef<SWindow>& Window)
-{
-	FVector2D CurrentPosition = Window->GetPositionInScreen();
-	FVector2D NativePosition;
-	if (TryGetNativeWindowPosition(Window->GetNativeWindow(), NativePosition))
-	{
-		CurrentPosition = NativePosition;
-	}
-
-	if (!bHasLastPosition || !CurrentPosition.Equals(LastUpdatedPosition))
-	{
-		LastUpdatedPosition = CurrentPosition;
-		bHasLastPosition = true;
-		LastMoveTimeSeconds = FPlatformTime::Seconds();
-		bIsIdle = false;
-		BroadcastActivityIfChanged(true);
-		if (OnStatusMessage.IsBound())
-		{
-			OnStatusMessage.Execute(bIsMouseHeld ? MouseHeldText : PositionChangedText);
-		}
-	}
-}
-
-EActiveTimerReturnType SMoveableWindow::HandleIdleTimer(double InCurrentTime, float InDeltaTime)
-{
-	(void)InCurrentTime;
-	(void)InDeltaTime;
-
-	const double NowSeconds = FPlatformTime::Seconds();
-	if (!bIsIdle && (NowSeconds - LastMoveTimeSeconds) >= IdleThresholdSeconds)
-	{
-		bIsIdle = true;
-		BroadcastActivityIfChanged(false);
-		if (OnStatusMessage.IsBound())
-		{
-			OnStatusMessage.Execute(bIsMouseHeld ? MouseHeldText : IdleText);
-		}
-	}
-
-	return EActiveTimerReturnType::Continue;
-}
+// void SMoveableWindow::HandleWindowMoved(const TSharedRef<SWindow>& Window)
+// {
+// 	FVector2D CurrentPosition = Window->GetPositionInScreen();
+// 	FVector2D NativePosition;
+// 	if (TryGetNativeWindowPosition(Window->GetNativeWindow(), NativePosition))
+// 	{
+// 		CurrentPosition = NativePosition;
+// 	}
+//
+// 	if (!bHasLastPosition || !CurrentPosition.Equals(LastUpdatedPosition))
+// 	{
+// 		LastUpdatedPosition = CurrentPosition;
+// 		bHasLastPosition = true;
+// 		LastMoveTimeSeconds = FPlatformTime::Seconds();
+// 		bIsIdle = false;
+// 		BroadcastActivityIfChanged(true);
+// 		if (OnStatusMessage.IsBound())
+// 		{
+// 			OnStatusMessage.Execute(bIsMouseHeld ? MouseHeldText : PositionChangedText);
+// 		}
+// 	}
+// }
+//
+// EActiveTimerReturnType SMoveableWindow::HandleIdleTimer(double InCurrentTime, float InDeltaTime)
+// {
+// 	(void)InCurrentTime;
+// 	(void)InDeltaTime;
+//
+// 	const double NowSeconds = FPlatformTime::Seconds();
+// 	if (!bIsIdle && (NowSeconds - LastMoveTimeSeconds) >= IdleThresholdSeconds)
+// 	{
+// 		bIsIdle = true;
+// 		BroadcastActivityIfChanged(false);
+// 		if (OnStatusMessage.IsBound())
+// 		{
+// 			OnStatusMessage.Execute(bIsMouseHeld ? MouseHeldText : IdleText);
+// 		}
+// 	}
+//
+// 	return EActiveTimerReturnType::Continue;
+// }

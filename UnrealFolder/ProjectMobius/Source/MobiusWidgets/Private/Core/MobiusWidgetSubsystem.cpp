@@ -81,7 +81,7 @@ void UMobiusWidgetSubsystem::Deinitialize()
         MoveableWindowActivityRefCount = 0;
 	if (MoveableWindowActivityHandle.IsValid())
 	{
-		SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
+		//SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
 		MoveableWindowActivityHandle.Reset();
 	}
 
@@ -134,10 +134,10 @@ void UMobiusWidgetSubsystem::RegisterMoveableWindowActivity()
         {
                 if (MoveableWindowActivityHandle.IsValid())
                 {
-                        SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
+                        //SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
                         MoveableWindowActivityHandle.Reset();
                 }
-                MoveableWindowActivityHandle = SMoveableWindow::OnActivityChanged().AddUObject(this, &UMobiusWidgetSubsystem::HandleMoveableWindowActivityChanged);
+                //MoveableWindowActivityHandle = SMoveableWindow::OnActivityChanged().AddUObject(this, &UMobiusWidgetSubsystem::HandleMoveableWindowActivityChanged);
         }
 }
 
@@ -152,7 +152,7 @@ void UMobiusWidgetSubsystem::UnregisterMoveableWindowActivity()
         --MoveableWindowActivityRefCount;
         if (MoveableWindowActivityRefCount == 0 && MoveableWindowActivityHandle.IsValid())
         {
-                SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
+                //SMoveableWindow::OnActivityChanged().Remove(MoveableWindowActivityHandle);
                 MoveableWindowActivityHandle.Reset();
         }
 }

@@ -94,19 +94,19 @@ public:
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 	/** Update title bar mouse held state. */
-	void SetTitleBarMouseHeld(bool bIsHeld);
+	//void SetTitleBarMouseHeld(bool bIsHeld);
 	/** Global activity signal fired when a window starts or stops moving/resizing. */
-	static FOnMoveableWindowActivityChanged& OnActivityChanged();
+	// static FOnMoveableWindowActivityChanged& OnActivityChanged();
 	
 	// Override OnPaint to catch resize events even when Tick is blocked
-	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
+	// virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 	
 private:
 	
-	void HandleWindowMoved(const TSharedRef<SWindow>& Window);
-	EActiveTimerReturnType HandleIdleTimer(double InCurrentTime, float InDeltaTime);
-	void BroadcastActivityIfChanged(bool bIsActive);
-	void UpdateMouseHeldState(bool bIsHeld);
+	// void HandleWindowMoved(const TSharedRef<SWindow>& Window);
+	// EActiveTimerReturnType HandleIdleTimer(double InCurrentTime, float InDeltaTime);
+	// void BroadcastActivityIfChanged(bool bIsActive);
+	// void UpdateMouseHeldState(bool bIsHeld);
 
 	FOnMoveableWindowStatusMessage OnStatusMessage;
 	TSharedPtr<SWindowTitleBarWidget> TitleBarContent;

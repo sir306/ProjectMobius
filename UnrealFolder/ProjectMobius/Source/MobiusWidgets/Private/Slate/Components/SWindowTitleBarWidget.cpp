@@ -60,7 +60,7 @@ namespace
 				if (TSharedPtr<SMoveableWindow> Window = OwnerWindow.Pin())
 				{
 					UE_LOG(LogTemp, Log, TEXT("SMoveableWindowTitleBar::OnMouseButtonDown window valid"));
-					Window->SetTitleBarMouseHeld(true);
+					//Window->SetTitleBarMouseHeld(true);
 					
 					// Record where we grabbed the window relative to its origin
 					// Absolute Mouse Pos - Window Screen Pos = Offset
@@ -79,6 +79,9 @@ namespace
 				return FReply::Handled().CaptureMouse(SharedThis(this));
 			}
 
+			// TODO: Investigate further why calling the parent implementation here seems to cause issues.
+			// The way Title bar handles this mousebutton down event seemed to be the cause of my simulation pauses/stutters and hangs.
+			// Will need to investigate further later. As our bypass logic seems to work fine for now. and doesn't cause any issues.
 			return SWindowTitleBar::OnMouseButtonDown(MyGeometry, MouseEvent);
 		}
                 
@@ -112,7 +115,7 @@ namespace
 				if (TSharedPtr<SMoveableWindow> Window = OwnerWindow.Pin())
 				{
 					UE_LOG(LogTemp, Log, TEXT("SMoveableWindowTitleBar::OnMouseButtonUp window valid"));
-					Window->SetTitleBarMouseHeld(false);
+					//Window->SetTitleBarMouseHeld(false);
 				}
 				else
 				{
@@ -129,7 +132,7 @@ namespace
 			if (TSharedPtr<SMoveableWindow> Window = OwnerWindow.Pin())
 			{
 				UE_LOG(LogTemp, Log, TEXT("SMoveableWindowTitleBar::OnMouseCaptureLost window valid"));
-				Window->SetTitleBarMouseHeld(false);
+				//Window->SetTitleBarMouseHeld(false);
 			}
 
 			if (!OwnerWindow.IsValid())
