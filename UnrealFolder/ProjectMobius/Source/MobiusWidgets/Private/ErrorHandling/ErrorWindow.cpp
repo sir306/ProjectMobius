@@ -86,10 +86,7 @@ void SErrorWindowWidget::OpenErrorWindow()
         ErrorWindowStyle.ActiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.8f, 0.1f, 0.1f));
         ErrorWindowStyle.InactiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.6f, 0.1f, 0.1f));
         ErrorWindowStyle.FlashTitleBrush.TintColor = FSlateColor(FLinearColor(0.9f, 0.2f, 0.2f));
-        ErrorWindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::Black);
-		ErrorWindowStyle.BackgroundColor = FSlateColor(FLinearColor::Red);
-
-
+        ErrorWindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::Red);
         const FTextBlockStyle TitleStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
                 .SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 18));
         const FTextBlockStyle MessageStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))

@@ -402,10 +402,12 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
 	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
 
-	auto SharedSimulationFragment = FSharedStruct::Make(SimulationFragment);
+        auto SharedSimulationFragmentData = FSharedStruct::Make(SimulationFragment);
+
+        SharedSimulationFragment = SharedSimulationFragmentData;
 
 	// Add the shared fragment to the build context
-	PedestrianTemplateData.AddSharedFragment(SharedSimulationFragment);
+        PedestrianTemplateData.AddSharedFragment(SharedSimulationFragmentData);
 	
 	// Create the Pedestrian Representation Fragment Data
 	BuildPedestrianRepresentationFragmentData();
@@ -423,6 +425,11 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	
 	// At this point data should be ready to spawn
 	SpawnMaxPedestrians(ArchetypeSharedFragmentValues);
+}
+
+const FSimulationFragment* UMassEntitySpawnSubsystem::GetSimulationFragment() const
+{
+        return SharedSimulationFragment.GetPtr<FSimulationFragment>();
 }
 
 void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()

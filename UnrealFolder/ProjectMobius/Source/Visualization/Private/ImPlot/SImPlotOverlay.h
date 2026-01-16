@@ -19,11 +19,14 @@ class SImPlotOverlay final : public SCompoundWidget
 public:
         SLATE_BEGIN_ARGS(SImPlotOverlay)
                 : _Subsystem()
+                , _ChartId(NAME_None)
                 , _OnRequestClose()
         {
         }
         /** Owning subsystem used for data access. */
         SLATE_ARGUMENT(TWeakObjectPtr<UImPlotVisualizationSubsystem>, Subsystem)
+        /** Unique identifier for the overlay chart. */
+        SLATE_ARGUMENT(FName, ChartId)
         /** Delegate invoked when the overlay window is closed. */
         SLATE_EVENT(FSimpleDelegate, OnRequestClose)
         SLATE_END_ARGS()
@@ -75,6 +78,7 @@ private:
 
 private:
         TWeakObjectPtr<UImPlotVisualizationSubsystem> Subsystem;
+        FName ChartId;
         FSimpleDelegate OnRequestClose;
         mutable ImGuiContext* ImGuiContext = nullptr;
         mutable ImPlotContext* ImPlotContext = nullptr;

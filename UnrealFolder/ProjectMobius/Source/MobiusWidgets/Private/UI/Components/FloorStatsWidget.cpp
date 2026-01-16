@@ -25,11 +25,35 @@
 #include "UI/Components/FloorStatsWidget.h"
 
 #include "Components/TextBlock.h"
+#include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Subsystems/HeatmapSubsystem.h"
+#include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "ImPlot/ImPlotDataSubsystem.h"
+
+namespace
+{
+	bool IsLocationOnFloor(const AHeatmapPixelTextureVisualizer* Heatmap, const FVector& Location)
+	{
+		return Heatmap && Heatmap->CheckHeatmapAndLocationValid(Location);
+	}
+
+	bool IsLocationBetweenFloors(const AHeatmapPixelTextureVisualizer* BottomHeatmap, const AHeatmapPixelTextureVisualizer* TopHeatmap, const FVector& Location)
+	{
+		if (!BottomHeatmap || !TopHeatmap)
+		{
+			return false;
+		}
+		if (BottomHeatmap->CheckHeatmapAndLocationValid(Location))
+		{
+			return false;
+		}
+		return Location.Z > BottomHeatmap->MeshOriginLocation.Z + BottomHeatmap->MaxAddHeight
+			&& TopHeatmap->MeshOriginLocation.Z > Location.Z;
+	}
+}
 
 void UFloorStatsWidget::NativePreConstruct()
 {
@@ -182,15 +206,11 @@ void UFloorStatsWidget::UpdateFloorLiveStatCount(int32 InFloorNumber, int32 Agen
 		{
 			FloorTextBlock->SetText(FormatTextForTextBlock(FloorPrefixText, CurrentLiveAgentCount));
 		}
+                // we have to send a time that is float and divided by 10 to match the logic for the method
+                float NewTime = LastSentTimeInt / 10.0f;
 
-		if (FloorNumber == -1)
-		{
-			// we have to send a time that is float and divided by 10 to match the logic for the method
-			float NewTime = LastSentTimeInt / 10.0f;
-			
-                        // we can do this as it ensures that the agent count is synced with the overlay
-			UpdateCurrentPlaybackTime(NewTime);
-		}
+                // we can do this as it ensures that the agent count is synced with the overlay
+                UpdateCurrentPlaybackTime(NewTime);
 		// maybe bring a live graph ui switch
 		// // this will change to when we doing all floors etc
 		// if (FloorNumber == -1 && WsSubsystem != nullptr && TimeDilationSubSystem != nullptr)
@@ -203,80 +223,105 @@ void UFloorStatsWidget::UpdateFloorLiveStatCount(int32 InFloorNumber, int32 Agen
 
 void UFloorStatsWidget::BuildFloorText()
 {
-	
-	if (FloorNumber == -1)
-	{
-		FloorPrefixText = FText::FromString("Total Occupants: ");
-	}
-	else
-	{
-		if (bIsBetweenFloorWidget)
-		{
-			FText BottomFloorText = FText::AsNumber(FloorNumber);
-			FText TopFloorText = FText::AsNumber(FloorNumber + 1);
-			FloorPrefixText = FText::Format(FText::FromString("Between Floors {0} & {1}: "), BottomFloorText, TopFloorText);
-		}
-		else
-		{
-			FloorPrefixText = FText::Format(FText::FromString("Floor {0}: "), FText::AsNumber(FloorNumber));
-		}
-	}
+        if (FloorNumber == -1)
+        {
+                FloorPrefixText = FText::FromString("Total Occupants: ");
+                ImPlotChartId = NAME_None;
+                return;
+        }
+
+        if (bIsBetweenFloorWidget)
+        {
+                const FText BottomFloorText = FText::AsNumber(FloorNumber);
+                const FText TopFloorText = FText::AsNumber(FloorNumber + 1);
+                FloorPrefixText = FText::Format(FText::FromString("Between Floors {0} & {1}: "), BottomFloorText, TopFloorText);
+                ImPlotChartId = FName(*FString::Printf(TEXT("ImPlot_Between_%d_%d"), FloorNumber, FloorNumber + 1));
+                return;
+        }
+
+        FloorPrefixText = FText::Format(FText::FromString("Floor {0}: "), FText::AsNumber(FloorNumber));
+        ImPlotChartId = FName(*FString::Printf(TEXT("ImPlot_Floor_%d"), FloorNumber));
 }
 
 void UFloorStatsWidget::BuildImPlotChartTitle() const
 {
-        if (ImPlotDataSubsystem)
+        if (!ImPlotDataSubsystem)
         {
-                ImPlotDataSubsystem->SetChartTitle(FText::FromString("Total Number of People Over Time"));
+                return;
         }
+
+        if (FloorNumber == -1)
+        {
+                ImPlotDataSubsystem->SetChartTitleForChart(
+                        ImPlotChartId,
+                        FText::FromString("Total Number of People Over Time"));
+                return;
+        }
+
+        if (bIsBetweenFloorWidget)
+        {
+                const FText BottomFloorText = FText::AsNumber(FloorNumber);
+                const FText TopFloorText = FText::AsNumber(FloorNumber + 1);
+                const FText Title = FText::Format(
+                        FText::FromString("Between Floors {0} & {1} Occupants Over Time"),
+                        BottomFloorText,
+                        TopFloorText);
+                ImPlotDataSubsystem->SetChartTitleForChart(ImPlotChartId, Title);
+                return;
+        }
+
+        const FText Title = FText::Format(
+                FText::FromString("Floor {0} Occupants Over Time"),
+                FText::AsNumber(FloorNumber));
+        ImPlotDataSubsystem->SetChartTitleForChart(ImPlotChartId, Title);
 }
 
 void UFloorStatsWidget::BuildImPlotAxisSetting()
 {
+        if (TimeDilationSubSystem == nullptr)
+        {
+                return;
+        }
+
         // work out max time
         float MaxTime = TimeDilationSubSystem->TotalTime;
 
-	// get the max agent count
-	int32 MaxAgentCount = 1; // default to 1 to avoid division by zero
-        if (auto AgentDataSubSystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>())
-	{
-		MaxAgentCount = AgentDataSubSystem->GetMaxAgents();
-	}
-	// log the max agent count
-	//UE_LOG(LogTemp, Warning, TEXT("1called in floorstats Max Agent Count: %d"), MaxAgentCount);
+        int32 MaxAgentCount = MaxAgentCountToSend;
+        if (MaxAgentCount <= 0 && FloorNumber == -1)
+        {
+                if (auto AgentDataSubSystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>())
+                {
+                        MaxAgentCount = AgentDataSubSystem->GetMaxAgents();
+                }
+        }
+        if (MaxAgentCount <= 0)
+        {
+                MaxAgentCount = 1;
+        }
 
-	// we cant have axis mins and max == the same or be min > max
-	if (MinAgentCountToSend > MaxAgentCount)
-	{
-		// if greater then swap them
-		int32 temp = MinAgentCountToSend;
-		MinAgentCountToSend = MaxAgentCount;
-		MaxAgentCount = temp;
-	}
-	// log the max agent count
-	//UE_LOG(LogTemp, Warning, TEXT("2called in floorstats Max Agent Count: %d"), MaxAgentCount);
-	if (MinAgentCountToSend == MaxAgentCount)
-	{
-		// they cant be equal so increase max
-		MaxAgentCount += 1;
-	}
-	// log the max agent count
-	//UE_LOG(LogTemp, Warning, TEXT("3called in floorstats Max Agent Count: %d"), MaxAgentCount);
-	if (MaxTime == 0.0f)
-	{
-		// if max time is 0 then set it to 1
-		MaxTime = 1.0f;
-	}
-
-	// todo: need better place for this but we know, when time is 0 and count is 0 we want count to be max agent count
-	// if (CurrentLiveAgentCount != LastSentCount && LastSentTime == 0.0f)
-	// {
-	// 	CurrentLiveAgentCount = MaxAgentCount;
-	// }
+        // we cant have axis mins and max == the same or be min > max
+        if (MinAgentCountToSend > MaxAgentCount)
+        {
+                // if greater then swap them
+                int32 temp = MinAgentCountToSend;
+                MinAgentCountToSend = MaxAgentCount;
+                MaxAgentCount = temp;
+        }
+        if (MinAgentCountToSend == MaxAgentCount)
+        {
+                // they cant be equal so increase max
+                MaxAgentCount += 1;
+        }
+        if (MaxTime == 0.0f)
+        {
+                // if max time is 0 then set it to 1
+                MaxTime = 1.0f;
+        }
 
         if (ImPlotDataSubsystem)
         {
-                ImPlotDataSubsystem->SetAxisSettings(
+                ImPlotDataSubsystem->SetAxisSettingsForChart(
+                        ImPlotChartId,
                         FText::FromString("Elapsed Time (s)"),
                         FText::FromString("Number of Occupants Evacuated"),
                         0.0,
@@ -290,129 +335,216 @@ void UFloorStatsWidget::BuildImPlotGraphData() const
 {
         if (ImPlotDataSubsystem)
         {
-                ImPlotDataSubsystem->SetPlotPoints(ImPlotPoints);
+                ImPlotDataSubsystem->SetPlotPointsForChart(ImPlotChartId, ImPlotPoints);
         }
 }
 
 void UFloorStatsWidget::SendImPlotChartData()
 {
-        // don't send data if subsystems are not valid or if this is not the total occupants widget
-        if (FloorNumber == -1 && TimeDilationSubSystem != nullptr && ImPlotDataSubsystem != nullptr)
+        if (TimeDilationSubSystem == nullptr || ImPlotDataSubsystem == nullptr)
         {
-                BuildImPlotChartTitle();
-                BuildImPlotAxisSetting();
-
-                if (TimeDilationSubSystem->GetCurrentSimTime() == 0.0f && CurrentLiveAgentCount == 0)
-                {
-                        UpdateCurrentPlaybackTime(0.0f);
-		}
-		else
-		{
-			// update live data
-                        UpdateAgentLiveData(); // may need to move checks into this method
-		}
-		
-                BuildImPlotGraphData();
+                return;
         }
+
+        BuildImPlotChartTitle();
+        BuildImPlotAxisSetting();
+
+        if (TimeDilationSubSystem->GetCurrentSimTime() == 0.0f && CurrentLiveAgentCount == 0)
+        {
+                UpdateCurrentPlaybackTime(0.0f);
+        }
+        else
+        {
+                // update live data
+                UpdateAgentLiveData(); // may need to move checks into this method
+        }
+
+        BuildImPlotGraphData();
 }
 
 void UFloorStatsWidget::ToggleImPlotOverlay()
 {
-        if (FloorNumber == -1)
+        if (ImPlotDataSubsystem == nullptr)
         {
-                if (ImPlotDataSubsystem == nullptr)
+                if (UWorld* World = GetWorld())
                 {
-                        if (UWorld* World = GetWorld())
-                        {
-                                ImPlotDataSubsystem = World->GetSubsystem<UImPlotDataSubsystem>();
-                        }
+                        ImPlotDataSubsystem = World->GetSubsystem<UImPlotDataSubsystem>();
                 }
+        }
 
-                if (ImPlotDataSubsystem)
-                {
-                        ImPlotDataSubsystem->ToggleOverlay();
-                }
-                else
-                {
-                        UE_LOG(LogTemp, Warning, TEXT("ToggleImPlotOverlay failed: ImPlot Data Subsystem is invalid."));
-                        return;
-                }
-
-                // build the data for the instant UI
-                BuildDataForImPlotOverlay();
-
-                SendImPlotChartData();
+        if (ImPlotDataSubsystem)
+        {
+                ImPlotDataSubsystem->ToggleOverlayForChart(ImPlotChartId);
         }
         else
         {
-                UE_LOG(LogTemp, Warning, TEXT("ToggleImPlotOverlay ignored: expected FloorNumber == -1 but got %d."), FloorNumber);
+                UE_LOG(LogTemp, Warning, TEXT("ToggleImPlotOverlay failed: ImPlot Data Subsystem is invalid."));
+                return;
         }
+
+        // build the data for the instant UI
+        BuildDataForImPlotOverlay();
+
+        SendImPlotChartData();
 }
 
 void UFloorStatsWidget::BuildDataForImPlotOverlay()
 {
-        // Only doing all data for now
-        if (FloorNumber == -1 && TimeDilationSubSystem != nullptr)
+        if (TimeDilationSubSystem == nullptr)
         {
-                ImPlotPoints.Reset();
-		
-		
+                return;
+        }
+
+        ImPlotPoints.Reset();
+        MinAgentCountToSend = 0;
+        MaxAgentCountToSend = 0;
+
+        if (FloorNumber == -1)
+        {
                 if (auto MES_Subsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
                 {
                         // if we have no data then smallest count is 0
                         if (MES_Subsystem->NumOfAgentsPerTimeStep.Num() == 0)
                         {
-                                MinAgentCountToSend = 0;
-                                // send empty data
                                 SendImPlotChartData();
                                 return;
                         }
 
-                        // we want it to show number evacuated not number remaining
-                        int32 MaxAgentCount = MES_Subsystem->AgentDataSubsystem->GetMaxAgents();
-	
-			int32 SmallestFoundSampleCount = INT32_MAX;
-			
-			// loop through samples
-			for (int32 i = 0; i < MES_Subsystem->NumOfAgentsPerTimeStep.Num(); i++)
-			{
-				// New sample smaller than current smallest
-				if (MES_Subsystem->NumOfAgentsPerTimeStep[i] < SmallestFoundSampleCount)
-				{
-					SmallestFoundSampleCount = MES_Subsystem->NumOfAgentsPerTimeStep[i];
-				}
-				
-				// minus the sample count from the max to get the number evacuated
-				int32 SampleCount = MaxAgentCount - MES_Subsystem->NumOfAgentsPerTimeStep[i];
-	
-				// get the time frequency from time dilation subsystem
-				float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
-	
-				// time of current sample -> assumes no missing data
-				float CurrentTime = i * TimeBetweenSteps;
-	
+                        if (MES_Subsystem->AgentDataSubsystem)
+                        {
+                                MaxAgentCountToSend = MES_Subsystem->AgentDataSubsystem->GetMaxAgents();
+                        }
+
+                        int32 SmallestFoundSampleCount = INT32_MAX;
+
+                        // loop through samples
+                        for (int32 i = 0; i < MES_Subsystem->NumOfAgentsPerTimeStep.Num(); i++)
+                        {
+                                const int32 RemainingCount = MES_Subsystem->NumOfAgentsPerTimeStep[i];
+
+                                // New sample smaller than current smallest
+                                if (RemainingCount < SmallestFoundSampleCount)
+                                {
+                                        SmallestFoundSampleCount = RemainingCount;
+                                }
+
+                                // minus the sample count from the max to get the number evacuated
+                                int32 SampleCount = MaxAgentCountToSend - RemainingCount;
+
+                                // get the time frequency from time dilation subsystem
+                                float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
+
+                                // time of current sample -> assumes no missing data
+                                float CurrentTime = i * TimeBetweenSteps;
+
                                 // build the points array
                                 ImPlotPoints.Add(FVector2D(CurrentTime, SampleCount));
                         }
-			// Update the min agent count to send
-			MinAgentCountToSend = SmallestFoundSampleCount;
-			
+                        // Update the min agent count to send
+                        MinAgentCountToSend = SmallestFoundSampleCount == INT32_MAX ? 0 : SmallestFoundSampleCount;
+
                         SendImPlotChartData();
                 }
                 else
                 {
-			// log runnable null
-			UE_LOG(LogTemp, Warning, TEXT("The spawn system is null"));
-		}
-		
-	}
+                        // log runnable null
+                        UE_LOG(LogTemp, Warning, TEXT("The spawn system is null"));
+                }
+
+                return;
+        }
+
+        UMassEntitySpawnSubsystem* SpawnSubsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+        if (SpawnSubsystem == nullptr)
+        {
+                UE_LOG(LogTemp, Warning, TEXT("The spawn system is null"));
+                return;
+        }
+
+        const FSimulationFragment* SimulationFragment = SpawnSubsystem->GetSimulationFragment();
+        if (SimulationFragment == nullptr)
+        {
+                UE_LOG(LogTemp, Warning, TEXT("Simulation fragment is null"));
+                return;
+        }
+
+        UHeatmapSubsystem* HeatmapSubsystem = GetWorld()->GetSubsystem<UHeatmapSubsystem>();
+        if (HeatmapSubsystem == nullptr)
+        {
+                UE_LOG(LogTemp, Warning, TEXT("The heatmap subsystem is null"));
+                return;
+        }
+
+        AHeatmapPixelTextureVisualizer* BottomHeatmap = HeatmapSubsystem->GetHeatmapByIndex(FloorNumber);
+        AHeatmapPixelTextureVisualizer* TopHeatmap = nullptr;
+        if (bIsBetweenFloorWidget)
+        {
+                TopHeatmap = HeatmapSubsystem->GetHeatmapByIndex(FloorNumber + 1);
+        }
+
+        if (BottomHeatmap == nullptr || (bIsBetweenFloorWidget && TopHeatmap == nullptr))
+        {
+                UE_LOG(LogTemp, Warning, TEXT("Heatmap data is not ready for floor %d."), FloorNumber);
+                return;
+        }
+
+        const int32 NumSteps = SimulationFragment->SimulationData.Num();
+        if (NumSteps == 0)
+        {
+                SendImPlotChartData();
+                return;
+        }
+
+        TArray<int32> SampleCounts;
+        SampleCounts.SetNum(NumSteps);
+
+        int32 SmallestFoundSampleCount = INT32_MAX;
+        int32 LargestFoundSampleCount = 0;
+
+        for (int32 StepIndex = 0; StepIndex < NumSteps; ++StepIndex)
+        {
+                int32 StepCount = 0;
+                if (const TArray<FSimMovementSample>* Samples = SimulationFragment->SimulationData.Find(StepIndex))
+                {
+                        for (const FSimMovementSample& Sample : *Samples)
+                        {
+                                if (bIsBetweenFloorWidget)
+                                {
+                                        if (IsLocationBetweenFloors(BottomHeatmap, TopHeatmap, Sample.Position))
+                                        {
+                                                ++StepCount;
+                                        }
+                                }
+                                else if (IsLocationOnFloor(BottomHeatmap, Sample.Position))
+                                {
+                                        ++StepCount;
+                                }
+                        }
+                }
+
+                SampleCounts[StepIndex] = StepCount;
+                SmallestFoundSampleCount = FMath::Min(SmallestFoundSampleCount, StepCount);
+                LargestFoundSampleCount = FMath::Max(LargestFoundSampleCount, StepCount);
+        }
+
+        MinAgentCountToSend = SmallestFoundSampleCount == INT32_MAX ? 0 : SmallestFoundSampleCount;
+        MaxAgentCountToSend = LargestFoundSampleCount;
+
+        const float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
+        ImPlotPoints.Reserve(NumSteps);
+        for (int32 StepIndex = 0; StepIndex < NumSteps; ++StepIndex)
+        {
+                float CurrentTime = StepIndex * TimeBetweenSteps;
+                int32 SampleCount = MaxAgentCountToSend - SampleCounts[StepIndex];
+                ImPlotPoints.Add(FVector2D(CurrentTime, SampleCount));
+        }
+
+        SendImPlotChartData();
 }
 
 void UFloorStatsWidget::UpdateCurrentPlaybackTime(float CurrentTime)
 {
-
-        // for now doing total so if floor number is not -1 then do nothing
-        if (FloorNumber != -1 || TimeDilationSubSystem == nullptr)
+        if (TimeDilationSubSystem == nullptr)
         {
                 return;
         }
@@ -452,7 +584,7 @@ void UFloorStatsWidget::UpdateAgentLiveData()
 {
         if (ImPlotDataSubsystem)
         {
-                ImPlotDataSubsystem->UpdateLiveSample(LastSentTimeInt / 10.0, CurrentLiveAgentCount);
+                ImPlotDataSubsystem->UpdateLiveSampleForChart(ImPlotChartId, LastSentTimeInt / 10.0, CurrentLiveAgentCount);
         }
 }
 

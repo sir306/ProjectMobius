@@ -273,5 +273,11 @@ public:
 
 	/** Return the number of heatmaps */
 	FORCEINLINE int32 GetHeatmapCount() const { return Heatmaps.Num(); }
+
+        /** Return the heatmap at the requested index, or nullptr if invalid. */
+        FORCEINLINE AHeatmapPixelTextureVisualizer* GetHeatmapByIndex(int32 Index) const
+        {
+                return Heatmaps.IsValidIndex(Index) ? Heatmaps[Index] : nullptr;
+        }
 #pragma endregion GETTERS_AND_SETTERS
 };

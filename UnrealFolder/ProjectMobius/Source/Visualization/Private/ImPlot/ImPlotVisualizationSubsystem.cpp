@@ -1,7 +1,6 @@
 /**
  * ImPlot visualization subsystem implementation.
  */
-
 #include "ImPlot/ImPlotVisualizationSubsystem.h"
 #include "ImPlot/SImPlotOverlay.h"
 #include "Slate/Components/SMoveableWindow.h"
@@ -11,6 +10,11 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
 
+namespace
+{
+	const FName DefaultChartId = NAME_None;
+}
+
 void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -18,164 +22,306 @@ void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 void UImPlotVisualizationSubsystem::Deinitialize()
 {
-	ShowOverlay(false);
-	OverlayWidget.Reset();
-	OverlayWindow.Reset();
+	for (auto& Pair : OverlayStates)
+	{
+		CloseOverlayWindow(Pair.Value);
+		Pair.Value.OverlayWidget.Reset();
+	}
+	OverlayStates.Empty();
 	Super::Deinitialize();
 }
 
 void UImPlotVisualizationSubsystem::ShowOverlay(bool bShow)
 {
-        bOverlayVisible = bShow;
-
-        if (bShow)
-        {
-                EnsureOverlayWidget();
-                OpenOverlayWindow();
-        }
-        else
-        {
-                CloseOverlayWindow();
-        }
-
-        InvalidateOverlay();
+	ShowOverlayForChart(DefaultChartId, bShow);
 }
 
 void UImPlotVisualizationSubsystem::ToggleOverlay()
 {
-        ShowOverlay(!bOverlayVisible);
+	ToggleOverlayForChart(DefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::CloseOverlay()
 {
-        ShowOverlay(false);
+	CloseOverlayForChart(DefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::SetChartTitle(const FText& InTitle)
 {
-        ChartTitle = InTitle;
-        InvalidateOverlay();
+	SetChartTitleForChart(DefaultChartId, InTitle);
 }
 
 void UImPlotVisualizationSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
 {
-	XAxisTitle = InXTitle;
-	YAxisTitle = InYTitle;
-	XMin = InXMin;
-	XMax = InXMax;
-	YMin = InYMin;
-	YMax = InYMax;
-	bHasAxisSettings = true;
-
-	InvalidateOverlay();
+	SetAxisSettingsForChart(DefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
 }
 
 void UImPlotVisualizationSubsystem::SetPlotPoints(const TArray<FVector2D>& InPoints)
 {
-	PlotPoints = InPoints;
-	InvalidateOverlay();
+	SetPlotPointsForChart(DefaultChartId, InPoints);
 }
 
 void UImPlotVisualizationSubsystem::UpdateLiveSample(double InTimeSeconds, double InCount)
 {
-        if (bHasLiveSample)
-        {
-                LiveSampleThickness = FMath::Max(KINDA_SMALL_NUMBER, FMath::Abs(InTimeSeconds - LiveTimeSeconds));
-                bHasLiveSampleThickness = true;
-        }
-        else
-        {
-                LiveSampleThickness = 0.0;
-                bHasLiveSampleThickness = false;
-        }
+	UpdateLiveSampleForChart(DefaultChartId, InTimeSeconds, InCount);
+}
 
-        LiveTimeSeconds = InTimeSeconds;
-        LiveCount = InCount;
-        bHasLiveSample = true;
+void UImPlotVisualizationSubsystem::ShowOverlayForChart(const FName& ChartId, bool bShow)
+{
+	FImPlotOverlayState& State = GetOrCreateOverlayState(ChartId);
+	State.bOverlayVisible = bShow;
 
-        InvalidateOverlay();
+	if (bShow)
+	{
+		EnsureOverlayWidget(State, ChartId);
+		OpenOverlayWindow(State, ChartId);
+	}
+	else
+	{
+		CloseOverlayWindow(State);
+	}
+
+	InvalidateOverlay(ChartId);
+}
+
+void UImPlotVisualizationSubsystem::ToggleOverlayForChart(const FName& ChartId)
+{
+	FImPlotOverlayState& State = GetOrCreateOverlayState(ChartId);
+	ShowOverlayForChart(ChartId, !State.bOverlayVisible);
+}
+
+void UImPlotVisualizationSubsystem::CloseOverlayForChart(const FName& ChartId)
+{
+	ShowOverlayForChart(ChartId, false);
+}
+
+void UImPlotVisualizationSubsystem::SetChartTitleForChart(const FName& ChartId, const FText& InTitle)
+{
+	FImPlotOverlayState& State = GetOrCreateOverlayState(ChartId);
+	State.ChartTitle = InTitle;
+	InvalidateOverlay(ChartId);
+}
+
+void UImPlotVisualizationSubsystem::SetAxisSettingsForChart(const FName& ChartId, const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
+{
+	FImPlotOverlayState& State = GetOrCreateOverlayState(ChartId);
+	State.XAxisTitle = InXTitle;
+	State.YAxisTitle = InYTitle;
+	State.XMin = InXMin;
+	State.XMax = InXMax;
+	State.YMin = InYMin;
+	State.YMax = InYMax;
+	State.bHasAxisSettings = true;
+	InvalidateOverlay(ChartId);
+}
+
+void UImPlotVisualizationSubsystem::SetPlotPointsForChart(const FName& ChartId, const TArray<FVector2D>& InPoints)
+{
+	FImPlotOverlayState& State = GetOrCreateOverlayState(ChartId);
+	State.PlotPoints = InPoints;
+	InvalidateOverlay(ChartId);
+}
+
+void UImPlotVisualizationSubsystem::UpdateLiveSampleForChart(const FName& ChartId, double InTimeSeconds, double InCount)
+{
+	FImPlotOverlayState& State = GetOrCreateOverlayState(ChartId);
+	if (State.bHasLiveSample)
+	{
+		State.LiveSampleThickness = FMath::Max(KINDA_SMALL_NUMBER, FMath::Abs(InTimeSeconds - State.LiveTimeSeconds));
+		State.bHasLiveSampleThickness = true;
+	}
+	else
+	{
+		State.LiveSampleThickness = 0.0;
+		State.bHasLiveSampleThickness = false;
+	}
+
+	State.LiveTimeSeconds = InTimeSeconds;
+	State.LiveCount = InCount;
+	State.bHasLiveSample = true;
+	InvalidateOverlay(ChartId);
 }
 
 bool UImPlotVisualizationSubsystem::IsOverlayVisible() const
 {
-	return bOverlayVisible;
+	return IsOverlayVisibleForChart(DefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetChartTitle() const
 {
-        return ChartTitle;
+	return GetChartTitleForChart(DefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetXAxisTitle() const
 {
-	return XAxisTitle;
+	return GetXAxisTitleForChart(DefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetYAxisTitle() const
 {
-	return YAxisTitle;
+	return GetYAxisTitleForChart(DefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::GetAxisLimits(double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const
 {
-	OutXMin = XMin;
-	OutXMax = XMax;
-	OutYMin = YMin;
-	OutYMax = YMax;
+	GetAxisLimitsForChart(DefaultChartId, OutXMin, OutXMax, OutYMin, OutYMax);
 }
 
 bool UImPlotVisualizationSubsystem::HasAxisSettings() const
 {
-	return bHasAxisSettings;
+	return HasAxisSettingsForChart(DefaultChartId);
 }
 
 const TArray<FVector2D>& UImPlotVisualizationSubsystem::GetPlotPoints() const
 {
-	return PlotPoints;
+	return GetPlotPointsForChart(DefaultChartId);
 }
 
 bool UImPlotVisualizationSubsystem::HasLiveSample() const
 {
-	return bHasLiveSample;
+	return HasLiveSampleForChart(DefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::GetLiveSample(double& OutTimeSeconds, double& OutCount) const
 {
-        OutTimeSeconds = LiveTimeSeconds;
-        OutCount = LiveCount;
+	GetLiveSampleForChart(DefaultChartId, OutTimeSeconds, OutCount);
 }
 
 bool UImPlotVisualizationSubsystem::HasLiveSampleThickness() const
 {
-        return bHasLiveSampleThickness;
+	return HasLiveSampleThicknessForChart(DefaultChartId);
 }
 
 double UImPlotVisualizationSubsystem::GetLiveSampleThickness() const
 {
-        return LiveSampleThickness;
+	return GetLiveSampleThicknessForChart(DefaultChartId);
 }
 
-void UImPlotVisualizationSubsystem::EnsureOverlayWidget()
+bool UImPlotVisualizationSubsystem::IsOverlayVisibleForChart(const FName& ChartId) const
 {
-        if (!OverlayWidget.IsValid())
-        {
-                OverlayWidget = SNew(SImPlotOverlay)
-                        .Subsystem(this);
-        }
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->bOverlayVisible : false;
 }
 
-void UImPlotVisualizationSubsystem::OpenOverlayWindow()
+const FText& UImPlotVisualizationSubsystem::GetChartTitleForChart(const FName& ChartId) const
 {
-        if (!OverlayWidget.IsValid() || !FSlateApplication::IsInitialized())
-        {
-                return;
-        }
+	static const FText EmptyText = FText::GetEmpty();
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->ChartTitle : EmptyText;
+}
 
-	if (!OverlayWindow.IsValid())
+const FText& UImPlotVisualizationSubsystem::GetXAxisTitleForChart(const FName& ChartId) const
+{
+	static const FText EmptyText = FText::GetEmpty();
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->XAxisTitle : EmptyText;
+}
+
+const FText& UImPlotVisualizationSubsystem::GetYAxisTitleForChart(const FName& ChartId) const
+{
+	static const FText EmptyText = FText::GetEmpty();
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->YAxisTitle : EmptyText;
+}
+
+void UImPlotVisualizationSubsystem::GetAxisLimitsForChart(const FName& ChartId, double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const
+{
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	if (State)
+	{
+		OutXMin = State->XMin;
+		OutXMax = State->XMax;
+		OutYMin = State->YMin;
+		OutYMax = State->YMax;
+		return;
+	}
+	OutXMin = 0.0;
+	OutXMax = 1.0;
+	OutYMin = 0.0;
+	OutYMax = 1.0;
+}
+
+bool UImPlotVisualizationSubsystem::HasAxisSettingsForChart(const FName& ChartId) const
+{
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->bHasAxisSettings : false;
+}
+
+const TArray<FVector2D>& UImPlotVisualizationSubsystem::GetPlotPointsForChart(const FName& ChartId) const
+{
+	static const TArray<FVector2D> EmptyPoints;
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->PlotPoints : EmptyPoints;
+}
+
+bool UImPlotVisualizationSubsystem::HasLiveSampleForChart(const FName& ChartId) const
+{
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->bHasLiveSample : false;
+}
+
+void UImPlotVisualizationSubsystem::GetLiveSampleForChart(const FName& ChartId, double& OutTimeSeconds, double& OutCount) const
+{
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	if (State)
+	{
+		OutTimeSeconds = State->LiveTimeSeconds;
+		OutCount = State->LiveCount;
+		return;
+	}
+	OutTimeSeconds = 0.0;
+	OutCount = 0.0;
+}
+
+bool UImPlotVisualizationSubsystem::HasLiveSampleThicknessForChart(const FName& ChartId) const
+{
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->bHasLiveSampleThickness : false;
+}
+
+double UImPlotVisualizationSubsystem::GetLiveSampleThicknessForChart(const FName& ChartId) const
+{
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	return State ? State->LiveSampleThickness : 0.0;
+}
+
+UImPlotVisualizationSubsystem::FImPlotOverlayState& UImPlotVisualizationSubsystem::GetOrCreateOverlayState(const FName& ChartId)
+{
+	return OverlayStates.FindOrAdd(ChartId);
+}
+
+UImPlotVisualizationSubsystem::FImPlotOverlayState* UImPlotVisualizationSubsystem::FindOverlayState(const FName& ChartId)
+{
+	return OverlayStates.Find(ChartId);
+}
+
+const UImPlotVisualizationSubsystem::FImPlotOverlayState* UImPlotVisualizationSubsystem::FindOverlayState(const FName& ChartId) const
+{
+	return OverlayStates.Find(ChartId);
+}
+
+void UImPlotVisualizationSubsystem::EnsureOverlayWidget(FImPlotOverlayState& State, const FName& ChartId)
+{
+	if (!State.OverlayWidget.IsValid())
+	{
+		State.OverlayWidget = SNew(SImPlotOverlay)
+			.Subsystem(this)
+			.ChartId(ChartId);
+	}
+}
+
+void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State, const FName& ChartId)
+{
+	if (!State.OverlayWidget.IsValid() || !FSlateApplication::IsInitialized())
+	{
+		return;
+	}
+
+	if (!State.OverlayWindow.IsValid())
 	{
 		const FText WindowTitle = FText::FromString(TEXT("UE Plot Overlay"));
 
-		SAssignNew(OverlayWindow, SMoveableWindow)
+		SAssignNew(State.OverlayWindow, SMoveableWindow)
 			.Title(WindowTitle)
 			.SizingRule(ESizingRule::UserSized)
 			//.SizingRule(ESizingRule::FixedSize)
@@ -189,88 +335,95 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 			.AutoCenter(EAutoCenter::PreferredWorkArea)
 			.UseOSWindowBorder(false)
 			.ClientSize(FVector2D(640.0f, 420.0f))
-			.WindowPanelContent(OverlayWidget);
+			.WindowPanelContent(State.OverlayWidget);
 
 		// Don't Set Content on windows as this sets the content for titlebar, and the window area
-		//OverlayWindow->SetContent(OverlayWidget.ToSharedRef());
-		OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed));
+		//State.OverlayWindow->SetContent(State.OverlayWidget.ToSharedRef());
+		State.OverlayWindow->SetOnWindowClosed(FOnWindowClosed::CreateUObject(this, &UImPlotVisualizationSubsystem::HandleWindowClosed, ChartId));
 
-		FSlateApplication::Get().AddWindow(OverlayWindow.ToSharedRef());
-		RegisterMoveableWindowActivity();
+		FSlateApplication::Get().AddWindow(State.OverlayWindow.ToSharedRef());
+		RegisterMoveableWindowActivity(State);
 	}
-        else
-        {
-                OverlayWindow->BringToFront(true);
-        }
+	else
+	{
+		State.OverlayWindow->BringToFront(true);
+	}
 }
 
-void UImPlotVisualizationSubsystem::CloseOverlayWindow()
+void UImPlotVisualizationSubsystem::CloseOverlayWindow(FImPlotOverlayState& State)
 {
-	UnregisterMoveableWindowActivity();
-	if (!OverlayWindow.IsValid() || !FSlateApplication::IsInitialized())
+	UnregisterMoveableWindowActivity(State);
+	if (!State.OverlayWindow.IsValid() || !FSlateApplication::IsInitialized())
 	{
-		OverlayWindow.Reset();
+		State.OverlayWindow.Reset();
 		return;
 	}
-	FSlateApplication::Get().RequestDestroyWindow(OverlayWindow.ToSharedRef());
-	OverlayWindow.Reset();
+	FSlateApplication::Get().RequestDestroyWindow(State.OverlayWindow.ToSharedRef());
+	State.OverlayWindow.Reset();
 }
 
-void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow)
+void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow, FName ChartId)
 {
-	if (OverlayWindow == ClosedWindow)
+	FImPlotOverlayState* State = FindOverlayState(ChartId);
+	if (!State)
 	{
-		OverlayWindow.Reset();
-		bOverlayVisible = false;
-		UnregisterMoveableWindowActivity();
+		return;
+	}
+
+	if (State->OverlayWindow == ClosedWindow)
+	{
+		State->OverlayWindow.Reset();
+		State->bOverlayVisible = false;
+		UnregisterMoveableWindowActivity(*State);
 	}
 }
 
-void UImPlotVisualizationSubsystem::InvalidateOverlay() const
+void UImPlotVisualizationSubsystem::InvalidateOverlay(const FName& ChartId) const
 {
-        if (OverlayWidget.IsValid())
-        {
-                OverlayWidget->Invalidate(EInvalidateWidget::Paint);
-        }
+	const FImPlotOverlayState* State = FindOverlayState(ChartId);
+	if (State && State->OverlayWidget.IsValid())
+	{
+		State->OverlayWidget->Invalidate(EInvalidateWidget::Paint);
+	}
 }
 
-void UImPlotVisualizationSubsystem::RegisterMoveableWindowActivity()
+void UImPlotVisualizationSubsystem::RegisterMoveableWindowActivity(FImPlotOverlayState& State)
 {
-        if (bMoveableWindowActivityRegistered)
-        {
-                return;
-        }
+	if (State.bMoveableWindowActivityRegistered)
+	{
+		return;
+	}
 
-        if (UWorld* World = GetWorld())
-        {
-                if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
-                {
-                        MoveableWindowSubsystem = WidgetSubsystem;
-                        WidgetSubsystem->RegisterMoveableWindowActivity();
-                        bMoveableWindowActivityRegistered = true;
-                }
-        }
+	if (UWorld* World = GetWorld())
+	{
+		if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
+		{
+			State.MoveableWindowSubsystem = WidgetSubsystem;
+			WidgetSubsystem->RegisterMoveableWindowActivity();
+			State.bMoveableWindowActivityRegistered = true;
+		}
+	}
 }
 
-void UImPlotVisualizationSubsystem::UnregisterMoveableWindowActivity()
+void UImPlotVisualizationSubsystem::UnregisterMoveableWindowActivity(FImPlotOverlayState& State)
 {
-        if (!bMoveableWindowActivityRegistered)
-        {
-                return;
-        }
+	if (!State.bMoveableWindowActivityRegistered)
+	{
+		return;
+	}
 
-        if (MoveableWindowSubsystem.IsValid())
-        {
-                MoveableWindowSubsystem->UnregisterMoveableWindowActivity();
-                MoveableWindowSubsystem.Reset();
-        }
-        else if (UWorld* World = GetWorld())
-        {
-                if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
-                {
-                        WidgetSubsystem->UnregisterMoveableWindowActivity();
-                }
-        }
+	if (State.MoveableWindowSubsystem.IsValid())
+	{
+		State.MoveableWindowSubsystem->UnregisterMoveableWindowActivity();
+		State.MoveableWindowSubsystem.Reset();
+	}
+	else if (UWorld* World = GetWorld())
+	{
+		if (UMobiusWidgetSubsystem* WidgetSubsystem = World->GetSubsystem<UMobiusWidgetSubsystem>())
+		{
+			WidgetSubsystem->UnregisterMoveableWindowActivity();
+		}
+	}
 
-        bMoveableWindowActivityRegistered = false;
+	State.bMoveableWindowActivityRegistered = false;
 }

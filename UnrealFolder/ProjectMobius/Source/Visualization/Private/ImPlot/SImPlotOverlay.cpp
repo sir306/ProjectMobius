@@ -37,6 +37,7 @@ SImPlotOverlay::~SImPlotOverlay()
 void SImPlotOverlay::Construct(const FArguments& InArgs)
 {
         Subsystem = InArgs._Subsystem;
+        ChartId = InArgs._ChartId;
         OnRequestClose = InArgs._OnRequestClose;
 
         ChildSlot
@@ -70,7 +71,7 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 		return LayerId;
 	}
 
-	if (!Subsystem.IsValid() || !Subsystem->IsOverlayVisible())
+	if (!Subsystem.IsValid() || !Subsystem->IsOverlayVisibleForChart(ChartId))
 	{
 		return LayerId;
 	}
@@ -118,7 +119,7 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
-        const FString TitleString = Subsystem->GetChartTitle().ToString();
+        const FString TitleString = Subsystem->GetChartTitleForChart(ChartId).ToString();
         if (!TitleString.IsEmpty())
         {
                 ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
@@ -127,10 +128,10 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 
 	if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f)))
 	{
-		if (Subsystem->HasAxisSettings())
+		if (Subsystem->HasAxisSettingsForChart(ChartId))
 		{
-			const FString XTitleString = Subsystem->GetXAxisTitle().ToString();
-			const FString YTitleString = Subsystem->GetYAxisTitle().ToString();
+			const FString XTitleString = Subsystem->GetXAxisTitleForChart(ChartId).ToString();
+			const FString YTitleString = Subsystem->GetYAxisTitleForChart(ChartId).ToString();
 			ImPlot::SetupAxes(
 				XTitleString.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*XTitleString),
 				YTitleString.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*YTitleString),
@@ -141,11 +142,11 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 			double OutXMax = 0.0;
 			double OutYMin = 0.0;
 			double OutYMax = 0.0;
-			Subsystem->GetAxisLimits(OutXMin, OutXMax, OutYMin, OutYMax);
+			Subsystem->GetAxisLimitsForChart(ChartId, OutXMin, OutXMax, OutYMin, OutYMax);
 			ImPlot::SetupAxesLimits(OutXMin, OutXMax, OutYMin, OutYMax, ImPlotCond_Always);
 		}
 
-                const TArray<FVector2D>& Points = Subsystem->GetPlotPoints();
+                const TArray<FVector2D>& Points = Subsystem->GetPlotPointsForChart(ChartId);
                 if (Points.Num() > 0)
                 {
                         TArray<double> XValues;
@@ -163,13 +164,13 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 
                 double LiveX = 0.0;
                 double LiveY = 0.0;
-                const bool bHasLiveSample = Subsystem->HasLiveSample();
+                const bool bHasLiveSample = Subsystem->HasLiveSampleForChart(ChartId);
                 if (bHasLiveSample)
                 {
-                        Subsystem->GetLiveSample(LiveX, LiveY);
+                        Subsystem->GetLiveSampleForChart(ChartId, LiveX, LiveY);
                         const ImPlotRect PlotLimits = ImPlot::GetPlotLimits();
-                        double LiveThickness = Subsystem->HasLiveSampleThickness()
-                                ? Subsystem->GetLiveSampleThickness()
+                        double LiveThickness = Subsystem->HasLiveSampleThicknessForChart(ChartId)
+                                ? Subsystem->GetLiveSampleThicknessForChart(ChartId)
                                 : FMath::Max(KINDA_SMALL_NUMBER, (PlotLimits.X.Max - PlotLimits.X.Min) * 0.01);
                         const double HalfWidth = LiveThickness * 0.5;
                         const double BandX[2] = { LiveX - HalfWidth, LiveX + HalfWidth };
@@ -185,13 +186,13 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
                         FVector2D NearestPoint;
                         const bool bHasNearest = TryGetNearestPoint(MousePos.x, NearestPoint);
                         double TotalAgents = 0.0;
-                        if (Subsystem->HasAxisSettings())
+                        if (Subsystem->HasAxisSettingsForChart(ChartId))
                         {
                                 double XMin = 0.0;
                                 double XMax = 0.0;
                                 double YMin = 0.0;
                                 double YMax = 0.0;
-                                Subsystem->GetAxisLimits(XMin, XMax, YMin, YMax);
+                                Subsystem->GetAxisLimitsForChart(ChartId, XMin, XMax, YMin, YMax);
                                 TotalAgents = YMax;
                         }
                         const double EvacuatedValue = bHasNearest
@@ -241,7 +242,7 @@ bool SImPlotOverlay::TryGetNearestPoint(double TimeSeconds, FVector2D& OutPoint)
                 return false;
         }
 
-        const TArray<FVector2D>& Points = Subsystem->GetPlotPoints();
+        const TArray<FVector2D>& Points = Subsystem->GetPlotPointsForChart(ChartId);
         if (Points.Num() == 0)
         {
             return false;

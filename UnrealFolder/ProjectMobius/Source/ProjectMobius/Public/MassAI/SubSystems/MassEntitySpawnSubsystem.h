@@ -132,6 +132,9 @@ public:
 	* Build the Pedestrian Representation Fragment Data
 	*/
 	void BuildPedestrianRepresentationFragmentData(); // TODO: add inputs to allow for customisation of the pedestrian representation currently hardcoded values
+
+        /** Get the shared simulation fragment used for plotting. */
+        const FSimulationFragment* GetSimulationFragment() const;
 protected:
 
 public:
@@ -154,4 +157,8 @@ public:
         FOnPedestrianDataLoaded OnPedestrianDataReadyToSpawn; // Delegate to broadcast when the pedestrian data is loaded and processed
 
         bool bHasResetFlowCounters = false;
+
+private:
+        /** Cached shared simulation fragment for plot access. */
+        FSharedStruct SharedSimulationFragment;
 };

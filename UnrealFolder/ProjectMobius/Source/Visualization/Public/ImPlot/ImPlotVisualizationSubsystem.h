@@ -80,6 +80,27 @@ public:
         UFUNCTION(BlueprintCallable, Category = "Visualization|ImPlot")
         void UpdateLiveSample(double InTimeSeconds, double InCount);
 
+        /** Show or hide a specific ImPlot overlay. */
+        void ShowOverlayForChart(const FName& ChartId, bool bShow);
+
+        /** Toggle a specific ImPlot overlay visibility. */
+        void ToggleOverlayForChart(const FName& ChartId);
+
+        /** Close a specific overlay window and remove it from the viewport. */
+        void CloseOverlayForChart(const FName& ChartId);
+
+        /** Set the chart title for a specific overlay. */
+        void SetChartTitleForChart(const FName& ChartId, const FText& InTitle);
+
+        /** Set axis labels and limits for a specific overlay. */
+        void SetAxisSettingsForChart(const FName& ChartId, const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax);
+
+        /** Set the plot points for a specific overlay. */
+        void SetPlotPointsForChart(const FName& ChartId, const TArray<FVector2D>& InPoints);
+
+        /** Update the live data point shown on a specific plot. */
+        void UpdateLiveSampleForChart(const FName& ChartId, double InTimeSeconds, double InCount);
+
 	/** Whether the overlay is currently visible. */
 	bool IsOverlayVisible() const;
 
@@ -103,55 +124,68 @@ public:
          */
         double GetLiveSampleThickness() const;
 
+        /** Accessors used by the overlay widget for a specific chart. */
+        bool IsOverlayVisibleForChart(const FName& ChartId) const;
+        const FText& GetChartTitleForChart(const FName& ChartId) const;
+        const FText& GetXAxisTitleForChart(const FName& ChartId) const;
+        const FText& GetYAxisTitleForChart(const FName& ChartId) const;
+        void GetAxisLimitsForChart(const FName& ChartId, double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const;
+        bool HasAxisSettingsForChart(const FName& ChartId) const;
+        const TArray<FVector2D>& GetPlotPointsForChart(const FName& ChartId) const;
+        bool HasLiveSampleForChart(const FName& ChartId) const;
+        void GetLiveSampleForChart(const FName& ChartId, double& OutTimeSeconds, double& OutCount) const;
+        bool HasLiveSampleThicknessForChart(const FName& ChartId) const;
+        double GetLiveSampleThicknessForChart(const FName& ChartId) const;
+
 private:
+        struct FImPlotOverlayState
+        {
+                bool bOverlayVisible = false;
+                bool bHasAxisSettings = false;
+                bool bHasLiveSample = false;
+                bool bHasLiveSampleThickness = false;
+                bool bMoveableWindowActivityRegistered = false;
+
+                TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
+                TSharedPtr<SImPlotOverlay> OverlayWidget;
+                TSharedPtr<SMoveableWindow> OverlayWindow;
+
+                FText ChartTitle;
+                FText XAxisTitle;
+                FText YAxisTitle;
+                double XMin = 0.0;
+                double XMax = 1.0;
+                double YMin = 0.0;
+                double YMax = 1.0;
+
+                TArray<FVector2D> PlotPoints;
+                double LiveTimeSeconds = 0.0;
+                double LiveCount = 0.0;
+                double LiveSampleThickness = 0.0;
+        };
+
+        /** Per-chart overlay data keyed by chart id. */
+        TMap<FName, FImPlotOverlayState> OverlayStates;
+
+        FImPlotOverlayState& GetOrCreateOverlayState(const FName& ChartId);
+        FImPlotOverlayState* FindOverlayState(const FName& ChartId);
+        const FImPlotOverlayState* FindOverlayState(const FName& ChartId) const;
+
         /** Ensure the ImPlot overlay widget is created. */
-        void EnsureOverlayWidget();
+        void EnsureOverlayWidget(FImPlotOverlayState& State, const FName& ChartId);
         /** Open a standalone Slate window for the overlay. */
-        void OpenOverlayWindow();
+        void OpenOverlayWindow(FImPlotOverlayState& State, const FName& ChartId);
         /** Close the standalone Slate window for the overlay. */
-        void CloseOverlayWindow();
+        void CloseOverlayWindow(FImPlotOverlayState& State);
         /** Register the overlay window with the widget subsystem. */
-        void RegisterMoveableWindowActivity();
+        void RegisterMoveableWindowActivity(FImPlotOverlayState& State);
         /** Unregister the overlay window from the widget subsystem. */
-        void UnregisterMoveableWindowActivity();
-        /**
-         * Handle window close events to keep subsystem state in sync.
-         * @param ClosedWindow The window that was closed.
-         */
-        void HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow);
+        void UnregisterMoveableWindowActivity(FImPlotOverlayState& State);
+        /** Handle window close events to keep subsystem state in sync. */
+        void HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow, FName ChartId);
         /** Invalidate the overlay to refresh its rendering. */
-        void InvalidateOverlay() const;
-
-private:
-	UPROPERTY()
-	bool bOverlayVisible = false;
-
-	UPROPERTY()
-	bool bHasAxisSettings = false;
-
-        UPROPERTY()
-        bool bHasLiveSample = false;
-
-        UPROPERTY()
-        bool bHasLiveSampleThickness = false;
-        bool bMoveableWindowActivityRegistered = false;
-
-	TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
-	TSharedPtr<SImPlotOverlay> OverlayWidget;
-	TSharedPtr<SMoveableWindow> OverlayWindow;
-
-        FText ChartTitle;
-        FText XAxisTitle;
-        FText YAxisTitle;
-	double XMin = 0.0;
-	double XMax = 1.0;
-	double YMin = 0.0;
-	double YMax = 1.0;
-
-        TArray<FVector2D> PlotPoints;
-        double LiveTimeSeconds = 0.0;
-        double LiveCount = 0.0;
-        double LiveSampleThickness = 0.0;
+        void InvalidateOverlay(const FName& ChartId) const;
 };
+
 
 

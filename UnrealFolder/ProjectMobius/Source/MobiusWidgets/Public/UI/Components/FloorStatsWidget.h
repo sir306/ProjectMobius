@@ -188,8 +188,14 @@ private:
         /** Cached plot points for the in-engine ImPlot overlay. */
         TArray<FVector2D> ImPlotPoints;
 
+        /** Cached ImPlot chart identifier. */
+        FName ImPlotChartId = NAME_None;
+
 	/** The min number of agents to send to the Qt UI */
 	int32 MinAgentCountToSend = 0;
+
+        /** The max number of agents to send to the overlay. */
+        int32 MaxAgentCountToSend = 0;
 	
 	int32 LastSentTimeInt = -1;
 	int32 LastSentCount = -1;

@@ -148,10 +148,10 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
 		.Style(&WindowStyle)
 		.ShowAppIcon(InArgs._ShowAppIcon);
 
-	ChildSlot
-	[
-		TitleBarWidget.ToSharedRef()
-	];
+        ChildSlot
+        [
+                TitleBarWidget.ToSharedRef()
+        ];
 }
 
 void SWindowTitleBarWidget::SetTitleText(const FText& InTitleText)

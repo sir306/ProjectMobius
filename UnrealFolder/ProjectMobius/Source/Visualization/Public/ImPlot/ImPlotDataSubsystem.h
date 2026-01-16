@@ -60,6 +60,21 @@ public:
          */
         void ToggleOverlay();
 
+        /** Set the chart title for a specific overlay. */
+        void SetChartTitleForChart(const FName& ChartId, const FText& InTitle);
+
+        /** Set axis labels and limits for a specific overlay. */
+        void SetAxisSettingsForChart(const FName& ChartId, const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax);
+
+        /** Set the plot points for a specific overlay. */
+        void SetPlotPointsForChart(const FName& ChartId, const TArray<FVector2D>& InPoints);
+
+        /** Update the live data point shown on a specific plot. */
+        void UpdateLiveSampleForChart(const FName& ChartId, double InTimeSeconds, double InCount);
+
+        /** Toggle the visibility of a specific ImPlot overlay window. */
+        void ToggleOverlayForChart(const FName& ChartId);
+
 private:
         /** Cached ImPlot visualization subsystem. */
         UPROPERTY()
