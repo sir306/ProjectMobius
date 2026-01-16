@@ -30,6 +30,7 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 FOnSimulationPlayBarLifecycle& USimulationPlayBar::OnPlayBarConstructed()
 {
@@ -98,11 +99,14 @@ void USimulationPlayBar::NativeConstruct()
 	}
 
 	// Get the project mobius game instance and bind the loading state to the play button
-        if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance, UGameInstance>(GetWorld()->GetGameInstance()))
+        if (UWorld* World = GetWorld())
         {
-                // Bind the loading state to the play button
-                ProjectMobiusGameInstance->OnDataLoading.AddDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
-                ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.AddDynamic(this, &USimulationPlayBar::FileChanging);
+                if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance, UGameInstance>(World->GetGameInstance()))
+                {
+                        // Bind the loading state to the play button
+                        ProjectMobiusGameInstance->OnDataLoading.AddDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
+                        ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.AddDynamic(this, &USimulationPlayBar::FileChanging);
+                }
         }
 
         OnPlayBarConstructed().Broadcast(this);
@@ -150,10 +154,13 @@ void USimulationPlayBar::NativeDestruct()
         }
 
         // Unbind game instance delegates
-        if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
+        if (UWorld* World = GetWorld())
         {
-                ProjectMobiusGameInstance->OnDataLoading.RemoveDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
-                ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &USimulationPlayBar::FileChanging);
+                if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance>(World->GetGameInstance()))
+                {
+                        ProjectMobiusGameInstance->OnDataLoading.RemoveDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
+                        ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &USimulationPlayBar::FileChanging);
+                }
         }
 }
 
@@ -197,6 +204,14 @@ void USimulationPlayBar::StartSimulation()
 	// check if the world is valid
 	if(!GetWorld())
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Simulation Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot start the simulation without a valid world."),
+				FText::FromString("SimulationPlayBar"));
+		}
 		return; // prevent unbinding and binding of delegates if the world is not valid
 	}
 
@@ -206,7 +221,14 @@ void USimulationPlayBar::StartSimulation()
 	// check if the MassEntitySubsystem is valid
 	if(!MassEntitySubsystem)
 	{
-		// TODO: add Error message 
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Simulation Error"),
+				FText::FromString("Spawn subsystem missing"),
+				FText::FromString("Mass entity spawn subsystem is not available."),
+				FText::FromString("SimulationPlayBar"));
+		}
 		return; // prevent unbinding and binding of delegates if the MassEntitySubsystem is not valid
 	}
 

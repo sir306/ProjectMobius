@@ -7,6 +7,7 @@
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 namespace
 {
@@ -92,6 +93,14 @@ void UIpcSubsystem::StartIpcClient()
 	// Spin up the client thread
 	if (!IpcClient->Start())
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("IPC Error"),
+				FText::FromString("Client thread failed to start"),
+				FText::FromString("Failed to start IPC client thread."),
+				FText::FromString("IpcSubsystem"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("IPC: Failed to start client thread for endpoint '%s'"), *EndpointName);
 		return;
 	}
@@ -246,6 +255,14 @@ void UIpcSubsystem::LaunchQtStatsAppOrToggle()
 
 	if (!FPaths::FileExists(QtExePath))
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Qt App Error"),
+				FText::FromString("PlotUE_Data executable missing"),
+				FText::FromString("Qt stats application not found in Tools/bin."),
+				FText::FromString("IpcSubsystem"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Qt app not found at: %s"), *QtExePath);
 		return;
 	}

@@ -9,6 +9,7 @@
 #include "Subsystems/StatisticActorManagementSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 // Shared base material for all FlowCounters (loaded once, reused).
 static TWeakObjectPtr<UMaterialInterface> GFlowCounterBaseMaterial;
@@ -28,6 +29,14 @@ static UMaterialInterface* GetOrLoadFlowCounterBaseMaterial()
 
 	if (!Loaded)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(nullptr))
+		{
+			Feedback->ReportError(
+				FText::FromString("Flow Counter Error"),
+				FText::FromString("Base material missing"),
+				FText::FromString("Failed to load M_FlowCounterPlane at the expected content path."),
+				FText::FromString("FlowCounter"));
+		}
 		UE_LOG(LogTemp, Error,
 			TEXT("FlowCounter: Failed to load base material M_FlowCounterPlane at expected path."));
 		return nullptr;

@@ -24,7 +24,7 @@
 
 #include "UI/LoadSave/LoadMeshWidget.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
-#include "Core/MobiusWidgetSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 void ULoadMeshWidget::NativeConstruct()
 {
@@ -52,6 +52,14 @@ void ULoadMeshWidget::OnSelectFileButtonClicked()
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("File Dialog Error"),
+				FText::FromString("Subsystem unavailable"),
+				FText::FromString("NativeFileDialogSubsystem not available."),
+				FText::FromString("LoadMeshWidget"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("NativeFileDialogSubsystem not available"));
 	}
 
@@ -122,9 +130,9 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 	}
 	else
 	{
-		if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
 		{
-			WidgetSubsystem->DisplayErrorWidget(
+			Feedback->ReportError(
 				FText::FromString("Invalid Mesh File"),
 				FText::FromString("Unsupported mesh file type selected."),
 				FText::FromString("Supported types: .fbx, .obj, .udatasmith, .ifc, .wkt"),
@@ -136,14 +144,6 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 
 void ULoadMeshWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
 {
-	if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
-	{
-		WidgetSubsystem->DisplayErrorWidget(
-			FText::FromString(TEXT("File Dialog Error")),
-			FText::FromString(ErrorTitle),
-			FText::FromString(ErrorMessage),
-			FText::FromString(TEXT("Load Mesh")));
-	}
 	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
 }
 

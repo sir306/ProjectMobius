@@ -90,7 +90,7 @@ public:
 class MOBIUSCORE_API FAssimpMeshLoaderRunnable final : public FRunnable
 {
 public:
-	FAssimpMeshLoaderRunnable(const FString InPathToMesh);
+	FAssimpMeshLoaderRunnable(const FString InPathToMesh, TWeakObjectPtr<UObject> InWorldContextObject = TWeakObjectPtr<UObject>());
 	virtual ~FAssimpMeshLoaderRunnable() override;
 	
 	// The FRunnable interface functions
@@ -116,6 +116,8 @@ public:
 	FOnLoadMeshDataComplete OnLoadMeshDataComplete;
 
 protected:
+	/** Optional world context for routing errors to UI on the game thread. */
+	TWeakObjectPtr<UObject> WorldContextObject;
 	/** Pointer to a thread */
 	FRunnableThread* Thread = nullptr;
 

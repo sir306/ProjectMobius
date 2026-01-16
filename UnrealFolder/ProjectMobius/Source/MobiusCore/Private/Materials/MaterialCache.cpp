@@ -6,6 +6,7 @@
 #include "Materials/Material.h"
 #include "Engine/Texture.h"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 FMaterialCache::FMaterialCache(UObject* InOwner)
         : Owner(InOwner)
@@ -34,6 +35,14 @@ UMaterialInstanceConstant* FMaterialCache::GetOrLoadMasterMaterial(const FString
 
         if (!LoadedMaterial)
         {
+                if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(Owner.Get()))
+                {
+                        Feedback->ReportError(
+                                FText::FromString("Material Load Error"),
+                                FText::FromString("Master material missing"),
+                                FText::FromString(FString::Printf(TEXT("Failed to load master material: %s"), *MaterialPath)),
+                                FText::FromString("MaterialCache"));
+                }
                 UE_LOG(LogTemp, Error, TEXT("Failed to load master material: %s"), *MaterialPath);
                 return nullptr;
         }

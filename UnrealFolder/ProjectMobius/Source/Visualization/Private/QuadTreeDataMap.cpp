@@ -23,6 +23,7 @@
  */
 
 #include "QuadTreeDataMap.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 
 // Sets default values
@@ -41,6 +42,20 @@ QuadTreeStruct(nullptr)
 void AQuadTreeDataMap::Initialize(const FBox2D& InBounds, const float InMaxWidth, FString QuadrantHash)
 {
 	UE_LOG(LogTemp, Warning, TEXT("Initializing QuadTree"));
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot initialize the quad tree without a valid world."),
+				FText::FromString("QuadTreeDataMap"));
+		}
+		return;
+	}
 
 	// Assign Bounds to the InBounds
 	Bounds = InBounds;
@@ -66,21 +81,71 @@ void AQuadTreeDataMap::Initialize(const FBox2D& InBounds, const float InMaxWidth
 		FBox2D TopRightBounds = CreateBounds(TopRight);
 	
 		// Create the trees for each quadrant and pass the bounds to each tree
-		QuadTreeStruct->BottomLeft = GetWorld()->SpawnActor<AQuadTreeDataMap>();
+		AQuadTreeDataMap* BottomLeftNode = World->SpawnActor<AQuadTreeDataMap>();
 		FString NewIDHash = QuadrantHash + "QBL";
-		QuadTreeStruct->BottomLeft->Initialize(BottomLeftBounds, MaxWidth, NewIDHash);
+		if (BottomLeftNode)
+		{
+			BottomLeftNode->Initialize(BottomLeftBounds, MaxWidth, NewIDHash);
+		}
 		
-		QuadTreeStruct->BottomRight = GetWorld()->SpawnActor<AQuadTreeDataMap>();
+		AQuadTreeDataMap* BottomRightNode = World->SpawnActor<AQuadTreeDataMap>();
 		NewIDHash = QuadrantHash + "QBR";
-		QuadTreeStruct->BottomRight->Initialize(BottomRightBounds, MaxWidth, NewIDHash);
+		if (BottomRightNode)
+		{
+			BottomRightNode->Initialize(BottomRightBounds, MaxWidth, NewIDHash);
+		}
 		
-		QuadTreeStruct->TopLeft = GetWorld()->SpawnActor<AQuadTreeDataMap>();
+		AQuadTreeDataMap* TopLeftNode = World->SpawnActor<AQuadTreeDataMap>();
 		NewIDHash = QuadrantHash + "QTL";
-		QuadTreeStruct->TopLeft->Initialize(TopLeftBounds, MaxWidth, NewIDHash);
+		if (TopLeftNode)
+		{
+			TopLeftNode->Initialize(TopLeftBounds, MaxWidth, NewIDHash);
+		}
 		
-		QuadTreeStruct->TopRight = GetWorld()->SpawnActor<AQuadTreeDataMap>();
+		AQuadTreeDataMap* TopRightNode = World->SpawnActor<AQuadTreeDataMap>();
 		NewIDHash = QuadrantHash + "QTR";
-		QuadTreeStruct->TopRight->Initialize(TopRightBounds, MaxWidth, NewIDHash);
+		if (TopRightNode)
+		{
+			TopRightNode->Initialize(TopRightBounds, MaxWidth, NewIDHash);
+		}
+
+		if (!BottomLeftNode || !BottomRightNode || !TopLeftNode || !TopRightNode)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("QuadTree Error"),
+					FText::FromString("Failed to spawn quad tree children"),
+					FText::FromString("One or more quad tree child actors could not be created."),
+					FText::FromString("QuadTreeDataMap"));
+			}
+			if (BottomLeftNode)
+			{
+				BottomLeftNode->Destroy();
+			}
+			if (BottomRightNode)
+			{
+				BottomRightNode->Destroy();
+			}
+			if (TopLeftNode)
+			{
+				TopLeftNode->Destroy();
+			}
+			if (TopRightNode)
+			{
+				TopRightNode->Destroy();
+			}
+			QuadTreeStruct->BottomLeft = nullptr;
+			QuadTreeStruct->BottomRight = nullptr;
+			QuadTreeStruct->TopLeft = nullptr;
+			QuadTreeStruct->TopRight = nullptr;
+			return;
+		}
+
+		QuadTreeStruct->BottomLeft = BottomLeftNode;
+		QuadTreeStruct->BottomRight = BottomRightNode;
+		QuadTreeStruct->TopLeft = TopLeftNode;
+		QuadTreeStruct->TopRight = TopRightNode;
 	}
 	else
 	{
@@ -129,6 +194,19 @@ FBox2d AQuadTreeDataMap::CreateBounds(const EQuadrant InQuadrant) const
 
 void AQuadTreeDataMap::AddEntityLocationToTree(const FVector2D& EntityLocation, FString& TreeHash)
 {
+	if (!QuadTreeStruct)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot add an entity before the quad tree has been initialized."),
+				FText::FromString("QuadTreeDataMap"));
+		}
+		return;
+	}
+
 	// Check that the location is within the bounds of this tree
 	if(Bounds.IsInsideOrOn(EntityLocation) == false)
 	{
@@ -155,6 +233,19 @@ void AQuadTreeDataMap::AddEntityLocationToTree(const FVector2D& EntityLocation, 
 
 void AQuadTreeDataMap::RemoveEntityLocationFromTree(const FVector2D& EntityLocation)
 {
+	if (!QuadTreeStruct)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot remove an entity before the quad tree has been initialized."),
+				FText::FromString("QuadTreeDataMap"));
+		}
+		return;
+	}
+
 	// increment the density for this tree
 	Density -= 1;
 		
@@ -173,6 +264,19 @@ void AQuadTreeDataMap::RemoveEntityLocationFromTree(const FVector2D& EntityLocat
 
 void AQuadTreeDataMap::ResetEntityLocationsFromTree()
 {
+	if (!QuadTreeStruct)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot reset entities before the quad tree has been initialized."),
+				FText::FromString("QuadTreeDataMap"));
+		}
+		return;
+	}
+
 	// empty this trees density 
 	Density = 0;
 
@@ -188,6 +292,19 @@ void AQuadTreeDataMap::ResetEntityLocationsFromTree()
 
 void AQuadTreeDataMap::GetEntityDensityAtHash(const FString LocationHash, int32& EntityDensity)
 {
+	if (!QuadTreeStruct)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot query entity density before the quad tree has been initialized."),
+				FText::FromString("QuadTreeDataMap"));
+		}
+		EntityDensity = 0;
+		return;
+	}
 
 	// Check that the location hash contains this quads id
 	if(LocationHash.Contains(QuadrantIDHash))
@@ -251,6 +368,10 @@ void AQuadTreeDataMap::GetEntityDensityAtHash(const FString LocationHash, int32&
 
 AQuadTreeDataMap* AQuadTreeDataMap::FindQuadrantByLocation(const FVector2D& SearchLocation)
 {
+	if (!QuadTreeStruct)
+	{
+		return nullptr;
+	}
 	// check that child tree structs exist
 	if(QuadTreeStruct->BottomLeft == nullptr)
 	{

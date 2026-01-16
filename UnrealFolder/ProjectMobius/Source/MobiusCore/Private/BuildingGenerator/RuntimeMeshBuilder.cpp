@@ -38,6 +38,22 @@
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+
+namespace
+{
+	void ReportDatasmithAnchorError(UObject* ContextObject)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(ContextObject))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Load Error"),
+				FText::FromString("Datasmith anchor invalid"),
+				FText::FromString("Runtime Datasmith Anchor is not valid."),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
+	}
+}
 #include "PhysicsEngine/BodyInstance.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
@@ -113,12 +129,27 @@ void ARuntimeMeshBuilder::BeginPlay()
 		}
 		else
 		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Mesh Generation Error"),
+					FText::FromString("Game instance unavailable"),
+					FText::FromString("Mesh generation will not work without a valid game instance."),
+					FText::FromString("RuntimeMeshBuilder"));
+			}
 			UE_LOG(LogTemp, Error, TEXT("Game Instance is not valid, Mesh Generation will not work"));
 		}
 	}
 	else
 	{
-		// TODO: Implement error to user that mesh generator will not work
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Generation Error"),
+				FText::FromString("World context unavailable"),
+				FText::FromString("Mesh generation will not work without a valid world."),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("World is not valid, Mesh Generation will not work"));
 	}
 	
@@ -175,6 +206,14 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 
         if (!bHasValidVertexCounts || !bHasValidTriangles)
         {
+                if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+                {
+                        Feedback->ReportError(
+                                FText::FromString("Mesh Generation Error"),
+                                FText::FromString("Invalid mesh data"),
+                                FText::FromString("Vertices, normals, or triangle indices are invalid."),
+                                FText::FromString("RuntimeMeshBuilder"));
+                }
                 UE_LOG(LogTemp, Error, TEXT("GenerateMobiusMesh received invalid mesh data (Vertices: %d, Normals: %d, Triangles: %d)"), InVertices.Num(), InNormals.Num(), InTriangles.Num());
                 return;
         }
@@ -204,6 +243,14 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 
         if (MeshFileName.IsEmpty())
         {
+                if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+                {
+                        Feedback->ReportError(
+                                FText::FromString("Mesh Load Error"),
+                                FText::FromString("Mesh file path missing"),
+                                FText::FromString("Mesh file name is empty. Aborting mesh load."),
+                                FText::FromString("RuntimeMeshBuilder"));
+                }
                 UE_LOG(LogTemp, Error, TEXT("MeshFileName is empty. Aborting mesh load."));
                 return;
         }
@@ -238,6 +285,14 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 
                 if (SectionCount == 0 || MVertices.Num() == 0 || MFaces.Num() == 0)
                 {
+                        if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+                        {
+                                Feedback->ReportError(
+                                        FText::FromString("Mesh Load Error"),
+                                        FText::FromString("Mesh file empty"),
+                                        FText::FromString("Mesh file returned no usable data."),
+                                        FText::FromString("RuntimeMeshBuilder"));
+                        }
                         UE_LOG(LogTemp, Error, TEXT("Mesh file returned no usable data (Sections: %d, Vertices: %d, Faces: %d)."), SectionCount, MVertices.Num(), MFaces.Num());
                         return;
                 }
@@ -250,6 +305,14 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Load Error"),
+				FText::FromString("Failed to open mesh file"),
+				FText::FromString(ErrorMessageCode),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to open the mesh file: %s"), *ErrorMessageCode);
 	}
 	// // Lambda function to rotate the vectors by 90 degrees
@@ -370,6 +433,14 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 		// check world is valid
 		if(!CheckStillInWorld())
 		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Mesh Load Error"),
+					FText::FromString("World context unavailable"),
+					FText::FromString("Cannot load Datasmith mesh without a valid world."),
+					FText::FromString("RuntimeMeshBuilder"));
+			}
 			UE_LOG(LogTemp, Error, TEXT("World is not valid"));
 			return;
 		}
@@ -385,6 +456,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			// is the runtime datasmith anchor valid
 			if(RuntimeDatasmithAnchor == nullptr)
 			{
+				ReportDatasmithAnchorError(this);
 				UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 				return;
 			}
@@ -497,6 +569,14 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 	// As this is game thread dependent we need to ensure this is called on the game thread and return if not
 	if(!IsInGameThread())
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Load Error"),
+				FText::FromString("AsyncUpdateMesh called off-thread"),
+				FText::FromString("AsyncUpdateMesh must be called on the game thread."),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("AsyncUpdateMesh must be called on the game thread and after the game has started"));
 		return;
 	}
@@ -523,7 +603,7 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 	}
 	
 	// Create the runnable
-	AsyncAssimpLoader->MeshLoaderRunnable = new FAssimpMeshLoaderRunnable(PathToMesh);
+	AsyncAssimpLoader->MeshLoaderRunnable = new FAssimpMeshLoaderRunnable(PathToMesh, this);
 	AsyncAssimpLoader->MeshLoaderRunnable->OnLoadMeshDataComplete.AddDynamic(this, &ARuntimeMeshBuilder::GetTheAsyncMeshData);
 }
 
@@ -617,6 +697,14 @@ void ARuntimeMeshBuilder::UpdateMeshMaterial(UMaterialInstanceDynamic* InMateria
 	// Check input is valid
 	if(InMaterial == nullptr)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Material Error"),
+				FText::FromString("Material is not valid"),
+				FText::FromString("Cannot update mesh material with a null instance."),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Material is not valid"));
 		return;
 	}
@@ -635,6 +723,14 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToUseNonModifiedMaterials(bool bUseNon
 	// check if the datasmith anchor is valid and that the map is not empty
 	if(RuntimeDatasmithAnchor == nullptr || DatasmithMaterialsMap.Num() == 0)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Material Error"),
+				FText::FromString("Datasmith materials unavailable"),
+				FText::FromString("Datasmith anchor is invalid or materials map is empty."),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Datasmith Anchor is not valid or the Datasmith Materials Map is empty"));
 		return;
 	}
@@ -671,6 +767,7 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToTranslucentMaterials()
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -694,6 +791,7 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToSolidMaterials()
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -716,6 +814,7 @@ void ARuntimeMeshBuilder::UpdateDatasmithMeshOpacity(float Opacity)
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -737,6 +836,7 @@ void ARuntimeMeshBuilder::BoxDissolveDatasmithMesh(bool bDissolve)
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -758,6 +858,7 @@ void ARuntimeMeshBuilder::SetDatasmithToUseModifiedColour(bool bUseModifiedColou
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -782,6 +883,7 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToUseClearCoatMaterials(bool bUseClear
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -803,6 +905,7 @@ void ARuntimeMeshBuilder::SetDatasmithDissolveMeshSizeAndOrigin(FVector Origin, 
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -828,6 +931,7 @@ void ARuntimeMeshBuilder::SetDatasmithToOriginalMatStyle()
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
+		ReportDatasmithAnchorError(this);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;
 	}
@@ -875,6 +979,14 @@ void ARuntimeMeshBuilder::SetMaterialOnMesh()
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Material Error"),
+				FText::FromString("Procedural mesh missing"),
+				FText::FromString("Procedural mesh component is not valid."),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Procedural Mesh Component is not valid"));
 	}
 }
@@ -912,7 +1024,8 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
     if (RuntimeDatasmithAnchor == nullptr)
     {
-        UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
+        ReportDatasmithAnchorError(this);
+		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
         return;
     }
 
@@ -924,6 +1037,14 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
     if (DataComps.Num() == 0)
     {
+        if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+        {
+            Feedback->ReportError(
+                FText::FromString("Datasmith Error"),
+                FText::FromString("Datasmith components missing"),
+                FText::FromString("Datasmith anchor returned no components."),
+                FText::FromString("RuntimeMeshBuilder"));
+        }
         UE_LOG(LogTemp, Error, TEXT("Data Components are not valid"));
         EndLoadingWidget();
         return;
@@ -1018,6 +1139,14 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterial
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Material Load Error"),
+				FText::FromString("Failed to load material"),
+				FText::FromString(FString::Printf(TEXT("Failed to load the material: %s"), *MaterialPath)),
+				FText::FromString("RuntimeMeshBuilder"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to load the material: %s"), *MaterialPath);
 		return MaterialInstances;
 	}
@@ -1411,3 +1540,4 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
     // Enable collision for this mesh (still batched separately)
     EnqueueCollisionEnable(MeshComp);
 }
+

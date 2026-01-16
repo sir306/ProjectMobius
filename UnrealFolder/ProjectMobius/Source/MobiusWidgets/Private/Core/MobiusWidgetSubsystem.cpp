@@ -27,9 +27,12 @@
 #include "UI/ImprovedLoadingNotifyWidget.h"
 #include "UI/LoadingNotifyWidget.h"
 #include "ErrorHandling/ErrorWindowWidget.h"
+#include "Logging/LogWindow.h"
 #include "Components/PanelWidget.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Subsystems/LoadingSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Widgets/Simulation/SimulationPlayBar.h"
 
 UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingNotifyWidget(nullptr)
@@ -74,6 +77,26 @@ void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	Super::Initialize(Collection);
 
+	if (UGameInstance* GameInstance = GetWorld() ? GetWorld()->GetGameInstance() : nullptr)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = GameInstance->GetSubsystem<UMobiusUserFeedbackSubsystem>())
+		{
+			FeedbackSubsystem = Feedback;
+			FeedbackErrorHandle = Feedback->OnErrorReported().AddUObject(this, &UMobiusWidgetSubsystem::HandleErrorReported);
+			FeedbackLogLineHandle = Feedback->OnLogLine().AddUObject(this, &UMobiusWidgetSubsystem::HandleLogLine);
+			FeedbackLogWindowHandle = Feedback->OnLogWindowCommand().AddUObject(this, &UMobiusWidgetSubsystem::HandleLogWindowCommand);
+
+			DeferredErrors.Append(Feedback->DrainPendingErrors());
+			FlushDeferredErrors();
+
+			bLogWindowEnabled = Feedback->IsLogWindowEnabled();
+			if (bLogWindowEnabled && Feedback->IsLogWindowOpen())
+			{
+				OpenLogWindow();
+			}
+		}
+	}
+
 }
 
 void UMobiusWidgetSubsystem::Deinitialize()
@@ -96,6 +119,28 @@ void UMobiusWidgetSubsystem::Deinitialize()
 		SimulationPlayBarDestructedHandle.Reset();
 	}
 	SimulationPlayBars.Reset();
+
+	if (FeedbackSubsystem.IsValid())
+	{
+		if (FeedbackErrorHandle.IsValid())
+		{
+			FeedbackSubsystem->OnErrorReported().Remove(FeedbackErrorHandle);
+			FeedbackErrorHandle.Reset();
+		}
+		if (FeedbackLogLineHandle.IsValid())
+		{
+			FeedbackSubsystem->OnLogLine().Remove(FeedbackLogLineHandle);
+			FeedbackLogLineHandle.Reset();
+		}
+		if (FeedbackLogWindowHandle.IsValid())
+		{
+			FeedbackSubsystem->OnLogWindowCommand().Remove(FeedbackLogWindowHandle);
+			FeedbackLogWindowHandle.Reset();
+		}
+	}
+	FeedbackSubsystem.Reset();
+	DeferredErrors.Reset();
+	CloseLogWindow();
 
 	// Unbind all bound delegates from the loading subsystem
 	if (ULoadingSubsystem* LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>())
@@ -202,10 +247,106 @@ void UMobiusWidgetSubsystem::HandleSimulationPlayBarDestructed(USimulationPlayBa
 	});
 }
 
+void UMobiusWidgetSubsystem::HandleErrorReported(const FMobiusErrorMessage& Message)
+{
+	if (ErrorWidget)
+	{
+		DisplayErrorWidget(Message.TitleBarText, Message.ErrorTitle, Message.ErrorMessage, Message.ErrorLocation);
+	}
+	else
+	{
+		DeferredErrors.Add(Message);
+	}
+}
+
+void UMobiusWidgetSubsystem::HandleLogLine(const FString& Line)
+{
+	if (LogWindowWidget.IsValid() && LogWindowWidget->IsOpen())
+	{
+		LogWindowWidget->AppendLine(Line);
+	}
+}
+
+void UMobiusWidgetSubsystem::HandleLogWindowCommand(EMobiusLogWindowCommand Command)
+{
+	switch (Command)
+	{
+	case EMobiusLogWindowCommand::Open:
+		OpenLogWindow();
+		break;
+	case EMobiusLogWindowCommand::Close:
+		CloseLogWindow();
+		break;
+	case EMobiusLogWindowCommand::Enable:
+		SetLogWindowEnabled(true);
+		break;
+	case EMobiusLogWindowCommand::Disable:
+		SetLogWindowEnabled(false);
+		break;
+	default:
+		break;
+	}
+}
+
+void UMobiusWidgetSubsystem::OpenLogWindow()
+{
+	if (!bLogWindowEnabled)
+	{
+		return;
+	}
+
+	if (!LogWindowWidget.IsValid())
+	{
+		LogWindowWidget = SNew(SLogWindowWidget);
+	}
+
+	if (FeedbackSubsystem.IsValid())
+	{
+		LogWindowWidget->SetLines(FeedbackSubsystem->GetCachedLogLines());
+	}
+
+	LogWindowWidget->ShowLogWindow();
+	RegisterMoveableWindowActivity();
+}
+
+void UMobiusWidgetSubsystem::CloseLogWindow()
+{
+	if (LogWindowWidget.IsValid())
+	{
+		LogWindowWidget->CloseLogWindow();
+		LogWindowWidget.Reset();
+		UnregisterMoveableWindowActivity();
+	}
+}
+
+void UMobiusWidgetSubsystem::SetLogWindowEnabled(bool bEnabled)
+{
+	bLogWindowEnabled = bEnabled;
+	if (!bLogWindowEnabled)
+	{
+		CloseLogWindow();
+	}
+}
+
+void UMobiusWidgetSubsystem::FlushDeferredErrors()
+{
+	if (!ErrorWidget || DeferredErrors.Num() == 0)
+	{
+		return;
+	}
+
+	for (const FMobiusErrorMessage& Message : DeferredErrors)
+	{
+		DisplayErrorWidget(Message.TitleBarText, Message.ErrorTitle, Message.ErrorMessage, Message.ErrorLocation);
+	}
+	DeferredErrors.Reset();
+}
+
 void UMobiusWidgetSubsystem::AddErrorWidget(UErrorWindowWidget* NewErrorWidget)
 {
 	// Set the error widget
 	ErrorWidget = NewErrorWidget;
+	FlushDeferredErrors();
 }
 
 UErrorWindowWidget* UMobiusWidgetSubsystem::GetErrorWidget() const

@@ -10,6 +10,8 @@
 #include "Subsystems/EngineSubsystem.h"
 #include "MobiusCustomLoggerSubsystem.generated.h"
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnMobiusLogLine, const FString&);
+
 /**
  * Engine-level logger that opens a text file next to the launched executable and writes messages via a queue.
  * Designed to be cheap to call from BeginPlay (including blueprints) to spot startup stalls.
@@ -41,12 +43,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Logging", meta = (WorldContext = "WorldContextObject"))
 	static UMobiusCustomLoggerSubsystem* Get(const UObject* WorldContextObject);
 
+	/** Native delegate fired when a log line is flushed. */
+	FOnMobiusLogLine& OnLogLine();
+
 private:
 	FString LogFilePath;
 	FCriticalSection QueueMutex;
 	TQueue<FString, EQueueMode::Mpsc> PendingMessages;
 	FTSTicker::FDelegateHandle FlushTickerHandle;
 	FThreadSafeBool bIsFlushing;
+	FOnMobiusLogLine LogLineDelegate;
 
 	bool PumpLogs(float DeltaTime);
 	void FlushToDisk();

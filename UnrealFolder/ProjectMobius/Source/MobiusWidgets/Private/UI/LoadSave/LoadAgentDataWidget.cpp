@@ -24,7 +24,7 @@
 
 #include "UI/LoadSave/LoadAgentDataWidget.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
-#include "Core/MobiusWidgetSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 //#include "MassAI/Subsystems/TimeDilationSubSystem.h"
 
 void ULoadAgentDataWidget::NativeConstruct()
@@ -50,6 +50,14 @@ void ULoadAgentDataWidget::OnSelectFileButtonClicked()
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("File Dialog Error"),
+				FText::FromString("Subsystem unavailable"),
+				FText::FromString("NativeFileDialogSubsystem not available."),
+				FText::FromString("LoadAgentDataWidget"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("NativeFileDialogSubsystem not available"));
 	}
 	
@@ -119,9 +127,9 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 	}
 	else
 	{
-		if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
 		{
-			WidgetSubsystem->DisplayErrorWidget(
+			Feedback->ReportError(
 				FText::FromString("Invalid Agent Data File"),
 				FText::FromString("Unsupported agent data file type selected."),
 				FText::FromString("Supported types: .json"),
@@ -133,14 +141,6 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 
 void ULoadAgentDataWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
 {
-	if (UMobiusWidgetSubsystem* WidgetSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>() : nullptr)
-	{
-		WidgetSubsystem->DisplayErrorWidget(
-			FText::FromString(TEXT("File Dialog Error")),
-			FText::FromString(ErrorTitle),
-			FText::FromString(ErrorMessage),
-			FText::FromString(TEXT("Load Agent Data")));
-	}
 	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
 }
 

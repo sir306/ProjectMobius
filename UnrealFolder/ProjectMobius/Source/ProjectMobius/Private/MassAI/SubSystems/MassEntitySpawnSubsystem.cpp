@@ -38,6 +38,7 @@
 #include "SkeletalMeshAttributes.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Async/Async.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "Subsystems/TimeDilationSubSystem.h"
@@ -314,8 +315,17 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	// Check Agent Data Subsystem is valid
 	if (!AgentDataSubsystem)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Spawn Error"),
+				FText::FromString("Agent data subsystem missing"),
+				FText::FromString("Agent Data Subsystem is not valid."),
+				FText::FromString("MassEntitySpawnSubsystem"));
+		}
 		// error log
 		UE_LOG(LogTemp, Error, TEXT("Agent Data Subsystem is not valid"));
+		return;
 	}
 
 	// Cleanup any existing runnable to avoid memory leaks

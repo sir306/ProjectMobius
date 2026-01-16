@@ -27,6 +27,7 @@
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Subsystems/WebSocketSubsystem.h"
 
 UProjectMobiusGameInstance::UProjectMobiusGameInstance():
@@ -92,6 +93,51 @@ void UProjectMobiusGameInstance::Init()
 void UProjectMobiusGameInstance::Shutdown()
 {
 	Super::Shutdown();
+}
+
+void UProjectMobiusGameInstance::ReportError(const FText& TitleBarText, const FText& ErrorTitle,
+	const FText& ErrorMessage, const FText& ErrorLocation, EMobiusErrorSeverity Severity, bool bShowPrompt)
+{
+	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
+	{
+		FeedbackSubsystem->ReportError(TitleBarText, ErrorTitle, ErrorMessage, ErrorLocation, Severity, bShowPrompt);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("%s: %s"), *ErrorTitle.ToString(), *ErrorMessage.ToString());
+	}
+}
+
+void UProjectMobiusGameInstance::SetErrorPromptsEnabled(bool bEnabled)
+{
+	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
+	{
+		FeedbackSubsystem->SetErrorPromptsEnabled(bEnabled);
+	}
+}
+
+void UProjectMobiusGameInstance::OpenLogWindow()
+{
+	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
+	{
+		FeedbackSubsystem->RequestLogWindowOpen();
+	}
+}
+
+void UProjectMobiusGameInstance::CloseLogWindow()
+{
+	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
+	{
+		FeedbackSubsystem->RequestLogWindowClose();
+	}
+}
+
+void UProjectMobiusGameInstance::SetLogWindowEnabled(bool bEnabled)
+{
+	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
+	{
+		FeedbackSubsystem->SetLogWindowEnabled(bEnabled);
+	}
 }
 
 void UProjectMobiusGameInstance::SetPedestrianDataFilePath(const FString& NewPedestrianDataFilePath)
@@ -234,6 +280,14 @@ void UProjectMobiusGameInstance::SetPedestrianDataFilePath(const FString& NewPed
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
+		{
+			FeedbackSubsystem->ReportError(
+				FText::FromString("WebSocket Error"),
+				FText::FromString("WebSocket subsystem missing"),
+				FText::FromString("WebSocket subsystem not found while sending data."),
+				FText::FromString("ProjectMobiusGameInstance"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("WebSocketSubsystem not found!"));
 	}
 }

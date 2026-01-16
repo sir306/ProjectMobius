@@ -2,6 +2,7 @@
 
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 
+#include "Async/Async.h"
 #include "Containers/Ticker.h"
 #include "Containers/StringConv.h"
 #include "Engine/Engine.h"
@@ -72,12 +73,30 @@ void UMobiusCustomLoggerSubsystem::EnqueueTimedMessage(const FString& EventName,
 
 void UMobiusCustomLoggerSubsystem::FlushQueuedMessages()
 {
+	if (!IsInGameThread())
+	{
+		const TWeakObjectPtr<UMobiusCustomLoggerSubsystem> WeakThis(this);
+		AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+		{
+			if (UMobiusCustomLoggerSubsystem* Self = WeakThis.Get())
+			{
+				Self->FlushQueuedMessages();
+			}
+		});
+		return;
+	}
+
 	FlushToDisk();
 }
 
 UMobiusCustomLoggerSubsystem* UMobiusCustomLoggerSubsystem::Get(const UObject* WorldContextObject)
 {
 	return GetStartupLoggerSubsystem();
+}
+
+FOnMobiusLogLine& UMobiusCustomLoggerSubsystem::OnLogLine()
+{
+	return LogLineDelegate;
 }
 
 bool UMobiusCustomLoggerSubsystem::PumpLogs(float DeltaTime)
@@ -106,6 +125,11 @@ void UMobiusCustomLoggerSubsystem::FlushToDisk()
 	if (LocalMessages.Num() == 0)
 	{
 		return;
+	}
+
+	for (const FString& Line : LocalMessages)
+	{
+		LogLineDelegate.Broadcast(Line);
 	}
 
 	bIsFlushing = true;

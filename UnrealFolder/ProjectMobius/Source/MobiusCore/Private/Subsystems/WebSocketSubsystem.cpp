@@ -32,6 +32,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 namespace
 {
@@ -212,6 +213,14 @@ void UWebSocketSubsystem::StartWebSocketServer()
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("WebSocket Error"),
+				FText::FromString("Server executable missing"),
+				FText::FromString("mobius-server executable not found in Tools/bin."),
+				FText::FromString("WebSocketSubsystem"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("mobius-server not found at: %s"), *WsExePath);
 	}
 }
@@ -294,6 +303,14 @@ void UWebSocketSubsystem::OpenOrCloseQtStatApp()
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Qt App Error"),
+				FText::FromString("PlotUE_Data executable missing"),
+				FText::FromString("Qt stats application not found in Tools/bin."),
+				FText::FromString("WebSocketSubsystem"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Qt app not found at: %s"), *QtExePath);
 	}
 }

@@ -25,6 +25,7 @@
 #include "QuadTreeSubsystem.h"
 
 #include "QuadTreeDataMap.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 UQuadTreeSubsystem::UQuadTreeSubsystem():
 MaxQuadTreeSize(50),
@@ -51,11 +52,37 @@ void UQuadTreeSubsystem::Tick(float DeltaTime)
 void UQuadTreeSubsystem::BuildQuadTreeMapping()
 {
 	// if a quadtree already exists then destroy it - the child trees should be automactically be handled by garbage collection but if not will add a method to handle this
-	if(QuadTreeDataActor == nullptr)
+	if(QuadTreeDataActor != nullptr)
 	{
 		QuadTreeDataActor->Destroy();
+		QuadTreeDataActor = nullptr;
 	}
-	QuadTreeDataActor = GetWorld()->SpawnActor<AQuadTreeDataMap>(AQuadTreeDataMap::StaticClass());
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot build the quad tree without a valid world."),
+				FText::FromString("QuadTreeSubsystem"));
+		}
+		return;
+	}
+	QuadTreeDataActor = World->SpawnActor<AQuadTreeDataMap>(AQuadTreeDataMap::StaticClass());
+	if (!QuadTreeDataActor)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Failed to spawn quad tree"),
+				FText::FromString("Could not create the quad tree data actor."),
+				FText::FromString("QuadTreeSubsystem"));
+		}
+		return;
+	}
 	QuadTreeDataActor->Initialize(BoundaryBox, MaxQuadTreeSize, FString("RT"));
 }
 
@@ -76,7 +103,15 @@ void UQuadTreeSubsystem::AddEntitityToTree(FVector EntityLocation, FString& Agen
 	if(QuadTreeDataActor == nullptr)
 	{
 		// throw error a tree should always be created by this point
-		ensure(QuadTreeDataActor != nullptr);
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot add an entity before the quad tree has been created."),
+				FText::FromString("QuadTreeSubsystem"));
+		}
+		return;
 	}
 
 	// add to the tree the subsystem is managing
@@ -85,14 +120,28 @@ void UQuadTreeSubsystem::AddEntitityToTree(FVector EntityLocation, FString& Agen
 	// loop through any other trees and add the entity to them
 	for(const auto& Tree : QuadTreeDataActors)
 	{
-		Tree->AddEntityLocationToTree(FVector2D(EntityLocation.X, EntityLocation.Y), AgentHashID);
+		if (Tree)
+		{
+			Tree->AddEntityLocationToTree(FVector2D(EntityLocation.X, EntityLocation.Y), AgentHashID);
+		}
 	}
 }
 
 void UQuadTreeSubsystem::RemoveEntityFromTree(FVector EntityLocation)
 {
 	// throw error a tree should always be created by this point
-	ensure(QuadTreeDataActor != nullptr);
+	if(QuadTreeDataActor == nullptr)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot remove an entity before the quad tree has been created."),
+				FText::FromString("QuadTreeSubsystem"));
+		}
+		return;
+	}
 
 	// remove the entity from the tree the subsystem is managing
 	QuadTreeDataActor->RemoveEntityLocationFromTree(FVector2D(EntityLocation.X, EntityLocation.Y));
@@ -100,14 +149,28 @@ void UQuadTreeSubsystem::RemoveEntityFromTree(FVector EntityLocation)
 	// loop through any other trees and remove the entity from them
 	for(const auto& Tree : QuadTreeDataActors)
 	{
-		Tree->RemoveEntityLocationFromTree(FVector2D(EntityLocation.X, EntityLocation.Y));
+		if (Tree)
+		{
+			Tree->RemoveEntityLocationFromTree(FVector2D(EntityLocation.X, EntityLocation.Y));
+		}
 	}
 }
 
 void UQuadTreeSubsystem::ClearEntititesFromTrees()
 {
 	// throw error a tree should always be created by this point
-	ensure(QuadTreeDataActor != nullptr);
+	if(QuadTreeDataActor == nullptr)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Quad tree not initialized"),
+				FText::FromString("Cannot clear quad tree entities before the quad tree has been created."),
+				FText::FromString("QuadTreeSubsystem"));
+		}
+		return;
+	}
 
 	// clear the tree the subsystem is managing
 	QuadTreeDataActor->ResetEntityLocationsFromTree();
@@ -115,7 +178,10 @@ void UQuadTreeSubsystem::ClearEntititesFromTrees()
 	// loop through any other trees and reset them
 	for(const auto& Tree : QuadTreeDataActors)
 	{
-		Tree->ResetEntityLocationsFromTree();
+		if (Tree)
+		{
+			Tree->ResetEntityLocationsFromTree();
+		}
 	}
 }
 
@@ -125,7 +191,15 @@ void UQuadTreeSubsystem::AddQuadTree(AQuadTreeDataMap* QuadTreeToAdd)
 	if(QuadTreeToAdd == nullptr)
 	{
 		// throw error a tree should always be created by this point
-		ensure(QuadTreeToAdd != nullptr);
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("QuadTree Error"),
+				FText::FromString("Invalid quad tree"),
+				FText::FromString("Attempted to add a null quad tree to the subsystem."),
+				FText::FromString("QuadTreeSubsystem"));
+		}
+		return;
 	}
 
 	// if not null add to the array

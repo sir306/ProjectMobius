@@ -38,6 +38,7 @@
 // multithreading and async
 #include "Subsystems/HeatmapSubsystem.h"
 #include "MassEntityView.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Async/ParallelFor.h"
 #include "HAL/CriticalSection.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
@@ -124,6 +125,14 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			if (!CurrentSamplesPtr)
 			{
 				// Log an error or handle the case where the current samples are not found
+				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Simulation Data Error"),
+						FText::FromString("Missing movement samples"),
+						FText::FromString(FString::Printf(TEXT("Movement samples not found for time step %d."), CurrentTimeStep)),
+						FText::FromString("PedestrianMovementProcessor"));
+				}
 				UE_LOG(LogTemp, Error, TEXT("Current movement samples not found for time step %d"), CurrentTimeStep);
 				return;
 			}

@@ -24,6 +24,7 @@
 
 #include "DynamicPixelRenderingTexture.h"
 #include "Engine/Texture2D.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 // IWYU pragma: begin_keep
 #include "HLSLTypeAliases.h"
 #include "ImageUtils.h"
@@ -630,7 +631,14 @@ void UDynamicPixelRenderingTexture::ApplyDensityMapToTexture(const cv::Mat& Mat)
 	// Ensure that the input matrix is of the correct size
 	if (Mat.rows != TextureDimensionY || Mat.cols != TextureDimensionX)
 	{
-		// Log an error message
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Input Error"),
+				FText::FromString("Density map size mismatch"),
+				FText::FromString("Input matrix dimensions do not match texture dimensions."),
+				FText::FromString("DynamicPixelRenderingTexture"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Input matrix dimensions do not match texture dimensions!"));
 	}
 	else
@@ -695,6 +703,14 @@ void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FV
 			cv::Vec2d likelihoods;
 			if (!Kde || Kde->empty())
 			{
+				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Heatmap KDE Error"),
+						FText::FromString("Kernel density model unavailable"),
+						FText::FromString("KDE model is not initialized or empty."),
+						FText::FromString("DynamicPixelRenderingTexture"));
+				}
 				UE_LOG(LogTemp, Error, TEXT("KDE model is not initialized or empty."));
 				return;
 			}

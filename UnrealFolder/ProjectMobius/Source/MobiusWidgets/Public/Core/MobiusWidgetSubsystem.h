@@ -26,11 +26,14 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "MobiusWidgetSubsystem.generated.h"
 
 class UImprovedLoadingNotifyWidget;
 class UErrorWindowWidget;
 class USimulationPlayBar;
+class SLogWindowWidget;
+enum class EMobiusLogWindowCommand : uint8;
 /**
  * 
  */
@@ -181,10 +184,31 @@ private:
         void ApplyMoveableWindowActivity(bool bIsActive);
 
         /** Track new simulation play bars for move/resize handling. */
-        void HandleSimulationPlayBarConstructed(USimulationPlayBar* PlayBar);
+	void HandleSimulationPlayBarConstructed(USimulationPlayBar* PlayBar);
 
         /** Stop tracking a simulation play bar. */
         void HandleSimulationPlayBarDestructed(USimulationPlayBar* PlayBar);
+
+        /** Relay error payloads from the feedback subsystem. */
+        void HandleErrorReported(const FMobiusErrorMessage& Message);
+
+        /** Relay log lines into the log window. */
+        void HandleLogLine(const FString& Line);
+
+        /** Handle log window commands from the feedback subsystem. */
+        void HandleLogWindowCommand(EMobiusLogWindowCommand Command);
+
+        /** Open the log window if enabled. */
+        void OpenLogWindow();
+
+        /** Close and destroy the log window. */
+        void CloseLogWindow();
+
+        /** Enable or disable the log window. */
+        void SetLogWindowEnabled(bool bEnabled);
+
+        /** Flush queued errors once the error widget exists. */
+        void FlushDeferredErrors();
 
         /**
          * Internal method to get a center position of the screen for the specified widget
@@ -223,4 +247,12 @@ private:
         FDelegateHandle SimulationPlayBarConstructedHandle;
         FDelegateHandle SimulationPlayBarDestructedHandle;
         TArray<TWeakObjectPtr<USimulationPlayBar>> SimulationPlayBars;
+
+        TWeakObjectPtr<UMobiusUserFeedbackSubsystem> FeedbackSubsystem;
+        FDelegateHandle FeedbackErrorHandle;
+        FDelegateHandle FeedbackLogLineHandle;
+        FDelegateHandle FeedbackLogWindowHandle;
+        TArray<FMobiusErrorMessage> DeferredErrors;
+        TSharedPtr<SLogWindowWidget> LogWindowWidget;
+        bool bLogWindowEnabled = true;
 };

@@ -30,6 +30,7 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/MobiusControllerSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 
 AMobiusController::AMobiusController()
@@ -268,6 +269,14 @@ void AMobiusController::LoadCameraSavePoints()
 	FString FileContents;
 	if (!FFileHelper::LoadFileToString(FileContents, *CameraSavePointsFilePath))
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Camera Save Error"),
+				FText::FromString("Failed to load camera save points"),
+				FText::FromString("Could not read camera save points file."),
+				FText::FromString("MobiusController"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("LoadCameraSavePoints: Failed to load file: %s"), *CameraSavePointsFilePath);
 		return;
 	}
@@ -277,6 +286,14 @@ void AMobiusController::LoadCameraSavePoints()
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContents);
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Camera Save Error"),
+				FText::FromString("Invalid camera save JSON"),
+				FText::FromString("Camera save points file contains invalid JSON."),
+				FText::FromString("MobiusController"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("LoadCameraSavePoints: Invalid JSON in file: %s"), *CameraSavePointsFilePath);
 		return;
 	}
@@ -409,6 +426,14 @@ void AMobiusController::SaveCameraSavePoint(const FTransform& CameraTransform)
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Camera Save Error"),
+				FText::FromString("Failed to save camera points"),
+				FText::FromString("Could not serialize camera save points to JSON."),
+				FText::FromString("MobiusController"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to serialize camera save points JSON to string."));
 	}
 }

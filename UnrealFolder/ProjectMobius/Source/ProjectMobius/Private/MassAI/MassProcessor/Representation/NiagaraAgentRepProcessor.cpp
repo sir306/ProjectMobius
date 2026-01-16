@@ -38,6 +38,7 @@
 #include "NiagaraComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 // Niagara
@@ -406,6 +407,14 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	if (NiagaraSystem == nullptr)
 	{
 		// Log error if the Niagara System could not be loaded
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Representation Error"),
+				FText::FromString("Niagara system missing"),
+				FText::FromString("Failed to load Niagara System for Agent Representation."),
+				FText::FromString("NiagaraAgentRepProcessor"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
 		return;
 	}

@@ -1,5 +1,6 @@
 ﻿#include "Components/MobiusIpcClient.h"
 #include "HAL/PlatformProcess.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -288,6 +289,12 @@ bool FMobiusIpcClient::Platform_Connect()
         int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
         if (fd < 0)
         {
+			FMobiusErrorMessage Payload;
+			Payload.TitleBarText = FText::FromString("IPC Error");
+			Payload.ErrorTitle = FText::FromString("Socket creation failed");
+			Payload.ErrorMessage = FText::FromString("IPC failed to create a socket.");
+			Payload.ErrorLocation = FText::FromString("MobiusIpcClient");
+			UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(TWeakObjectPtr<UObject>(), Payload);
             UE_LOG(LogTemp, Error, TEXT("IPC: Failed to create socket"));
             return false;
         }
@@ -330,6 +337,12 @@ bool FMobiusIpcClient::Platform_Connect()
         return true;
     }
 
+	FMobiusErrorMessage Payload;
+	Payload.TitleBarText = FText::FromString("IPC Error");
+	Payload.ErrorTitle = FText::FromString("Unable to connect to socket");
+	Payload.ErrorMessage = FText::FromString("IPC could not connect after trying both endpoint paths.");
+	Payload.ErrorLocation = FText::FromString("MobiusIpcClient");
+	UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(TWeakObjectPtr<UObject>(), Payload);
     UE_LOG(LogTemp, Error, TEXT("IPC: Unable to connect to socket after trying %s and %s"), *CanonicalPath, *SockPath);
     return false;
 #endif

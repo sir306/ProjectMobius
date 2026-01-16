@@ -25,6 +25,7 @@
 #include "Misc/CoreDelegates.h"
 #include "Misc/Paths.h"
 #include "Async/Async.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 // Define log category for file dialog operations
 DEFINE_LOG_CATEGORY_STATIC(LogNativeFileDialog, Log, All);
@@ -396,6 +397,14 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 
 void UNativeFileDialogSubsystem::ReportDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
 {
+	if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+	{
+		Feedback->ReportError(
+			FText::FromString("File Dialog Error"),
+			FText::FromString(ErrorTitle),
+			FText::FromString(ErrorMessage),
+			FText::FromString("NativeFileDialogSubsystem"));
+	}
 	UE_LOG(LogNativeFileDialog, Error, TEXT("File Dialog Error: %s - %s"), *ErrorTitle, *ErrorMessage);
 
 	// Fire error delegate if bound

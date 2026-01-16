@@ -47,6 +47,7 @@
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 //#include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraDataInterface.h"
@@ -118,6 +119,14 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 	if (NiagaraSystem == nullptr)
 	{
 		// Log error if the Niagara System could not be loaded
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Representation Error"),
+				FText::FromString("Niagara system missing"),
+				FText::FromString("Failed to load Niagara System for Agent Representation."),
+				FText::FromString("AgentRepresentation_MOP"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
 		return;
 	}
@@ -162,6 +171,14 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			if (NiagaraSystem == nullptr)
 			{
 				// Log error if the Niagara System could not be loaded
+				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Representation Error"),
+						FText::FromString("Niagara system missing"),
+						FText::FromString("Failed to load Niagara System for Agent Representation."),
+						FText::FromString("AgentRepresentation_MOP"));
+				}
 				UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
 				return;
 			}
