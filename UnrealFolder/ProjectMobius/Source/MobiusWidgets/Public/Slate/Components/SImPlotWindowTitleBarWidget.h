@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -12,7 +12,7 @@ class STextBlock;
 /**
  * Title bar center content for the ImPlot window.
  */
-class SImPlotWindowTitleBarWidget final : public SCompoundWidget
+class MOBIUSWIDGETS_API SImPlotWindowTitleBarWidget final : public SCompoundWidget
 {
 public:
         /** Slate arguments for SImPlotWindowTitleBarWidget. */
@@ -50,3 +50,4 @@ public:
 private:
         TSharedPtr<STextBlock> TitleTextBlock;
 };
+

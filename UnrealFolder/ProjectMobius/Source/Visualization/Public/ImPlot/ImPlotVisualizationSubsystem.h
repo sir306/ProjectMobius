@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ImPlot visualization subsystem interface.
  */
 
@@ -7,6 +7,20 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "ImPlotVisualizationSubsystem.generated.h"
+
+
+class FPaintArgs;
+struct FGeometry;
+class FSlateRect;
+class FSlateWindowElementList;
+class FWidgetStyle;
+class SWidget;
+
+struct ImGuiContext;
+struct ImPlotContext;
+struct ImDrawData;
+struct ImFontAtlas;
+struct FSlateDynamicImageBrush;
 
 class SImPlotOverlay;
 class SMoveableWindow;
@@ -137,7 +151,14 @@ public:
         bool HasLiveSampleThicknessForChart(const FName& ChartId) const;
         double GetLiveSampleThicknessForChart(const FName& ChartId) const;
 
+
+        int32 PaintOverlayForChart(const FName& ChartId, const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+                const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+                const FWidgetStyle& InWidgetStyle, bool bParentEnabled, const TSharedRef<const SWidget>& Widget,
+                const FSimpleDelegate& OnRequestClose);
+
 private:
+
         struct FImPlotOverlayState
         {
                 bool bOverlayVisible = false;
@@ -146,6 +167,9 @@ private:
                 bool bHasLiveSampleThickness = false;
                 bool bMoveableWindowActivityRegistered = false;
 
+                bool bWindowOpen = true;
+                ImGuiContext* ImGuiContext = nullptr;
+                ImPlotContext* ImPlotContext = nullptr;
                 TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
                 TSharedPtr<SImPlotOverlay> OverlayWidget;
                 TSharedPtr<SMoveableWindow> OverlayWindow;
@@ -185,7 +209,17 @@ private:
         void HandleWindowClosed(const TSharedRef<SWindow>& ClosedWindow, FName ChartId);
         /** Invalidate the overlay to refresh its rendering. */
         void InvalidateOverlay(const FName& ChartId) const;
+        void EnsureOverlayContext(FImPlotOverlayState& State);
+        void DestroyOverlayContext(FImPlotOverlayState& State);
+        void EnsureSharedFontAtlas();
+        bool TryGetNearestPointForChart(const FName& ChartId, double TimeSeconds, FVector2D& OutPoint) const;
+        void RenderDrawData(const ImDrawData* DrawData, const FVector2f& WindowOffset,
+                FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
+
+        ImFontAtlas* SharedFontAtlas = nullptr;
+        TSharedPtr<FSlateDynamicImageBrush> SharedFontBrush;
+        FName SharedFontTextureName;
+        uint64 SharedFontTextureId = 0;
+
 };
-
-
 

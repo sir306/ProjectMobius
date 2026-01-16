@@ -5,18 +5,16 @@ public class MobiusWidgets : ModuleRules
     public MobiusWidgets(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
                 "Core",
                 "UMG", 
                 "Synthesis", // Required for the synth2d component
-                
-                
+
+
             }
         );
-
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
@@ -41,10 +39,10 @@ public class MobiusWidgets : ModuleRules
                  * this would mean that the projectmobius module may ultimately be renamed to the MobiusAI module as that is the main functionality
                  * left in the module.
                  */
-                "MassRepresentation", 
-                "HTTP", 
-                "Visualization", 
-                "Json", 
+                "MassRepresentation",
+                "HTTP",
+                "Visualization",
+                "Json",
                 "JsonUtilities",
                 "MobiusCore", "Niagara",
             }
