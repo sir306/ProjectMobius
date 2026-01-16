@@ -503,15 +503,8 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 			.ResizeBorder(UserResizeBorder)
 		];
 	}
-	
-	// Default window DOESN'T TICK so we need to override that behavior after calling the parent construct
-	SetCanTick(true);
 }
 
-void SMoveableWindow::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
-{
-	SWindow::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
-}
 
 // Input overrides to prevent OS modal move/resize paths.
 FReply SMoveableWindow::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
