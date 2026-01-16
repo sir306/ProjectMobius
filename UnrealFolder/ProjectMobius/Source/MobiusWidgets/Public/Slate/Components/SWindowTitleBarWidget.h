@@ -73,12 +73,7 @@ public:
 	TSharedPtr<IWindowTitleBar> GetTitleBar() const;
 
 private:
-        void HandleTitleBarClicked();
-        void RestoreOriginalTitle();
-
         TSharedPtr<SWindowTitleBar> TitleBarWidget;
         TSharedPtr<STextBlock> TitleTextBlock;
         FWindowStyle WindowStyle;
-        FText OriginalTitleText;
-        bool bShowingClickText = false;
 };

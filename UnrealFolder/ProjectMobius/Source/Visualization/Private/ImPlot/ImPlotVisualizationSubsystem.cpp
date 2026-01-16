@@ -192,6 +192,7 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 		SAssignNew(OverlayWindow, SMoveableWindow)
 			.Title(WindowTitle)
 			.SizingRule(ESizingRule::UserSized)
+			//.SizingRule(ESizingRule::FixedSize)
 			.FocusWhenFirstShown(false)
 			.ActivationPolicy(EWindowActivationPolicy::Never)
 			.SupportsMaximize(true)
@@ -202,8 +203,7 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow()
 			.AutoCenter(EAutoCenter::PreferredWorkArea)
 			.UseOSWindowBorder(false)
 			.ClientSize(FVector2D(640.0f, 420.0f))
-			.WindowPanelContent(OverlayWidget)
-			.OnStatusMessage(FOnMoveableWindowStatusMessage::CreateUObject(this, &UImPlotVisualizationSubsystem::SetStatusMessage));
+			.WindowPanelContent(OverlayWidget);
 
 		// Don't Set Content on windows as this sets the content for titlebar, and the window area
 		//OverlayWindow->SetContent(OverlayWidget.ToSharedRef());

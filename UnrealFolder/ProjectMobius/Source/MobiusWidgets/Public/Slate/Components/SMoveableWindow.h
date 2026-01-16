@@ -8,8 +8,6 @@
 
 class SWindowTitleBarWidget;
 
-/** Emits status text for the owning window. */
-DECLARE_DELEGATE_OneParam(FOnMoveableWindowStatusMessage, const FText&);
 /** Emits move/resize activity changes for any moveable window. */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnMoveableWindowActivityChanged, bool);
 
@@ -50,7 +48,6 @@ public:
 			  , _TitleBarContent()
 			  , _TitleBarContentAlignment(HAlign_Fill)
 			  , _WindowPanelContent()
-			  , _OnStatusMessage()
 		{}
 		SLATE_ARGUMENT(EWindowType, Type)
 		SLATE_STYLE_ARGUMENT(FWindowStyle, Style)
@@ -83,8 +80,6 @@ public:
 		SLATE_ARGUMENT(EHorizontalAlignment, TitleBarContentAlignment)
 		
 		SLATE_ARGUMENT(TSharedPtr<SWidget>, WindowPanelContent)
-		/** Status message emitter for this window. */
-		SLATE_EVENT(FOnMoveableWindowStatusMessage, OnStatusMessage)
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 	SLATE_END_ARGS()
 
@@ -93,36 +88,17 @@ public:
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
-	/** Update title bar mouse held state. */
-	//void SetTitleBarMouseHeld(bool bIsHeld);
-	/** Global activity signal fired when a window starts or stops moving/resizing. */
-	// static FOnMoveableWindowActivityChanged& OnActivityChanged();
-	
-	// Override OnPaint to catch resize events even when Tick is blocked
-	// virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
-	
 private:
+	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	
-	// void HandleWindowMoved(const TSharedRef<SWindow>& Window);
-	// EActiveTimerReturnType HandleIdleTimer(double InCurrentTime, float InDeltaTime);
-	// void BroadcastActivityIfChanged(bool bIsActive);
-	// void UpdateMouseHeldState(bool bIsHeld);
+	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	
+	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	
+	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
 
-	FOnMoveableWindowStatusMessage OnStatusMessage;
+	//SLATECORE_API virtual FCursorReply OnCursorQuery( const FGeometry& MyGeometry, const FPointerEvent& CursorEvent ) const override;
+	
 	TSharedPtr<SWindowTitleBarWidget> TitleBarContent;
 	EHorizontalAlignment TitleBarContentAlignment = HAlign_Fill;
-
-	FVector2D LastUpdatedPosition = FVector2D::ZeroVector;
-	FVector2D LastUpdatedSize = FVector2D::ZeroVector;
-	double LastMoveTimeSeconds = 0.0;
-	bool bHasLastPosition = false;
-	bool bHasLastSize = false;
-	bool bIsIdle = false;
-	bool bIdleTimerRegistered = false;
-	bool bHasActivityState = false;
-	bool bWasActive = false;
-	bool bIsMouseHeld = false;
-	
-	// Mutable so we can update it inside the const OnPaint function
-	mutable FVector2D LastPaintSize;
 };
