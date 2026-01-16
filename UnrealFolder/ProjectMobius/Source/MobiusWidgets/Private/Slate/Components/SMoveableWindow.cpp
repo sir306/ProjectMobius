@@ -444,14 +444,22 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 		}
 		else
 		{
-			// Create our own SWindowTitleBarWidget
-			SAssignNew(TitleBarContent, SWindowTitleBarWidget)
-			.OwnerWindow(SharedThis(this))
-			.TitleText(InArgs._Title.Get(FText::GetEmpty()))
-			.TitleTextStyle(&FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-			.WindowStyle(InArgs._Style)
-			.TitleAlignment(TitleBarContentAlignment)
-			.ShowAppIcon(false);
+                        // Create our own SWindowTitleBarWidget
+                        const FWindowStyle* WindowStyle = InArgs._Style
+                                ? InArgs._Style
+                                : &FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+                        const TAttribute<FText> TitleText = TAttribute<FText>::Create(
+                                TAttribute<FText>::FGetter::CreateLambda([this]()
+                                {
+                                        return GetTitle();
+                                }));
+                        SAssignNew(TitleBarContent, SWindowTitleBarWidget)
+                        .OwnerWindow(SharedThis(this))
+                        .TitleText(TitleText)
+                        .TitleTextStyle(&WindowStyle->TitleTextStyle)
+                        .WindowStyle(WindowStyle)
+                        .TitleAlignment(TitleBarContentAlignment)
+                        .ShowAppIcon(false);
 		}
 
 		// Wrap the user's content with our title bar on top

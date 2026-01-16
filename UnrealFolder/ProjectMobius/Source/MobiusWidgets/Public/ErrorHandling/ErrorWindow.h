@@ -9,7 +9,6 @@
 
 class SMoveableWindow;
 class SWindowContentPanel;
-class SWindowTitleBarWidget;
 
 /**
  * 
@@ -87,7 +86,6 @@ private:
 	FReply HandleCloseClicked();
 
 	TSharedPtr<SMoveableWindow> ErrorWindowPtr;
-	TSharedPtr<SWindowTitleBarWidget> TitleBarWidget;
 	TSharedPtr<SWindowContentPanel> ContentPanel;
 	FWindowStyle ErrorWindowStyle;
 };

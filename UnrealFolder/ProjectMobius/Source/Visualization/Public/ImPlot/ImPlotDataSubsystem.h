@@ -1,4 +1,6 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+/**
+ * ImPlot data subsystem interface.
+ */
 
 #pragma once
 
@@ -28,12 +30,6 @@ public:
          * @param InTitle Title text to display.
          */
         void SetChartTitle(const FText& InTitle);
-
-        /**
-         * Set a status message displayed above the chart title.
-         * @param InMessage Status message to display.
-         */
-        void SetStatusMessage(const FText& InMessage);
 
         /**
          * Set axis labels and limits for the plot.

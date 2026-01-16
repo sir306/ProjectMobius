@@ -1,4 +1,6 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+/**
+ * ImPlot visualization subsystem implementation.
+ */
 
 #include "ImPlot/ImPlotVisualizationSubsystem.h"
 #include "ImPlot/SImPlotOverlay.h"
@@ -55,16 +57,6 @@ void UImPlotVisualizationSubsystem::SetChartTitle(const FText& InTitle)
         InvalidateOverlay();
 }
 
-void UImPlotVisualizationSubsystem::SetStatusMessage(const FText& InMessage)
-{
-        if (StatusMessage.EqualTo(InMessage))
-        {
-                return;
-        }
-        StatusMessage = InMessage;
-        InvalidateOverlay();
-}
-
 void UImPlotVisualizationSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
 {
 	XAxisTitle = InXTitle;
@@ -112,11 +104,6 @@ bool UImPlotVisualizationSubsystem::IsOverlayVisible() const
 const FText& UImPlotVisualizationSubsystem::GetChartTitle() const
 {
         return ChartTitle;
-}
-
-const FText& UImPlotVisualizationSubsystem::GetStatusMessage() const
-{
-        return StatusMessage;
 }
 
 const FText& UImPlotVisualizationSubsystem::GetXAxisTitle() const
@@ -173,8 +160,7 @@ void UImPlotVisualizationSubsystem::EnsureOverlayWidget()
         if (!OverlayWidget.IsValid())
         {
                 OverlayWidget = SNew(SImPlotOverlay)
-                        .Subsystem(this)
-                        .OnRequestClose(FSimpleDelegate::CreateUObject(this, &UImPlotVisualizationSubsystem::CloseOverlay));
+                        .Subsystem(this);
         }
 }
 

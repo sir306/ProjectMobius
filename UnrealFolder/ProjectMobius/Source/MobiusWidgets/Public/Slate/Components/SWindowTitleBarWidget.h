@@ -22,7 +22,7 @@ public:
 	SLATE_BEGIN_ARGS(SWindowTitleBarWidget)
 		: _OwnerWindow()
 		, _TitleText(FText::GetEmpty())
-		, _TitleTextStyle(&FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+                , _TitleTextStyle(&FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window").TitleTextStyle)
 		, _WindowStyle(&FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window"))
 		, _TitleAlignment(HAlign_Center)
 		, _ShowAppIcon(false)
@@ -76,4 +76,5 @@ private:
         TSharedPtr<SWindowTitleBar> TitleBarWidget;
         TSharedPtr<STextBlock> TitleTextBlock;
         FWindowStyle WindowStyle;
+        FTextBlockStyle TitleTextStyle;
 };

@@ -121,17 +121,16 @@ SWindowTitleBarWidget::~SWindowTitleBarWidget()
 
 void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
 {
-	WindowStyle = *InArgs._WindowStyle;
-	// Override title bar background to red for visibility testing
-	WindowStyle.BackgroundBrush.TintColor = FSlateColor(FLinearColor::Red);
+        WindowStyle = InArgs._WindowStyle
+                ? *InArgs._WindowStyle
+                : FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+        TitleTextStyle = InArgs._TitleTextStyle
+                ? *InArgs._TitleTextStyle
+                : FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window").TitleTextStyle;
 
-	// Create a custom text style with black text color
-	FTextBlockStyle BlackTextStyle = *InArgs._TitleTextStyle;
-	BlackTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::Blue);
-
-	SAssignNew(TitleTextBlock, STextBlock)
-	.Text(InArgs._TitleText)
-	.TextStyle(&BlackTextStyle);
+        SAssignNew(TitleTextBlock, STextBlock)
+        .Text(InArgs._TitleText)
+        .TextStyle(&TitleTextStyle);
 
 	if (!InArgs._OwnerWindow.IsValid())
 	{

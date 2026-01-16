@@ -118,21 +118,11 @@ int32 SImPlotOverlay::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
-        const FString StatusString = Subsystem->GetStatusMessage().ToString();
         const FString TitleString = Subsystem->GetChartTitle().ToString();
-        if (!StatusString.IsEmpty())
-        {
-                ImGui::TextUnformatted(TCHAR_TO_UTF8(*StatusString));
-        }
-        else
-        {
-                ImGui::TextUnformatted("Status: (none)");
-        }
-
         if (!TitleString.IsEmpty())
         {
-                ImGui::Spacing();
                 ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
+                ImGui::Spacing();
         }
 
 	if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f)))

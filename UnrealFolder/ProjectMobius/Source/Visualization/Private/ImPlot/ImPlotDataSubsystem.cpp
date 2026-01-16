@@ -1,4 +1,6 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+/**
+ * ImPlot data subsystem implementation.
+ */
 
 #include "ImPlot/ImPlotDataSubsystem.h"
 #include "ImPlot/ImPlotVisualizationSubsystem.h"
@@ -32,21 +34,6 @@ void UImPlotDataSubsystem::SetChartTitle(const FText& InTitle)
         if (ImPlotSubsystem)
         {
                 ImPlotSubsystem->SetChartTitle(InTitle);
-        }
-}
-
-void UImPlotDataSubsystem::SetStatusMessage(const FText& InMessage)
-{
-        if (!ImPlotSubsystem)
-        {
-                if (UWorld* World = GetWorld())
-                {
-                        ImPlotSubsystem = World->GetSubsystem<UImPlotVisualizationSubsystem>();
-                }
-        }
-        if (ImPlotSubsystem)
-        {
-                ImPlotSubsystem->SetStatusMessage(InMessage);
         }
 }
 

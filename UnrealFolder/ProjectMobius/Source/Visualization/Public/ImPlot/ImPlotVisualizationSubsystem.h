@@ -1,4 +1,6 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+/**
+ * ImPlot visualization subsystem interface.
+ */
 
 #pragma once
 
@@ -20,7 +22,7 @@ class VISUALIZATION_API UImPlotVisualizationSubsystem : public UWorldSubsystem
 	GENERATED_BODY()
 
 public:
-        /** Initialize the subsystem and register the overlay state. */
+        /** Initialize the subsystem. */
         virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
         /** Clean up the overlay and any ImPlot resources. */
@@ -50,13 +52,6 @@ public:
 	 */
         UFUNCTION(BlueprintCallable, Category = "Visualization|ImPlot")
         void SetChartTitle(const FText& InTitle);
-
-        /**
-         * Set a status message displayed above the chart title.
-         * @param InMessage Status message to display.
-         */
-        UFUNCTION(BlueprintCallable, Category = "Visualization|ImPlot")
-        void SetStatusMessage(const FText& InMessage);
 
 	/**
 	 * Set axis labels and limits for the plot.
@@ -90,7 +85,6 @@ public:
 
         /** Accessors used by the overlay widget. */
         const FText& GetChartTitle() const;
-        const FText& GetStatusMessage() const;
         const FText& GetXAxisTitle() const;
         const FText& GetYAxisTitle() const;
         void GetAxisLimits(double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const;
@@ -147,7 +141,6 @@ private:
 	TSharedPtr<SMoveableWindow> OverlayWindow;
 
         FText ChartTitle;
-        FText StatusMessage;
         FText XAxisTitle;
         FText YAxisTitle;
 	double XMin = 0.0;
