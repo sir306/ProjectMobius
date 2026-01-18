@@ -4,11 +4,11 @@ This document tracks the in-engine ImPlot overlay used for evacuation stats visu
 
 ## Third-Party Sources
 
-The ImGui and ImPlot sources are vendored into the Visualization module so they only compile where used.
+The ImGui and ImPlot sources are vendored into the MobiusWidgets module so they only compile where used.
 
 Paths:
-- `Source/Visualization/ThirdParty/ImGui`
-- `Source/Visualization/ThirdParty/ImPlot`
+- `Source/MobiusWidgets/ThirdParty/ImGui`
+- `Source/MobiusWidgets/ThirdParty/ImPlot`
 
 ## Overlay Entry Points
 

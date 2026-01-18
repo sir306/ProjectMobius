@@ -41,10 +41,19 @@ public class MobiusWidgets : ModuleRules
                  */
                 "MassRepresentation",
                 "HTTP",
-                "Visualization",
+                "RHI",
+                "RenderCore",
                 "Json",
                 "JsonUtilities",
                 "MobiusCore", "Niagara",
+            }
+        );
+
+        PrivateIncludePaths.AddRange(
+            new string[]
+            {
+                "MobiusWidgets/ThirdParty/ImGui",
+                "MobiusWidgets/ThirdParty/ImPlot",
             }
         );
     }

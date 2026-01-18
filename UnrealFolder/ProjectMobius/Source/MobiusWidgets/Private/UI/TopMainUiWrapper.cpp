@@ -33,7 +33,7 @@ void UTopMainUiWrapper::NativeConstruct()
 	{
 		WidgetSubsystem->AddErrorWidget(ErrorWindowWidget);
 		// Debug Test
-		ErrorWindowWidget->ShowErrorWindow();
+		//ErrorWindowWidget->ShowErrorWindow();
 	}
 }
 

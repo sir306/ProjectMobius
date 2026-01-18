@@ -122,6 +122,7 @@ public:
 private:
 	void ReportErrorInternal(const FMobiusErrorMessage& Message);
 	void HandleLogLine(const FString& Line);
+	void BroadcastLogWindowCommand(EMobiusLogWindowCommand Command);
 	bool ShouldPrompt(const FMobiusErrorMessage& Message);
 	uint32 HashMessage(const FMobiusErrorMessage& Message) const;
 	void EnqueuePendingError(const FMobiusErrorMessage& Message);

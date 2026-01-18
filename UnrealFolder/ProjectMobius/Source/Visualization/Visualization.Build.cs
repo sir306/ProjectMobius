@@ -26,19 +26,12 @@ public class Visualization : ModuleRules
                 "SlateCore",
                 "RHI",
                 "RenderCore",
-                "MobiusWidgets",
                 "MobiusCore",
             }
         );
         
         PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});     
-        PrivateIncludePaths.AddRange(new string[] { "Visualization/Private", "Visualization/Private/ImPlot" });
-
-        PublicIncludePaths.AddRange(new string[]
-        {
-            "Visualization/ThirdParty/ImGui",
-            "Visualization/ThirdParty/ImPlot",
-        });
+        PrivateIncludePaths.AddRange(new string[] { "Visualization/Private" });
 
 
         

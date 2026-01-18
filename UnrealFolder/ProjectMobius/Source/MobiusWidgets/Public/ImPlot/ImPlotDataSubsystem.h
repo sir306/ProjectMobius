@@ -14,7 +14,7 @@ class UImPlotVisualizationSubsystem;
  * World subsystem that receives plot data and forwards it to the ImPlot overlay.
  */
 UCLASS()
-class VISUALIZATION_API UImPlotDataSubsystem : public UWorldSubsystem
+class MOBIUSWIDGETS_API UImPlotDataSubsystem : public UWorldSubsystem
 {
         GENERATED_BODY()
 

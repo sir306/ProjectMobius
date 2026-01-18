@@ -135,36 +135,75 @@ bool UMobiusUserFeedbackSubsystem::AreErrorPromptsEnabled() const
 
 void UMobiusUserFeedbackSubsystem::RequestLogWindowOpen()
 {
+	if (!IsInGameThread())
+	{
+		const TWeakObjectPtr<UMobiusUserFeedbackSubsystem> WeakThis(this);
+		AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+		{
+			if (UMobiusUserFeedbackSubsystem* Self = WeakThis.Get())
+			{
+				Self->RequestLogWindowOpen();
+			}
+		});
+		return;
+	}
+
 	bLogWindowOpen = true;
 	if (bLogWindowEnabled)
 	{
-		LogWindowCommandDelegate.Broadcast(EMobiusLogWindowCommand::Open);
+		BroadcastLogWindowCommand(EMobiusLogWindowCommand::Open);
 	}
 }
 
 void UMobiusUserFeedbackSubsystem::RequestLogWindowClose()
 {
+	if (!IsInGameThread())
+	{
+		const TWeakObjectPtr<UMobiusUserFeedbackSubsystem> WeakThis(this);
+		AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+		{
+			if (UMobiusUserFeedbackSubsystem* Self = WeakThis.Get())
+			{
+				Self->RequestLogWindowClose();
+			}
+		});
+		return;
+	}
+
 	bLogWindowOpen = false;
-	LogWindowCommandDelegate.Broadcast(EMobiusLogWindowCommand::Close);
+	BroadcastLogWindowCommand(EMobiusLogWindowCommand::Close);
 }
 
 void UMobiusUserFeedbackSubsystem::SetLogWindowEnabled(bool bEnabled)
 {
+	if (!IsInGameThread())
+	{
+		const TWeakObjectPtr<UMobiusUserFeedbackSubsystem> WeakThis(this);
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, bEnabled]()
+		{
+			if (UMobiusUserFeedbackSubsystem* Self = WeakThis.Get())
+			{
+				Self->SetLogWindowEnabled(bEnabled);
+			}
+		});
+		return;
+	}
+
 	if (bLogWindowEnabled == bEnabled)
 	{
 		return;
 	}
 
 	bLogWindowEnabled = bEnabled;
-	LogWindowCommandDelegate.Broadcast(bEnabled ? EMobiusLogWindowCommand::Enable : EMobiusLogWindowCommand::Disable);
+	BroadcastLogWindowCommand(bEnabled ? EMobiusLogWindowCommand::Enable : EMobiusLogWindowCommand::Disable);
 
 	if (!bLogWindowEnabled)
 	{
-		LogWindowCommandDelegate.Broadcast(EMobiusLogWindowCommand::Close);
+		BroadcastLogWindowCommand(EMobiusLogWindowCommand::Close);
 	}
 	else if (bLogWindowOpen)
 	{
-		LogWindowCommandDelegate.Broadcast(EMobiusLogWindowCommand::Open);
+		BroadcastLogWindowCommand(EMobiusLogWindowCommand::Open);
 	}
 }
 
@@ -203,6 +242,24 @@ FOnMobiusLogLine& UMobiusUserFeedbackSubsystem::OnLogLine()
 FOnMobiusLogWindowCommand& UMobiusUserFeedbackSubsystem::OnLogWindowCommand()
 {
 	return LogWindowCommandDelegate;
+}
+
+void UMobiusUserFeedbackSubsystem::BroadcastLogWindowCommand(EMobiusLogWindowCommand Command)
+{
+	if (IsInGameThread())
+	{
+		LogWindowCommandDelegate.Broadcast(Command);
+		return;
+	}
+
+	const TWeakObjectPtr<UMobiusUserFeedbackSubsystem> WeakThis(this);
+	AsyncTask(ENamedThreads::GameThread, [WeakThis, Command]()
+	{
+		if (UMobiusUserFeedbackSubsystem* Self = WeakThis.Get())
+		{
+			Self->LogWindowCommandDelegate.Broadcast(Command);
+		}
+	});
 }
 
 void UMobiusUserFeedbackSubsystem::ReportErrorInternal(const FMobiusErrorMessage& Message)

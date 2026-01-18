@@ -31,7 +31,7 @@ class UMobiusWidgetSubsystem;
  * World subsystem that owns ImPlot overlay state and data.
  */
 UCLASS()
-class VISUALIZATION_API UImPlotVisualizationSubsystem : public UWorldSubsystem
+class MOBIUSWIDGETS_API UImPlotVisualizationSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
