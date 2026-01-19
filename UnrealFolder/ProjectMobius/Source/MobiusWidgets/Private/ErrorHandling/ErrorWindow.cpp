@@ -101,7 +101,7 @@ void SErrorWindowWidget::OpenErrorWindow()
                 [
                         SNew(SVerticalBox)
                         + SVerticalBox::Slot()
-                        .AutoHeight()
+                		.VAlign(VAlign_Fill)
                         [
                                 SAssignNew(ContentPanel, SWindowContentPanel)
                                 .TitleText(FText::FromString("Error Window (Test)"))

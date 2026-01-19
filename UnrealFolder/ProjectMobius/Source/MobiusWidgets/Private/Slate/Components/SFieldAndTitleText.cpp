@@ -126,7 +126,9 @@ void SFieldAndTitleText::Construct(const FArguments& InArgs)
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 				[ TitleWidget ]
-				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+				// FieldWidget slot was set to HAlign(HAlign_Center), 
+				// but that caused issues with auto-wrapping text, it stopped it from being unwrapped when we made error log boxes small to wider
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Fill)
 				[ FieldWidget ]
 			];
 			GridPanel->AddSlot(0, 2)[ SNullWidget::NullWidget ];   // bottom spacer
