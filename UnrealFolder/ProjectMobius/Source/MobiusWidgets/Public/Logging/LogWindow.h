@@ -10,10 +10,14 @@ class SMoveableWindow;
 class SScrollBox;
 class STextBlock;
 
+DECLARE_DELEGATE(FOnLogWindowClosed);
+
 class MOBIUSWIDGETS_API SLogWindowWidget final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SLogWindowWidget) {}
+	SLATE_BEGIN_ARGS(SLogWindowWidget)
+		{}
+		SLATE_EVENT(FOnLogWindowClosed, OnLogWindowClosed)
 	SLATE_END_ARGS()
 
 	SLogWindowWidget();
@@ -43,6 +47,9 @@ private:
 	void OpenLogWindow();
 	FReply HandleCloseClicked();
 	void RebuildLogText();
+	
+	void HandleLogWindowClosedEvent(const TSharedRef<SWindow>& InWindow);
+	FOnLogWindowClosed OnLogWindowClosed;
 
 	TSharedPtr<SMoveableWindow> LogWindowPtr;
 	TSharedPtr<SScrollBox> ScrollBox;

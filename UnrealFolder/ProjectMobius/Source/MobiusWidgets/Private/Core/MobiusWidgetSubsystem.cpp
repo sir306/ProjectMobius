@@ -154,6 +154,9 @@ void UMobiusWidgetSubsystem::Deinitialize()
 		// OnLoadingUnknownDurationChanged
 		LoadingSubsystem->OnLoadingUnknownDurationChanged.RemoveDynamic(this, &UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget);
 	}
+	
+	OnLogWindowClosedBP.Clear();
+	OnLogWindowClosedNative.Unbind();
 
         Super::Deinitialize();
 }
@@ -297,7 +300,11 @@ void UMobiusWidgetSubsystem::OpenLogWindow()
 
 	if (!LogWindowWidget.IsValid())
 	{
-		LogWindowWidget = SNew(SLogWindowWidget);
+		OnLogWindowClosedNative = FOnLogWindowClosed::CreateUObject(this, &UMobiusWidgetSubsystem::LogWindowIsClosing);
+		
+		LogWindowWidget = SNew(SLogWindowWidget)
+			.OnLogWindowClosed(OnLogWindowClosedNative);
+		
 	}
 
 	if (FeedbackSubsystem.IsValid())
@@ -316,6 +323,7 @@ void UMobiusWidgetSubsystem::CloseLogWindow()
 		LogWindowWidget->CloseLogWindow();
 		LogWindowWidget.Reset();
 		UnregisterMoveableWindowActivity();
+		OnLogWindowClosedNative.Unbind();
 	}
 }
 
@@ -480,4 +488,19 @@ FVector2D UMobiusWidgetSubsystem::GetCenterPosForWidgetPanel(UPanelWidget* Widge
 	FVector2D WidgetPosition = FVector2D(ViewportSize.X / 2 - WidgetSize.X / 2, ViewportSize.Y / 2 - WidgetSize.Y / 2);
 
 	return WidgetPosition;
+}
+
+void UMobiusWidgetSubsystem::LogWindowIsClosing()
+{
+	if (OnLogWindowClosedBP.IsBound())
+	{
+		OnLogWindowClosedBP.Broadcast();
+	}
+	OnLogWindowClosedNative.Unbind();
+	
+	if (LogWindowWidget.IsValid())
+	{
+		LogWindowWidget.Reset();
+		UnregisterMoveableWindowActivity();
+	}
 }

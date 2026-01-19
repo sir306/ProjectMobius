@@ -25,6 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Logging/LogWindow.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "MobiusWidgetSubsystem.generated.h"
@@ -34,6 +35,9 @@ class UErrorWindowWidget;
 class USimulationPlayBar;
 class SLogWindowWidget;
 enum class EMobiusLogWindowCommand : uint8;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLogWindowClosedBP);
+
 /**
  * 
  */
@@ -225,6 +229,8 @@ private:
 	 * @return Center Position of the Widget
 	 */
 	FVector2D GetCenterPosForWidgetPanel(class UPanelWidget* WidgetPanel);
+	
+	void LogWindowIsClosing();
 
 #pragma endregion METHODS
 	
@@ -237,6 +243,12 @@ public:
 	// Loading Notify Widget
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LoadingNotifyWidget")
         UImprovedLoadingNotifyWidget* LoadingNotifyWidget;
+	
+	// Log Window Closed Delegate
+	FOnLogWindowClosed OnLogWindowClosedNative;
+	
+	UPROPERTY(BlueprintAssignable, Category = "Logging")
+	FOnLogWindowClosedBP OnLogWindowClosedBP;
 #pragma endregion PROPERTIES
 
 private:
