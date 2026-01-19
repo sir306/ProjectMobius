@@ -451,212 +451,172 @@ void UImPlotVisualizationSubsystem::UnregisterMoveableWindowActivity(FImPlotOver
 
 
 int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-    const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
-    const FWidgetStyle& InWidgetStyle, bool bParentEnabled, const TSharedRef<const SWidget>& Widget,
-    const FSimpleDelegate& OnRequestClose)
+        const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+        const FWidgetStyle& InWidgetStyle, bool bParentEnabled, const TSharedRef<const SWidget>& Widget,
+        const FSimpleDelegate& OnRequestClose)
 {
-    FImPlotOverlayState* State = FindOverlayState(ChartId);
-    if (!State || !State->bOverlayVisible)
-    {
-        return LayerId;
-    }
-
-    EnsureOverlayContext(*State);
-    if (!State->ImGuiContext || !State->ImPlotContext)
-    {
-        return LayerId;
-    }
-
-    // Switch the global ImGui/ImPlot contexts to the specific state required for this chart.
-    // This is necessary because ImGui is a state-machine based library.
-    ImGui::SetCurrentContext(State->ImGuiContext);
-    ImPlot::SetCurrentContext(State->ImPlotContext);
-    EnsureSharedFontAtlas();
-
-    ImGuiIO& IO = ImGui::GetIO();
-
-    // -------------------------------------------------------------------------
-    // Input Mapping: Slate -> ImGui
-    // -------------------------------------------------------------------------
-    // We must manually feed input data from Unreal's Slate system into ImGui's IO structure
-    // so that ImGui knows where the mouse is and what buttons are pressed.
-    if (FSlateApplication::IsInitialized())
-    {
-        // Get the absolute screen position of the mouse cursor.
-        const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
-
-        // Convert Absolute (Screen) Space -> Local (Widget) Space.
-        // We use 'AllottedGeometry.AbsoluteToLocal' because it automatically accounts for:
-        // 1. The window's position on screen.
-        // 2. The DPI scale of the monitor (Retina/4K displays).
-        // 3. Any render transforms (scale/rotation) applied to parent widgets.
-        const FVector2f LocalCursorPos = FVector2f(AllottedGeometry.AbsoluteToLocal(FVector2D(CursorPos)));
-        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
-
-        // Map standard mouse buttons.
-        IO.MouseDown[0] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
-        IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
-        IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
-    }
-
-    // -------------------------------------------------------------------------
-    // Display Sync
-    // -------------------------------------------------------------------------
-    // Tell ImGui the size of the viewport it is rendering into.
-    // 'GetLocalSize()' gives us the size of this specific widget in Slate units.
-    const FVector2f LocalSize = FVector2f(AllottedGeometry.GetLocalSize());
-    IO.DisplaySize = ImVec2(LocalSize.X, LocalSize.Y);
-    
-    // Update DeltaTime to ensure smooth animations (scrolling/tooltips) inside ImGui.
-    IO.DeltaTime = FMath::Max(1.0e-6f, static_cast<float>(FApp::GetDeltaTime()));
-
-    ImGui::NewFrame();
-
-    // Force the root ImGui window to completely fill our Slate widget.
-    // We lock the position to 0,0 (top-left of the widget) and the size to the widget's bounds.
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(LocalSize.X, LocalSize.Y), ImGuiCond_Always);
-
-    bool bOpen = State->bWindowOpen;
-    
-    // Create the main window container.
-    // We disable all standard ImGui window decorations (TitleBar, Resize, Move) because
-    // the "Window" is already handled by the actual OS window wrapping this widget.
-    ImGui::Begin("UE Plot Overlay", &bOpen,
-        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
-
-    const FString TitleString = GetChartTitleForChart(ChartId).ToString();
-
-    if (!TitleString.IsEmpty())
-    {
-        ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
-        ImGui::Spacing();
-    }
-
-    // Begin the plot area. Using -1, -1 size tells ImGui to fill the remaining available space.
-    if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f)))
-    {
-        if (HasAxisSettingsForChart(ChartId))
+        FImPlotOverlayState* State = FindOverlayState(ChartId);
+        if (!State || !State->bOverlayVisible)
         {
-            const FString XTitleString = GetXAxisTitleForChart(ChartId).ToString();
-            const FString YTitleString = GetYAxisTitleForChart(ChartId).ToString();
-            
-            // Configure axis labels and auto-fitting behavior.
-            ImPlot::SetupAxes(
-                XTitleString.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*XTitleString),
-                YTitleString.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*YTitleString),
-                ImPlotAxisFlags_AutoFit,
-                ImPlotAxisFlags_AutoFit);
-
-            double OutXMin = 0.0;
-            double OutXMax = 0.0;
-            double OutYMin = 0.0;
-            double OutYMax = 0.0;
-            GetAxisLimitsForChart(ChartId, OutXMin, OutXMax, OutYMin, OutYMax);
-            
-            // Apply hard limits to the axis visible range.
-            ImPlot::SetupAxesLimits(OutXMin, OutXMax, OutYMin, OutYMax, ImPlotCond_Always);
+                return LayerId;
         }
 
-        // Render the main data line.
-        const TArray<FVector2D>& Points = GetPlotPointsForChart(ChartId);
-        if (Points.Num() > 0)
+        EnsureOverlayContext(*State);
+        if (!State->ImGuiContext || !State->ImPlotContext)
         {
-            TArray<double> XValues;
-            TArray<double> YValues;
-            XValues.SetNum(Points.Num());
-            YValues.SetNum(Points.Num());
-            
-            // Split Vector2D array into separate X/Y double arrays required by ImPlot.
-            for (int32 Index = 0; Index < Points.Num(); ++Index)
-            {
-                XValues[Index] = Points[Index].X;
-                YValues[Index] = Points[Index].Y;
-            }
-
-            ImPlot::PlotLine("Evacuated", XValues.GetData(), YValues.GetData(), XValues.Num());
+                return LayerId;
         }
 
-        // Render the "Live" playhead line if active.
-        double LiveX = 0.0;
-        double LiveY = 0.0;
-        const bool bHasLiveSample = HasLiveSampleForChart(ChartId);
-        if (bHasLiveSample)
+        ImGui::SetCurrentContext(State->ImGuiContext);
+        ImPlot::SetCurrentContext(State->ImPlotContext);
+        EnsureSharedFontAtlas();
+
+        ImGuiIO& IO = ImGui::GetIO();
+        if (FSlateApplication::IsInitialized())
         {
-            GetLiveSampleForChart(ChartId, LiveX, LiveY);
-            ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.35f, 0.25f, 1.0f), 2.0f);
-            ImPlot::PlotInfLines("Live##CurrentTime", &LiveX, 1);
-        }
-
-        // Handle mouse interaction / Tooltips.
-        if (ImPlot::IsPlotHovered())
-        {
-            const ImPlotPoint MousePos = ImPlot::GetPlotMousePos();
-            FVector2D NearestPoint = FVector2D::ZeroVector;
-            const bool bHasNearest = TryGetNearestPointForChart(ChartId, MousePos.x, NearestPoint);
-            
-            double TotalAgents = 0.0;
-            if (HasAxisSettingsForChart(ChartId))
-            {
-                double XMin, XMax, YMin, YMax;
-                GetAxisLimitsForChart(ChartId, XMin, XMax, YMin, YMax);
-                TotalAgents = YMax;
-            }
-
-            const double EvacuatedValue = bHasNearest
-                ? NearestPoint.Y
-                : (bHasLiveSample && TotalAgents > 0.0 ? TotalAgents - LiveY : 0.0);
-            
-            const double RemainingValue = TotalAgents > 0.0
-                ? FMath::Max(0.0, TotalAgents - EvacuatedValue)
-                : 0.0;
-
-            ImGui::BeginTooltip();
-            ImGui::Text("Time: %.2f", MousePos.x);
-            if (bHasNearest || bHasLiveSample)
-            {
-                ImGui::Text("Evacuated: %.0f", EvacuatedValue);
-                if (TotalAgents > 0.0)
+                const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
+                const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(Widget);
+                if (Window.IsValid())
                 {
-                    ImGui::Text("Remaining: %.0f", RemainingValue);
+                        const FSlateRect ClientRect = Window->GetClientRectInScreen();
+                        const float DpiScale = Window->GetDPIScaleFactor();
+                        const FVector2f ClientOrigin = FVector2f(ClientRect.Left, ClientRect.Top);
+                        const FVector2f LocalCursorPos = (CursorPos - ClientOrigin) / DpiScale;
+                        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
+                        const FVector2f ClientSize = FVector2f(ClientRect.GetSize()) / DpiScale;
+                        IO.DisplaySize = ImVec2(ClientSize.X, ClientSize.Y);
                 }
-            }
-            ImGui::EndTooltip();
+                else
+                {
+                        const FVector2f LocalCursorPos = FVector2f(AllottedGeometry.AbsoluteToLocal(CursorPos));
+                        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
+                }
+                IO.MouseDown[0] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
+                IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
+                IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
         }
-
-        ImPlot::EndPlot();
-    }
-
-    ImGui::End();
-
-    // Check if the window was closed via internal logic (e.g. close button in a decoration)
-    if (State->bWindowOpen && !bOpen)
-    {
-        State->bWindowOpen = false;
-        if (OnRequestClose.IsBound())
+        const FVector2f LocalSize = FVector2f(AllottedGeometry.GetLocalSize());
+        if (IO.DisplaySize.x == 0.0f && IO.DisplaySize.y == 0.0f)
         {
-            OnRequestClose.Execute();
+                IO.DisplaySize = ImVec2(LocalSize.X, LocalSize.Y);
         }
-    }
-    
-    // Finalize the ImGui frame and generate render commands.
-    ImGui::Render();
+        IO.DeltaTime = FMath::Max(1.0e-6f, static_cast<float>(FApp::GetDeltaTime()));
 
-    const ImDrawData* DrawData = ImGui::GetDrawData();
+        ImGui::NewFrame();
 
-    // -------------------------------------------------------------------------
-    // Rendering: ImGui -> Slate
-    // -------------------------------------------------------------------------
-    // We must pass an absolute screen offset to our custom renderer.
-    // ImGui outputs vertices in Window Space (0,0 is top-left of the window).
-    // Slate DrawElements expect vertices in Absolute Screen Space (relative to monitor 0,0).
-    // 'GetAccumulatedLayoutTransform().GetTranslation()' provides the absolute position of this widget.
-    const FVector2f WindowOffset = FVector2f(AllottedGeometry.GetAccumulatedLayoutTransform().GetTranslation());
-    
-    RenderDrawData(DrawData, WindowOffset, OutDrawElements, LayerId + 1);
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(LocalSize.X, LocalSize.Y), ImGuiCond_Always);
+        bool bOpen = State->bWindowOpen;
+        ImGui::Begin("UE Plot Overlay", &bOpen,
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
-    return LayerId + 1;
+        const FString TitleString = GetChartTitleForChart(ChartId).ToString();
+        if (!TitleString.IsEmpty())
+        {
+                ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
+                ImGui::Spacing();
+        }
+
+        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f)))
+        {
+                if (HasAxisSettingsForChart(ChartId))
+                {
+                        const FString XTitleString = GetXAxisTitleForChart(ChartId).ToString();
+                        const FString YTitleString = GetYAxisTitleForChart(ChartId).ToString();
+                        ImPlot::SetupAxes(
+                                XTitleString.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*XTitleString),
+                                YTitleString.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*YTitleString),
+                                ImPlotAxisFlags_AutoFit,
+                                ImPlotAxisFlags_AutoFit);
+
+                        double OutXMin = 0.0;
+                        double OutXMax = 0.0;
+                        double OutYMin = 0.0;
+                        double OutYMax = 0.0;
+                        GetAxisLimitsForChart(ChartId, OutXMin, OutXMax, OutYMin, OutYMax);
+                        ImPlot::SetupAxesLimits(OutXMin, OutXMax, OutYMin, OutYMax, ImPlotCond_Always);
+                }
+
+                const TArray<FVector2D>& Points = GetPlotPointsForChart(ChartId);
+                if (Points.Num() > 0)
+                {
+                        TArray<double> XValues;
+                        TArray<double> YValues;
+                        XValues.SetNum(Points.Num());
+                        YValues.SetNum(Points.Num());
+                        for (int32 Index = 0; Index < Points.Num(); ++Index)
+                        {
+                                XValues[Index] = Points[Index].X;
+                                YValues[Index] = Points[Index].Y;
+                        }
+
+                        ImPlot::PlotLine("Evacuated", XValues.GetData(), YValues.GetData(), XValues.Num());
+                }
+
+                double LiveX = 0.0;
+                double LiveY = 0.0;
+                const bool bHasLiveSample = HasLiveSampleForChart(ChartId);
+                if (bHasLiveSample)
+                {
+                        GetLiveSampleForChart(ChartId, LiveX, LiveY);
+                        ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.35f, 0.25f, 1.0f), 2.0f);
+                        ImPlot::PlotInfLines("Live##CurrentTime", &LiveX, 1);
+                }
+
+                if (ImPlot::IsPlotHovered())
+                {
+                        const ImPlotPoint MousePos = ImPlot::GetPlotMousePos();
+                        FVector2D NearestPoint = FVector2D::ZeroVector;
+                        const bool bHasNearest = TryGetNearestPointForChart(ChartId, MousePos.x, NearestPoint);
+                        double TotalAgents = 0.0;
+                        if (HasAxisSettingsForChart(ChartId))
+                        {
+                                double XMin = 0.0;
+                                double XMax = 0.0;
+                                double YMin = 0.0;
+                                double YMax = 0.0;
+                                GetAxisLimitsForChart(ChartId, XMin, XMax, YMin, YMax);
+                                TotalAgents = YMax;
+                        }
+                        const double EvacuatedValue = bHasNearest
+                                ? NearestPoint.Y
+                                : (bHasLiveSample && TotalAgents > 0.0 ? TotalAgents - LiveY : 0.0);
+                        const double RemainingValue = TotalAgents > 0.0
+                                ? FMath::Max(0.0, TotalAgents - EvacuatedValue)
+                                : 0.0;
+                        ImGui::BeginTooltip();
+                        ImGui::Text("Time: %.2f", MousePos.x);
+                        if (bHasNearest || bHasLiveSample)
+                        {
+                                ImGui::Text("Evacuated: %.0f", EvacuatedValue);
+                                if (TotalAgents > 0.0)
+                                {
+                                        ImGui::Text("Remaining: %.0f", RemainingValue);
+                                }
+                        }
+                        ImGui::EndTooltip();
+                }
+
+                ImPlot::EndPlot();
+        }
+
+        ImGui::End();
+        if (State->bWindowOpen && !bOpen)
+        {
+                State->bWindowOpen = false;
+                if (OnRequestClose.IsBound())
+                {
+                        OnRequestClose.Execute();
+                }
+        }
+        ImGui::Render();
+
+        const ImDrawData* DrawData = ImGui::GetDrawData();
+        const FVector2f WindowOffset = FVector2f(AllottedGeometry.GetAccumulatedLayoutTransform().GetTranslation());
+        RenderDrawData(DrawData, WindowOffset, OutDrawElements, LayerId + 1);
+
+        return LayerId + 1;
 }
 
 void UImPlotVisualizationSubsystem::EnsureOverlayContext(FImPlotOverlayState& State)
