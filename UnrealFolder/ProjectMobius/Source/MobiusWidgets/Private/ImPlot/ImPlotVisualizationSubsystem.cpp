@@ -472,6 +472,8 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         EnsureSharedFontAtlas();
 
         ImGuiIO& IO = ImGui::GetIO();
+        // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
+        FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
         if (FSlateApplication::IsInitialized())
         {
                 const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
@@ -483,8 +485,8 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         const FVector2f ClientOrigin = FVector2f(ClientRect.Left, ClientRect.Top);
                         const FVector2f LocalCursorPos = (CursorPos - ClientOrigin) / DpiScale;
                         IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
-                        const FVector2f ClientSize = FVector2f(ClientRect.GetSize()) / DpiScale;
-                        IO.DisplaySize = ImVec2(ClientSize.X, ClientSize.Y);
+                        // Use DPI-scaled client size for display
+                        DisplaySize = FVector2f(ClientRect.GetSize()) / DpiScale;
                 }
                 else
                 {
@@ -495,17 +497,15 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
                 IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
         }
-        const FVector2f LocalSize = FVector2f(AllottedGeometry.GetLocalSize());
-        if (IO.DisplaySize.x == 0.0f && IO.DisplaySize.y == 0.0f)
-        {
-                IO.DisplaySize = ImVec2(LocalSize.X, LocalSize.Y);
-        }
+        // Use the same DisplaySize for both IO and ImGui window
+        IO.DisplaySize = ImVec2(DisplaySize.X, DisplaySize.Y);
         IO.DeltaTime = FMath::Max(1.0e-6f, static_cast<float>(FApp::GetDeltaTime()));
 
         ImGui::NewFrame();
 
+        // Use DisplaySize (same as IO.DisplaySize) for consistent sizing
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(LocalSize.X, LocalSize.Y), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(DisplaySize.X, DisplaySize.Y), ImGuiCond_Always);
         bool bOpen = State->bWindowOpen;
         ImGui::Begin("UE Plot Overlay", &bOpen,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
