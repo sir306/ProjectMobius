@@ -36,12 +36,24 @@ public:
 			  , _IsTopmostWindow(false)
 			  , _FocusWhenFirstShown(true)
 			  , _ActivationPolicy(EWindowActivationPolicy::Always)
-			  , _UseOSWindowBorder(false)
+	#if PLATFORM_MAC
+		  // Mac handles window movement/resizing on separate thread (won't block game thread)
+		  // Use native OS window chrome to avoid overlapping with macOS window controls
+		  , _UseOSWindowBorder(true)
+#else
+		  // Windows/other platforms use custom title bar and resize overlay
+		  // to avoid OS modal sizing that blocks the game thread
+		  , _UseOSWindowBorder(false)
+#endif
 			  , _HasCloseButton(true)
 			  , _SupportsMaximize(true)
 			  , _SupportsMinimize(true)
 			  , _ShouldPreserveAspectRatio(false)
+#if PLATFORM_MAC
+			  , _CreateTitleBar(false)
+#else
 			  , _CreateTitleBar(true)
+#endif
 			  , _SaneWindowPlacement(true)
 			  , _LayoutBorder(FMargin(5, 5, 5, 5))
 			  , _UserResizeBorder(FMargin(5, 5, 5, 5))

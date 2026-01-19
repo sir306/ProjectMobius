@@ -340,16 +340,13 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 		SAssignNew(State.OverlayWindow, SMoveableWindow)
 			.Title(WindowTitle)
 			.SizingRule(ESizingRule::UserSized)
-			//.SizingRule(ESizingRule::FixedSize)
 			.FocusWhenFirstShown(false)
 			.ActivationPolicy(EWindowActivationPolicy::Never)
 			.SupportsMaximize(true)
 			.SupportsMinimize(true)
 			.IsTopmostWindow(false)
-			.CreateTitleBar(true)
 			.HasCloseButton(true)
 			.AutoCenter(EAutoCenter::PreferredWorkArea)
-			.UseOSWindowBorder(false)
 			.ClientSize(FVector2D(640.0f, 420.0f))
 			.WindowPanelContent(State.OverlayWidget);
 
