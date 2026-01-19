@@ -23,7 +23,7 @@
  */
 
 #include "QuadTreeDataMap.h"
-#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "IMobiusErrorReporter.h"
 
 
 // Sets default values
@@ -46,7 +46,7 @@ void AQuadTreeDataMap::Initialize(const FBox2D& InBounds, const float InMaxWidth
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -111,7 +111,7 @@ void AQuadTreeDataMap::Initialize(const FBox2D& InBounds, const float InMaxWidth
 
 		if (!BottomLeftNode || !BottomRightNode || !TopLeftNode || !TopRightNode)
 		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 			{
 				Feedback->ReportError(
 					FText::FromString("QuadTree Error"),
@@ -196,7 +196,7 @@ void AQuadTreeDataMap::AddEntityLocationToTree(const FVector2D& EntityLocation, 
 {
 	if (!QuadTreeStruct)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -235,7 +235,7 @@ void AQuadTreeDataMap::RemoveEntityLocationFromTree(const FVector2D& EntityLocat
 {
 	if (!QuadTreeStruct)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -266,7 +266,7 @@ void AQuadTreeDataMap::ResetEntityLocationsFromTree()
 {
 	if (!QuadTreeStruct)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -294,7 +294,7 @@ void AQuadTreeDataMap::GetEntityDensityAtHash(const FString LocationHash, int32&
 {
 	if (!QuadTreeStruct)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),

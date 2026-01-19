@@ -7,12 +7,12 @@ public class ProjectMobius : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { 
-            "Core", 
-            "CoreUObject", 
-            "Engine", 
-            "InputCore", 
-            "EnhancedInput", 
+		PublicDependencyModuleNames.AddRange(new string[] {
+            "Core",
+            "CoreUObject",
+            "Engine",
+            "InputCore",
+            "EnhancedInput",
             "UMG", // Required for UMG
             "Slate",
             "SlateCore",
@@ -20,8 +20,9 @@ public class ProjectMobius : ModuleRules
             // The following are required for our runtime procedural mesh generation
             "ProceduralMeshComponent",
             // Physics -- following modules are required for PhysicsParallelFor
-            "Chaos", 
-            "MassSignals"
+            "Chaos",
+            "MassSignals",
+            "MobiusLogging",
         });
 
         // The following modules are required for the MASS system to run with a couple of added modules for convenience

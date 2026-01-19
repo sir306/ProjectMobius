@@ -4,60 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "MobiusErrorTypes.h"
+#include "IMobiusErrorReporter.h"
 #include "MobiusUserFeedbackSubsystem.generated.h"
-
-UENUM(BlueprintType)
-enum class EMobiusErrorSeverity : uint8
-{
-	Info = 0,
-	Warning = 1,
-	Error = 2,
-	Fatal = 3
-};
-
-UENUM(BlueprintType)
-enum class EMobiusLogWindowCommand : uint8
-{
-	Open = 0,
-	Close = 1,
-	Enable = 2,
-	Disable = 3
-};
-
-USTRUCT(BlueprintType)
-struct FMobiusErrorMessage
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Error")
-	FText TitleBarText;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Error")
-	FText ErrorTitle;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Error")
-	FText ErrorMessage;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Error")
-	FText ErrorLocation;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Error")
-	EMobiusErrorSeverity Severity = EMobiusErrorSeverity::Error;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Error")
-	bool bShowPrompt = true;
-};
-
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnMobiusErrorReported, const FMobiusErrorMessage&);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnMobiusLogLine, const FString&);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnMobiusLogWindowCommand, EMobiusLogWindowCommand);
 
 /**
  * Routes errors and log lines from core modules to optional UI listeners.
  * Keeps prompts throttled and avoids hard dependencies on MobiusWidgets.
  */
 UCLASS()
-class MOBIUSCORE_API UMobiusUserFeedbackSubsystem : public UGameInstanceSubsystem
+class MOBIUSCORE_API UMobiusUserFeedbackSubsystem : public UGameInstanceSubsystem, public IMobiusErrorReporter
 {
 	GENERATED_BODY()
 
@@ -71,11 +27,12 @@ public:
 	static UMobiusUserFeedbackSubsystem* Get(const UObject* WorldContextObject);
 
 	/** Report an error/warning/info message (safe to call from any thread). */
+	/** Implements IMobiusErrorReporter::ReportError */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Error", meta = (AdvancedDisplay = "ErrorLocation,Severity,bShowPrompt"))
-	void ReportError(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
+	virtual void ReportError(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
 		const FText& ErrorLocation = FText::GetEmpty(),
 		EMobiusErrorSeverity Severity = EMobiusErrorSeverity::Error,
-		bool bShowPrompt = true);
+		bool bShowPrompt = true) override;
 
 	/** Report a fully formed error payload from any thread. */
 	static void ReportErrorFromAnyThread(TWeakObjectPtr<UObject> WorldContextObject, const FMobiusErrorMessage& Message);

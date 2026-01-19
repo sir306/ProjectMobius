@@ -96,10 +96,11 @@ void SLogWindowWidget::OpenLogWindow()
 		return;
 	}
 
-	FWindowStyle WindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
-	WindowStyle.ActiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.12f, 0.12f, 0.12f));
-	WindowStyle.InactiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.08f, 0.08f, 0.08f));
-	WindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::White);
+	// Use member variable for style to ensure it persists after this function returns
+	LogWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+	LogWindowStyle.ActiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.12f, 0.12f, 0.12f));
+	LogWindowStyle.InactiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.08f, 0.08f, 0.08f));
+	LogWindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::White);
 
 	const FTextBlockStyle LogTextStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
 		.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 10));
@@ -134,7 +135,7 @@ void SLogWindowWidget::OpenLogWindow()
 
 	SAssignNew(LogWindowPtr, SMoveableWindow)
 		.Title(FText::FromString("Mobius Log"))
-		.Style(&WindowStyle)
+		.Style(&LogWindowStyle)
 		.SupportsMaximize(true)
 		.SupportsMinimize(true)
 		.IsTopmostWindow(false)

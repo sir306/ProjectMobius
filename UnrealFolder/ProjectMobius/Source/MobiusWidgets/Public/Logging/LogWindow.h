@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Styling/SlateTypes.h"
 
 class SMoveableWindow;
 class SScrollBox;
@@ -50,4 +51,5 @@ private:
 	TArray<FString> LogLines;
 	int32 MaxLines = 1000;
 	bool bIsEnabled = true;
+	FWindowStyle LogWindowStyle;
 };

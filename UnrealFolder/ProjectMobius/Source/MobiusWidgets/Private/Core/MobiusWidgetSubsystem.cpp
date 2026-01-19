@@ -362,12 +362,14 @@ void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText& TitleBarText, const
 		UE_LOG(LogTemp, Warning, TEXT("Error Widget is null, cannot display error"));
 		return;
 	}
+	// We show the error window first, that way it triggers the rebuild and gives it access to the slate and subsystems
+	// it needs to function correctly
+	ErrorWidget->ShowErrorWindow();
 	// Set the variables and display the window
 	ErrorWidget->SetTitleBarText(TitleBarText);
 	ErrorWidget->SetErrorTitleText(ErrorTitle);
 	ErrorWidget->SetErrorMessageText(ErrorMessage);
 	ErrorWidget->SetErrorLocationText(ErrorLocation);
-	ErrorWidget->ShowErrorWindow();
 }
 
 void UMobiusWidgetSubsystem::SetErrorTitleBarText(const FText& TitleBarText)

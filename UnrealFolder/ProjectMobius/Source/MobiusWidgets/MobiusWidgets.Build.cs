@@ -9,10 +9,9 @@ public class MobiusWidgets : ModuleRules
             new string[]
             {
                 "Core",
-                "UMG", 
+                "UMG",
                 "Synthesis", // Required for the synth2d component
-
-
+                "MobiusLogging",
             }
         );
         PrivateDependencyModuleNames.AddRange(

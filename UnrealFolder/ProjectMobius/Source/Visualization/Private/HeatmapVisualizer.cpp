@@ -31,7 +31,7 @@
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "IMobiusErrorReporter.h"
 
 
 // Sets default values
@@ -152,7 +152,7 @@ void AHeatmapVisualizer::CreateMaterialInstances()
 	{
 		if (!HeatmapMaterial)
 		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 			{
 				Feedback->ReportError(
 					FText::FromString("Heatmap Setup Error"),
@@ -170,7 +170,7 @@ void AHeatmapVisualizer::CreateMaterialInstances()
 	{
 		if (!AgentMaterial)
 		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 			{
 				Feedback->ReportError(
 					FText::FromString("Heatmap Setup Error"),
@@ -191,7 +191,7 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 	// check if the render target not null and if so create new one
 	if(!HeatmapRenderTarget)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Setup Error"),
@@ -205,7 +205,7 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 	// check static mesh and material instance is valid
 	if(!HeatmapMesh->GetStaticMesh() || !HeatmapMaterialInstance)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Setup Error"),
@@ -218,7 +218,7 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 	// check if in world
 	if(GetWorld() == nullptr)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Setup Error"),
@@ -253,7 +253,7 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 	
 	if(!HeatmapMaterialInstance->GetTextureParameterValue(FName("AgentRenderTarget"), outVal))
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Setup Error"),
@@ -276,7 +276,7 @@ void AHeatmapVisualizer::UpdateHeatmap(const FVector& AgentLocation)
 	// check if the render target, static mesh and material instance is valid
 	if(!HeatmapRenderTarget || !HeatmapMesh->GetStaticMesh() || !HeatmapMaterialInstance || !AgentMaterialInstance || !World)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Update Error"),
@@ -292,7 +292,7 @@ void AHeatmapVisualizer::UpdateHeatmap(const FVector& AgentLocation)
 	
 	if(!AgentMaterialInstance->GetVectorParameterValue(FName("AgentPosition"), outVal))
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Update Error"),

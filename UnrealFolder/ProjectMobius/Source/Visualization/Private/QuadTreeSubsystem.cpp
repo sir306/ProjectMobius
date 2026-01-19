@@ -25,7 +25,7 @@
 #include "QuadTreeSubsystem.h"
 
 #include "QuadTreeDataMap.h"
-#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "IMobiusErrorReporter.h"
 
 UQuadTreeSubsystem::UQuadTreeSubsystem():
 MaxQuadTreeSize(50),
@@ -60,7 +60,7 @@ void UQuadTreeSubsystem::BuildQuadTreeMapping()
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -73,7 +73,7 @@ void UQuadTreeSubsystem::BuildQuadTreeMapping()
 	QuadTreeDataActor = World->SpawnActor<AQuadTreeDataMap>(AQuadTreeDataMap::StaticClass());
 	if (!QuadTreeDataActor)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -103,7 +103,7 @@ void UQuadTreeSubsystem::AddEntitityToTree(FVector EntityLocation, FString& Agen
 	if(QuadTreeDataActor == nullptr)
 	{
 		// throw error a tree should always be created by this point
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -132,7 +132,7 @@ void UQuadTreeSubsystem::RemoveEntityFromTree(FVector EntityLocation)
 	// throw error a tree should always be created by this point
 	if(QuadTreeDataActor == nullptr)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -161,7 +161,7 @@ void UQuadTreeSubsystem::ClearEntititesFromTrees()
 	// throw error a tree should always be created by this point
 	if(QuadTreeDataActor == nullptr)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),
@@ -191,7 +191,7 @@ void UQuadTreeSubsystem::AddQuadTree(AQuadTreeDataMap* QuadTreeToAdd)
 	if(QuadTreeToAdd == nullptr)
 	{
 		// throw error a tree should always be created by this point
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("QuadTree Error"),

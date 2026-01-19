@@ -17,6 +17,7 @@ public class MobiusCore : ModuleRules
 			"RHI",
 			"UE_Assimp",
 			"UE_AssimpLibrary",
+			"MobiusLogging",
 		});
 
 		// Private deps: used in your .cpp files

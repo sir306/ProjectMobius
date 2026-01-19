@@ -18,8 +18,9 @@ class MOBIUSWIDGETS_API UErrorWindowWidget : public UWidget
 	
 	
 protected:
-        TSharedPtr<SErrorWindowWidget> ErrorWindowWidget;
-        TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
+
+	TSharedPtr<SErrorWindowWidget> ErrorWindowWidget;
+	TWeakObjectPtr<UMobiusWidgetSubsystem> MoveableWindowSubsystem;
 	
 	/**
 	 * Builds the underlying Slate widget.

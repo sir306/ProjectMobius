@@ -23,7 +23,7 @@
  */
 
 #include "SplineGraphLocationBucket.h"
-#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "IMobiusErrorReporter.h"
 
 
 USearchSegment::USearchSegment():
@@ -292,7 +292,7 @@ void USplineGraphLocationBucket::AddEntityToBucket(FVector EntityLocation)
 	{
 		if (!RootSearchSegment)
 		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 			{
 				Feedback->ReportError(
 					FText::FromString("Spline Graph Error"),
@@ -317,7 +317,7 @@ void USplineGraphLocationBucket::AddEntityToBucket(FVector EntityLocation)
 		{
 			if (!BucketSegments.IsValidIndex(BucketID))
 			{
-				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 				{
 					Feedback->ReportError(
 						FText::FromString("Spline Graph Error"),
@@ -363,7 +363,7 @@ void USplineGraphLocationBucket::RemoveEntityFromBucketSegment(FVector EntityLoc
 	{
 		if (!RootSearchSegment)
 		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 			{
 				Feedback->ReportError(
 					FText::FromString("Spline Graph Error"),
@@ -388,7 +388,7 @@ void USplineGraphLocationBucket::RemoveEntityFromBucketSegment(FVector EntityLoc
 		{
 			if (!BucketSegments.IsValidIndex(BucketID))
 			{
-				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 				{
 					Feedback->ReportError(
 						FText::FromString("Spline Graph Error"),
@@ -448,7 +448,7 @@ void USplineGraphLocationBucket::CreateRootSearchSegment(FBox3d MaxSearchBoundSi
 	RootSearchSegment = NewObject<USearchSegment>(this);
 	if (!RootSearchSegment)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Spline Graph Error"),

@@ -40,6 +40,7 @@ class UMaterialInterface;
 class UMaterialInstanceConstant;
 class UMaterial;
 class UTexture; 
+class UMobiusCustomLoggerSubsystem;
 
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
@@ -212,11 +213,11 @@ private:
 	
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
 	
-        void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
-        void ProcessPendingCollisionEnables(float DeltaSeconds);
+	void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
+	void ProcessPendingCollisionEnables(float DeltaSeconds);
 
-        void ProcessPendingDatasmithMeshes(float DeltaSeconds);
-        void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
+	void ProcessPendingDatasmithMeshes(float DeltaSeconds);
+	void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
 	
 #pragma endregion PRIVATE_METHODS
 
@@ -295,8 +296,8 @@ protected:
 	/** Are we currently processing the pending door queue? */
 	bool bIsSpawningFlowCounters = false;
 	
-        /** Shared material cache used for Datasmith and runtime materials. */
-        FMaterialCache MaterialCache;
+	/** Shared material cache used for Datasmith and runtime materials. */
+	FMaterialCache MaterialCache;
 
 	/** Meshes that still need their Datasmith materials created/applied. */
 	UPROPERTY()
@@ -328,6 +329,12 @@ private:
 	// Are we currently resetting / swapping out the mesh and Datasmith anchor?
 	UPROPERTY(Transient)
 	bool bIsResettingForNewLoad = false;
+
+	/** Report a RuntimeMeshBuilder error through the user feedback subsystem. */
+	void ReportError(UObject* ContextObject, FString ErrorTitleBar, FString ErrorTitle, FString ErrorMessage, FString ErrorLocation);
+
+	/** Access the startup logger subsystem without an extra dependency on the game instance. */
+	static UMobiusCustomLoggerSubsystem* GetStartupLogger();
 	
 #pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 public:

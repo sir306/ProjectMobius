@@ -24,7 +24,7 @@
 
 #include "DynamicPixelRenderingTexture.h"
 #include "Engine/Texture2D.h"
-#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "IMobiusErrorReporter.h"
 // IWYU pragma: begin_keep
 #include "HLSLTypeAliases.h"
 #include "ImageUtils.h"
@@ -631,7 +631,7 @@ void UDynamicPixelRenderingTexture::ApplyDensityMapToTexture(const cv::Mat& Mat)
 	// Ensure that the input matrix is of the correct size
 	if (Mat.rows != TextureDimensionY || Mat.cols != TextureDimensionX)
 	{
-		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 		{
 			Feedback->ReportError(
 				FText::FromString("Heatmap Input Error"),
@@ -703,7 +703,7 @@ void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FV
 			cv::Vec2d likelihoods;
 			if (!Kde || Kde->empty())
 			{
-				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
 				{
 					Feedback->ReportError(
 						FText::FromString("Heatmap KDE Error"),

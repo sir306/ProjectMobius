@@ -26,7 +26,7 @@ public class Visualization : ModuleRules
                 "SlateCore",
                 "RHI",
                 "RenderCore",
-                "MobiusCore",
+                "MobiusLogging",
             }
         );
         
