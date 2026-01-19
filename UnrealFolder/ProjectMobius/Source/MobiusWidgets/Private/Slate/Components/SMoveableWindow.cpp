@@ -490,8 +490,15 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 	}
 	else
 	{
-		// No title bar - just set the content directly
-		SWindow::SetContent(InArgs._Content.Widget);
+		// No title bar - set WindowPanelContent if provided, otherwise fall back to default Content slot
+		if (InArgs._WindowPanelContent.IsValid())
+		{
+			SWindow::SetContent(InArgs._WindowPanelContent.ToSharedRef());
+		}
+		else
+		{
+			SWindow::SetContent(InArgs._Content.Widget);
+		}
 	}
 
 	if (bUseCustomResizeOverlay && WindowOverlay.IsValid())
