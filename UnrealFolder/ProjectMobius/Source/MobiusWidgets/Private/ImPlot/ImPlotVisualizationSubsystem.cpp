@@ -614,7 +614,19 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
         const ImDrawData* DrawData = ImGui::GetDrawData();
         const FVector2f WindowOffset = FVector2f(AllottedGeometry.GetAccumulatedLayoutTransform().GetTranslation());
-        RenderDrawData(DrawData, WindowOffset, OutDrawElements, LayerId + 1);
+
+        // Get DPI scale for rendering - needed to scale ImGui output to match Slate's render surface
+        float RenderDpiScale = 1.0f;
+        if (FSlateApplication::IsInitialized())
+        {
+                const TSharedPtr<SWindow> RenderWindow = FSlateApplication::Get().FindWidgetWindow(Widget);
+                if (RenderWindow.IsValid())
+                {
+                        RenderDpiScale = RenderWindow->GetDPIScaleFactor();
+                }
+        }
+
+        RenderDrawData(DrawData, WindowOffset, RenderDpiScale, OutDrawElements, LayerId + 1);
 
         return LayerId + 1;
 }
@@ -726,7 +738,7 @@ bool UImPlotVisualizationSubsystem::TryGetNearestPointForChart(const FName& Char
 }
 
 void UImPlotVisualizationSubsystem::RenderDrawData(const ImDrawData* DrawData, const FVector2f& WindowOffset,
-        FSlateWindowElementList& OutDrawElements, int32 LayerId) const
+        float DpiScale, FSlateWindowElementList& OutDrawElements, int32 LayerId) const
 {
         if (!DrawData || !SharedFontBrush.IsValid())
         {
@@ -777,18 +789,20 @@ void UImPlotVisualizationSubsystem::RenderDrawData(const ImDrawData* DrawData, c
                                 const uint8 A = (Vertex.col >> IM_COL32_A_SHIFT) & 0xFF;
                                 const FColor Color(R, G, B, A);
 
-                                const FVector2f Position = FVector2f(Vertex.pos.x, Vertex.pos.y) + WindowOffset;
+                                // Scale ImGui vertices by DPI to match Slate's physical render surface
+                                const FVector2f Position = FVector2f(Vertex.pos.x * DpiScale, Vertex.pos.y * DpiScale) + WindowOffset;
                                 const FVector2f UV(Vertex.uv.x, Vertex.uv.y);
 
                                 CmdVertices.Add(FSlateVertex::Make<ESlateVertexRounding::Disabled>(RenderTransform, Position, UV, Color));
                                 CmdIndices.Add(static_cast<SlateIndex>(ElemIndex));
                         }
 
+                        // Scale clip rect by DPI to match scaled vertices
                         const FSlateRect ClipRect(
-                                DrawCmd.ClipRect.x + WindowOffset.X,
-                                DrawCmd.ClipRect.y + WindowOffset.Y,
-                                DrawCmd.ClipRect.z + WindowOffset.X,
-                                DrawCmd.ClipRect.w + WindowOffset.Y);
+                                DrawCmd.ClipRect.x * DpiScale + WindowOffset.X,
+                                DrawCmd.ClipRect.y * DpiScale + WindowOffset.Y,
+                                DrawCmd.ClipRect.z * DpiScale + WindowOffset.X,
+                                DrawCmd.ClipRect.w * DpiScale + WindowOffset.Y);
 
                         OutDrawElements.PushClip(FSlateClippingZone(ClipRect));
                         FSlateDrawElement::MakeCustomVerts(OutDrawElements, LayerId, ResourceHandle, CmdVertices, CmdIndices, nullptr, 0, 0);

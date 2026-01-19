@@ -214,7 +214,7 @@ private:
         void EnsureSharedFontAtlas();
         bool TryGetNearestPointForChart(const FName& ChartId, double TimeSeconds, FVector2D& OutPoint) const;
         void RenderDrawData(const ImDrawData* DrawData, const FVector2f& WindowOffset,
-                FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
+                float DpiScale, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
 
         ImFontAtlas* SharedFontAtlas = nullptr;
         TSharedPtr<FSlateDynamicImageBrush> SharedFontBrush;
