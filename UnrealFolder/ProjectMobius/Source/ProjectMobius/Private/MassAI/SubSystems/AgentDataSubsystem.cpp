@@ -139,13 +139,13 @@ void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UAgentDataSubsystem::Deinitialize()
 {
-        if (JsonDataRunnable)
-        {
-                JsonDataRunnable->Stop();
-                JsonDataRunnable->Exit();
-                JsonDataRunnable.Reset();
-        }
-        Super::Deinitialize();
+	if (JsonDataRunnable)
+	{
+		JsonDataRunnable->Stop();
+		JsonDataRunnable->Exit();
+		JsonDataRunnable.Reset();
+	}
+	Super::Deinitialize();
 }
 
 void UAgentDataSubsystem::Tick(float DeltaTime)
@@ -192,9 +192,9 @@ void UAgentDataSubsystem::GetJSONDataFile(FString InJsonDataFile)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("File Path does not exist"));
 		ReportAgentDataError(this,
-			TEXT("Simulation file not found"),
-			FString::Printf(TEXT("JSON file does not exist: %s"), *InJsonDataFile),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Simulation file not found"),
+		                     FString::Printf(TEXT("JSON file does not exist: %s"), *InJsonDataFile),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 	TSharedRef<TJsonReader<TCHAR>> JSONReader = TJsonReaderFactory<TCHAR>::Create(JSONDataString);
@@ -209,9 +209,9 @@ void UAgentDataSubsystem::GetJSONDataFile(FString InJsonDataFile)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Failed to Deserialize JSON Data"));
 		ReportAgentDataError(this,
-			TEXT("Failed to parse simulation file"),
-			FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *InJsonDataFile),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Failed to parse simulation file"),
+		                     FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *InJsonDataFile),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 }
@@ -235,9 +235,9 @@ void UAgentDataSubsystem::GetUpdatedJSONDataFile()
 		{
 			UE_LOG(LogTemp, Warning, TEXT("JSON Object is nullptr"));
 			ReportAgentDataError(this,
-				TEXT("Simulation file invalid"),
-				TEXT("JSON object is null after loading the simulation file."),
-				TEXT("AgentDataSubsystem"));
+			                     TEXT("Simulation file invalid"),
+			                     TEXT("JSON object is null after loading the simulation file."),
+			                     TEXT("AgentDataSubsystem"));
 		}
 		else
 		{
@@ -247,9 +247,9 @@ void UAgentDataSubsystem::GetUpdatedJSONDataFile()
 	else
 	{
 		ReportAgentDataError(this,
-			TEXT("Game instance missing"),
-			TEXT("Unable to access the game instance while loading simulation data."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Game instance missing"),
+		                     TEXT("Unable to access the game instance while loading simulation data."),
+		                     TEXT("AgentDataSubsystem"));
 	}
 	
 }
@@ -259,9 +259,9 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataError(this,
-			TEXT("Simulation data missing"),
-			TEXT("No JSON data is loaded for pedestrian info."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Simulation data missing"),
+		                     TEXT("No JSON data is loaded for pedestrian info."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities"));
@@ -273,9 +273,9 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
 			ReportAgentDataError(this,
-				TEXT("Invalid entity data"),
-				TEXT("Encountered an invalid entity object while parsing."),
-				TEXT("AgentDataSubsystem"));
+			                     TEXT("Invalid entity data"),
+			                     TEXT("Encountered an invalid entity object while parsing."),
+			                     TEXT("AgentDataSubsystem"));
 			break;
 		}
 
@@ -293,18 +293,18 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataError(this,
-			TEXT("Simulation data missing"),
-			TEXT("No JSON data is loaded for entity info."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Simulation data missing"),
+		                     TEXT("No JSON data is loaded for entity info."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 	if (Index < 0 || Index >= MaxAgents)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Index out of range"));
 		ReportAgentDataError(this,
-			TEXT("Invalid entity index"),
-			TEXT("Requested entity index is out of range."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Invalid entity index"),
+		                     TEXT("Requested entity index is out of range."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 	
@@ -312,9 +312,9 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	if (!JsonEntityDataArray.IsValidIndex(Index))
 	{
 		ReportAgentDataError(this,
-			TEXT("Entity data missing"),
-			TEXT("Entity index is not present in the JSON data."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Entity data missing"),
+		                     TEXT("Entity index is not present in the JSON data."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 
@@ -331,18 +331,18 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataError(this,
-			TEXT("Simulation data missing"),
-			TEXT("No JSON data is loaded for entity rendering."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Simulation data missing"),
+		                     TEXT("No JSON data is loaded for entity rendering."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 	if (Index < 0 || Index >= MaxAgents)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Index out of range"));
 		ReportAgentDataError(this,
-			TEXT("Invalid entity index"),
-			TEXT("Requested entity index is out of range."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Invalid entity index"),
+		                     TEXT("Requested entity index is out of range."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 
@@ -352,9 +352,9 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 	if (!JsonEntityDataArray.IsValidIndex(Index))
 	{
 		ReportAgentDataError(this,
-			TEXT("Entity data missing"),
-			TEXT("Entity index is not present in the JSON data."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Entity data missing"),
+		                     TEXT("Entity index is not present in the JSON data."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 
@@ -365,9 +365,9 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
 		ReportAgentDataError(this,
-			TEXT("Invalid entity data"),
-			TEXT("Entity object is invalid while parsing rendering data."),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Invalid entity data"),
+		                     TEXT("Entity object is invalid while parsing rendering data."),
+		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
 	FString AgentName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name", 4));
@@ -432,9 +432,9 @@ void UAgentDataSubsystem::CreateJsonReaderAndString(FString& OutJsonString, TSha
 	if (!FFileHelper::LoadFileToString(OutJsonString, *JsonFile))
 	{
 		ReportAgentDataError(this,
-			TEXT("Failed to read simulation file"),
-			FString::Printf(TEXT("Unable to read JSON data from: %s"), *JsonFile),
-			TEXT("AgentDataSubsystem"));
+		                     TEXT("Failed to read simulation file"),
+		                     FString::Printf(TEXT("Unable to read JSON data from: %s"), *JsonFile),
+		                     TEXT("AgentDataSubsystem"));
 		OutJsonString.Empty();
 	}
 
@@ -453,9 +453,9 @@ FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAge
 	{
 		// Log a warning if the owner subsystem is not valid and implement propper error handling
 		ReportAgentDataErrorAnyThread(nullptr,
-			TEXT("Agent data subsystem missing"),
-			TEXT("Background loader could not access the agent data subsystem."),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Agent data subsystem missing"),
+		                              TEXT("Background loader could not access the agent data subsystem."),
+		                              TEXT("AgentDataSubsystem"));
 		return;
 	}
 	JsonFilePath = InJsonDataFile;
@@ -463,9 +463,9 @@ FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAge
 	if (JsonFilePath.IsEmpty() || !FPaths::FileExists(JsonFilePath))
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Simulation file not found"),
-			FString::Printf(TEXT("JSON file does not exist: %s"), *JsonFilePath),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Simulation file not found"),
+		                              FString::Printf(TEXT("JSON file does not exist: %s"), *JsonFilePath),
+		                              TEXT("AgentDataSubsystem"));
 		return;
 	}
 
@@ -501,9 +501,9 @@ bool FJsonDataRunnable::LoadFileAndDeserialize()
 	if (!FPaths::FileExists(JsonFilePath))
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Simulation file not found"),
-			FString::Printf(TEXT("JSON file does not exist: %s"), *JsonFilePath),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Simulation file not found"),
+		                              FString::Printf(TEXT("JSON file does not exist: %s"), *JsonFilePath),
+		                              TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return false;
 	}
@@ -512,9 +512,9 @@ bool FJsonDataRunnable::LoadFileAndDeserialize()
 	if (!FFileHelper::LoadFileToString(JsonDataFile, *JsonFilePath))
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Failed to read simulation file"),
-			FString::Printf(TEXT("Unable to read JSON data from: %s"), *JsonFilePath),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Failed to read simulation file"),
+		                              FString::Printf(TEXT("Unable to read JSON data from: %s"), *JsonFilePath),
+		                              TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return false;
 	}
@@ -531,9 +531,9 @@ bool FJsonDataRunnable::LoadFileAndDeserialize()
 	if (!bDeserializeSuccess)
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Failed to parse simulation file"),
-			FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *JsonFilePath),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Failed to parse simulation file"),
+		                              FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *JsonFilePath),
+		                              TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return false;
 	}
@@ -549,9 +549,9 @@ void FJsonDataRunnable::ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& 
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Simulation data missing"),
-			TEXT("JSON data was not loaded before processing metadata."),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Simulation data missing"),
+		                              TEXT("JSON data was not loaded before processing metadata."),
+		                              TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return;
 	}
@@ -613,9 +613,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Simulation data missing"),
-			TEXT("JSON data was not loaded before processing simulation steps."),
-			TEXT("AgentDataSubsystem"));
+		                              TEXT("Simulation data missing"),
+		                              TEXT("JSON data was not loaded before processing simulation steps."),
+		                              TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return;
 	}
@@ -632,9 +632,12 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 		if (!JsonSimDataArray.IsValidIndex(CurrentDataCount) || !JsonSimDataArray[CurrentDataCount]->AsObject().IsValid())
 		{
 			ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-				TEXT("Invalid simulation step"),
-				TEXT("Simulation data contains an invalid step object."),
-				TEXT("AgentDataSubsystem"));
+			                              TEXT("Invalid simulation step"),
+			                              TEXT("Simulation data contains an invalid timestep object. "
+				                              "Meaning the simulation data may be corrupted or incomplete. "
+				                              "Simulation will still attempt to load available data, "
+				                              "but could cause unexpected behavior."),
+			                              TEXT("AgentDataSubsystem"));
 			break;
 		}
 
@@ -684,9 +687,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			if (!JSONSampleArray[JsimSample]->AsObject().IsValid())
 			{
 				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-					TEXT("Invalid sample data"),
-					TEXT("Simulation sample entry is invalid."),
-					TEXT("AgentDataSubsystem"));
+				                              TEXT("Invalid sample data"),
+				                              TEXT("Simulation sample entry is invalid."),
+				                              TEXT("AgentDataSubsystem"));
 				continue;
 			}
 
@@ -698,9 +701,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			if(!JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("entity"), EntityID))
 			{
 				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-					TEXT("Missing entity ID"),
-					TEXT("Simulation sample is missing the entity field."),
-					TEXT("AgentDataSubsystem"));
+				                              TEXT("Missing entity ID"),
+				                              TEXT("Simulation sample is missing the entity field."),
+				                              TEXT("AgentDataSubsystem"));
 				continue; // no ID
 			}
 
@@ -740,9 +743,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			else
 			{
 				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-					TEXT("Missing position data"),
-					TEXT("Simulation sample is missing position fields."),
-					TEXT("AgentDataSubsystem"));
+				                              TEXT("Missing position data"),
+				                              TEXT("Simulation sample is missing position fields."),
+				                              TEXT("AgentDataSubsystem"));
 			}
 
 			// Get the Rotation field which is in degrees
@@ -780,9 +783,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			else
 			{
 				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-					TEXT("Missing rotation data"),
-					TEXT("Simulation sample is missing rotation data."),
-					TEXT("AgentDataSubsystem"));
+				                              TEXT("Missing rotation data"),
+				                              TEXT("Simulation sample is missing rotation data."),
+				                              TEXT("AgentDataSubsystem"));
 			}
 
 			// Get the speed
@@ -792,9 +795,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			if (!JSONSampleDataObject->TryGetNumberField(StringCast<TCHAR>("speed"), Speed))
 			{
 				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-					TEXT("Missing speed data"),
-					TEXT("Simulation sample is missing speed data."),
-					TEXT("AgentDataSubsystem"));
+				                              TEXT("Missing speed data"),
+				                              TEXT("Simulation sample is missing speed data."),
+				                              TEXT("AgentDataSubsystem"));
 			}
 
 			// Get the mode
@@ -804,9 +807,9 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 			if (!JSONSampleDataObject->TryGetStringField(StringCast<TCHAR>("mode"), Mode))
 			{
 				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-					TEXT("Missing mode data"),
-					TEXT("Simulation sample is missing mode data."),
-					TEXT("AgentDataSubsystem"));
+				                              TEXT("Missing mode data"),
+				                              TEXT("Simulation sample is missing mode data."),
+				                              TEXT("AgentDataSubsystem"));
 			}
 
 			FSimMovementSample MovementSample;
