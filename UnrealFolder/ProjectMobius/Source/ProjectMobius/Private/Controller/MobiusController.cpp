@@ -31,6 +31,7 @@
 #include "Subsystems/MobiusControllerSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Util/FrameGrabberHelper.h"
 
 
 AMobiusController::AMobiusController()
@@ -74,8 +75,10 @@ void AMobiusController::BeginPlay()
 	}
 	GetScreenshotRequiredSubsystemsAndData();
 
-	// Bind to the screenshot request captured delegate
-	UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &AMobiusController::OnScreenShotCaptured);
+	// Initialize FrameGrabberHelper for screenshot capture (lazy initialization - will init when viewport is ready)
+	FrameGrabberHelper = NewObject<UFrameGrabberHelper>(this);
+	FrameGrabberHelper->Configure(false, FIntPoint(1920, 1080)); // Use downscale mode with 1920x1080 target resolution
+	FrameGrabberHelper->SetSavePath(ScreenshotFilePath + TEXT("/MobiusCaptures/"));
 
 	// send this to the Mobius Controller Subsystem to set the current player controller
 	if (UMobiusControllerSubsystem* MobiusControllerSubsystem = GetWorld()->GetSubsystem<UMobiusControllerSubsystem>())
@@ -90,9 +93,6 @@ void AMobiusController::BeginPlay()
 
 void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// Unbind delegates bound in BeginPlay / initialization
-	UGameViewportClient::OnScreenshotCaptured().RemoveAll(this);
-
 	if (GetWorld())
 	{
 		if (UProjectMobiusGameInstance* MobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
@@ -102,6 +102,16 @@ void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void AMobiusController::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (FrameGrabberHelper)
+	{
+		FrameGrabberHelper->Tick(DeltaTime);
+	}
 }
 
 void AMobiusController::GetScreenshotRequiredSubsystemsAndData()
@@ -199,10 +209,10 @@ void AMobiusController::TakeScreenshot()
 
 void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 {
-	// Create a unique folder for this capture
+	// Create a unique folder for this capture (also used by camera save points)
 	FString DestPath = ScreenshotFilePath + TEXT("/MobiusCaptures/");
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	
+
 	if (!PlatformFile.DirectoryExists(*DestPath))  // Ensure the directory exists for all screenshots
 	{
 		PlatformFile.CreateDirectoryTree(*DestPath);  // Create the directory tree if it doesn't exist
@@ -210,39 +220,16 @@ void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 
 	// Assign the name for the screenshot file
 	ScreenShotFileName = BaseFileName;
-	
-	// Request the screenshot -> ensure the screenshot is not in HDR and does not add a unique suffix
-	FScreenshotRequest::RequestScreenshot(ScreenShotFileName, false, false, false);
-}
 
-void AMobiusController::OnScreenShotCaptured(int Width, int Height, const TArray<FColor>& Bitmap) const
-{
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Width, Height, Bitmap]()
+	// Request the screenshot via FrameGrabberHelper
+	if (FrameGrabberHelper)
 	{
-		FString DestPath = ScreenshotFilePath + TEXT("/MobiusCaptures/");
-		FString FullPath = DestPath + ScreenShotFileName + TEXT(".png");
-	
-		TArray64<uint8> PNGData;
-		FImageUtils::PNGCompressImageArray(Width, Height, Bitmap, PNGData);
-
-		// Save PNG data to file
-		FFileHelper::SaveArrayToFile(PNGData, *FullPath, &IFileManager::Get());
-	});
-
-}
-
-// TODO: see implementation in dynamic texture for saving to png -> this currently saves as a bitmap not a png
-void AMobiusController::SaveScreenshot(const TArray<FColor>& Bitmap, const FString& FilePath, int32 Width, int32 Height)
-{
-	// Convert pixel array to PNG and save to disk
-	// Compress to PNG
-	TArray64<uint8> PNGData;
-	FImageUtils::PNGCompressImageArray(Width, Height, Bitmap, PNGData);
-
-	// Save PNG data to file
-	FFileHelper::SaveArrayToFile(PNGData, *FilePath, &IFileManager::Get());
-	
-	//FFileHelper::CreateBitmap(*FilePath, Width, Height, Bitmap.GetData(), nullptr, &IFileManager::Get());
+		FrameGrabberHelper->TriggerCapture(BaseFileName);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FrameGrabberHelper is not initialized, cannot take screenshot"));
+	}
 }
 
 void AMobiusController::LoadCameraSavePoints()

@@ -18,6 +18,7 @@ public class MobiusCore : ModuleRules
 			"UE_Assimp",
 			"UE_AssimpLibrary",
 			"MobiusLogging",
+			"MovieSceneCapture", /* For image writing support -> built-in screenshot api causes issues when scene not fully loaded */
 		});
 
 		// Private deps: used in your .cpp files
