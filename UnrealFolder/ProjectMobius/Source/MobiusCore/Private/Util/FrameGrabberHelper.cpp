@@ -135,7 +135,7 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 	}
 	// else: if no frame ready yet, wait for next tick
 }
-
+//TODO: fix screenshot capture for Mac DEVICES (Works fine on windows) 
 void UFrameGrabberHelper::ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames)
 {
 	if (Frames.Num() == 0)
