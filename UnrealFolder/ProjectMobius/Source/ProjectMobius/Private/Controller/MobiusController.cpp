@@ -211,7 +211,8 @@ void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 	// Assign the name for the screenshot file
 	ScreenShotFileName = BaseFileName;
 	
-	FScreenshotRequest::RequestScreenshot(false);
+	// Request the screenshot -> ensure the screenshot is not in HDR and does not add a unique suffix
+	FScreenshotRequest::RequestScreenshot(ScreenShotFileName, false, false, false);
 }
 
 void AMobiusController::OnScreenShotCaptured(int Width, int Height, const TArray<FColor>& Bitmap) const
