@@ -8,6 +8,7 @@
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
 #include "Slate/SceneViewport.h"
+#include "Widgets/SViewport.h"
 
 void UFrameGrabberHelper::Configure(bool bInUseFullResolution, FIntPoint InDownscaleSize)
 {
@@ -26,47 +27,58 @@ void UFrameGrabberHelper::Configure(bool bInUseFullResolution, FIntPoint InDowns
 
 bool UFrameGrabberHelper::TryInitialize()
 {
+	// Already initialized
 	if (FrameGrabber.IsValid())
 	{
-		return true; // Already initialized
+		return true;
 	}
 
-	// Use GameViewport which works in both standalone and PIE modes
-	if (!GEngine || !GEngine->GameViewport || !GEngine->GameViewport->GetGameViewportWidget())
-	{
-		return false; // Viewport not ready yet
-	}
-	
-	// check gameviewport size not zero if it is not ready yet
-	if (GEngine->GameViewport->Viewport->GetSizeXY().X == 0 || GEngine->GameViewport->Viewport->GetSizeXY().Y == 0)
-	{
-		return false; // Viewport size not ready yet
-	}
+	// Must be on the game thread: Slate + viewport access is not thread-safe
+	check(IsInGameThread());
 
-	TSharedPtr<FSceneViewport> SceneViewport = MakeShareable(new FSceneViewport(GEngine->GameViewport, GEngine->GameViewport->GetGameViewportWidget()));
-	if (!SceneViewport.IsValid())
-	{
-		return false; // Scene viewport not ready yet
-	}
-
-	// TODO: FIX REQUIRED ViewportSize is always 0 and not correct, currently crashes when making FFrameGrabber with SceneViewport.ToSharedRef() as size is 0 and must be bigger
-	ViewportSize = SceneViewport->GetSize();
-	
-	if (ViewportSize.X <= 0 && ViewportSize.Y <= 0)
+	if (!GEngine || !GEngine->GameViewport)
 	{
 		return false;
 	}
 
-	if (bConfiguredUseFullResolution)
+	TSharedPtr<SViewport> GameViewportWidget = GEngine->GameViewport->GetGameViewportWidget();
+	if (!GameViewportWidget.IsValid())
 	{
-		TargetSize = ViewportSize;
-	}
-	else
-	{
-		TargetSize = ConfiguredDownscaleSize;
+		return false; // widget not constructed yet
 	}
 
-	FrameGrabber = MakeUnique<FFrameGrabber>(SceneViewport.ToSharedRef(), ViewportSize);
+	// The real viewport interface backing the SViewport
+	TSharedPtr<ISlateViewport> SlateViewportInterface = GameViewportWidget->GetViewportInterface().Pin();
+	if (!SlateViewportInterface.IsValid())
+	{
+		return false; // not wired up yet
+	}
+
+	// This is typically an FSceneViewport for the game viewport
+	TSharedPtr<FSceneViewport> SceneViewport = StaticCastSharedPtr<FSceneViewport>(SlateViewportInterface);
+	if (!SceneViewport.IsValid())
+	{
+		return false; // unexpected viewport type
+	}
+
+	// Use GetSizeXY() (current backbuffer size)
+	ViewportSize = SceneViewport->GetSizeXY();
+
+	// If either dimension is 0, we can't capture yet
+	if (ViewportSize.X <= 0 || ViewportSize.Y <= 0)
+	{
+		return false;
+	}
+
+	TargetSize = bConfiguredUseFullResolution ? ViewportSize : ConfiguredDownscaleSize;
+
+	// Clamp/validate target too (avoid passing nonsense to frame grabber)
+	if (TargetSize.X <= 0 || TargetSize.Y <= 0)
+	{
+		return false;
+	}
+
+	FrameGrabber = MakeUnique<FFrameGrabber>(SceneViewport.ToSharedRef(), TargetSize);
 	FrameGrabber->StartCapturingFrames();
 
 	UE_LOG(LogTemp, Log, TEXT("FrameGrabberHelper initialized. ViewportSize: %dx%d, TargetSize: %dx%d"),

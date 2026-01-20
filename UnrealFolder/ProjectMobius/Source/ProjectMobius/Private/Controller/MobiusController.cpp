@@ -224,6 +224,7 @@ void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 	// Request the screenshot via FrameGrabberHelper
 	if (FrameGrabberHelper)
 	{
+		FrameGrabberHelper->SetSavePath(DestPath);
 		FrameGrabberHelper->TriggerCapture(BaseFileName);
 	}
 	else
