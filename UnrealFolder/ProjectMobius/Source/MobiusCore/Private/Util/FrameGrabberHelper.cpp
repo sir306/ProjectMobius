@@ -129,31 +129,19 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 		PlatformFile.CreateDirectoryTree(*DestPath);
 	}
 
-	FString FullPath = DestPath / (PendingFileName + TEXT(".png"));
+	// Store the full path for the callback to use
+	MacPendingScreenshotPath = DestPath / (PendingFileName + TEXT(".png"));
 
-	UE_LOG(LogTemp, Log, TEXT("[Mac] Using FScreenshotRequest for capture: %s"), *FullPath);
+	UE_LOG(LogTemp, Log, TEXT("[Mac] Using FScreenshotRequest for capture, will save to: %s"), *MacPendingScreenshotPath);
 
-	// Use RequestScreenshot with filename - this saves directly and handles Metal properly
-	FScreenshotRequest::RequestScreenshot(FullPath, false, false); // filename, bInShowUI, bAddFilenameSuffix
+	// Bind callback to receive the screenshot data and save it ourselves
+	FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
+	FScreenshotRequest::OnScreenshotCaptured().AddUObject(this, &UFrameGrabberHelper::OnMacScreenshotCaptured);
+
+	// Request screenshot - false = don't show UI notification
+	FScreenshotRequest::RequestScreenshot(false);
 
 	bIsCapturing = true;
-
-	// Reset capturing flag after a short delay since we can't easily detect completion
-	// The engine handles the actual save asynchronously
-	FTimerHandle TimerHandle;
-	if (GEngine && GEngine->GameViewport)
-	{
-		GEngine->GameViewport->GetWorld()->GetTimerManager().SetTimer(
-			TimerHandle,
-			[this]() { bIsCapturing = false; },
-			0.5f, // Half second delay
-			false
-		);
-	}
-	else
-	{
-		bIsCapturing = false;
-	}
 #else
 	// Windows/other: Use FFrameGrabber
 	// Try lazy initialization if not yet initialized
@@ -197,7 +185,75 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 	// else: if no frame ready yet, wait for next tick
 #endif
 }
-#if !PLATFORM_MAC
+#if PLATFORM_MAC
+// Mac: Callback receives properly synchronized pixel data from the engine
+void UFrameGrabberHelper::OnMacScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Colors)
+{
+	UE_LOG(LogTemp, Log, TEXT("[Mac] Screenshot callback received: %dx%d, %d pixels"), Width, Height, Colors.Num());
+
+	// Unbind the delegate
+	FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
+
+	if (Colors.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Mac] Screenshot callback received empty color buffer!"));
+		bIsCapturing = false;
+		return;
+	}
+
+	// Log some debug info
+	{
+		const FColor& First = Colors[0];
+		const FColor& Center = Colors[Colors.Num() / 2];
+		UE_LOG(LogTemp, Log, TEXT("[Mac] First pixel: R=%d G=%d B=%d A=%d, Center: R=%d G=%d B=%d A=%d"),
+			First.R, First.G, First.B, First.A, Center.R, Center.G, Center.B, Center.A);
+	}
+
+	// Check if we need to resize
+	FIntPoint CapturedSize(Width, Height);
+	const bool bNeedsResize = (CapturedSize != TargetSize) && (TargetSize.X > 0 && TargetSize.Y > 0);
+
+	if (bNeedsResize)
+	{
+		// Downscale to target size
+		TArray<FColor> ResizedColors;
+		ResizedColors.SetNumUninitialized(TargetSize.X * TargetSize.Y);
+
+		FImageUtils::ImageResize(
+			Width,
+			Height,
+			Colors,
+			TargetSize.X,
+			TargetSize.Y,
+			ResizedColors,
+			false);
+
+		FString FullPath = MacPendingScreenshotPath;
+		Async(EAsyncExecution::ThreadPool, [ResizedColors = MoveTemp(ResizedColors), FullPath, TargetSize = this->TargetSize]()
+		{
+			TArray64<uint8> PNGData;
+			FImageUtils::PNGCompressImageArray(TargetSize.X, TargetSize.Y, ResizedColors, PNGData);
+			FFileHelper::SaveArrayToFile(PNGData, *FullPath);
+			UE_LOG(LogTemp, Log, TEXT("[Mac] Screenshot saved (resized): %s"), *FullPath);
+		});
+	}
+	else
+	{
+		// Use captured size directly
+		FString FullPath = MacPendingScreenshotPath;
+		Async(EAsyncExecution::ThreadPool, [Colors, FullPath, Width, Height]()
+		{
+			TArray64<uint8> PNGData;
+			FImageUtils::PNGCompressImageArray(Width, Height, Colors, PNGData);
+			FFileHelper::SaveArrayToFile(PNGData, *FullPath);
+			UE_LOG(LogTemp, Log, TEXT("[Mac] Screenshot saved: %s"), *FullPath);
+		});
+	}
+
+	bIsCapturing = false;
+}
+
+#else
 // Windows/other: Use FFrameGrabber polling
 void UFrameGrabberHelper::ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames)
 {
