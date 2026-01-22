@@ -7,6 +7,7 @@
 #include "HAL/PlatformFileManager.h"
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
+#include "RenderingThread.h"  // For FlushRenderingCommands (Mac GPU sync)
 #include "Slate/SceneViewport.h"
 #include "Widgets/SViewport.h"
 
@@ -125,7 +126,12 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 
 	if (!bIsCapturing || !FrameGrabber.IsValid())
 		return;
- 
+
+#if PLATFORM_MAC
+	// Metal uses async GPU readback - ensure it completes before accessing ColorBuffer
+	FlushRenderingCommands();
+#endif
+
 	TArray<FCapturedFrameData> Frames = FrameGrabber->GetCapturedFrames();
  
 	if (Frames.Num() > 0)
