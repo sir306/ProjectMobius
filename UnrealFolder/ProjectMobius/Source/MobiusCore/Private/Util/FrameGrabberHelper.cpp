@@ -115,16 +115,45 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 
 #if PLATFORM_MAC
 	// Mac: Use FScreenshotRequest which properly handles Metal's async rendering
-	UE_LOG(LogTemp, Log, TEXT("[Mac] Using FScreenshotRequest for capture: %s"), *InFileName);
+	// Determine output path
+	FString DestPath = SavePath;
+	if (DestPath.IsEmpty())
+	{
+		DestPath = FPaths::ProjectSavedDir() / TEXT("MobiusCaptures/");
+	}
 
-	// Bind to the screenshot delegate
-	FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
-	FScreenshotRequest::OnScreenshotCaptured().AddUObject(this, &UFrameGrabberHelper::OnScreenshotCaptured);
+	// Ensure directory exists
+	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+	if (!PlatformFile.DirectoryExists(*DestPath))
+	{
+		PlatformFile.CreateDirectoryTree(*DestPath);
+	}
 
-	// Request a screenshot - this uses the engine's internal capture which handles Metal properly
-	FScreenshotRequest::RequestScreenshot(false); // false = don't show UI notification
+	FString FullPath = DestPath / (PendingFileName + TEXT(".png"));
+
+	UE_LOG(LogTemp, Log, TEXT("[Mac] Using FScreenshotRequest for capture: %s"), *FullPath);
+
+	// Use RequestScreenshot with filename - this saves directly and handles Metal properly
+	FScreenshotRequest::RequestScreenshot(FullPath, false, false); // filename, bInShowUI, bAddFilenameSuffix
 
 	bIsCapturing = true;
+
+	// Reset capturing flag after a short delay since we can't easily detect completion
+	// The engine handles the actual save asynchronously
+	FTimerHandle TimerHandle;
+	if (GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->GetWorld()->GetTimerManager().SetTimer(
+			TimerHandle,
+			[this]() { bIsCapturing = false; },
+			0.5f, // Half second delay
+			false
+		);
+	}
+	else
+	{
+		bIsCapturing = false;
+	}
 #else
 	// Windows/other: Use FFrameGrabber
 	// Try lazy initialization if not yet initialized
@@ -168,106 +197,7 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 	// else: if no frame ready yet, wait for next tick
 #endif
 }
-#if PLATFORM_MAC
-// Mac: Use FScreenshotRequest callback - this receives properly synchronized pixel data
-void UFrameGrabberHelper::OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Colors)
-{
-	UE_LOG(LogTemp, Log, TEXT("[Mac] Screenshot callback received: %dx%d, %d pixels"), Width, Height, Colors.Num());
-
-	// Unbind the delegate now that we've received the screenshot
-	FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
-
-	if (Colors.Num() == 0)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[Mac] Screenshot callback received empty color buffer!"));
-		bIsCapturing = false;
-		return;
-	}
-
-	// === MAC DIAGNOSTIC LOGGING ===
-	{
-		const int32 TotalPixels = Colors.Num();
-		const FColor& First = Colors[0];
-		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] First pixel: R=%d G=%d B=%d A=%d"),
-			First.R, First.G, First.B, First.A);
-
-		const int32 CenterIdx = TotalPixels / 2;
-		const FColor& Center = Colors[CenterIdx];
-		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Center pixel[%d]: R=%d G=%d B=%d A=%d"),
-			CenterIdx, Center.R, Center.G, Center.B, Center.A);
-
-		// Quick sample check
-		int32 NonZeroCount = 0;
-		for (int32 i = 0; i < TotalPixels; i += 1000)
-		{
-			const FColor& P = Colors[i];
-			if (P.R != 0 || P.G != 0 || P.B != 0 || P.A != 0)
-			{
-				NonZeroCount++;
-			}
-		}
-		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Non-zero pixels in sample: %d"), NonZeroCount);
-	}
-
-	// Determine output path
-	FString DestPath = SavePath;
-	if (DestPath.IsEmpty())
-	{
-		DestPath = FPaths::ProjectSavedDir() / TEXT("MobiusCaptures/");
-	}
-
-	// Ensure directory exists
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	if (!PlatformFile.DirectoryExists(*DestPath))
-	{
-		PlatformFile.CreateDirectoryTree(*DestPath);
-	}
-
-	FString FullPath = DestPath / (PendingFileName + TEXT(".png"));
-
-	// Check if we need to resize
-	FIntPoint CapturedSize(Width, Height);
-	const bool bNeedsResize = (CapturedSize != TargetSize) && (TargetSize.X > 0 && TargetSize.Y > 0);
-
-	if (bNeedsResize)
-	{
-		// Downscale to target size
-		TArray<FColor> ResizedColors;
-		ResizedColors.SetNumUninitialized(TargetSize.X * TargetSize.Y);
-
-		FImageUtils::ImageResize(
-			Width,
-			Height,
-			Colors,
-			TargetSize.X,
-			TargetSize.Y,
-			ResizedColors,
-			false); // Not linear space
-
-		Async(EAsyncExecution::ThreadPool, [ResizedColors = MoveTemp(ResizedColors), FullPath, TargetSize = this->TargetSize]()
-		{
-			TArray64<uint8> PNGData;
-			FImageUtils::PNGCompressImageArray(TargetSize.X, TargetSize.Y, ResizedColors, PNGData);
-			FFileHelper::SaveArrayToFile(PNGData, *FullPath);
-			UE_LOG(LogTemp, Log, TEXT("[Mac] Async screenshot saved (resized): %s"), *FullPath);
-		});
-	}
-	else
-	{
-		// Use captured size directly
-		Async(EAsyncExecution::ThreadPool, [Colors, FullPath, Width, Height]()
-		{
-			TArray64<uint8> PNGData;
-			FImageUtils::PNGCompressImageArray(Width, Height, Colors, PNGData);
-			FFileHelper::SaveArrayToFile(PNGData, *FullPath);
-			UE_LOG(LogTemp, Log, TEXT("[Mac] Async screenshot saved: %s"), *FullPath);
-		});
-	}
-
-	bIsCapturing = false;
-}
-
-#else
+#if !PLATFORM_MAC
 // Windows/other: Use FFrameGrabber polling
 void UFrameGrabberHelper::ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames)
 {

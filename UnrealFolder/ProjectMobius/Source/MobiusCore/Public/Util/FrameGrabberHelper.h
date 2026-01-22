@@ -62,8 +62,5 @@ private:
 #if !PLATFORM_MAC
 	/** Internally process captured frames (called once after TriggerCapture) */
 	void ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames);
-#else
-	/** Mac screenshot callback - called by engine when screenshot is ready */
-	void OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Colors);
 #endif
 };
