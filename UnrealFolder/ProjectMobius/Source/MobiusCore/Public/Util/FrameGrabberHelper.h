@@ -9,7 +9,7 @@
 
 
 /**
- * 
+ *
  */
 UCLASS()
 class MOBIUSCORE_API UFrameGrabberHelper : public UObject
@@ -35,13 +35,20 @@ public:
 	void Tick(float DeltaTime);
 
 	bool IsCapturing() const { return bIsCapturing; }
+#if PLATFORM_MAC
+	bool IsInitialized() const { return true; } // Mac uses FScreenshotRequest, always "initialized"
+#else
 	bool IsInitialized() const { return FrameGrabber.IsValid(); }
+#endif
 
 private:
+#if !PLATFORM_MAC
 	/** Attempt to initialize the frame grabber from the game engine's scene viewport */
 	bool TryInitialize();
 
 	TUniquePtr<FFrameGrabber> FrameGrabber;
+#endif
+
 	FIntPoint TargetSize;
 	FIntPoint ViewportSize;
 	FIntPoint ConfiguredDownscaleSize = FIntPoint(800, 600);
@@ -52,6 +59,11 @@ private:
 	bool bConfiguredUseFullResolution = false;
 	bool bIsCapturing = false;
 
+#if !PLATFORM_MAC
 	/** Internally process captured frames (called once after TriggerCapture) */
 	void ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames);
+#else
+	/** Mac screenshot callback - called by engine when screenshot is ready */
+	void OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Colors);
+#endif
 };

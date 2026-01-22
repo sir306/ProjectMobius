@@ -10,6 +10,9 @@
 #include "RenderingThread.h"  // For FlushRenderingCommands (Mac GPU sync)
 #include "Slate/SceneViewport.h"
 #include "Widgets/SViewport.h"
+#if PLATFORM_MAC
+#include "UnrealClient.h"  // For FScreenshotRequest
+#endif
 
 void UFrameGrabberHelper::Configure(bool bInUseFullResolution, FIntPoint InDownscaleSize)
 {
@@ -24,8 +27,14 @@ void UFrameGrabberHelper::Configure(bool bInUseFullResolution, FIntPoint InDowns
 	{
 		ConfiguredDownscaleSize = FIntPoint(800, 600);
 	}
+
+	// Set target size for Mac (which doesn't use TryInitialize)
+#if PLATFORM_MAC
+	TargetSize = bConfiguredUseFullResolution ? FIntPoint(1920, 1080) : ConfiguredDownscaleSize;
+#endif
 }
 
+#if !PLATFORM_MAC
 bool UFrameGrabberHelper::TryInitialize()
 {
 	// Already initialized
@@ -87,6 +96,7 @@ bool UFrameGrabberHelper::TryInitialize()
 
 	return true;
 }
+#endif // !PLATFORM_MAC
 
 void UFrameGrabberHelper::SetSavePath(const FString& InSavePath)
 {
@@ -95,6 +105,28 @@ void UFrameGrabberHelper::SetSavePath(const FString& InSavePath)
 
 void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 {
+	if (bIsCapturing)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Already capturing a screenshot on previous frame, ignoring new request."));
+		return;
+	}
+
+	PendingFileName = InFileName;
+
+#if PLATFORM_MAC
+	// Mac: Use FScreenshotRequest which properly handles Metal's async rendering
+	UE_LOG(LogTemp, Log, TEXT("[Mac] Using FScreenshotRequest for capture: %s"), *InFileName);
+
+	// Bind to the screenshot delegate
+	FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
+	FScreenshotRequest::OnScreenshotCaptured().AddUObject(this, &UFrameGrabberHelper::OnScreenshotCaptured);
+
+	// Request a screenshot - this uses the engine's internal capture which handles Metal properly
+	FScreenshotRequest::RequestScreenshot(false); // false = don't show UI notification
+
+	bIsCapturing = true;
+#else
+	// Windows/other: Use FFrameGrabber
 	// Try lazy initialization if not yet initialized
 	if (!FrameGrabber.IsValid())
 	{
@@ -105,19 +137,18 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 		}
 	}
 
-	if (bIsCapturing)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Already capturing a screenshot on previous frame, ignoring new request."));
-		return;
-	}
-
-	PendingFileName = InFileName;
 	FrameGrabber->CaptureThisFrame(nullptr);
 	bIsCapturing = true;
+#endif
 }
 
 void UFrameGrabberHelper::Tick(float DeltaTime)
 {
+#if PLATFORM_MAC
+	// Mac uses FScreenshotRequest with callback - nothing to poll in Tick
+	// The OnScreenshotCaptured callback handles everything
+#else
+	// Windows/other: Poll FFrameGrabber
 	// Try lazy initialization if not yet initialized
 	if (!FrameGrabber.IsValid())
 	{
@@ -127,94 +158,123 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 	if (!bIsCapturing || !FrameGrabber.IsValid())
 		return;
 
-#if PLATFORM_MAC
-	// Metal uses async GPU readback - ensure it completes before accessing ColorBuffer
-	FlushRenderingCommands();
-#endif
-
 	TArray<FCapturedFrameData> Frames = FrameGrabber->GetCapturedFrames();
- 
+
 	if (Frames.Num() > 0)
 	{
 		ProcessCapturedFrames(Frames);
 		bIsCapturing = false;
 	}
 	// else: if no frame ready yet, wait for next tick
+#endif
 }
-//TODO: fix screenshot capture for Mac DEVICES (Works fine on windows)
+#if PLATFORM_MAC
+// Mac: Use FScreenshotRequest callback - this receives properly synchronized pixel data
+void UFrameGrabberHelper::OnScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Colors)
+{
+	UE_LOG(LogTemp, Log, TEXT("[Mac] Screenshot callback received: %dx%d, %d pixels"), Width, Height, Colors.Num());
+
+	// Unbind the delegate now that we've received the screenshot
+	FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
+
+	if (Colors.Num() == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Mac] Screenshot callback received empty color buffer!"));
+		bIsCapturing = false;
+		return;
+	}
+
+	// === MAC DIAGNOSTIC LOGGING ===
+	{
+		const int32 TotalPixels = Colors.Num();
+		const FColor& First = Colors[0];
+		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] First pixel: R=%d G=%d B=%d A=%d"),
+			First.R, First.G, First.B, First.A);
+
+		const int32 CenterIdx = TotalPixels / 2;
+		const FColor& Center = Colors[CenterIdx];
+		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Center pixel[%d]: R=%d G=%d B=%d A=%d"),
+			CenterIdx, Center.R, Center.G, Center.B, Center.A);
+
+		// Quick sample check
+		int32 NonZeroCount = 0;
+		for (int32 i = 0; i < TotalPixels; i += 1000)
+		{
+			const FColor& P = Colors[i];
+			if (P.R != 0 || P.G != 0 || P.B != 0 || P.A != 0)
+			{
+				NonZeroCount++;
+			}
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Non-zero pixels in sample: %d"), NonZeroCount);
+	}
+
+	// Determine output path
+	FString DestPath = SavePath;
+	if (DestPath.IsEmpty())
+	{
+		DestPath = FPaths::ProjectSavedDir() / TEXT("MobiusCaptures/");
+	}
+
+	// Ensure directory exists
+	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+	if (!PlatformFile.DirectoryExists(*DestPath))
+	{
+		PlatformFile.CreateDirectoryTree(*DestPath);
+	}
+
+	FString FullPath = DestPath / (PendingFileName + TEXT(".png"));
+
+	// Check if we need to resize
+	FIntPoint CapturedSize(Width, Height);
+	const bool bNeedsResize = (CapturedSize != TargetSize) && (TargetSize.X > 0 && TargetSize.Y > 0);
+
+	if (bNeedsResize)
+	{
+		// Downscale to target size
+		TArray<FColor> ResizedColors;
+		ResizedColors.SetNumUninitialized(TargetSize.X * TargetSize.Y);
+
+		FImageUtils::ImageResize(
+			Width,
+			Height,
+			Colors,
+			TargetSize.X,
+			TargetSize.Y,
+			ResizedColors,
+			false); // Not linear space
+
+		Async(EAsyncExecution::ThreadPool, [ResizedColors = MoveTemp(ResizedColors), FullPath, TargetSize = this->TargetSize]()
+		{
+			TArray64<uint8> PNGData;
+			FImageUtils::PNGCompressImageArray(TargetSize.X, TargetSize.Y, ResizedColors, PNGData);
+			FFileHelper::SaveArrayToFile(PNGData, *FullPath);
+			UE_LOG(LogTemp, Log, TEXT("[Mac] Async screenshot saved (resized): %s"), *FullPath);
+		});
+	}
+	else
+	{
+		// Use captured size directly
+		Async(EAsyncExecution::ThreadPool, [Colors, FullPath, Width, Height]()
+		{
+			TArray64<uint8> PNGData;
+			FImageUtils::PNGCompressImageArray(Width, Height, Colors, PNGData);
+			FFileHelper::SaveArrayToFile(PNGData, *FullPath);
+			UE_LOG(LogTemp, Log, TEXT("[Mac] Async screenshot saved: %s"), *FullPath);
+		});
+	}
+
+	bIsCapturing = false;
+}
+
+#else
+// Windows/other: Use FFrameGrabber polling
 void UFrameGrabberHelper::ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames)
 {
 	if (Frames.Num() == 0)
 		return;
 
 	const FCapturedFrameData& Frame = Frames[0];
-
-	// === MAC DIAGNOSTIC LOGGING START ===
-#if PLATFORM_MAC
-	{
-		const int32 TotalPixels = Frame.ColorBuffer.Num();
-		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] ColorBuffer size: %d pixels, BufferSize: %dx%d, TargetSize: %dx%d"),
-			TotalPixels, Frame.BufferSize.X, Frame.BufferSize.Y, TargetSize.X, TargetSize.Y);
-
-		if (TotalPixels > 0)
-		{
-			// Check first pixel
-			const FColor& First = Frame.ColorBuffer[0];
-			UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] First pixel: R=%d G=%d B=%d A=%d"),
-				First.R, First.G, First.B, First.A);
-
-			// Check center pixel
-			const int32 CenterIdx = TotalPixels / 2;
-			const FColor& Center = Frame.ColorBuffer[CenterIdx];
-			UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Center pixel[%d]: R=%d G=%d B=%d A=%d"),
-				CenterIdx, Center.R, Center.G, Center.B, Center.A);
-
-			// Count non-zero pixels (sample every 1000th pixel for speed)
-			int32 NonZeroCount = 0;
-			int32 SampleCount = 0;
-			float AvgR = 0, AvgG = 0, AvgB = 0, AvgA = 0;
-			for (int32 i = 0; i < TotalPixels; i += 1000)
-			{
-				const FColor& P = Frame.ColorBuffer[i];
-				if (P.R != 0 || P.G != 0 || P.B != 0 || P.A != 0)
-				{
-					NonZeroCount++;
-				}
-				AvgR += P.R; AvgG += P.G; AvgB += P.B; AvgA += P.A;
-				SampleCount++;
-			}
-			if (SampleCount > 0)
-			{
-				AvgR /= SampleCount; AvgG /= SampleCount; AvgB /= SampleCount; AvgA /= SampleCount;
-			}
-			UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Sampled %d pixels: %d non-zero, Avg RGBA=(%.1f, %.1f, %.1f, %.1f)"),
-				SampleCount, NonZeroCount, AvgR, AvgG, AvgB, AvgA);
-
-			// Diagnosis hint
-			if (NonZeroCount == 0)
-			{
-				UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: All sampled pixels are zero - likely SYNC ISSUE (frame not rendered yet)"));
-			}
-			else if (AvgA < 10)
-			{
-				UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: Very low alpha - possible ALPHA CHANNEL ISSUE"));
-			}
-			else if (AvgR < 5 && AvgG < 5 && AvgB < 5 && AvgA > 200)
-			{
-				UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: Very dark with good alpha - possible LINEAR/GAMMA color space issue"));
-			}
-			else if (FMath::Abs(AvgR - AvgB) > 50)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] HINT: Large R/B difference - check if RGBA vs BGRA swap needed"));
-			}
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: ColorBuffer is EMPTY"));
-		}
-	}
-#endif
-	// === MAC DIAGNOSTIC LOGGING END ===
 
 	// Determine output path
 	FString DestPath = SavePath;
@@ -270,3 +330,4 @@ void UFrameGrabberHelper::ProcessCapturedFrames(TArray<FCapturedFrameData>& Fram
 		});
 	}
 }
+#endif // PLATFORM_MAC
