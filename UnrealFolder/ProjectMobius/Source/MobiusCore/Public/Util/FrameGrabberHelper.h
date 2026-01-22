@@ -59,13 +59,7 @@ private:
 	bool bConfiguredUseFullResolution = false;
 	bool bIsCapturing = false;
 
-#if PLATFORM_MAC
-	/** Path where Mac screenshot will be saved (set before callback fires) */
-	FString MacPendingScreenshotPath;
-
-	/** Mac screenshot callback - receives pixel data from engine and saves to our custom path */
-	void OnMacScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Colors);
-#else
+#if !PLATFORM_MAC
 	/** Internally process captured frames (called once after TriggerCapture) */
 	void ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames);
 #endif
