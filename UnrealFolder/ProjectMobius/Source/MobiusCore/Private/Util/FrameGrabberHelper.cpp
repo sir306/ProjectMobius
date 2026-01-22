@@ -135,13 +135,80 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 	}
 	// else: if no frame ready yet, wait for next tick
 }
-//TODO: fix screenshot capture for Mac DEVICES (Works fine on windows) 
+//TODO: fix screenshot capture for Mac DEVICES (Works fine on windows)
 void UFrameGrabberHelper::ProcessCapturedFrames(TArray<FCapturedFrameData>& Frames)
 {
 	if (Frames.Num() == 0)
 		return;
 
 	const FCapturedFrameData& Frame = Frames[0];
+
+	// === MAC DIAGNOSTIC LOGGING START ===
+#if PLATFORM_MAC
+	{
+		const int32 TotalPixels = Frame.ColorBuffer.Num();
+		UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] ColorBuffer size: %d pixels, BufferSize: %dx%d, TargetSize: %dx%d"),
+			TotalPixels, Frame.BufferSize.X, Frame.BufferSize.Y, TargetSize.X, TargetSize.Y);
+
+		if (TotalPixels > 0)
+		{
+			// Check first pixel
+			const FColor& First = Frame.ColorBuffer[0];
+			UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] First pixel: R=%d G=%d B=%d A=%d"),
+				First.R, First.G, First.B, First.A);
+
+			// Check center pixel
+			const int32 CenterIdx = TotalPixels / 2;
+			const FColor& Center = Frame.ColorBuffer[CenterIdx];
+			UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Center pixel[%d]: R=%d G=%d B=%d A=%d"),
+				CenterIdx, Center.R, Center.G, Center.B, Center.A);
+
+			// Count non-zero pixels (sample every 1000th pixel for speed)
+			int32 NonZeroCount = 0;
+			int32 SampleCount = 0;
+			float AvgR = 0, AvgG = 0, AvgB = 0, AvgA = 0;
+			for (int32 i = 0; i < TotalPixels; i += 1000)
+			{
+				const FColor& P = Frame.ColorBuffer[i];
+				if (P.R != 0 || P.G != 0 || P.B != 0 || P.A != 0)
+				{
+					NonZeroCount++;
+				}
+				AvgR += P.R; AvgG += P.G; AvgB += P.B; AvgA += P.A;
+				SampleCount++;
+			}
+			if (SampleCount > 0)
+			{
+				AvgR /= SampleCount; AvgG /= SampleCount; AvgB /= SampleCount; AvgA /= SampleCount;
+			}
+			UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] Sampled %d pixels: %d non-zero, Avg RGBA=(%.1f, %.1f, %.1f, %.1f)"),
+				SampleCount, NonZeroCount, AvgR, AvgG, AvgB, AvgA);
+
+			// Diagnosis hint
+			if (NonZeroCount == 0)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: All sampled pixels are zero - likely SYNC ISSUE (frame not rendered yet)"));
+			}
+			else if (AvgA < 10)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: Very low alpha - possible ALPHA CHANNEL ISSUE"));
+			}
+			else if (AvgR < 5 && AvgG < 5 && AvgB < 5 && AvgA > 200)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: Very dark with good alpha - possible LINEAR/GAMMA color space issue"));
+			}
+			else if (FMath::Abs(AvgR - AvgB) > 50)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Mac Debug] HINT: Large R/B difference - check if RGBA vs BGRA swap needed"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[Mac Debug] DIAGNOSIS: ColorBuffer is EMPTY"));
+		}
+	}
+#endif
+	// === MAC DIAGNOSTIC LOGGING END ===
 
 	// Determine output path
 	FString DestPath = SavePath;
