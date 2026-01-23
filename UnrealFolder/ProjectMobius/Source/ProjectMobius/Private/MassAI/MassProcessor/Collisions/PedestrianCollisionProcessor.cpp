@@ -249,7 +249,7 @@ void UPedestrianCollisionProcessor::Execute(FMassEntityManager& EntityManager, F
 			}
 			else if (HoveredCapsuleComponent && UserSelectedCapsuleComponent == nullptr)
 			{
-				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent)
+				if (EntityCollision.Capsule.Get() == HoveredCapsuleComponent)//TODO: DOUBLE CLICK 
 				{
 					EntityRenderingFragments[i].showPedestrianStats = 1; // Show the stats for this entity
 			
