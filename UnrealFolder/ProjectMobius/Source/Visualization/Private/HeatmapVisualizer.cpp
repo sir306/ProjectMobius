@@ -31,6 +31,7 @@
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "IMobiusErrorReporter.h"
 
 
 // Sets default values
@@ -146,13 +147,39 @@ void AHeatmapVisualizer::CreateMaterialInstances()
 
 	// Assign the materials to the instance
 	// Heatmap Instance Material - by checking name we avoid renaming existing instances which is not allowed
-	if(!HeatmapMaterialInstance && HeatmapMaterial || HeatmapMaterialInstance->GetName() != ActorName + "HeatmapMaterialInstance")
+	const FString HeatmapInstanceName = ActorName + "HeatmapMaterialInstance";
+	if(!HeatmapMaterialInstance || HeatmapMaterialInstance->GetName() != HeatmapInstanceName)
 	{
+		if (!HeatmapMaterial)
+		{
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Heatmap material missing"),
+					FText::FromString("Failed to load the heatmap material asset."),
+					FText::FromString("HeatmapVisualizer"));
+			}
+			return;
+		}
 		HeatmapMaterialInstance = UMaterialInstanceDynamic::Create(HeatmapMaterial, this, FName(*(ActorName + "HeatmapMaterialInstance")));
 	}
 	// AgentPos Instance Material
-	if(!AgentMaterialInstance && AgentMaterial || AgentMaterialInstance->GetName() != ActorName + "AgentMaterialInstance")
+	const FString AgentInstanceName = ActorName + "AgentMaterialInstance";
+	if(!AgentMaterialInstance || AgentMaterialInstance->GetName() != AgentInstanceName)
 	{
+		if (!AgentMaterial)
+		{
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Agent material missing"),
+					FText::FromString("Failed to load the agent heatmap material asset."),
+					FText::FromString("HeatmapVisualizer"));
+			}
+			return;
+		}
 		AgentMaterialInstance = AgentMaterialInstance = UMaterialInstanceDynamic::Create(AgentMaterial, this, FName(*(ActorName + "AgentMaterialInstance")));
 	}
 
@@ -164,18 +191,42 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 	// check if the render target not null and if so create new one
 	if(!HeatmapRenderTarget)
 	{
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Render target not created"),
+				FText::FromString("Heatmap render target is not available."),
+				FText::FromString("HeatmapVisualizer"));
+		}
 		return;
 	}
 	
 	// check static mesh and material instance is valid
 	if(!HeatmapMesh->GetStaticMesh() || !HeatmapMaterialInstance)
 	{
-		return; //TODO: Add better error handling
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Heatmap resources missing"),
+				FText::FromString("Heatmap mesh or material instance is not ready."),
+				FText::FromString("HeatmapVisualizer"));
+		}
+		return;
 	}
 	// check if in world
 	if(GetWorld() == nullptr)
 	{
-		return; //TODO: Add better error handling
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot initialize the heatmap without a valid world."),
+				FText::FromString("HeatmapVisualizer"));
+		}
+		return;
 	}
 	
 	//TODO FIX THIS SIZE ISSUE
@@ -202,6 +253,14 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 	
 	if(!HeatmapMaterialInstance->GetTextureParameterValue(FName("AgentRenderTarget"), outVal))
 	{
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Render target parameter missing"),
+				FText::FromString("Failed to get the texture parameter value from the material instance."),
+				FText::FromString("HeatmapVisualizer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to get the texture parameter value from the material instance"));
 	}
 	// Assign the render target to the heatmap material instance parameter
@@ -215,9 +274,17 @@ void AHeatmapVisualizer::CreateAndSetupRenderTarget() const
 void AHeatmapVisualizer::UpdateHeatmap(const FVector& AgentLocation)
 {
 	// check if the render target, static mesh and material instance is valid
-	if(!HeatmapRenderTarget && !HeatmapMesh->GetStaticMesh() && !HeatmapMaterialInstance)
+	if(!HeatmapRenderTarget || !HeatmapMesh->GetStaticMesh() || !HeatmapMaterialInstance || !AgentMaterialInstance || !World)
 	{
-		return; //TODO: Add better error handling
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Heatmap not initialized"),
+				FText::FromString("Heatmap resources or world are not ready for updates."),
+				FText::FromString("HeatmapVisualizer"));
+		}
+		return;
 	}
 
 	FLinearColor AgentPosOnToMesh = FLinearColor(MeshTransform.TransformPosition(AgentLocation));
@@ -225,6 +292,14 @@ void AHeatmapVisualizer::UpdateHeatmap(const FVector& AgentLocation)
 	
 	if(!AgentMaterialInstance->GetVectorParameterValue(FName("AgentPosition"), outVal))
 	{
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Agent position parameter missing"),
+				FText::FromString("Failed to get the texture parameter value from the material instance."),
+				FText::FromString("HeatmapVisualizer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to get the texture parameter value from the material instance"));
 	}
 	

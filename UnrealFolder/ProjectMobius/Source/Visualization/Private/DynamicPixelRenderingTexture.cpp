@@ -24,9 +24,11 @@
 
 #include "DynamicPixelRenderingTexture.h"
 #include "Engine/Texture2D.h"
+#include "IMobiusErrorReporter.h"
 // IWYU pragma: begin_keep
 #include "HLSLTypeAliases.h"
 #include "ImageUtils.h"
+#if !PLATFORM_MAC
 #include "PreOpenCVHeaders.h"
 #include "opencv2/unreal.hpp"
 #include "opencv2/opencv.hpp"
@@ -34,6 +36,7 @@
 #include "opencv2/ml.hpp"
 #include "opencv2/imgproc.hpp"
 #include "PostOpenCVHeaders.h"
+#endif
 // IWYU pragma: end_keep
 
 
@@ -45,8 +48,8 @@
 
 FORCEINLINE static uint8 AddSaturated(uint8 A, uint8 B)
 {
-        uint16 Sum = static_cast<uint16>(A) + static_cast<uint16>(B);
-        return Sum > 255 ? 255 : static_cast<uint8>(Sum);
+	uint16 Sum = static_cast<uint16>(A) + static_cast<uint16>(B);
+	return Sum > 255 ? 255 : static_cast<uint8>(Sum);
 }
 
 // Level of Service Bands - in 0 to 1 format
@@ -92,10 +95,12 @@ void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHei
 	TextureDimensionY = InHeight;
 	DefaultColor = InitialColor;
 
+#if !PLATFORM_MAC
 	CVSize = cv::Size(TextureDimensionY, TextureDimensionX);
 
 	SrcMat.create(CVSize, CV_8UC4);
 	UBlurMat.create(CVSize, CV_8UC4);
+#endif
 
 	//TODO: add extra parameters for mip settings, compression settings, and srgb settings to give more control
 	// Create a new texture
@@ -153,10 +158,10 @@ void UDynamicPixelRenderingTexture::SetPixelColor(uint8*& PixelPtrToUpdate, FLin
 	{
 		AddPixelColor_Internal(PixelPtrToUpdate, NewColor);
 		// if the r channel is a value higher than the circle colour then a blur is needed
-               if (!bIsBlurRequired && *(PixelPtrToUpdate + 2) > COLOR_TO_BYTE(BlurTriggerThreshold))// TODO: this value needs to either be a parameter or passed in - this is the lower band
-               {
-                       bIsBlurRequired = true;
-               }
+		if (!bIsBlurRequired && *(PixelPtrToUpdate + 2) > COLOR_TO_BYTE(BlurTriggerThreshold))// TODO: this value needs to either be a parameter or passed in - this is the lower band
+		{
+			bIsBlurRequired = true;
+		}
 	}
 	else
 	{
@@ -166,20 +171,20 @@ void UDynamicPixelRenderingTexture::SetPixelColor(uint8*& PixelPtrToUpdate, FLin
 
 void UDynamicPixelRenderingTexture::FillTexture(FLinearColor FillColor)
 {
-        const uint32 PackedColor =
-                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.B), 0, 255))) |
-                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.G), 0, 255)) << 8) |
-                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.R), 0, 255)) << 16) |
-                (static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.A), 0, 255)) << 24);
+	const uint32 PackedColor =
+		(static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.B), 0, 255))) |
+		(static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.G), 0, 255)) << 8) |
+		(static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.R), 0, 255)) << 16) |
+		(static_cast<uint32>(FMath::Clamp(COLOR_TO_BYTE(FillColor.A), 0, 255)) << 24);
 
-        TRACE_CPUPROFILER_EVENT_SCOPE_STR("FILL TEXTURE - IE CLEAR");
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR("FILL TEXTURE - IE CLEAR");
 
-        uint32* BufferPtr = reinterpret_cast<uint32*>(PixelBuffer.Get());
-        const int32 NumPixels = TextureDimensionY * TextureDimensionX;
-        for (int32 i = 0; i < NumPixels; ++i)
-        {
-                BufferPtr[i] = PackedColor;
-        }
+	uint32* BufferPtr = reinterpret_cast<uint32*>(PixelBuffer.Get());
+	const int32 NumPixels = TextureDimensionY * TextureDimensionX;
+	for (int32 i = 0; i < NumPixels; ++i)
+	{
+		BufferPtr[i] = PackedColor;
+	}
 }
 
 void UDynamicPixelRenderingTexture::DrawLine(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y,
@@ -408,35 +413,35 @@ void UDynamicPixelRenderingTexture::DrawCircle(float Center_Coordinate_X, float 
 	// 		}
 	// 	});
 	ParallelFor(FMath::CeilToInt(Radius + Center_Coordinate_Y) - FMath::FloorToInt(-Radius + Center_Coordinate_Y) + 1,
-	[&](int32 Y_Index)
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE_STR("DrawCircle ParallelFor");
+	            [&](int32 Y_Index)
+	            {
+		            TRACE_CPUPROFILER_EVENT_SCOPE_STR("DrawCircle ParallelFor");
 
-		int32 y = FMath::FloorToInt(-Radius + Center_Coordinate_Y) + Y_Index;
+		            int32 y = FMath::FloorToInt(-Radius + Center_Coordinate_Y) + Y_Index;
 
-		for (int32 x = FMath::FloorToInt(-Radius + Center_Coordinate_X); x <= FMath::CeilToInt(Radius + Center_Coordinate_X); x++)
-		{
-			// float DistanceSquared = (x - Center_Coordinate_X) * (x - Center_Coordinate_X) +
-			// 						(y - Center_Coordinate_Y) * (y - Center_Coordinate_Y);
+		            for (int32 x = FMath::FloorToInt(-Radius + Center_Coordinate_X); x <= FMath::CeilToInt(Radius + Center_Coordinate_X); x++)
+		            {
+			            // float DistanceSquared = (x - Center_Coordinate_X) * (x - Center_Coordinate_X) +
+			            // 						(y - Center_Coordinate_Y) * (y - Center_Coordinate_Y);
 
-			// SIMD optimization
-			FVector2d PixelLocation(x,y);
-			FVector2d CircleCenter(Center_Coordinate_X, Center_Coordinate_Y);
-			float DistanceSquared = FVector2d::DistSquared(PixelLocation, CircleCenter);
+			            // SIMD optimization
+			            FVector2d PixelLocation(x,y);
+			            FVector2d CircleCenter(Center_Coordinate_X, Center_Coordinate_Y);
+			            float DistanceSquared = FVector2d::DistSquared(PixelLocation, CircleCenter);
 
-			if (DistanceSquared <= RadiusSquared)
-			{
-				float DistanceToEdge = FMath::Sqrt(DistanceSquared) - Radius;
-				float Alpha = FMath::Clamp(1.0f - DistanceToEdge / 1.0f, 0.0f, 1.0f);
+			            if (DistanceSquared <= RadiusSquared)
+			            {
+				            float DistanceToEdge = FMath::Sqrt(DistanceSquared) - Radius;
+				            float Alpha = FMath::Clamp(1.0f - DistanceToEdge / 1.0f, 0.0f, 1.0f);
 
-				if (x >= 0 && x < TextureDimensionX && y >= 0 && y < TextureDimensionY)
-				{
-					FLinearColor FinalColor = CircleColor * Alpha;
-					SetPixelColor(x, y, FinalColor);
-				}
-			}
-		}
-	}, EParallelForFlags::PumpRenderingThread);
+				            if (x >= 0 && x < TextureDimensionX && y >= 0 && y < TextureDimensionY)
+				            {
+					            FLinearColor FinalColor = CircleColor * Alpha;
+					            SetPixelColor(x, y, FinalColor);
+				            }
+			            }
+		            }
+	            }, EParallelForFlags::PumpRenderingThread);
 	
 	// // Parallel loop over the bounding box of the circle, considering the center's offset
 	// ParallelFor(FMath::CeilToInt(Radius + Center_Coordinate_Y) - FMath::FloorToInt(-Radius + Center_Coordinate_Y) + 1,
@@ -521,8 +526,9 @@ void UDynamicPixelRenderingTexture::UpdateTextureRender() const
 	);
 }
 
-void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
+void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
 {
+#if !PLATFORM_MAC
 #if WITH_EDITOR
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("OpenCVGaussianBlur work start");
 #endif
@@ -554,12 +560,16 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur() const
 
 		// Copy the blurred image back to the pixel buffer
 		FMemory::ParallelMemcpy(PixelBuffer.Get(), SrcMat.data, BufferSize);
+		
+		bIsBlurRequired = false;
 	}
-	
+#endif
+
 }
 
 void UDynamicPixelRenderingTexture::OpenCVVoronoiDiagram() const
 {
+#if !PLATFORM_MAC
 	// Convert the pixel buffer to a cv::Mat
 	cv::Mat src = cv::Mat(CVSize, CV_8UC4, PixelBuffer.Get());
 
@@ -593,7 +603,7 @@ void UDynamicPixelRenderingTexture::OpenCVVoronoiDiagram() const
 	subdiv.getTriangleList(triangleList);
 
 	std::vector<cv::Point> pt(3);
-	
+
 	for (size_t i = 0; i < triangleList.size(); i++)
 	{
 		cv::Vec6f t = triangleList[i];
@@ -612,14 +622,23 @@ void UDynamicPixelRenderingTexture::OpenCVVoronoiDiagram() const
 	// Copy image back to the pixel buffer
 	FMemory::ParallelMemcpy(UpdateBuffer.Get(), src.data, BufferSize);
 	UpdateTextureRender();
+#endif
 }
 
+#if !PLATFORM_MAC
 void UDynamicPixelRenderingTexture::ApplyDensityMapToTexture(const cv::Mat& Mat)
 {
 	// Ensure that the input matrix is of the correct size
 	if (Mat.rows != TextureDimensionY || Mat.cols != TextureDimensionX)
 	{
-		// Log an error message
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Input Error"),
+				FText::FromString("Density map size mismatch"),
+				FText::FromString("Input matrix dimensions do not match texture dimensions."),
+				FText::FromString("DynamicPixelRenderingTexture"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Input matrix dimensions do not match texture dimensions!"));
 	}
 	else
@@ -631,43 +650,45 @@ void UDynamicPixelRenderingTexture::ApplyDensityMapToTexture(const cv::Mat& Mat)
 			{
 				// Normalize the density value between 0 and 1
 				float densityValue = FMath::Clamp(Mat.at<float>(y, x), 0.0f, 1.0f);
-	
+
 				// Map the density to a color (e.g., grayscale)
 				FLinearColor PixelColor = FLinearColor(densityValue, densityValue, densityValue, 1.0f);
-	
+
 				// Set the pixel color
 				SetPixelColor(x, y, PixelColor);
 			}
 		}
-	
+
 		// Finally, update the texture render with the new KDE data
 		//UpdateTextureRender();
 	}
 }
+#endif
 
 void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FVector2D>& DataPoints, int32 KDE_Bandwidth)
 {
+#if !PLATFORM_MAC
 	//cv::Mat src = cv::Mat(TextureDimensionY, TextureDimensionX, CV_8UC4, PixelBuffer.Get());
-	
+
 	// Convert the data points to a cv::Mat
 	cv::Mat PointSamples = cv::Mat(DataPoints.Num(), 2, CV_32F);
-	
+
 	// Loop over the data points and add them to the cv::Mat
 	for (int32 i = 0; i < DataPoints.Num(); i++)
 	{
 		PointSamples.at<float>(i, 0) = DataPoints[i].X;
 		PointSamples.at<float>(i, 1) = DataPoints[i].Y;
 	}
-	
+
 	// Create the OpenCV KDE model using EM (Expectation-Maximization)
 	const cv::Ptr<cv::ml::EM> Kde = cv::ml::EM::create();
 	Kde->setClustersNumber(1); // KDE is often modeled as a single cluster
 	Kde->setCovarianceMatrixType(cv::ml::EM::COV_MAT_SPHERICAL); // Spherical covariance, assuming the same variance for X and Y
 	Kde->trainEM(PointSamples);
-	
+
 	// Create a density map (grayscale) to store KDE results
 	cv::Mat KernelDensityMap(TextureDimensionY, TextureDimensionX, CV_32F, cv::Scalar(0));
-	
+
 	// Loop through every pixel in the texture and compute KDE density
 	for (int32 y = 0; y < TextureDimensionY; y++)
 	{
@@ -680,8 +701,16 @@ void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FV
 
 			// Evaluate the KDE density for this pixel using OpenCV's EM
 			cv::Vec2d likelihoods;
-			if (!Kde || Kde->empty()) 
+			if (!Kde || Kde->empty())
 			{
+				if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Heatmap KDE Error"),
+						FText::FromString("Kernel density model unavailable"),
+						FText::FromString("KDE model is not initialized or empty."),
+						FText::FromString("DynamicPixelRenderingTexture"));
+				}
 				UE_LOG(LogTemp, Error, TEXT("KDE model is not initialized or empty."));
 				return;
 			}
@@ -692,9 +721,10 @@ void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FV
 			DensityMap.at<float>(y, x) = exp(densityValue); // Exponentiate to get back from log-likelihood
 		}
 	}
-	
+
 	// Convert density map to texture format and apply to Unreal texture
 	ApplyDensityMapToTexture(DensityMap);
+#endif
 }
 
 void UDynamicPixelRenderingTexture::BuildVoronoiDiagram(const TArray<FVector2D>& DataPoints, int32 RelaxationIterations)
@@ -708,7 +738,7 @@ void UDynamicPixelRenderingTexture::ConvertTextureToRGBTexture(int32 ColourDefic
 }
 
 void UDynamicPixelRenderingTexture::UpdateHeatmapCVDSettings(EColorVisionDeficiency NewColourDeficiency,
-	float NewDeficiencyLevel, bool bNewCorrectDeficiency, bool bInSimulateColourCorrectionWithDeficiency)
+                                                             float NewDeficiencyLevel, bool bNewCorrectDeficiency, bool bInSimulateColourCorrectionWithDeficiency)
 {
 	ColourDeficiency = NewColourDeficiency;
 	DeficiencyLevel = NewDeficiencyLevel;
@@ -767,10 +797,10 @@ FORCEINLINE void UDynamicPixelRenderingTexture::AddPixelColor_Internal(uint8*& P
 	// Pixel Colors are stored as BGRA (Blue, Green, Red, Alpha) not RGBA
 
 	// add the pixel color
-       *PixelPtr = AddSaturated(*PixelPtr, COLOR_TO_BYTE(NewColor.B));
-       *(PixelPtr + 1) = AddSaturated(*(PixelPtr + 1), COLOR_TO_BYTE(NewColor.G));
-       *(PixelPtr + 2) = AddSaturated(*(PixelPtr + 2), COLOR_TO_BYTE(NewColor.R));
-       *(PixelPtr + 3) = AddSaturated(0, COLOR_TO_BYTE(NewColor.A)); // alpha is not cumulative
+	*PixelPtr = AddSaturated(*PixelPtr, COLOR_TO_BYTE(NewColor.B));
+	*(PixelPtr + 1) = AddSaturated(*(PixelPtr + 1), COLOR_TO_BYTE(NewColor.G));
+	*(PixelPtr + 2) = AddSaturated(*(PixelPtr + 2), COLOR_TO_BYTE(NewColor.R));
+	*(PixelPtr + 3) = AddSaturated(0, COLOR_TO_BYTE(NewColor.A)); // alpha is not cumulative
 }
 
 FORCEINLINE uint8* UDynamicPixelRenderingTexture::GetPixelPtr(int32 X_Coordinate, int32 Y_Coordinate) const

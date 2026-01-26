@@ -26,6 +26,7 @@
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
 #include "Components/TextBlock.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 void USimulationSetupWidget::NativePreConstruct()
 {
@@ -115,6 +116,14 @@ void USimulationSetupWidget::UpdateTimeDilationScale(float TimeDilationScale)
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Simulation Setup Error"),
+				FText::FromString("World context unavailable"),
+				FText::FromString("Unable to update time dilation without a valid world."),
+				FText::FromString("SimulationSetupWidget"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("World is null"));
 	}
 }

@@ -5,23 +5,23 @@ public class MobiusWidgets : ModuleRules
     public MobiusWidgets(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
                 "Core",
-                "UMG", 
+                "UMG",
                 "Synthesis", // Required for the synth2d component
+                "MobiusLogging",
             }
         );
-
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore", 
+                "SlateCore",
+                "InputCore",
                 "ProjectMobius", // the two files that cause the circular dependency are: FloorStatsWidget.cpp and BaseChangePedestrianMaterial.h
                 // The problematic file is the floor stats widget, which is a UMG widget that displays the stats of the floor
                 /* TODO:
@@ -38,12 +38,21 @@ public class MobiusWidgets : ModuleRules
                  * this would mean that the projectmobius module may ultimately be renamed to the MobiusAI module as that is the main functionality
                  * left in the module.
                  */
-                "MassRepresentation", 
-                "HTTP", 
-                "Visualization", 
-                "Json", 
+                "MassRepresentation",
+                "HTTP",
+                "RHI",
+                "RenderCore",
+                "Json",
                 "JsonUtilities",
                 "MobiusCore", "Niagara",
+            }
+        );
+
+        PrivateIncludePaths.AddRange(
+            new string[]
+            {
+                "MobiusWidgets/ThirdParty/ImGui",
+                "MobiusWidgets/ThirdParty/ImPlot",
             }
         );
     }

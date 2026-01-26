@@ -30,10 +30,23 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+
+FOnSimulationPlayBarLifecycle& USimulationPlayBar::OnPlayBarConstructed()
+{
+        static FOnSimulationPlayBarLifecycle Delegate;
+        return Delegate;
+}
+
+FOnSimulationPlayBarLifecycle& USimulationPlayBar::OnPlayBarDestructed()
+{
+        static FOnSimulationPlayBarLifecycle Delegate;
+        return Delegate;
+}
 
 void USimulationPlayBar::NativeConstruct()
 {
-	Super::NativeConstruct();
+        Super::NativeConstruct();
 
         // Configure the number format
         NumberFormat.MinimumIntegralDigits = 2;
@@ -86,12 +99,17 @@ void USimulationPlayBar::NativeConstruct()
 	}
 
 	// Get the project mobius game instance and bind the loading state to the play button
-	if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance, UGameInstance>(GetWorld()->GetGameInstance()))
-	{
-		// Bind the loading state to the play button
-		ProjectMobiusGameInstance->OnDataLoading.AddDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
-		ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.AddDynamic(this, &USimulationPlayBar::FileChanging);
-	}
+        if (UWorld* World = GetWorld())
+        {
+                if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance, UGameInstance>(World->GetGameInstance()))
+                {
+                        // Bind the loading state to the play button
+                        ProjectMobiusGameInstance->OnDataLoading.AddDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
+                        ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.AddDynamic(this, &USimulationPlayBar::FileChanging);
+                }
+        }
+
+        OnPlayBarConstructed().Broadcast(this);
 }
 
 void USimulationPlayBar::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -112,6 +130,8 @@ void USimulationPlayBar::SynchronizeProperties()
 void USimulationPlayBar::NativeDestruct()
 {
         Super::NativeDestruct();
+
+        OnPlayBarDestructed().Broadcast(this);
 
         // Unbind delegates from the time dilation subsystem
         if (TimeDilationSubsystem)
@@ -134,10 +154,48 @@ void USimulationPlayBar::NativeDestruct()
         }
 
         // Unbind game instance delegates
-        if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
+        if (UWorld* World = GetWorld())
         {
-                ProjectMobiusGameInstance->OnDataLoading.RemoveDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
-                ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &USimulationPlayBar::FileChanging);
+                if (UProjectMobiusGameInstance* ProjectMobiusGameInstance = Cast<UProjectMobiusGameInstance>(World->GetGameInstance()))
+                {
+                        ProjectMobiusGameInstance->OnDataLoading.RemoveDynamic(this, &USimulationPlayBar::SetPlayButtonEnabled);
+                        ProjectMobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &USimulationPlayBar::FileChanging);
+                }
+        }
+}
+
+void USimulationPlayBar::HandleMoveableWindowActivityChanged(bool bIsActive)
+{
+        if (!TimeDilationSubsystem)
+        {
+                SetTimeDilationSubsystem();
+        }
+
+        if (!TimeDilationSubsystem)
+        {
+                return;
+        }
+
+        if (bIsActive)
+        {
+                if (SimulationPaused == 0)
+                {
+                        bPausedForWindowActivity = true;
+                        SimulationPaused = 1;
+                        TimeDilationSubsystem->bIsPaused = true;
+                        SetPlayButtonStyle();
+                }
+                else
+                {
+                        bPausedForWindowActivity = false;
+                }
+        }
+        else if (bPausedForWindowActivity)
+        {
+                bPausedForWindowActivity = false;
+                SimulationPaused = 0;
+                TimeDilationSubsystem->bIsPaused = false;
+                SetPlayButtonStyle();
         }
 }
 
@@ -146,6 +204,14 @@ void USimulationPlayBar::StartSimulation()
 	// check if the world is valid
 	if(!GetWorld())
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Simulation Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot start the simulation without a valid world."),
+				FText::FromString("SimulationPlayBar"));
+		}
 		return; // prevent unbinding and binding of delegates if the world is not valid
 	}
 
@@ -155,7 +221,14 @@ void USimulationPlayBar::StartSimulation()
 	// check if the MassEntitySubsystem is valid
 	if(!MassEntitySubsystem)
 	{
-		// TODO: add Error message 
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Simulation Error"),
+				FText::FromString("Spawn subsystem missing"),
+				FText::FromString("Mass entity spawn subsystem is not available."),
+				FText::FromString("SimulationPlayBar"));
+		}
 		return; // prevent unbinding and binding of delegates if the MassEntitySubsystem is not valid
 	}
 
@@ -331,19 +404,43 @@ void USimulationPlayBar::SetTimeDilationSubsystem()
 
 void USimulationPlayBar::UpdateCurrentTime(float NewCurrentTime)
 {
-	// Check if text block valid
-	if (CurrentTimeTextBlock)
-	{
-		// Set the text block to display the new time step
-		CurrentTimeTextBlock->SetText(FormatTime(NewCurrentTime));
-	}
-	
-	// Update the current value of slider if valid and not paused
-	if (PlaybackSlider && !SimulationPaused)// the check for pause is if the user is dragging the slider
-	{
-		// Set the current value of the slider
-		PlaybackSlider->SetValue(NewCurrentTime);
-	}
+	// 1) Early out if time hasn’t changed enough to matter visually.
+        // Adjust epsilon to your sim’s granularity. If your time step is, say, 0.01s,
+        // an epsilon of 1e-4 is more than enough.
+        constexpr float Epsilon = 1e-4f;
+        if (FMath::IsNearlyEqual(NewCurrentTime, LastDisplayedCurrentTime, Epsilon))
+        {
+            // Don’t touch text or slider – no visible change
+            return;
+        }
+    
+        LastDisplayedCurrentTime = NewCurrentTime;
+    
+        // 2) Update the text only when needed
+        if (CurrentTimeTextBlock)
+        {
+            const FText NewText = FormatTime(NewCurrentTime);
+    
+            // If you want to be extra strict and avoid touching Slate when the string is identical:
+            if (!NewText.EqualTo(LastCurrentTimeText))
+            {
+                LastCurrentTimeText = NewText;
+                CurrentTimeTextBlock->SetText(NewText);
+            }
+    
+            // TODO: look into UWidgetUtilHelpers for this functionality and see if its better or useable
+            // UWidgetUtilHelpers::UpdateTextIfChanged(CurrentTimeTextBlock, NewText);
+        }
+    
+        // 3) Update the slider only when the value actually changed
+        if (PlaybackSlider && !SimulationPaused)
+        {
+            const float CurrentSliderValue = PlaybackSlider->GetValue();
+            if (!FMath::IsNearlyEqual(CurrentSliderValue, NewCurrentTime, Epsilon))
+            {
+                PlaybackSlider->SetValue(NewCurrentTime);
+            }
+        }
 }
 
 void USimulationPlayBar::UpdateMaxTime(float NewMaxTime)
@@ -432,6 +529,10 @@ void USimulationPlayBar::SetPlayButtonStyle() const
 {
 	// Check the PlayPauseButton and the SlatePlayButtonStyle
 	if (!PlayPauseButton && !SlatePlayButtonStyle && !SlatePauseButtonStyle)
+	{
+		return;
+	}
+	if (!PlayPauseButton->GetIsEnabled())
 	{
 		return;
 	}

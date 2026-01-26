@@ -1,75 +1,64 @@
 using System;
-using UnrealBuildTool;
 using System.IO;
+using UnrealBuildTool;
 
 public class MobiusCore : ModuleRules
 {
-    public MobiusCore(ReadOnlyTargetRules Target) : base(Target)
-    {
-        PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+	public MobiusCore(ReadOnlyTargetRules Target) : base(Target)
+	{
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(
-            new string[]
-            {
-                "Core",
-                "MassEntity",
-                "ProceduralMeshComponent",
-                "RHI",
-            }
-        );
+		// Public deps: only what your *public headers* require
+		PublicDependencyModuleNames.AddRange(new[]
+		{
+			"Core",
+			"MassEntity",
+			"ProceduralMeshComponent",
+			"RHI",
+			"UE_Assimp",
+			"UE_AssimpLibrary",
+			"MobiusLogging",
+			"MovieSceneCapture", /* For image writing support -> built-in screenshot api causes issues when scene not fully loaded */
+		});
 
-        PrivateDependencyModuleNames.AddRange(
-            new string[]
-            {
-                "CoreUObject",
-                "Engine",
-                "Slate",
-                "SlateCore",
-                "HTTP",  
-                "Json", 
-                "JsonUtilities",
-                "WebSockets",
-                "DatasmithRuntime", 
-                "DatasmithCore",
-                "Visualization",
-                "RenderCore",
-            }
-        );
-        
-        // TODO: Sort different build versions for different platforms 
-        if ((Target.Platform == UnrealTargetPlatform.Win64))
-        {
-            // get the project dir
-            string projectDir = Path.GetFullPath(Path.Combine(ModuleDirectory, "../../"));
-            PublicIncludePaths.Add(Path.Combine(projectDir, "Source\\MobiusCore\\ThirdParty"));
-	        
-            string platformString = (Target.Platform == UnrealTargetPlatform.Win64) ? "Win64" : "Win32";
-            string librariesPath = Path.Combine(projectDir, "Binaries", platformString);
+		// Private deps: used in your .cpp files
+		PrivateDependencyModuleNames.AddRange(new[]
+		{
+			"CoreUObject",
+			"Engine",
+			"Slate",
+			"SlateCore",
+			"HTTP",
+			"Json",
+			"JsonUtilities",
+			"WebSockets",
+			"DatasmithRuntime",
+			"DatasmithCore",
+			"Visualization",
+			"RenderCore",
+			"DatasmithContent",
+		});
 
-            PublicAdditionalLibraries.Add(Path.Combine(librariesPath, "assimp-vc143-mt.lib"));
-	        
-            // load the dll
-            string dllPath = Path.Combine(librariesPath, "assimp-vc143-mt.dll");
-	        
-            PublicDelayLoadDLLs.Add(dllPath);
-            RuntimeDependencies.Add(dllPath);
-	        
-        }
+		PublicIncludePaths.AddRange(new[]
+		{
+			"MobiusCore/ThirdParty",
+		});
+		
+		PrivateIncludePaths.AddRange(new[]
+		{
+			"MobiusCore/Public",
+			"MobiusCore/Private",
+			"MobiusCore/ThirdParty",
+		});
 
-        PrivateIncludePaths.AddRange(new string[]
-        {
-            "MobiusCore/Public",
-            "MobiusCore/Private",
-            "MobiusCore/ThirdParty",
-        });
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
 
-        // Uncomment if you are using Slate UI
-        // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
-
-        // Uncomment if you are using online features
-        // PrivateDependencyModuleNames.Add("OnlineSubsystem");
-
-        // To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
-
-    }
+		}
+		else if (Target.Platform == UnrealTargetPlatform.Mac)
+		{
+			// Add AppKit framework for NSOpenPanel file dialogs
+			PublicFrameworks.Add("AppKit");
+		}
+	}
 }

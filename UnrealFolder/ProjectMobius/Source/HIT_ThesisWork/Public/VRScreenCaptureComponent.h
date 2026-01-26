@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 #include "VRScreenCaptureComponent.generated.h"
 
 
@@ -53,7 +54,7 @@ public:
 	
 	void CaptureAndSave(const FString& BaseFileName, const FString& FolderPath);
 
-	static void SaveScreenshot(const TArray<FColor>& Bitmap, const FString& FilePath, int32 Width, int32 Height);
+	static void SaveScreenshot(const TArray<FColor>& Bitmap, const FString& FilePath, int32 Width, int32 Height, TWeakObjectPtr<UObject> ContextObject = nullptr);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR Screen Capture")
 	USceneCaptureComponent2D* VRCapture;

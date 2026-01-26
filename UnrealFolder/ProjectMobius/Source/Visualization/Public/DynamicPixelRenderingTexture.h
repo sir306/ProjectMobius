@@ -28,11 +28,12 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "RHI.h"
-
+#if !PLATFORM_MAC
 #include "PreOpenCVHeaders.h"
 #include "opencv2/unreal.hpp"
 #include "opencv2/core.hpp"
 #include "PostOpenCVHeaders.h"
+#endif
 
 #include "DynamicPixelRenderingTexture.generated.h"
 
@@ -56,7 +57,9 @@ public:
 	/** Object Destructor */
 	virtual ~UDynamicPixelRenderingTexture() override;
 
+#if !PLATFORM_MAC
 	cv::Mat DensityMap;
+#endif
 	
 #pragma region METHODS
 	/**
@@ -167,7 +170,7 @@ public:
 	/**
 	 * This method performs a Gaussian Blur on the texture using OpenCV, so that the heatmaps have even distribution
 	 */
-	void OpenCVGaussianBlur() const;
+	void OpenCVGaussianBlur();
 
 	/**
 	 * Method that creates a voronoi diagram using openCV
@@ -175,11 +178,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Methods")
 	void OpenCVVoronoiDiagram() const;
 
+#if !PLATFORM_MAC
 	/**
-	 * 
-	 * @param Mat 
+	 *
+	 * @param Mat
 	 */
 	void ApplyDensityMapToTexture(const cv::Mat& Mat);
+#endif
 	/*
 	 * Apply Kernel Density Estimation to the texture
 	 */
@@ -334,6 +339,7 @@ private:
 	 * allow for us to queue GPU requests and continue pixel manipulation using the other buffer*/
 	TUniquePtr<uint8[]> UpdateBuffer;
 
+#if !PLATFORM_MAC
 	/** This is used to define the size of OpenCV's Mat and UMat in a format it is expecting */
 	cv::Size CVSize;
 
@@ -343,6 +349,7 @@ private:
 	/** Currently Gaussian Blur is a very expensive task to perform we can optimize it
 	 * by using the UMat to incorporate GPU acceleration for the calculations */
 	cv::UMat UBlurMat;
+#endif
 
 
 	/** Struct used to specify the texture region being updated */

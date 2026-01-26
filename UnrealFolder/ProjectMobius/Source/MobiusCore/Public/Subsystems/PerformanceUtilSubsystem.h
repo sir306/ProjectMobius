@@ -141,6 +141,7 @@ public:
 
 	EPedestrianScalabilitySettings GetCurrentPedestrianAvatarType() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
 	void SetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings NewAvatarModelType);
 
 protected:
@@ -175,7 +176,7 @@ protected:
 	/** Ptr to the game user setting object -> we use this to apply scalability settings
 	 * (as the console commands to change do not apply without it) */
 	UPROPERTY()
-	TObjectPtr<UGameUserSettings> GameUserSettings;
+	TObjectPtr<UGameUserSettings> ProjectSettings;
 
 	/** Stores the global scalability setting value */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
@@ -191,7 +192,7 @@ protected:
 
 	/** Low FPS threshold, when we hit this threshold we need to start auto triggering optimization techniques */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
-	float LowFPSThreshold = 30.0f;
+	float LowFPSThreshold = 15.0f;
 
 	/** Timer handle used to trigger auto scalability if prolonged low fps occurs */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")

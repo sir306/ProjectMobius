@@ -128,8 +128,7 @@ bool IAssimpInterface::OpenMeshFileGetWithAssimp(const FString PathToMesh, int32
 	{
 		for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
 		{
-			for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
-			     ++)
+			for (uint32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices++)
 			{
 				Vertices.Add(RotateVector(FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,
 				                                  Scene->mMeshes[MIndex]->mVertices[NumVertices].y * ScaleFactor,
@@ -145,7 +144,7 @@ bool IAssimpInterface::OpenMeshFileGetWithAssimp(const FString PathToMesh, int32
 	{
 		for (int32 MIndex = 0; MIndex < MeshIndex; MIndex++)
 		{
-			for (unsigned __int32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
+			for (uint32 NumVertices = 0; NumVertices < Scene->mMeshes[MIndex]->mNumVertices; NumVertices
 			     ++)
 			{
 				Vertices.Add(FVector(Scene->mMeshes[MIndex]->mVertices[NumVertices].x * ScaleFactor,

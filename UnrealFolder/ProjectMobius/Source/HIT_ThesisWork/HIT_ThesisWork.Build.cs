@@ -21,7 +21,8 @@ public class HIT_ThesisWork : ModuleRules
                 "Engine",
                 "Slate",
                 "SlateCore",
-                "RenderCore"
+                "RenderCore",
+                "MobiusCore"
             }
         );
     }

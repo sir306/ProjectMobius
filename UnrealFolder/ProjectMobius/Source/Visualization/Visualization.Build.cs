@@ -21,15 +21,19 @@ public class Visualization : ModuleRules
             {
                 "CoreUObject",
                 "Engine",
+                "InputCore",
                 "Slate",
-                "SlateCore", 
+                "SlateCore",
                 "RHI",
                 "RenderCore",
+                "MobiusLogging",
             }
         );
         
-        PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});
+        PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});     
         PrivateIncludePaths.AddRange(new string[] { "Visualization/Private" });
+
+
         
         //TODO: Sort different build versions for different platforms and use the dll and libs from the ThirdParty folder not manually added
         // Add OpenCV dll and lib files

@@ -32,6 +32,7 @@
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "HAL/Runnable.h" // FRunnable - for threading so we can get the data in the background
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "Templates/UniquePtr.h"
 #include "AgentDataSubsystem.generated.h"
 
 
@@ -154,8 +155,8 @@ protected:
 
 #pragma region PROPERTIES
 public:
-	/** Pointer to the FRunnable JSON Parser */
-	FJsonDataRunnable* JsonDataRunnable = nullptr;
+        /** Pointer to the FRunnable JSON Parser */
+        TUniquePtr<FJsonDataRunnable> JsonDataRunnable;
 	
 	/** JSON Object */
 	TSharedPtr<FJsonObject> JSONObject;
@@ -176,6 +177,7 @@ public:
 	bool bIsDataLoaded = false; // Flag to indicate if the data has been loaded
 
 	TQueue<float,EQueueMode::Mpsc> ProgressQueue; // Queue to hold progress updates
+	TQueue<FString,EQueueMode::Mpsc> LoadingTaskQueue; // Queue to hold loading task updates and inform current loading task
 	TQueue<int32,EQueueMode::Mpsc> MaxAgentsQueue;
 	
 protected:
@@ -206,6 +208,9 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	float LoadProgress;
+
+	UPROPERTY(EditAnywhere)
+	FString CurrentLoadingTask = FString();
 
 	
 	
@@ -299,6 +304,8 @@ public:
 
 	bool bIsRunning = false; // Flag to indicate if the thread is running
 	bool bReadyToDelete = false; // Flag to indicate if the thread is ready to be deleted
+	
+	TArray<int32> NumOfAgentsPerTimeStep = TArray<int32>();
 	
 protected:
 	/** Pointer to a thread */

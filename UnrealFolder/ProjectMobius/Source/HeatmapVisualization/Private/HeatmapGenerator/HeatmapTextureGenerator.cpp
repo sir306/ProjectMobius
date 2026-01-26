@@ -31,6 +31,7 @@
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 
 
@@ -120,13 +121,37 @@ void AHeatmapTextureGenerator::CreateMaterialInstances()
 
 	// Assign the materials to the instance
 	// Heatmap Instance Material
-	if(!HeatmapMaterialInstance && HeatmapMaterial)
+	if(!HeatmapMaterialInstance)
 	{
+		if (!HeatmapMaterial)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Heatmap material missing"),
+					FText::FromString("Failed to load the heatmap material asset."),
+					FText::FromString("HeatmapTextureGenerator"));
+			}
+			return;
+		}
 		HeatmapMaterialInstance = UMaterialInstanceDynamic::Create(HeatmapMaterial, this);
 	}
 	// AgentPos Instance Material
-	if(!AgentMaterialInstance && AgentMaterial)
+	if(!AgentMaterialInstance)
 	{
+		if (!AgentMaterial)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Agent material missing"),
+					FText::FromString("Failed to load the agent heatmap material asset."),
+					FText::FromString("HeatmapTextureGenerator"));
+			}
+			return;
+		}
 		AgentMaterialInstance = UMaterialInstanceDynamic::Create(AgentMaterial, this);
 	}
 }
@@ -134,14 +159,30 @@ void AHeatmapTextureGenerator::CreateMaterialInstances()
 void AHeatmapTextureGenerator::CreateAndSetupRenderTarget() const
 {
 	// check if the render target, static mesh and material instance is valid
-	if(!HeatmapRenderTarget && !HeatmapMesh->GetStaticMesh() && !HeatmapMaterialInstance)
+	if(!HeatmapRenderTarget || !HeatmapMesh->GetStaticMesh() || !HeatmapMaterialInstance)
 	{
-		return; //TODO: Add better error handling
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Heatmap resources missing"),
+				FText::FromString("Heatmap render target, mesh, or material instance is not ready."),
+				FText::FromString("HeatmapTextureGenerator"));
+		}
+		return;
 	}
 	// check if in world
 	if(GetWorld() == nullptr)
 	{
-		return; //TODO: Add better error handling
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot initialize the heatmap without a valid world."),
+				FText::FromString("HeatmapTextureGenerator"));
+		}
+		return;
 	}
 	//TODO FIX THIS SIZE ISSUE
 	// Get the mesh bounds so we can use it for the render target size
@@ -167,6 +208,14 @@ void AHeatmapTextureGenerator::CreateAndSetupRenderTarget() const
 	
 	if(!HeatmapMaterialInstance->GetTextureParameterValue(FName("AgentRenderTarget"), outVal))
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Render target parameter missing"),
+				FText::FromString("Failed to get the texture parameter value from the material instance."),
+				FText::FromString("HeatmapTextureGenerator"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to get the texture parameter value from the material instance"));
 	}
 	// Assign the render target to the heatmap material instance parameter
@@ -178,9 +227,17 @@ void AHeatmapTextureGenerator::UpdateHeatmap(const FVector& AgentLocation)
 {
 	UWorld* World = GetWorld();
 	// check if the render target, static mesh and material instance is valid
-	if(!HeatmapRenderTarget && !HeatmapMesh->GetStaticMesh() && !HeatmapMaterialInstance)
+	if(!HeatmapRenderTarget || !HeatmapMesh->GetStaticMesh() || !HeatmapMaterialInstance || !AgentMaterialInstance || !World)
 	{
-		return; //TODO: Add better error handling
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Heatmap not initialized"),
+				FText::FromString("Heatmap resources or world are not ready for updates."),
+				FText::FromString("HeatmapTextureGenerator"));
+		}
+		return;
 	}
 
 	FTransform MeshTransform = HeatmapMesh->GetComponentTransform();
@@ -190,6 +247,14 @@ void AHeatmapTextureGenerator::UpdateHeatmap(const FVector& AgentLocation)
 	FLinearColor outVal;
 	if(!AgentMaterialInstance->GetVectorParameterValue(FName("AgentPosition"), outVal))
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Agent position parameter missing"),
+				FText::FromString("Failed to get the texture parameter value from the material instance."),
+				FText::FromString("HeatmapTextureGenerator"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to get the texture parameter value from the material instance"));
 	}
 	

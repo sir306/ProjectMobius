@@ -34,8 +34,12 @@ class UButton;
 class USlider;
 class UImage;
 class UTextBlock;
+class USimulationPlayBar;
+
+/** Broadcasts when simulation play bars are created or destroyed. */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSimulationPlayBarLifecycle, USimulationPlayBar*);
 /**
- * 
+ *
  */
 UCLASS(Blueprintable)
 class PROJECTMOBIUS_API USimulationPlayBar : public UUserWidget
@@ -56,6 +60,18 @@ public:
 
        // Destructor
        virtual void NativeDestruct() override;
+
+       /** Register a listener when a play bar is constructed. */
+       static FOnSimulationPlayBarLifecycle& OnPlayBarConstructed();
+
+       /** Register a listener when a play bar is destructed. */
+       static FOnSimulationPlayBarLifecycle& OnPlayBarDestructed();
+
+       /**
+        * Respond to move/resize activity from moveable windows.
+        * @param bIsActive True when moving/resizing, false when idle.
+        */
+       void HandleMoveableWindowActivityChanged(bool bIsActive);
 
 protected:
 	/**
@@ -236,6 +252,15 @@ public:
 	uint8 SimulationPaused : 1 = 1;
 private:
 
+	// Cached last displayed current time (for UI)
+	float LastDisplayedCurrentTime = TNumericLimits<float>::Lowest();
+
+	// Optional: cache the last formatted text if you want to be extra safe    
+	FText LastCurrentTimeText;
+
+	/** True if the play bar paused the simulation due to window activity. */
+	bool bPausedForWindowActivity = false;
+	
 	/** As the slider movement may occur when already paused to prevent un pausing another variable is used to calculate this */
 	UPROPERTY()
 	uint8 PreviouslyPaused : 1 = 1;// This needs to be set true as the simulation starts paused

@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "ProjectMobiusGameInstance.generated.h"
 
 // DELEGATES
@@ -61,6 +62,40 @@ public:
 
 	/** Shutdown the Game Instance */
 	virtual void Shutdown() override;
+
+	/**
+	 * Report an error through the central feedback subsystem.
+	 * Safe to call from gameplay code without a MobiusWidgets dependency.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Error", meta = (AdvancedDisplay = "ErrorLocation,Severity,bShowPrompt"))
+	void ReportError(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
+		const FText& ErrorLocation = FText::GetEmpty(),
+		EMobiusErrorSeverity Severity = EMobiusErrorSeverity::Error,
+		bool bShowPrompt = true);
+
+	/** Enable/disable UI error prompts. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Error")
+	void SetErrorPromptsEnabled(bool bEnabled);
+
+	/** Open the log window if enabled. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	void OpenLogWindow();
+
+	/** Close the log window. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	void CloseLogWindow();
+
+	/** Enable or disable the log window entirely. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	void SetLogWindowEnabled(bool bEnabled);
+
+	/** Enable or disable the Mobius logger at runtime. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	void SetMobiusLoggerEnabled(bool bEnabled);
+
+	/** Check if the Mobius logger is currently enabled. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	bool IsMobiusLoggerEnabled() const;
 
 	//TODO: convert methods below so we can broadcast events when the data is changed
 

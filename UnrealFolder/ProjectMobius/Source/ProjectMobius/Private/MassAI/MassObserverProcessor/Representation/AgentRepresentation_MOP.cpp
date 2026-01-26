@@ -47,6 +47,7 @@
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 //#include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraDataInterface.h"
@@ -118,6 +119,14 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 	if (NiagaraSystem == nullptr)
 	{
 		// Log error if the Niagara System could not be loaded
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Representation Error"),
+				FText::FromString("Niagara system missing"),
+				FText::FromString("Failed to load Niagara System for Agent Representation."),
+				FText::FromString("AgentRepresentation_MOP"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
 		return;
 	}
@@ -145,7 +154,7 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 		// TODO: this check will always fail on data swap as the frags are reset so sizes will be 0 like the offset
 		// if the index offset is greater or less than the total then there is a miss match with current data the indexing should always be the same
-		if (!EntityIndexOffset == CurrentInstanceTotal)
+		if (EntityIndexOffset != CurrentInstanceTotal)
 		{
 			ResetDataInNiagaraSystem(AgentNiagaraStatsSharedFrag, AgentNiagaraDataSharedFrag);
 
@@ -162,6 +171,14 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			if (NiagaraSystem == nullptr)
 			{
 				// Log error if the Niagara System could not be loaded
+				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Representation Error"),
+						FText::FromString("Niagara system missing"),
+						FText::FromString("Failed to load Niagara System for Agent Representation."),
+						FText::FromString("AgentRepresentation_MOP"));
+				}
 				UE_LOG(LogTemp, Error, TEXT("Failed to load Niagara System for Agent Representation"));
 				return;
 			}
@@ -368,8 +385,7 @@ ANiagaraAgentRepActor* UAgentRepresentation_MOP::GetOrCreateNiagaraRepActor(UWor
 	return World->SpawnActor<ANiagaraAgentRepActor>(FVector::ZeroVector, FRotator::ZeroRotator);
 }
 
-int32 UAgentRepresentation_MOP::AddInstanceToISMComponent(UInstancedStaticMeshComponent* ISMComponent,
-                                                          const FTransform& InstanceTransform)
+int32 UAgentRepresentation_MOP::AddInstanceToISMComponent(UInstancedStaticMeshComponent* ISMComponent, const FTransform& InstanceTransform)
 {
 	const int32 InstanceIndex = ISMComponent->AddInstance(InstanceTransform);
 	// ISMComponent->SetCustomDataValue(InstanceIndex, 0,340.0f);// FrameOffset

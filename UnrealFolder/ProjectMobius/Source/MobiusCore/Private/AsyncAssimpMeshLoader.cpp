@@ -30,6 +30,7 @@
 #include "assimp/texture.h"
 #include "assimp/postprocess.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include <array>
 #include <vector>
 #include <earcut_hpp/earcut.hpp>
@@ -73,6 +74,12 @@ TArray<FIntVector> UAsyncAssimpMeshLoader::TriangulateWktPolygon(const TArray<FV
 
 	if (!Scene || !Scene->HasMeshes())
 	{
+		FMobiusErrorMessage Payload;
+		Payload.TitleBarText = FText::FromString("Mesh Load Error");
+		Payload.ErrorTitle = FText::FromString("Triangulation failed");
+		Payload.ErrorMessage = FText::FromString("Assimp failed to triangulate the provided polygon data.");
+		Payload.ErrorLocation = FText::FromString("AsyncAssimpMeshLoader");
+		UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(TWeakObjectPtr<UObject>(), Payload);
 		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
 		return Triangles;
 	}
@@ -97,7 +104,8 @@ TArray<FIntVector> UAsyncAssimpMeshLoader::TriangulateWktPolygon(const TArray<FV
 	return Triangles;
 }
 
-FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh)
+FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh, TWeakObjectPtr<UObject> InWorldContextObject)
+	: WorldContextObject(InWorldContextObject)
 {
 	if(InPathToMesh.IsEmpty())
 	{
@@ -107,6 +115,14 @@ FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh)
 	else if(!FPaths::FileExists(InPathToMesh))
 	{
 		// if the path to the mesh is not a valid file path and the string is not an obj string then return
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(WorldContextObject.Get()))
+		{
+			Feedback->ReportError(
+				FText::FromString("Mesh Load Error"),
+				FText::FromString("Mesh file not found"),
+				FText::FromString("The mesh file path does not exist."),
+				FText::FromString("AsyncAssimpMeshLoader"));
+		}
 		UE_LOG(LogTemp, Warning, TEXT("The path to the mesh is not a valid file path: %s"), *InPathToMesh);
 		return;
 	}
@@ -201,6 +217,12 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 
 	if (!Scene || !Scene->HasMeshes())
 	{
+		FMobiusErrorMessage Payload;
+		Payload.TitleBarText = FText::FromString("Mesh Load Error");
+		Payload.ErrorTitle = FText::FromString("Triangulation failed");
+		Payload.ErrorMessage = FText::FromString("Assimp failed to triangulate the provided polygon data.");
+		Payload.ErrorLocation = FText::FromString("AsyncAssimpMeshLoader");
+		UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(WorldContextObject, Payload);
 		UE_LOG(LogTemp, Error, TEXT("Assimp failed to triangulate: %s"), UTF8_TO_TCHAR(Importer.GetErrorString()));
 		return;
 	}
@@ -213,6 +235,12 @@ void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
     FString RawWkt;
     if (!LoadWKTFile(PathToMesh, RawWkt, ErrorMessage))
     {
+		FMobiusErrorMessage Payload;
+		Payload.TitleBarText = FText::FromString("Mesh Load Error");
+		Payload.ErrorTitle = FText::FromString("WKT file load failed");
+		Payload.ErrorMessage = FText::FromString(ErrorMessage);
+		Payload.ErrorLocation = FText::FromString("AsyncAssimpMeshLoader");
+		UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(WorldContextObject, Payload);
         UE_LOG(LogTemp, Error, TEXT("Failed to load WKT file: %s"), *ErrorMessage);
         return;
     }
@@ -221,6 +249,12 @@ void FAssimpMeshLoaderRunnable::LoadWKTDataToObjString()
     TArray<FPolygonWithHoles> Polygons;
     if (!ParseGeometryCollectionWkt(RawWkt, Polygons, ErrorMessage) || Polygons.Num() == 0)
     {
+		FMobiusErrorMessage Payload;
+		Payload.TitleBarText = FText::FromString("Mesh Load Error");
+		Payload.ErrorTitle = FText::FromString("WKT parse failed");
+		Payload.ErrorMessage = FText::FromString(ErrorMessage);
+		Payload.ErrorLocation = FText::FromString("AsyncAssimpMeshLoader");
+		UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(WorldContextObject, Payload);
         UE_LOG(LogTemp, Error, TEXT("Failed to parse WKT: %s"), *ErrorMessage);
         return;
     }

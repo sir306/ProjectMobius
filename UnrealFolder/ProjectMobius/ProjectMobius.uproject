@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.5",
 	"Category": "",
-	"Description": "",
+	"Description": " ",
 	"Modules": [
 		{
 			"Name": "ProjectMobius",
@@ -27,11 +27,6 @@
 			]
 		},
 		{
-			"Name": "ErrorHandling",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
 			"Name": "MobiusWidgets",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
@@ -53,6 +48,11 @@
 			"Name": "MobiusCore",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "MobiusLogging",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault"
 		}
 	],
 	"Plugins": [
@@ -92,6 +92,22 @@
 			"Enabled": true
 		},
 		{
+			"Name": "DatasmithImporter",
+			"Enabled": true
+		},
+		{
+			"Name": "DatasmithRuntime",
+			"Enabled": true
+		},
+		{
+			"Name": "DatasmithCADImporter",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win64",
+				"Linux"
+			]
+		},
+		{
 			"Name": "ElectronicNodes",
 			"Enabled": true,
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/5cb2a394d0c04e73891762be4cbd7216"
@@ -112,7 +128,7 @@
 		},
 		{
 			"Name": "ModuleGenerator",
-			"Enabled": true,
+			"Enabled": false,
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/ec36ec6e94f74075819e2a04f7cb97f3"
 		},
 		{
@@ -122,22 +138,6 @@
 		{
 			"Name": "MotionWarping",
 			"Enabled": true
-		},
-		{
-			"Name": "DatasmithImporter",
-			"Enabled": true
-		},
-		{
-			"Name": "DatasmithRuntime",
-			"Enabled": true
-		},
-		{
-			"Name": "DatasmithCADImporter",
-			"Enabled": true,
-			"SupportedTargetPlatforms": [
-				"Win64",
-				"Linux"
-			]
 		},
 		{
 			"Name": "OpenXR",
@@ -150,7 +150,7 @@
 		},
 		{
 			"Name": "OpenXREyeTracker",
-			"Enabled": false,
+			"Enabled": true,
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"Linux",
@@ -159,14 +159,20 @@
 		},
 		{
 			"Name": "OpenXRHandTracking",
-			"Enabled": false,
+			"Enabled": true,
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"Linux",
-				"Android",
-				"VisionOS"
+				"Android"
 			]
+		},
+		{
+			"Name": "XRBase",
+			"Enabled": true
 		}
+	],
+	"AdditionalPluginDirectories": [
+		"Plugins"
 	],
 	"TargetPlatforms": [
 		"IOS",

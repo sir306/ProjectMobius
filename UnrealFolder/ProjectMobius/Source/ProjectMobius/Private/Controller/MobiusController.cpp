@@ -24,10 +24,14 @@
 
 #include "Controller/MobiusController.h"
 
+#include "HeadMountedDisplayFunctionLibrary.h"
 #include "ImageUtils.h"
+#include "IXRTrackingSystem.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/MobiusControllerSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Util/FrameGrabberHelper.h"
 
 
 AMobiusController::AMobiusController()
@@ -38,20 +42,43 @@ AMobiusController::AMobiusController()
 void AMobiusController::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// Setup cursor and input mode
-	FInputModeGameAndUI InputMode;
-	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-	InputMode.SetHideCursorDuringCapture(false);
-	SetInputMode(InputMode);
-
-	// Set Mouse Cursor Behavior
-	bShowMouseCursor = true;
+	bool bVr = UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled();
 	
+	if (bVr)
+	{
+		// --- VR PROFILE: Game-only; OS cursor off; WidgetInteraction drives UI ---
+		FInputModeGameOnly Mode;
+		SetInputMode(Mode);
+
+		// In VR you don’t want a desktop cursor getting in the way.
+		bShowMouseCursor = false;
+
+		// Safety: make sure mouse-generated click/hover events don’t interfere
+		bEnableClickEvents = false;
+		bEnableMouseOverEvents = false;
+	}
+	else
+	{
+		// --- DESKTOP PROFILE: Game + UI; cursor visible; no lock; don’t hide on capture ---
+		FInputModeGameAndUI Mode;
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		Mode.SetHideCursorDuringCapture(false);
+
+		// Optionally set a specific widget to focus (UMG root), if you have one:
+		// Mode.SetWidgetToFocus(MyRootWidget ? MyRootWidget->TakeWidget() : TSharedPtr<SWidget>{});
+
+		SetInputMode(Mode);
+
+		bShowMouseCursor = true;
+		bEnableClickEvents = true;
+		bEnableMouseOverEvents = true;
+	}
 	GetScreenshotRequiredSubsystemsAndData();
 
-	// Bind to the screenshot request captured delegate
-	UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &AMobiusController::OnScreenShotCaptured);
+	// Initialize FrameGrabberHelper for screenshot capture (lazy initialization - will init when viewport is ready)
+	FrameGrabberHelper = NewObject<UFrameGrabberHelper>(this);
+	FrameGrabberHelper->Configure(false, FIntPoint(1920, 1080)); // Use downscale mode with 1920x1080 target resolution
+	FrameGrabberHelper->SetSavePath(ScreenshotFilePath + TEXT("/MobiusCaptures/"));
 
 	// send this to the Mobius Controller Subsystem to set the current player controller
 	if (UMobiusControllerSubsystem* MobiusControllerSubsystem = GetWorld()->GetSubsystem<UMobiusControllerSubsystem>())
@@ -66,9 +93,6 @@ void AMobiusController::BeginPlay()
 
 void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// Unbind delegates bound in BeginPlay / initialization
-	UGameViewportClient::OnScreenshotCaptured().RemoveAll(this);
-
 	if (GetWorld())
 	{
 		if (UProjectMobiusGameInstance* MobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
@@ -78,6 +102,16 @@ void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void AMobiusController::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (FrameGrabberHelper)
+	{
+		FrameGrabberHelper->Tick(DeltaTime);
+	}
 }
 
 void AMobiusController::GetScreenshotRequiredSubsystemsAndData()
@@ -175,10 +209,10 @@ void AMobiusController::TakeScreenshot()
 
 void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 {
-	// Create a unique folder for this capture
+	// Create a unique folder for this capture (also used by camera save points)
 	FString DestPath = ScreenshotFilePath + TEXT("/MobiusCaptures/");
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	
+
 	if (!PlatformFile.DirectoryExists(*DestPath))  // Ensure the directory exists for all screenshots
 	{
 		PlatformFile.CreateDirectoryTree(*DestPath);  // Create the directory tree if it doesn't exist
@@ -186,38 +220,17 @@ void AMobiusController::TakeScreenshot(const FString& BaseFileName)
 
 	// Assign the name for the screenshot file
 	ScreenShotFileName = BaseFileName;
-	
-	FScreenshotRequest::RequestScreenshot(false);
-}
 
-void AMobiusController::OnScreenShotCaptured(int Width, int Height, const TArray<FColor>& Bitmap) const
-{
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Width, Height, Bitmap]()
+	// Request the screenshot via FrameGrabberHelper
+	if (FrameGrabberHelper)
 	{
-		FString DestPath = ScreenshotFilePath + TEXT("/MobiusCaptures/");
-		FString FullPath = DestPath + ScreenShotFileName + TEXT(".png");
-	
-		TArray64<uint8> PNGData;
-		FImageUtils::PNGCompressImageArray(Width, Height, Bitmap, PNGData);
-
-		// Save PNG data to file
-		FFileHelper::SaveArrayToFile(PNGData, *FullPath, &IFileManager::Get());
-	});
-
-}
-
-// TODO: see implementation in dynamic texture for saving to png -> this currently saves as a bitmap not a png
-void AMobiusController::SaveScreenshot(const TArray<FColor>& Bitmap, const FString& FilePath, int32 Width, int32 Height)
-{
-	// Convert pixel array to PNG and save to disk
-	// Compress to PNG
-	TArray64<uint8> PNGData;
-	FImageUtils::PNGCompressImageArray(Width, Height, Bitmap, PNGData);
-
-	// Save PNG data to file
-	FFileHelper::SaveArrayToFile(PNGData, *FilePath, &IFileManager::Get());
-	
-	//FFileHelper::CreateBitmap(*FilePath, Width, Height, Bitmap.GetData(), nullptr, &IFileManager::Get());
+		FrameGrabberHelper->SetSavePath(DestPath);
+		FrameGrabberHelper->TriggerCapture(BaseFileName);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FrameGrabberHelper is not initialized, cannot take screenshot"));
+	}
 }
 
 void AMobiusController::LoadCameraSavePoints()
@@ -245,6 +258,14 @@ void AMobiusController::LoadCameraSavePoints()
 	FString FileContents;
 	if (!FFileHelper::LoadFileToString(FileContents, *CameraSavePointsFilePath))
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Camera Save Error"),
+				FText::FromString("Failed to load camera save points"),
+				FText::FromString("Could not read camera save points file."),
+				FText::FromString("MobiusController"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("LoadCameraSavePoints: Failed to load file: %s"), *CameraSavePointsFilePath);
 		return;
 	}
@@ -254,6 +275,14 @@ void AMobiusController::LoadCameraSavePoints()
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContents);
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Camera Save Error"),
+				FText::FromString("Invalid camera save JSON"),
+				FText::FromString("Camera save points file contains invalid JSON."),
+				FText::FromString("MobiusController"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("LoadCameraSavePoints: Invalid JSON in file: %s"), *CameraSavePointsFilePath);
 		return;
 	}
@@ -386,6 +415,14 @@ void AMobiusController::SaveCameraSavePoint(const FTransform& CameraTransform)
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Camera Save Error"),
+				FText::FromString("Failed to save camera points"),
+				FText::FromString("Could not serialize camera save points to JSON."),
+				FText::FromString("MobiusController"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to serialize camera save points JSON to string."));
 	}
 }

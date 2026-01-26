@@ -3,13 +3,12 @@
 This repository includes four main components, each governed by its own licensing terms:
 
 1. **Unreal Engine 5.5 Project**  
-2. **Qt Applications** (two separate apps)  
-3. **Node.js Server**  
-4. **Third-Party Libraries & Assets** (included under `Source/`)
+2. **Node.js Server**  
+3. **Third-Party Libraries & Assets** (included under `Source/`)
 
 ### Licensing Overview
 
-ProjectMobius's own source code (the Node.js server, Qt application sources, and all custom Unreal Engine modules and assets) is released under the MIT License. Unreal Engine, Qt runtime libraries, and other bundled third-party libraries or imported assets remain under their respective licenses as detailed below.
+ProjectMobius's own source code (the Node.js server and all custom Unreal Engine modules and assets) is released under the MIT License. Unreal Engine and other bundled third-party libraries or imported assets remain under their respective licenses as detailed below.
 
 ---
 
@@ -30,51 +29,7 @@ All content under `UnrealFolder/ProjectMobius5.5/` (C++ code, Blueprints, assets
 
 ---
 
-## 2. Qt Applications
-
-Your two Qt-based applications live here:
-
-- `UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/OpenFileTCP/`  
-- `UnrealFolder/ProjectMobius5.5/Tools/QT_Apps/PlotUE_Data/`
-
-Each Qt app links against Qt framework modules. By default, most Qt modules are available under the **GNU Lesser General Public License v3.0 (LGPL-3.0)** (unless you hold a commercial Qt license). You must comply with whichever Qt license applies to the modules you used.
-
-- **Qt Licensing Overview:**  
-  https://doc.qt.io/qt-6/licensing.html
-
-### 2.1 Your Qt App Source Code
-
-All `.cpp`, `.h`, `.qml`, etc. files that you authored under the two folders above (for example, `OpenFileTCP/main.cpp`, `PlotUE_Data/AxisSettings.h`, `PlotUE_Data/AppWindow.qml`, etc.) are licensed under the **MIT License** (see Section 5 below).
-
-### 2.2 Qt Framework Binaries & Libraries
-
-Any Qt framework binaries (e.g. Qt Core, Qt Gui, Qt Quick, Qt Widgets, QtGraphs, etc.) that these apps depend on are governed by **LGPL-3.0** (or a commercial Qt license) according to the modules you used. You are responsible for complying with the LGPL’s conditions (e.g. dynamic linking, providing object files for relinking, including the “COPYING.LGPL” text in your distribution, etc.).
-
-#### Example Notice (for each Qt executable/README)
-
-Qt Framework Libraries Licensing Notice
---------------------------------------
-This application (OpenFileTCP.exe / PlotUE_Data.exe) links against the following Qt modules under the GNU Lesser General Public License version 3.0 (LGPL-3.0):
-
-  • Qt5Core (LGPL-3.0)
-  • Qt5Gui (LGPL-3.0)
-  • Qt5Widgets (LGPL-3.0)
-  • QtGraphs (LGPL-3.0)
-  • QtQuick (LGPL-3.0)
-
-You must comply with the terms of the LGPL-3.0. In particular:
-
-  1. All Qt libraries are dynamically linked, so you may replace or upgrade those libraries with your own.  
-  2. If you modify any LGPL-licensed Qt modules, you must provide the corresponding object files to allow relinking.  
-  3. The full text of the LGPL-3.0 license is included in this distribution under “COPYING.LGPL-3.0.txt.” You can also review the license online at:  
-     https://www.gnu.org/licenses/lgpl-3.0.html
-
-For more information on how to comply with Qt’s LGPL requirements, see:  
-<a href="https://doc.qt.io/qt-6/lgpl.html">https://doc.qt.io/qt-6/lgpl.html</a>
-
----
-
-## 3. Node.js Server
+## 2. Node.js Server
 
 **Path:** `UnrealFolder/ProjectMobius5.5/Tools/NodeJS/`
 
@@ -82,7 +37,7 @@ All JavaScript source files in this folder (e.g. `MobiusServer.js`, `package.jso
 
 ---
 
-## 4. Third-Party Libraries & Assets
+## 3. Third-Party Libraries & Assets
 
 Within your Unreal project’s `Source/` directory, you have included several third-party libraries and data. Each is governed by its own license. Below is a summary of where to find each, and the full license URL you must comply with:
 
@@ -144,7 +99,7 @@ Within your Unreal project’s `Source/` directory, you have included several th
 
 ---
 
-## 5. MIT License (For Your Own Code and Self-Authored Assets)
+## 4. MIT License (For Your Own Code and Self-Authored Assets)
 
 Use the following text for any `.cpp/.h/.qml/.js` files or assets (e.g., your own textures/Blender exports) that you own outright (the “Software”). Replace the placeholders below with your own name (or organization) and year.
 

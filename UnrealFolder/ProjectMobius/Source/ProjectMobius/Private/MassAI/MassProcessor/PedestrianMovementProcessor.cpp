@@ -38,6 +38,7 @@
 // multithreading and async
 #include "Subsystems/HeatmapSubsystem.h"
 #include "MassEntityView.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Async/ParallelFor.h"
 #include "HAL/CriticalSection.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
@@ -124,6 +125,14 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			if (!CurrentSamplesPtr)
 			{
 				// Log an error or handle the case where the current samples are not found
+				if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Simulation Data Error"),
+						FText::FromString("Missing movement samples"),
+						FText::FromString(FString::Printf(TEXT("Movement samples not found for time step %d."), CurrentTimeStep)),
+						FText::FromString("PedestrianMovementProcessor"));
+				}
 				UE_LOG(LogTemp, Error, TEXT("Current movement samples not found for time step %d"), CurrentTimeStep);
 				return;
 			}
@@ -288,6 +297,9 @@ void UPedestrianMovementProcessor::AssignFromSample(FEntityMovementFragment& Mov
 	RenderFrag.bAnimationChanged = static_cast<EPedestrianMovementBracket>(MoveFrag.CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(Sample.MovementBracket);
 
 	MoveFrag.CurrentMovementBracket = Sample.MovementBracket;
+	
+	// Quick Fix for flow counters - when we set this fragment we need to sim time stamp it so we can use it for flow counters
+	MoveFrag.LastUpdatedSimTime = CurrentSimTime;
 }
 
 void UPedestrianMovementProcessor::InterpolateAndAssign(FEntityMovementFragment& MoveFrag,
@@ -302,6 +314,9 @@ void UPedestrianMovementProcessor::InterpolateAndAssign(FEntityMovementFragment&
 
 	RenderFrag.bAnimationChanged = static_cast<EPedestrianMovementBracket>(MoveFrag.CurrentMovementBracket) != static_cast<EPedestrianMovementBracket>(Next.MovementBracket);
 	MoveFrag.CurrentMovementBracket = Current.MovementBracket;
+
+	// Quick Fix for flow counters - when we set this fragment we need to sim time stamp it so we can use it for flow counters
+	MoveFrag.LastUpdatedSimTime = CurrentSimTime;
 }
 
 bool UPedestrianMovementProcessor::IsThereDataToProcess(const FMassExecutionContext& ExecutionContext) const
@@ -364,6 +379,8 @@ void UPedestrianMovementProcessor::UpdateCurrentTimeStepAndStepPercentage()
 
 		// update the time step percentage
 		TimeStepPercentage = TimeDilationSubSystem->GetCurrentTimeStepPercentage();
+
+		CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
 	}
 	else
 	{

@@ -10,7 +10,8 @@
  * Loading notification delegate, to broadcast current loading percent
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLoadingPercentChanged, float, NewLoadPercent);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLoadingTextChanged, FString, NewTitle, FString, NewText);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLoadingUnknownDurationChanged, bool, NewLoadingState, FString, NewText);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLoadingTextChanged, bool, bIsLoadingBar, FString, NewText);
 // change the loading text to DECLARE_DELEGATE_TwoParams(FOnLoadingTextChanged, FString&, FString&); once we know no blueprints will use it
 
 /**
@@ -54,9 +55,15 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
-	void SetLoadingTextAndTitle(const FString& NewLoadingText, const FString& NewLoadingTitle) const
+	void SetLoadingText(const bool bIsLoadingBar, const FString& NewLoadingText) const
 	{
-		OnLoadingTextChanged.Broadcast(NewLoadingTitle, NewLoadingText);
+		OnLoadingTextChanged.Broadcast(bIsLoadingBar, NewLoadingText);
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget|Methods")
+	void SetLoadingUnknownDuration(const bool bIsLoading, FString NewText)
+	{
+		OnLoadingUnknownDurationChanged.Broadcast(bIsLoading, NewText);
 	}
 
 #pragma region LoadingProperties
@@ -65,6 +72,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "LoadingNotifyWidget|Events")
 	FOnLoadingTextChanged OnLoadingTextChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "LoadingNotifyWidget|Events")
+	FOnLoadingUnknownDurationChanged OnLoadingUnknownDurationChanged;
 	
 #pragma endregion LoadingProperties
 	

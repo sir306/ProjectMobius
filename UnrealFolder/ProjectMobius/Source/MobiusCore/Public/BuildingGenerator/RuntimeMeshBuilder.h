@@ -25,15 +25,38 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Actors/FlowCounter.h"
 #include "GameFramework/Actor.h"
 #include "Interfaces/AssimpInterface.h"
 #include "Interfaces/ProjectMobiusInterface.h"
+#include "UObject/NameTypes.h"        // FName + GetTypeHash(FName)
+#include "UObject/WeakObjectPtr.h"    // TWeakObjectPtr hashing (for safety)
+#include "Materials/MaterialCache.h"
 #include "RuntimeMeshBuilder.generated.h"
+
+
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
+class UMaterialInstanceConstant;
+class UMaterial;
+class UTexture; 
+class UMobiusCustomLoggerSubsystem;
 
 /** Delegates */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMeshBuilt, FVector, BoundOrigins, FVector, BoundExtents);
 
+// Which master family to use for a given mesh's slot classification
+enum class EDatasmithMasterType : uint8
+{
+	Unknown,
+	TMStdOpaque,
+	TMStdTranslucent,
+	RuntimeOpaque,
+	RuntimeTranslucent
+};
+
 /** Structs */
+/** */
 USTRUCT()
 struct FDatasmithMaterials
 {
@@ -43,9 +66,24 @@ struct FDatasmithMaterials
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> MeshMaterials;
 
 	UPROPERTY()
-	bool bIsOpaque = false;
+	TArray<bool> bIsOpaque;
 };
 
+// One pending mesh that still needs its Datasmith MIDs created/applied
+USTRUCT()
+struct FPendingDatasmithMesh
+{
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	TWeakObjectPtr<UStaticMeshComponent> Mesh;
+
+	// We just store the component; slots are processed inside the worker
+	// using the EDatasmithMasterType classification cache.
+};
+
+
+/** */
 UCLASS()
 class MOBIUSCORE_API ARuntimeMeshBuilder : public AActor, public IAssimpInterface, public IProjectMobiusInterface
 {
@@ -58,6 +96,8 @@ public:
 
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -82,7 +122,8 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MeshGenerator|Generation")
 	void GetMeshDataFromFile(FRotator MeshRotationOffset = FRotator::ZeroRotator);
-	
+	void ResetMeshCollisionAndPhysics();
+
 	/**
 	 * Update the Mesh file name, this is bound to the OnMeshFileChanged Delegate in the Game Instance
 	 * and will call the methods to get the mesh data and rebuild the mesh
@@ -153,6 +194,9 @@ private:
 	/** Internal method to set the material on the mesh - TODO: this will need to be converted to be called via a delegate  */
 	void SetMaterialOnMesh();
 
+	/** */
+	void EndLoadingWidget();
+
 	/** Internal Method that creates and maps datasmith materials */
 	void CreateDatasmithMaterials();
 
@@ -163,6 +207,17 @@ private:
 	
 	/** Internal Method to handle Translucent Material creation of datasmith materials */
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
+
+
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeOpaqueMaterials(UMaterialInterface* InMaterial);
+	
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> CreateRuntimeTranslucentMaterials(UMaterialInterface* InMaterial, bool bIsOpaque = false);
+	
+	void EnqueueCollisionEnable(UStaticMeshComponent* Mesh);
+	void ProcessPendingCollisionEnables(float DeltaSeconds);
+
+	void ProcessPendingDatasmithMeshes(float DeltaSeconds);
+	void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
 	
 #pragma endregion PRIVATE_METHODS
 
@@ -171,6 +226,10 @@ public:
 	/** The Procedural Mesh Component used for generating meshes at runtime or on construction */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Component")
 	class UProceduralMeshComponent* MobiusProceduralMeshComponent;
+	
+	/** Flow Counter Spawner - handles spawning flow counters */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Component")
+	class UFlowCounterSpawnerComponent* FlowCounterSpawnerComponent;
 
 	/** Holds the filename to the mesh */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|MeshData")
@@ -201,6 +260,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Datasmith")
 	bool bIsDatasmithAsset = false;
 	
+	
 	/*
 	* Array to store the Procedural Meshes UV0 to Generate 
 	* - These are stored as 2D Vectors Structures, length must be the same as the length of vertices array 
@@ -218,10 +278,38 @@ public:
 	* - These are stored as Proc Mesh Tangent Structures, 
 	* length must be the same as the length of vertices array 
 	*/
-#pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
+
+	/***/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|FlowCounter")
+	TSubclassOf<AFlowCounter> FlowCounterToAutoSpawn = nullptr;
 
 protected:
+	
+	/** Door meshes we still need to spawn counters for (weak to avoid dangling refs). */
+	UPROPERTY()
+	TArray<TWeakObjectPtr<UStaticMeshComponent>> PendingDoorMeshes;
 
+	/** How many flow counters to spawn per tick to smooth out hitches. */
+	UPROPERTY(EditAnywhere, Category="Flow Counters")
+	int32 MaxFlowCountersPerTick = 5;
+
+	/** Are we currently processing the pending door queue? */
+	bool bIsSpawningFlowCounters = false;
+	
+	/** Shared material cache used for Datasmith and runtime materials. */
+	FMaterialCache MaterialCache;
+
+	/** Meshes that still need their Datasmith materials created/applied. */
+	UPROPERTY()
+	TArray<FPendingDatasmithMesh> PendingDatasmithMeshes;
+
+	/** How many Datasmith meshes we process per frame to avoid hitches. */
+	UPROPERTY(EditAnywhere, Category="MeshGenerator|Datasmith")
+	int32 MaxDatasmithMeshesPerFrame = 25;
+
+	/** Are we currently in the middle of batched Datasmith material setup? */
+	bool bDatasmithMaterialSetupInProgress = false;
+	
 private:
 	/** TODO: We eventually want to get the mesh material and apply our materials to it as a mask or material function to it
 	 * Material Instance Dynamic to apply to the Procedural Mesh Component after a mesh has been generated and set with
@@ -229,7 +317,26 @@ private:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Material", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UMaterialInstanceDynamic> MobiusMaterialInstanceDynamic = nullptr;
+	
+	// Components that still need collision turned on
+	UPROPERTY()
+	TArray<TWeakObjectPtr<UStaticMeshComponent>> PendingCollisionEnable;
 
+	// How many components we allow per frame
+	UPROPERTY(EditAnywhere, Category="Collision")
+	int32 MaxCollisionEnablesPerFrame = 10;
+	
+	// Are we currently resetting / swapping out the mesh and Datasmith anchor?
+	UPROPERTY(Transient)
+	bool bIsResettingForNewLoad = false;
+
+	/** Report a RuntimeMeshBuilder error through the user feedback subsystem. */
+	void ReportError(UObject* ContextObject, FString ErrorTitleBar, FString ErrorTitle, FString ErrorMessage, FString ErrorLocation);
+
+	/** Access the startup logger subsystem without an extra dependency on the game instance. */
+	static UMobiusCustomLoggerSubsystem* GetStartupLogger();
+	
+#pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 public:
 #pragma region GETTERS_SETTERS
 	/** Getters */

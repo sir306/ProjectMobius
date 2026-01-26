@@ -33,6 +33,7 @@
 #include "DatasmithRuntime.h"
 #include "StaticMeshResources.h" // used for accessing vertex buffers on static meshes
 #include "Rendering/PositionVertexBuffer.h" 
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 
 // Sets default values
@@ -129,12 +130,40 @@ void AHeatmapPixelTextureVisualizer::PostInitializeComponents()
 
 void AHeatmapPixelTextureVisualizer::AssignMaterialInstanceToMesh() const
 {
+	if (!RuntimeHeatmapMeshComponent)
+	{
+		return;
+	}
 	if(HeatmapType)
 	{
+		if (!HeatmapMaterialInstance)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Heatmap material missing"),
+					FText::FromString("Heatmap material instance is not available."),
+					FText::FromString("HeatmapPixelTextureVisualizer"));
+			}
+			return;
+		}
 		RuntimeHeatmapMeshComponent->SetMaterial(0, HeatmapMaterialInstance);
 	}
 	else
 	{
+		if (!VoronoiMaterialInstance)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Voronoi material missing"),
+					FText::FromString("Voronoi material instance is not available."),
+					FText::FromString("HeatmapPixelTextureVisualizer"));
+			}
+			return;
+		}
 		RuntimeHeatmapMeshComponent->SetMaterial(0, VoronoiMaterialInstance);
 	}
 }
@@ -240,12 +269,38 @@ void AHeatmapPixelTextureVisualizer::CreateMaterialInstances()
 	
 	// Assign the materials to the instance
 	// Heatmap Instance Material - by checking name we avoid renaming existing instances which is not allowed
-	if(!HeatmapMaterialInstance && HeatmapMaterial || HeatmapMaterialInstance->GetName() != ActorName + "HeatmapMaterialInstance")
+	const FString HeatmapInstanceName = ActorName + "HeatmapMaterialInstance";
+	if(!HeatmapMaterialInstance || HeatmapMaterialInstance->GetName() != HeatmapInstanceName)
 	{
+		if (!HeatmapMaterial)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Heatmap material missing"),
+					FText::FromString("Failed to load the heatmap material asset."),
+					FText::FromString("HeatmapPixelTextureVisualizer"));
+			}
+			return;
+		}
 		HeatmapMaterialInstance = UMaterialInstanceDynamic::Create(HeatmapMaterial, this, FName(*(ActorName + "HeatmapMaterialInstance")));
 	}
-	if(!VoronoiMaterialInstance && VoronoiMaterial || VoronoiMaterialInstance->GetName() != ActorName + "VoronoiMaterialInstance")
+	const FString VoronoiInstanceName = ActorName + "VoronoiMaterialInstance";
+	if(!VoronoiMaterialInstance || VoronoiMaterialInstance->GetName() != VoronoiInstanceName)
 	{
+		if (!VoronoiMaterial)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Voronoi material missing"),
+					FText::FromString("Failed to load the voronoi material asset."),
+					FText::FromString("HeatmapPixelTextureVisualizer"));
+			}
+			return;
+		}
 		VoronoiMaterialInstance = UMaterialInstanceDynamic::Create(VoronoiMaterial, this, FName(*(ActorName + "VoronoiMaterialInstance")));
 	}
 }
@@ -255,17 +310,42 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture() const
 	// check texture is valid
 	if(!DynamicTexture)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Dynamic texture component is not available."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
 		UE_LOG(LogTemp, Warning, TEXT("DynamicTexture is not valid"));
+		return;
 	}
 	// check static mesh and material instance is valid
-	if(!RuntimeHeatmapMeshComponent->GetProcMeshSection(0) || !HeatmapMaterialInstance)
+	if(!RuntimeHeatmapMeshComponent || !RuntimeHeatmapMeshComponent->GetProcMeshSection(0) || !HeatmapMaterialInstance || !VoronoiMaterialInstance)
 	{
-		return; //TODO: Add better error handling
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("Heatmap resources missing"),
+				FText::FromString("Heatmap mesh or material instances are not ready."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
 	}
 	// check if in world
 	if(GetWorld() == nullptr)
 	{
-		return; //TODO: Add better error handling
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString("World not available"),
+				FText::FromString("Cannot initialize the heatmap without a valid world."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
 	}
 	
 	DynamicTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue);
@@ -311,6 +391,18 @@ bool AHeatmapPixelTextureVisualizer::CheckHeatmapAndLocationValid(const FVector&
 void AHeatmapPixelTextureVisualizer::UpdateHeatmap(const FVector& AgentLocation, bool bUpdateHeatmap) const
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Update heatmap ");
+	if (!DynamicTexture)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Heatmap texture is not available for updates."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
+	}
 	// Check heatmap texture and location is valid
 	//if (!CheckHeatmapAndLocationValid(AgentLocation)) return;
 	
@@ -340,6 +432,18 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmap(const FVector& AgentLocation,
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents(const TArray<FVector>& AgentLocations)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Update heatmap agent locations with check start function");
+	if (!DynamicTexture)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Heatmap texture is not available for updates."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
+	}
 	
 	// agent count
 	std::atomic<int32> ActiveAgents = 0;
@@ -415,6 +519,18 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents(const TArra
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents_NoCheck(const TArray<FVector>& AgentLocations)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Update heatmap agent locations no check start function");
+	if (!DynamicTexture)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Heatmap texture is not available for updates."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
+	}
 	// check if the agent locations are empty
 	if(AgentLocations.Num() == 0)
 	{
@@ -547,11 +663,19 @@ FVector2D AHeatmapPixelTextureVisualizer::ActorWorldToUV(const FVector& EntityWo
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapTextureRender() const
 {
+	if (!DynamicTexture)
+	{
+		return;
+	}
 	DynamicTexture->UpdateTextureRender();
 }
 
 void AHeatmapPixelTextureVisualizer::ClearTexture()
 {
+	if (!DynamicTexture)
+	{
+		return;
+	}
 	DynamicTexture->ClearTexture();
 }
 
@@ -657,11 +781,35 @@ void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSiz
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapCVDSettings(EColorVisionDeficiency ColourDeficiency,
                                                               float DeficiencyLevel, bool bCorrectDeficiency, bool bSimulateColourCorrectionWithDeficiency)
 {
+	if (!DynamicTexture)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Update Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Heatmap texture is not available for CVD updates."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
+	}
 	DynamicTexture->UpdateHeatmapCVDSettings(ColourDeficiency, DeficiencyLevel, bCorrectDeficiency, bSimulateColourCorrectionWithDeficiency);
 }
 
 void AHeatmapPixelTextureVisualizer::SaveHeatmapToPNG() const
 {
+	if (!DynamicTexture)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Save Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Heatmap texture is not available for export."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
+	}
 	// File name is name + Created date time + .png
 	FString SafeTimestamp = FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S"));
 	FString FileName = FString::Printf(TEXT("Heatmap/%s_%s.png"), *ActorName, *SafeTimestamp);
@@ -670,6 +818,18 @@ void AHeatmapPixelTextureVisualizer::SaveHeatmapToPNG() const
 
 void AHeatmapPixelTextureVisualizer::SaveHeatmapToPNG(const FString& CurrentTimeString) const
 {
+	if (!DynamicTexture)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Save Error"),
+				FText::FromString("Dynamic texture missing"),
+				FText::FromString("Heatmap texture is not available for export."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
+		return;
+	}
 	// File name is name + Created date time + .png
 	FString SafeTimestamp = FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S"));
 	FString FileName = TEXT("Heatmap/") + ActorName + TEXT("_SimTime_") +
@@ -854,11 +1014,27 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 
 	if(!bValidMeshBuilder)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Mesh Error"),
+				FText::FromString("Runtime mesh builder missing"),
+				FText::FromString("GenerateMeshVerticesUVsAndTriangles requires a valid RuntimeMeshBuilder."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("GenerateMeshVerticesUVsAndTriangles: Invalid MeshBuilder"));
 	}
 
 	if(!bValidTriangles)
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Heatmap Mesh Error"),
+				FText::FromString("Invalid heatmap triangle count"),
+				FText::FromString("Heatmap triangle dimensions must be greater than zero."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("GenerateMeshVerticesUVsAndTriangles: Invalid NumTriangles (%d, %d)"), NumTriangles.X, NumTriangles.Y);
 	}
 

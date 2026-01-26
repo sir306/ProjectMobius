@@ -218,3 +218,71 @@ UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
 # JetBrains IDE settings
 .idea/
 UnrealFolder/ProjectMobius/.idea/
+
+
+# =====================================================
+# macOS System Files
+# =====================================================
+
+# Finder metadata
+.DS_Store
+.DS_Store?
+
+# Resource fork files
+._*
+
+# AppleDouble (resource fork) files
+.AppleDouble
+
+# Spotlight / indexing
+.Spotlight-V100
+.fseventsd
+
+# Time Machine
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Disk image / archive artifacts
+*.dmg
+*.sparsebundle
+
+# Shared file system metadata
+.apdisk
+
+# Xcode user data (per-user, not project)
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+
+# Derived data / build artifacts (Xcode)
+DerivedData/
+/UnrealFolder/ProjectMobius/_superbuild
+/UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build
+
+
+# Build and binary outputs
+build/
+executable/
+
+# Qt / IDE generated files
+*.user
+*.user.*
+*.KgsUPe
+
+# OS junk
+.DS_Store
+Thumbs.db
+/UnrealFolder/ProjectMobius/Tools/bin
+/UnrealFolder/ProjectMobius/Content/Characters
+/UnrealFolder/ProjectMobius/Content/VRTemplate
+/UnrealFolder/ProjectMobius/Content/VRSpectator
+/UnrealFolder/ProjectMobius/Content/LevelPrototyping
+/UnrealFolder/ProjectMobius/Content/FPWeapon
+/UnrealFolder/ProjectMobius/MobiusCaptures
+UnrealFolder/ProjectMobius/codex sesh.txt
+UnrealFolder/ProjectMobius/.claude/settings.local.json
+UnrealFolder/ProjectMobius/PlotOverlay.png
+UnrealFolder/ProjectMobius/MobiusCustomLog.txt
+UnrealFolder/ProjectMobius/nul
+/ScreenshotIssues

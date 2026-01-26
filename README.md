@@ -164,6 +164,14 @@ Ensure that the Qt modules **QtCore**, **QtGui**, **QtQuick**, **QtWidgets**,
 **QtGraphs**, and **QtNetwork** are installed so `windeployqt` can copy the
 correct libraries.
 
+### Assimp Plugin (UE4_Assimp) – Building Binaries
+
+Project Mobius uses the **UE4_Assimp** plugin to enable importing a wide range of 3D formats through [Assimp](https://github.com/assimp/assimp).  
+This plugin is **not** a git submodule in this repository—you clone and build it inside your local project’s `Plugins/` folder. More details can be found at https://github.com/irajsb/UE4_Assimp
+
+When building the plugin module and binaries refer to the link below:
+> https://github.com/irajsb/UE4_Assimp/wiki/How-To-Build
+
 ### Unreal Engine 5.5 Project
 
 After the Node and Qt executables are built, open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.

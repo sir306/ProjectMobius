@@ -28,9 +28,10 @@
 #include "GameFramework/PlayerController.h"
 #include "MobiusController.generated.h"
 
+class UFrameGrabberHelper;
 
 /**
- * 
+ *
  */
 UCLASS()
 class PROJECTMOBIUS_API AMobiusController : public APlayerController
@@ -47,6 +48,9 @@ public:
 
 	/** Override EndPlay to clean up bound delegates */
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Override Tick to poll FrameGrabberHelper for captured frames */
+	virtual void Tick(float DeltaTime) override;
 	
 	/** Get the required subsystems to create a screenshot */
 	void GetScreenshotRequiredSubsystemsAndData();
@@ -63,13 +67,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MobiusController|Methods")
 	void TakeScreenshot();
 	void TakeScreenshot(const FString& BaseFileName);
-
-	/** Method that is bound to builtin screenshot method, using the builtin method we remove the need for render targets */
-	UFUNCTION()
-	void OnScreenShotCaptured(int Width, int Height, const TArray<FColor>& Bitmap) const;
-	
-	UFUNCTION(BlueprintCallable, Category = "MobiusController|Methods")
-	void SaveScreenshot(const TArray<FColor>& Bitmap, const FString& FilePath, int32 Width, int32 Height);
 
 	/**
 	 * Load stored camera save points from the mobius capture folder if it exists for the current pedestrian vector file
@@ -103,6 +100,10 @@ public:
 	/** Ptr to the Time dialation subsystem to get the current simulation time */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")
 	TObjectPtr<class UTimeDilationSubSystem> TimeDilationSubsystem;
+
+	/** Frame grabber helper for capturing screenshots */
+	UPROPERTY()
+	TObjectPtr<UFrameGrabberHelper> FrameGrabberHelper;
 	
 	/** File Path relative to pedestrian vectors - defaults to project directory if unable to find */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")

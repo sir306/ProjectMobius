@@ -22,7 +22,10 @@ void UStatisticActorManagementSubsystem::RemoveFlowCounter(AFlowCounter* FlowCou
 {
 	if (FlowCounters.Contains(FlowCounter))
 	{
-		FlowCounters.Remove(FlowCounter);
+		int32 Index = FlowCounters.Find(FlowCounter);
+		FlowCounters.RemoveAt(Index);
+		
+		// once we remove it we need to correct the indices of the remaining flow counters
 		
 		// Notify listeners that the flow counters have changed
 		OnFlowCountersChanged.ExecuteIfBound();

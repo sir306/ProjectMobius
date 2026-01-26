@@ -12,7 +12,6 @@ public class ProjectMobiusEditorTarget : TargetRules
 		ExtraModuleNames.AddRange( new string[]
 		{
 			"HeatmapVisualization",
-			"ErrorHandling",
 		} );
 		RegisterModulesCreatedByRider();
 	}

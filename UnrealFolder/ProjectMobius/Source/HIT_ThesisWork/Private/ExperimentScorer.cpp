@@ -27,6 +27,7 @@
 #include "Algo/RandomShuffle.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
 UExperimentScorer::UExperimentScorer(): ParticipantID(0), ESimulationType(ECVDTestType::Normal)
 {
@@ -82,6 +83,14 @@ bool UExperimentScorer::CheckFilesAndAutoGenerateParticipantID(const FString& In
 	if (InFilePath.IsEmpty() || FPaths::DirectoryExists(InFilePath) == false)
 	{
 		// Log error
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Experiment Setup Error"),
+				FText::FromString("Invalid output directory"),
+				FText::FromString("File path is empty or the directory does not exist."),
+				FText::FromString("ExperimentScorer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("File path is empty! Or the directory does not exist!"));
 		return Result;
 	}
@@ -237,6 +246,14 @@ void UExperimentScorer::StoreQuestionnaireAnswers()
 {
 	if (CSVFilePath.IsEmpty() || !FPaths::FileExists(CSVFilePath))
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Experiment Save Error"),
+				FText::FromString("Results file not found"),
+				FText::FromString("File path is empty or the file does not exist."),
+				FText::FromString("ExperimentScorer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("File path is empty or the file does not exist: %s"), *CSVFilePath);
 		return;
 	}
@@ -311,6 +328,14 @@ void UExperimentScorer::StoreQuestionnaireAnswers()
 	}
 	else
 	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Experiment Save Error"),
+				FText::FromString("Failed to update results file"),
+				FText::FromString("Failed to update CSV file with questionnaire data."),
+				FText::FromString("ExperimentScorer"));
+		}
 		UE_LOG(LogTemp, Error, TEXT("Failed to update file: %s"), *CSVFilePath);
 	}
 }

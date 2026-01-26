@@ -177,7 +177,8 @@ void UTimeDilationSubSystem::OverrideCurrentTime(float NewSimulationTime, const 
 	CurrentSimulationTime = NewSimulationTime;
 
 	// Get Elapsed Game Time in seconds
-	float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld()) * TimeDialation;
+	//float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld()) * TimeDialation;
+	float RealtimeSeconds = UGameplayStatics::GetTimeSeconds(GetWorld()) * TimeDialation; // Doing this means we don't need to do all the nonsense in slate
 	AmountOfTimePaused = CurrentSimulationTime - RealtimeSeconds; // When the time is overriden the pause amount needs to be updated
 
 	// Calculate the time in hours, mins, seconds, milliseconds -- we floor to the nearest int as we dont want to skip a time step or jump
@@ -279,8 +280,10 @@ void UTimeDilationSubSystem::UpdateSimulationTime()
 float UTimeDilationSubSystem::GetGameElapsedTime()
 {
 	// Get Elapsed Game Time in seconds
-	float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld()) * TimeDialation;
-
+	//float RealtimeSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld()) * TimeDialation;
+	
+	float RealtimeSeconds = UGameplayStatics::GetTimeSeconds(GetWorld()) * TimeDialation;
+	
 	float ElapsedTime = RealtimeSeconds - CurrentSimulationTime;
 
 	// Check if we are paused

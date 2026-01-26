@@ -23,6 +23,7 @@
  */
 
 #include "SplineGraphLocationBucket.h"
+#include "IMobiusErrorReporter.h"
 
 
 USearchSegment::USearchSegment():
@@ -289,6 +290,19 @@ void USplineGraphLocationBucket::AddEntityToBucket(FVector EntityLocation)
 	// check if the entity is inside this bucket
 	if(BucketSegmentBounds.IsInsideOrOn(EntityLocation))
 	{
+		if (!RootSearchSegment)
+		{
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Spline Graph Error"),
+					FText::FromString("Search segments not initialized"),
+					FText::FromString("Cannot add entities before the bucket segments are built."),
+					FText::FromString("SplineGraphLocationBucket"));
+			}
+			return;
+		}
+
 		// we know entity is in this bucket so add it to the total
 		TotalEntities++;
 		
@@ -301,6 +315,18 @@ void USplineGraphLocationBucket::AddEntityToBucket(FVector EntityLocation)
 		// find which bucket it belongs too
 		if(bDidFind)
 		{
+			if (!BucketSegments.IsValidIndex(BucketID))
+			{
+				if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Spline Graph Error"),
+						FText::FromString("Invalid bucket ID"),
+						FText::FromString("Computed bucket ID is out of range for the current buckets."),
+						FText::FromString("SplineGraphLocationBucket"));
+				}
+				return;
+			}
 			IncrementBucketSegment(BucketSegments[BucketID]);
 
 			// log the bucket segment ID and the number of entities in the segment
@@ -335,6 +361,19 @@ void USplineGraphLocationBucket::RemoveEntityFromBucketSegment(FVector EntityLoc
 	// check if the entity is inside this bucket
 	if(BucketSegmentBounds.IsInsideOrOn(EntityLocation))
 	{
+		if (!RootSearchSegment)
+		{
+			if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Spline Graph Error"),
+					FText::FromString("Search segments not initialized"),
+					FText::FromString("Cannot remove entities before the bucket segments are built."),
+					FText::FromString("SplineGraphLocationBucket"));
+			}
+			return;
+		}
+
 		// we know entity is in this bucket so remove it from the total
 		TotalEntities--;
 		
@@ -347,6 +386,18 @@ void USplineGraphLocationBucket::RemoveEntityFromBucketSegment(FVector EntityLoc
 		// find which bucket it belongs too
 		if(bDidFind)
 		{
+			if (!BucketSegments.IsValidIndex(BucketID))
+			{
+				if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+				{
+					Feedback->ReportError(
+						FText::FromString("Spline Graph Error"),
+						FText::FromString("Invalid bucket ID"),
+						FText::FromString("Computed bucket ID is out of range for the current buckets."),
+						FText::FromString("SplineGraphLocationBucket"));
+				}
+				return;
+			}
 			RemoveEntityFromBucketSegmentByID(BucketID);
 		}
 		else
@@ -395,6 +446,18 @@ void USplineGraphLocationBucket::CreateRootSearchSegment(FBox3d MaxSearchBoundSi
 {
 	// create the root search segment
 	RootSearchSegment = NewObject<USearchSegment>(this);
+	if (!RootSearchSegment)
+	{
+		if (IMobiusErrorReporter* Feedback = IMobiusErrorReporter::Get(this))
+		{
+			Feedback->ReportError(
+				FText::FromString("Spline Graph Error"),
+				FText::FromString("Failed to create search segments"),
+				FText::FromString("Could not allocate the root search segment."),
+				FText::FromString("SplineGraphLocationBucket"));
+		}
+		return;
+	}
 
 	// pass initial values to the root search segment to begin recursion
 	RootSearchSegment->CreateSearchSegments(this, MaxSearchBoundSize, TotalSearchBounds, bIsXGraph);

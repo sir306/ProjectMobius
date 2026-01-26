@@ -26,4 +26,10 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UStatisticSubsystem> StatisticSubsystem;
+
+	UPROPERTY()
+	TObjectPtr<class UTimeDilationSubSystem> TimeDilationSubSystem;
+
+	UPROPERTY()
+	float CurrentSimTime = 0.0f;
 };

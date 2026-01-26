@@ -3,18 +3,26 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/HelperStructs.h"
+#include "WidgetUtilHelpers.generated.h"
 
+class UScrollBox;
+class UUniformGridPanel;
+class UWidgetComponent;
 class UWidget;
 class UComboBoxString;
 class UFieldAndTextWidget;
 /**
  * 
  */
-class MOBIUSWIDGETS_API WidgetUtilHelpers
+UCLASS()
+class MOBIUSWIDGETS_API UWidgetUtilHelpers : public UBlueprintFunctionLibrary
 {
+	GENERATED_BODY()
+	
 public:
-	WidgetUtilHelpers();
-	~WidgetUtilHelpers();
+	UWidgetUtilHelpers();
+	~UWidgetUtilHelpers();
 
 	/**
 	 * Clears all options in the provided combo string box
@@ -39,27 +47,27 @@ public:
 	 * @param[FString] Option The option to check for in the combo box
 	 * @param[bool] bSetSelection If true, will set the combo box to the option if it exists
 	 */
-        static void FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option, bool bSetSelection = true);
+	static void FindAndSetComboBoxOption(TObjectPtr<UComboBoxString> ComboBox, const FString& Option, bool bSetSelection = true);
 
-        /**
-         * Update widget text only if it differs from the new value
-         */
-        static void UpdateTextIfChanged(UFieldAndTextWidget* Widget, const FText& NewText);
+	/**
+	 * Update widget text only if it differs from the new value
+	 */
+	static void UpdateTextIfChanged(UFieldAndTextWidget* Widget, const FText& NewText);
 
-        /**
-         * Update widget text with a number only if it differs from the new value
-         */
-        static void UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32 NewNumber);
+	/**
+	 * Update widget text with a number only if it differs from the new value
+	 */
+	static void UpdateNumberIfChanged(UFieldAndTextWidget* Widget, int32 NewNumber);
 
-        /**
-         * Update widget text with a float formatted to two decimals only if different
-         */
-        static void UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float NewFloat);
+	/**
+	 * Update widget text with a float formatted to two decimals only if different
+	 */
+	static void UpdateFloatIfChanged(UFieldAndTextWidget* Widget, float NewFloat);
 
-        /**
-         * Update widget text with a vector formatted to two decimals only if different
-         */
-        static void UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec);
+	/**
+	 * Update widget text with a vector formatted to two decimals only if different
+	 */
+	static void UpdateVectorIfChanged(UFieldAndTextWidget* Widget, const FVector& Vec);
 
 	
 	/**
@@ -70,4 +78,121 @@ public:
 	 * @param[EVerticalAlignment] VAlign Desired vertical alignment
 	 */
 	static void SetGridSlotAlignment(UWidget* Widget, EHorizontalAlignment HAlign, EVerticalAlignment VAlign);
+
+	/** */
+	static FUniformGridLayout ComputeUniformGridLayout(
+		const FVector2D& DrawSizePx,
+		int32 NumItems,
+		const FVector2D& MinCellPx,
+		int32 PreferredColsHint = 0);
+
+	/**
+	 * Given a chosen layout, apply slot positions in a UniformGrid, add children if needed.
+	 * (Does not create the actual child widgets; just positions an existing array.)
+	 */
+	static void ApplyUniformGridLayout(
+		UUniformGridPanel* Grid,
+		const TArray<UWidget*>& Children,
+		const FUniformGridLayout& Layout);
+
+	/** Make child fill its grid cell (H/V Fill and no padding). */
+	static void UniformGridFillCell(UWidget* Child);
+
+	/**
+	 * Distance-adaptive scaling so a WidgetComponent maintains a *target on-screen pixel height*
+	 * independent of distance (approximate; assumes perspective projection).
+	 *
+	 * @param DesiredScreenHeightPx  e.g., 320 px tall on screen
+	 * @param ReferenceWorldHeightUU height in Unreal units the widget represents at scale=1 (e.g., 100uu)
+	 * @param bClamp                 optional clamping
+	 * @param MinScale, MaxScale     scale clamps to avoid absurd sizes
+	 */
+	static void UpdateWidgetComponentScaleForScreenHeight(
+		UWidgetComponent* WidgetComp,
+		APlayerController* PC,
+		float DesiredScreenHeightPx,
+		float ReferenceWorldHeightUU,
+		bool  bClamp = true,
+		float MinScale = 0.25f,
+		float MaxScale = 6.0f);
+
+	/**
+	 * Fast font fitting: find largest font size that fits a box (binary search).
+	 * (You may already have this; included here for the grid workflow.)
+	 */
+	static int32 FindFittingFontSize(const FText& Text,
+	                                 const struct FSlateFontInfo& BaseFont,
+	                                 const FVector2D& BoxPx,
+	                                 int32 MinSize,
+	                                 int32 MaxSize,
+	                                 float PaddingScale = 0.92f);
+
+	/** */
+	static void ApplyFontSize(class UTextBlock* TextBlock, int32 NewSize);
+
+	static FORCEINLINE int32 CeilDiv(int32 A, int32 B) { return (A + (B - 1)) / B; }
+
+	// Make a widget fill its parent (Canvas/Grid supported)
+	static void FillParentSlot(UWidget* Widget);
+
+	// Compute largest font size that fits a single FieldAndTextWidget into BoxPx
+	static int32 FindFittingFontSizeForFieldAndText(
+		class UFieldAndTextWidget* W,
+		const FVector2D& BoxPx,
+		int32 MinSize,
+		int32 MaxSize,
+		float PaddingScale = 0.92f);
+
+	/** Measure combined Title+Field extents at a given font size (no UI mutation) */
+	static FVector2D MeasureFieldAndTextAtSize(
+		const FText& Title, const FText& Field,
+		const FSlateFontInfo& TitleFontBase, const FSlateFontInfo& FieldFontBase,
+		int32 SizePx, bool bVertical);
+
+	/**
+	 * Sort ScrollBox children by label "F{Floor} Counter {Counter}".
+	 *
+	 * - Looks through each UserWidget child for a UTextBlock matching that format.
+	 * - Sorts by Floor first, then Counter.
+	 * - bDescendingFloor / bDescendingCounter control sort direction on each key.
+	 *
+	 * Widgets without a valid label are left at the end, in original order.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Mobius|WidgetUtils")
+	static void SortScrollBoxChildrenByFloorAndCounter(
+		UScrollBox* ScrollBox,
+		bool bDescendingFloor,
+		bool bDescendingCounter);
+	
+	UFUNCTION(BlueprintCallable, Category="Mobius|WidgetUtils")
+	int32 SortScrollBoxChildrenByFloorAndCounterWithNewPos(
+	UScrollBox* ScrollBox,
+	bool bDescendingFloor,
+	bool bDescendingCounter,
+	UUserWidget* TargetWidget);
+	
+	/**
+	 * Get the index of a target widget within a scroll box
+	 *
+	 * @param[UScrollBox] ScrollBox The scroll box to search
+	 * @param[UUserWidget] Target The target widget to find
+	 * @return The index of the target widget within the scroll box, or INDEX_NONE if not found
+	 */
+	UFUNCTION(BlueprintCallable, Category="Mobius|WidgetUtils")
+	int32 GetWidgetIndexInScrollBox(
+	UScrollBox* ScrollBox,
+	UUserWidget* Target);
+
+private:
+
+	struct FFloorCounterKey
+	{
+		int32 SortFloorLow = 0;
+		int32 SortFloorHigh = 0;
+		int32 Counter = 0;
+		bool bHasValidKey = false;
+	};
+
+	static FFloorCounterKey ParseFloorCounterText(const FString& InText);
+	static FFloorCounterKey ExtractFloorCounterFromWidget(UUserWidget* Widget, const FName& TextBlockName);
 };

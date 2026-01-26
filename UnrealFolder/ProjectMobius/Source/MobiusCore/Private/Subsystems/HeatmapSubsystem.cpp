@@ -24,9 +24,11 @@
 
 #include "Subsystems/HeatmapSubsystem.h"
 
-//#include "MobiusWidgetSubsystem.h"
+//#include "Core/MobiusWidgetSubsystem.h"
 #include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Kismet/GameplayStatics.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
+#include "Engine/Engine.h"
 
 UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
 {
@@ -34,6 +36,11 @@ UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
 
 void UHeatmapSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+	{
+		StartupLogger->EnqueueLogMessage(TEXT("HeatmapSubsystem::Initialize begin"));
+	}
+
 	Super::Initialize(Collection);
 
 	// check we are in the game world as we only want to get actors if we are
@@ -56,6 +63,11 @@ void UHeatmapSubsystem::Deinitialize()
 
 void UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize(const FVector& SpawnOrigin, const FVector& BoundExtents)
 {
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("HeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize Origin:%s Extent:%s"), *SpawnOrigin.ToCompactString(), *BoundExtents.ToCompactString()));
+	}
+
 	{
 		// lock the data
 		FScopeLock lock(&HeightSpawnDataLock);
@@ -75,6 +87,8 @@ void UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize(const FVector& SpawnOr
 
 void UHeatmapSubsystem::UpdateSpawnHeightLocations(const TArray<float>& NewHeightSpawnLocations)
 {
+	// Broadcast the new spawn heights
+	OnNewSpawnHeights.Broadcast(NewHeightSpawnLocations);
 	{
 		// lock
 		FScopeLock lock(&HeightSpawnDataLock);
@@ -95,6 +109,11 @@ void UHeatmapSubsystem::CreateHeatmap(const FVector& Location, int32 HeatmapInde
 	// Check if the world is valid
 	if (GetWorld())
 	{
+		if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+		{
+			StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("HeatmapSubsystem::CreateHeatmap index:%d location:%s"), HeatmapIndex, *Location.ToCompactString()));
+		}
+
 		// check the location has not already been used by another heatmap
 		for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
 		{
@@ -492,18 +511,38 @@ void UHeatmapSubsystem::ComputeValidHeatmapLocations(const TArray<FVector>& Loca
 }
 
 void UHeatmapSubsystem::BroadcastAgentCounts(const TArray<TArray<FVector>>& ValidLocations,
-                                             const TArray<TArray<FVector>>& BetweenLocations) const
+                                             const TArray<TArray<FVector>>& BetweenLocations) 
 {
-	//TRACE_CPUPROFILER_EVENT_SCOPE("BroadcastAgentCounts");
-        for (int32 i = 0; i < BetweenLocations.Num(); ++i)
-        {
-                OnUpdateBetweenFloorStatCount.Broadcast(i, BetweenLocations[i].Num());
-        }
+	// Resize caches if heatmap count changed
+	if (LastBetweenFloorCounts.Num() != BetweenLocations.Num())
+	{
+		LastBetweenFloorCounts.Init(INDEX_NONE, BetweenLocations.Num());
+	}
 
-        for (int32 i = 0; i < ValidLocations.Num(); ++i)
-        {
-                OnUpdateFloorStatCount.Broadcast(i, ValidLocations[i].Num());
-        }
+	if (LastFloorCounts.Num() != ValidLocations.Num())
+	{
+		LastFloorCounts.Init(INDEX_NONE, ValidLocations.Num());
+	}
+
+	for (int32 i = 0; i < BetweenLocations.Num(); ++i)
+	{
+		const int32 NewCount = BetweenLocations[i].Num();
+		if (LastBetweenFloorCounts[i] != NewCount)
+		{
+			LastBetweenFloorCounts[i] = NewCount;
+			OnUpdateBetweenFloorStatCount.Broadcast(i, NewCount);
+		}
+	}
+
+	for (int32 i = 0; i < ValidLocations.Num(); ++i)
+	{
+		const int32 NewCount = ValidLocations[i].Num();
+		if (LastFloorCounts[i] != NewCount)
+		{
+			LastFloorCounts[i] = NewCount;
+			OnUpdateFloorStatCount.Broadcast(i, NewCount);
+		}
+	}
 }
 
 void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(

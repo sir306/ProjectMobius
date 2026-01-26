@@ -149,6 +149,9 @@ private:
 	int32 CurrentTimeStep = 0;
 
 	UPROPERTY()
+	float CurrentSimTime = 0.0f;
+
+	UPROPERTY()
 	bool bAreSubSystemsSetup = false;
 
 	UPROPERTY()
