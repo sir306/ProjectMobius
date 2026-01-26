@@ -29,6 +29,7 @@
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Subsystems/WebSocketSubsystem.h"
+#include "UserConfig/UserProjectSettings.h"
 
 UProjectMobiusGameInstance::UProjectMobiusGameInstance():
 	Super(),
@@ -48,10 +49,28 @@ UProjectMobiusGameInstance::UProjectMobiusGameInstance():
 void UProjectMobiusGameInstance::Init()
 {
 	const double InitStartSeconds = FPlatformTime::Seconds();
+
+	UUserProjectSettings* ProjectUserSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings());
+	ProjectUserSettings->LoadConfig();
+
+	// log the custom config variables
+	bool bStartLoggerAtStartup = ProjectUserSettings->GetEnableMobiusLoggerAtStartup();
+
+	bool bShowLogWindowAtStartup = ProjectUserSettings->GetDisplayMobiusLogWindowAtStartup();
+
+	UE_LOG(LogTemp, Warning, TEXT("ProjectMobiusGameInstance::Init - bEnableMobiusLoggerAtStartup: %s"), bStartLoggerAtStartup ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Log, TEXT("ProjectMobiusGameInstance::Init - bDisplayMobiusLogWindowAtStartup: %s"), bShowLogWindowAtStartup ? TEXT("true") : TEXT("false"));
+
 	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{
-		StartupLogger->EnqueueLogMessage(TEXT("ProjectMobiusGameInstance::Init begin"));
+		// Control logging based on user settings
+		StartupLogger->SetLoggingEnabled(bStartLoggerAtStartup);
+
+		if (bStartLoggerAtStartup)
+		{
+			StartupLogger->EnqueueLogMessage(TEXT("ProjectMobiusGameInstance::Init begin"));
+		}
 	}
 
 	Super::Init();
@@ -72,15 +91,27 @@ void UProjectMobiusGameInstance::Init()
 		CVar->Set(1, ECVF_SetByCode);
 	}
 
-	if (StartupLogger)
+	if (StartupLogger && bStartLoggerAtStartup)
 	{
 		const double DurationMs = (FPlatformTime::Seconds() - InitStartSeconds) * 1000.0;
 		StartupLogger->EnqueueTimedMessage(TEXT("ProjectMobiusGameInstance::Init"), DurationMs);
+	}
+
+	// Initialize the log window display based on settings
+	// Display cannot be enabled without logging enabled
+	if (bShowLogWindowAtStartup && bStartLoggerAtStartup)
+	{
+		OpenLogWindow();
 	}
 }
 
 void UProjectMobiusGameInstance::Shutdown()
 {
+	// ensure user settings are saved on shutdown
+	if (UUserProjectSettings* ProjectUserSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings()))
+	{
+		ProjectUserSettings->SaveConfig();
+	}
 	Super::Shutdown();
 }
 
@@ -107,6 +138,14 @@ void UProjectMobiusGameInstance::SetErrorPromptsEnabled(bool bEnabled)
 
 void UProjectMobiusGameInstance::OpenLogWindow()
 {
+	// Can only display log window if logging is enabled
+	UMobiusCustomLoggerSubsystem* Logger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
+	if (!Logger || !Logger->IsLoggingEnabled())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Cannot open log window: Mobius logger is not enabled"));
+		return;
+	}
+
 	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
 	{
 		FeedbackSubsystem->RequestLogWindowOpen();
@@ -123,6 +162,17 @@ void UProjectMobiusGameInstance::CloseLogWindow()
 
 void UProjectMobiusGameInstance::SetLogWindowEnabled(bool bEnabled)
 {
+	// If trying to enable the window, verify that logging is enabled
+	if (bEnabled)
+	{
+		UMobiusCustomLoggerSubsystem* Logger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
+		if (!Logger || !Logger->IsLoggingEnabled())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Cannot enable log window: Mobius logger is not enabled"));
+			return;
+		}
+	}
+
 	if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
 	{
 		FeedbackSubsystem->SetLogWindowEnabled(bEnabled);
@@ -137,147 +187,6 @@ void UProjectMobiusGameInstance::SetPedestrianDataFilePath(const FString& NewPed
 		PedestrianDataFilePath = NewPedestrianDataFilePath;
 		OnPedestrianVectorFileChanged.Broadcast(NewPedestrianDataFilePath); // Broadcast the new pedestrian vector file
 		OnPedestrianVectorFileUpdated.Broadcast();
-	}
-
-	// get the websocket subsystem
-	if (auto WS_Sub = this->GetSubsystem<UWebSocketSubsystem>())
-	{
-		bool bDebug = false;
-		// DEBUG Test Cases:
-		if (bDebug)
-		{
-			// basic hello world message
-			TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-			Obj->SetStringField(TEXT("hello"), TEXT("world"));
-			WS_Sub->SendJsonMessage(Obj);
-			
-			// ─────────────────────────────────────────────────────────────────────────────
-			// 1) appendPoint: {"action":"appendPoint","x":3.2,"y":14}
-			// ─────────────────────────────────────────────────────────────────────────────
-			{
-				TSharedPtr<FJsonObject> Msg1 = MakeShared<FJsonObject>();
-				Msg1->SetStringField(TEXT("action"), TEXT("appendPoint"));
-				Msg1->SetNumberField(TEXT("x"), 3.2);
-				Msg1->SetNumberField(TEXT("y"), 14.0);
-
-				WS_Sub->SendJsonMessage(Msg1);
-			}
-		
-			// delay for 5 seconds to give time to see changes
-			FPlatformProcess::Sleep(5.0f);
-
-			// ─────────────────────────────────────────────────────────────────────────────
-			// 2) setData: {"action":"setData","points":[{"x":0,"y":10},{"x":1,"y":20}]}
-			// ─────────────────────────────────────────────────────────────────────────────
-			{
-				TSharedPtr<FJsonObject> Msg2 = MakeShared<FJsonObject>();
-				Msg2->SetStringField(TEXT("action"), TEXT("setData"));
-
-				// build the points array
-				TArray<TSharedPtr<FJsonValue>> PointsArray;
-				{
-					auto P0 = MakeShared<FJsonObject>();
-					P0->SetNumberField(TEXT("x"), 0.0);
-					P0->SetNumberField(TEXT("y"), 10.0);
-					PointsArray.Add(MakeShared<FJsonValueObject>(P0));
-				}
-				{
-					auto P1 = MakeShared<FJsonObject>();
-					P1->SetNumberField(TEXT("x"), 1.0);
-					P1->SetNumberField(TEXT("y"), 20.0);
-					PointsArray.Add(MakeShared<FJsonValueObject>(P1));
-				}
-
-				Msg2->SetArrayField(TEXT("points"), PointsArray);
-				WS_Sub->SendJsonMessage(Msg2);
-			}
-
-			// delay for 5 seconds to give time to see changes
-			FPlatformProcess::Sleep(5.0f);
-
-			// ─────────────────────────────────────────────────────────────────────────────
-			// 3) appendPoint: {"action":"appendPoint","x":3.2,"y":14}
-			// ─────────────────────────────────────────────────────────────────────────────
-			{
-				TSharedPtr<FJsonObject> Msg1 = MakeShared<FJsonObject>();
-				Msg1->SetStringField(TEXT("action"), TEXT("appendPoint"));
-				Msg1->SetNumberField(TEXT("x"), 3.2);
-				Msg1->SetNumberField(TEXT("y"), 14.0);
-
-				WS_Sub->SendJsonMessage(Msg1);
-			}
-		
-			// delay for 5 seconds to give time to see changes
-			FPlatformProcess::Sleep(5.0f);
-
-			// ─────────────────────────────────────────────────────────────────────────────
-			// 4) updateAxis: {"action":"updateAxis","xMin":0,"xMax":5,"yMin":0,"yMax":50}
-			// ─────────────────────────────────────────────────────────────────────────────
-			{
-				TSharedPtr<FJsonObject> Msg3 = MakeShared<FJsonObject>();
-				Msg3->SetStringField(TEXT("action"), TEXT("updateAxis"));
-				Msg3->SetNumberField(TEXT("xMin"), 0.0);
-				Msg3->SetNumberField(TEXT("xMax"), 300);
-				Msg3->SetNumberField(TEXT("yMin"), 0.0);
-				Msg3->SetNumberField(TEXT("yMax"), 1000);
-
-				WS_Sub->SendJsonMessage(Msg3);
-			}
-			// delay for 5 seconds to give time to see previous change
-			FPlatformProcess::Sleep(5.0f);
-
-			// ─────────────────────────────────────────────────────────────────────────────
-			// 5) updateAxisTitles: {"action":"updateAxis",
-			//                       "xTitle":"Elapsed Time (s)",
-			//                       "yTitle":"Occupants",
-			//                       "xGridVisible":true,
-			//                       "yGridVisible":false}
-			// ─────────────────────────────────────────────────────────────────────────────
-			{
-				TSharedPtr<FJsonObject> Msg4 = MakeShared<FJsonObject>();
-				Msg4->SetStringField(TEXT("action"),      TEXT("updateAxis"));
-				Msg4->SetStringField(TEXT("xTitle"),      TEXT("Elapsed Time (s)"));
-				Msg4->SetStringField(TEXT("yTitle"),      TEXT("Occupants"));
-				Msg4->SetBoolField  (TEXT("xGridVisible"), true);
-				Msg4->SetBoolField  (TEXT("yGridVisible"), false);
-
-				WS_Sub->SendJsonMessage(Msg4);
-			}
-			// delay for 5 seconds to give time to see previous change
-			FPlatformProcess::Sleep(5.0f);
-		}
-
-		// ─────────────────────────────────────────────────────────────────────────────
-		// 6) updateChartTitle: {"action":"updateChartTitle","chartTitle":"My New Chart Heading"}
-		// ─────────────────────────────────────────────────────────────────────────────
-		{
-			TSharedPtr<FJsonObject> Msg6 = MakeShared<FJsonObject>();
-			Msg6->SetStringField(TEXT("action"),     TEXT("updateChartTitle"));
-			Msg6->SetStringField(TEXT("chartTitle"), TEXT("Loading Pedestrian Data..."));
-
-			WS_Sub->SendJsonMessage(Msg6);
-		}
-		// ─────────────────────────────────────────────────────────────────────────────
-		// 7) resetData: {"action":"resetData"} - test that we can clear existing chart data
-		// ─────────────────────────────────────────────────────────────────────────────
-		{
-			TSharedPtr<FJsonObject> Msg7 = MakeShared<FJsonObject>();
-			Msg7->SetStringField(TEXT("action"), TEXT("resetData"));
-			WS_Sub->SendJsonMessage(Msg7);
-		}
-
-	}
-	else
-	{
-		if (UMobiusUserFeedbackSubsystem* FeedbackSubsystem = GetSubsystem<UMobiusUserFeedbackSubsystem>())
-		{
-			FeedbackSubsystem->ReportError(
-				FText::FromString("WebSocket Error"),
-				FText::FromString("WebSocket subsystem missing"),
-				FText::FromString("WebSocket subsystem not found while sending data."),
-				FText::FromString("ProjectMobiusGameInstance"));
-		}
-		UE_LOG(LogTemp, Error, TEXT("WebSocketSubsystem not found!"));
 	}
 }
 
@@ -332,4 +241,30 @@ void UProjectMobiusGameInstance::SetDataLoadingState(const bool bNewLoadingState
 		bIsDataBeingLoaded = bNewLoadingState;
 		OnDataLoading.Broadcast(bIsDataBeingLoaded);
 	}
+}
+
+void UProjectMobiusGameInstance::SetMobiusLoggerEnabled(bool bEnabled)
+{
+	UMobiusCustomLoggerSubsystem* Logger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
+	if (Logger)
+	{
+		Logger->SetLoggingEnabled(bEnabled);
+
+		if (bEnabled)
+		{
+			UE_LOG(LogTemp, Log, TEXT("Mobius logger enabled"));
+		}
+		else
+		{
+			// Disable the log window display when disabling the logger
+			SetLogWindowEnabled(false);
+			UE_LOG(LogTemp, Log, TEXT("Mobius logger disabled"));
+		}
+	}
+}
+
+bool UProjectMobiusGameInstance::IsMobiusLoggerEnabled() const
+{
+	const UMobiusCustomLoggerSubsystem* Logger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
+	return Logger ? Logger->IsLoggingEnabled() : false;
 }

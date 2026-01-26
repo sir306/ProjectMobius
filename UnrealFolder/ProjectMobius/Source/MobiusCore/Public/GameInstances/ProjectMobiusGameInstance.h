@@ -89,6 +89,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
 	void SetLogWindowEnabled(bool bEnabled);
 
+	/** Enable or disable the Mobius logger at runtime. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	void SetMobiusLoggerEnabled(bool bEnabled);
+
+	/** Check if the Mobius logger is currently enabled. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logs")
+	bool IsMobiusLoggerEnabled() const;
+
 	//TODO: convert methods below so we can broadcast events when the data is changed
 
 	/**

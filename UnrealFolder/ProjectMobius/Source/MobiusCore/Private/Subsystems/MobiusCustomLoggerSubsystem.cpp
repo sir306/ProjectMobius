@@ -60,6 +60,11 @@ void UMobiusCustomLoggerSubsystem::Deinitialize()
 
 void UMobiusCustomLoggerSubsystem::EnqueueLogMessage(const FString& Message)
 {
+	if (!bIsLoggingEnabled)
+	{
+		return;
+	}
+
 	const FString Line = BuildTimestampedLine(Message);
 	FScopeLock Lock(&QueueMutex);
 	PendingMessages.Enqueue(Line);
@@ -168,4 +173,14 @@ FString UMobiusCustomLoggerSubsystem::BuildTimestampedLine(const FString& Messag
 		Now.GetHour(), Now.GetMinute(), Now.GetSecond(), Now.GetMillisecond());
 
 	return FString::Printf(TEXT("[%s] %s"), *Timestamp, *Message);
+}
+
+void UMobiusCustomLoggerSubsystem::SetLoggingEnabled(bool bEnabled)
+{
+	bIsLoggingEnabled = bEnabled;
+}
+
+bool UMobiusCustomLoggerSubsystem::IsLoggingEnabled() const
+{
+	return bIsLoggingEnabled;
 }

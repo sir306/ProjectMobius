@@ -22,7 +22,9 @@
  */
 
 #include "Subsystems/NativeFileDialogSubsystem.h"
+#include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Misc/CoreDelegates.h"
+#include "Misc/App.h"
 #include "Misc/Paths.h"
 #include "Async/Async.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
@@ -61,6 +63,35 @@ namespace
 	}
 }
 #endif
+
+namespace
+{
+	static const TCHAR* DefaultFilePrompt = TEXT("Click Browse to choose file");
+
+	static bool IsDefaultFilePath(const FString& FilePath)
+	{
+		return FilePath.IsEmpty() || FilePath.Equals(DefaultFilePrompt);
+	}
+
+	static FString ResolveUnitTestSampleDataDir()
+	{
+		const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+		FString Candidate = FPaths::Combine(ProjectDir, TEXT("UnitTestSampleData"));
+		if (FPaths::DirectoryExists(Candidate))
+		{
+			return Candidate;
+		}
+
+		const FString LaunchDir = FPaths::ConvertRelativePathToFull(FPaths::LaunchDir());
+		Candidate = FPaths::Combine(LaunchDir, FApp::GetProjectName(), TEXT("UnitTestSampleData"));
+		if (FPaths::DirectoryExists(Candidate))
+		{
+			return Candidate;
+		}
+
+		return FString();
+	}
+}
 
 UNativeFileDialogSubsystem::UNativeFileDialogSubsystem()
 {
@@ -109,6 +140,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	OnFileSelected = OnFileSelectedCallback;
 	ActiveDialogType = DialogType;
 	bSelectionInProgress = true;
+	const FString InitialDir = ResolveInitialDialogDirectory();
 
 	// ==========================================================
 	// MAC NATIVE IMPLEMENTATION (NSOpenPanel)
@@ -119,6 +151,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 
 	TWeakObjectPtr<UNativeFileDialogSubsystem> WeakThis(this);
 	const EDialogType DialogTypeCopy = DialogType;
+	const FString InitialDirCopy = InitialDir;
 	dispatch_async(dispatch_get_main_queue(), ^{
 		@autoreleasepool
 		{
@@ -143,6 +176,21 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 			[Panel setCanChooseFiles:YES];
 			[Panel setCanChooseDirectories:NO];
 			[Panel setAllowsMultipleSelection:NO];
+
+			if (!InitialDirCopy.IsEmpty())
+			{
+				FString NormalizedDir = InitialDirCopy;
+				FPaths::NormalizeDirectoryName(NormalizedDir);
+				NSString* InitialDirString = [NSString stringWithUTF8String:TCHAR_TO_UTF8(*NormalizedDir)];
+				if (InitialDirString != nil)
+				{
+					NSURL* InitialDirUrl = [NSURL fileURLWithPath:InitialDirString];
+					if (InitialDirUrl != nil)
+					{
+						[Panel setDirectoryURL:InitialDirUrl];
+					}
+				}
+			}
 
 			NSMutableArray* AllowedTypes = [NSMutableArray array];
 
@@ -310,8 +358,12 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	// WINDOWS / LINUX IMPLEMENTATION (Portable File Dialogs)
 	// ==========================================================
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
-	const FString InitialDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 	const std::string InitialDirUtf8(TCHAR_TO_UTF8(*InitialDir));
+	
+	// log InitialDirUtf8
+	UE_LOG(LogNativeFileDialog, Log, TEXT("Starting Windows/Linux file dialog. Type: %s, InitialDir: %s"),
+		DialogType == EDialogType::AgentFile ? TEXT("AgentFile") : TEXT("MeshFile"),
+		*InitialDir);
 
 	std::vector<std::string> Filters;
 	if (DialogType == EDialogType::AgentFile)
@@ -342,6 +394,71 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 			true);
 	}
 #endif
+}
+
+FString UNativeFileDialogSubsystem::ResolveInitialDialogDirectory() const
+{
+	if (!LastDialogDirectory.IsEmpty())
+	{
+		const FString LastDir = FPaths::ConvertRelativePathToFull(LastDialogDirectory);
+		if (FPaths::DirectoryExists(LastDir))
+		{
+			return LastDir;
+		}
+	}
+
+	FString PedestrianPath;
+	FString MeshPath;
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UProjectMobiusGameInstance* GameInstance = Cast<UProjectMobiusGameInstance>(World->GetGameInstance()))
+		{
+			PedestrianPath = GameInstance->GetPedestrianDataFilePath();
+			MeshPath = GameInstance->GetSimulationMeshFilePath();
+		}
+	}
+
+	const bool bPedDefault = IsDefaultFilePath(PedestrianPath);
+	const bool bMeshDefault = IsDefaultFilePath(MeshPath);
+
+	if (!bPedDefault)
+	{
+		const FString PedDir = FPaths::ConvertRelativePathToFull(FPaths::GetPath(PedestrianPath));
+		if (FPaths::DirectoryExists(PedDir))
+		{
+			return PedDir;
+		}
+	}
+
+	if (!bMeshDefault)
+	{
+		const FString MeshDir = FPaths::ConvertRelativePathToFull(FPaths::GetPath(MeshPath));
+		if (FPaths::DirectoryExists(MeshDir))
+		{
+			return MeshDir;
+		}
+	}
+
+	if (bPedDefault && bMeshDefault)
+	{
+		const FString TestDataDir = ResolveUnitTestSampleDataDir();
+		if (!TestDataDir.IsEmpty())
+		{
+			return TestDataDir;
+		}
+	}
+
+	return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+}
+
+void UNativeFileDialogSubsystem::UpdateLastDialogDirectory(const FString& SelectedPath)
+{
+	FString SelectedDir = FPaths::ConvertRelativePathToFull(FPaths::GetPath(SelectedPath));
+	FPaths::NormalizeDirectoryName(SelectedDir);
+	if (!SelectedDir.IsEmpty() && FPaths::DirectoryExists(SelectedDir))
+	{
+		LastDialogDirectory = SelectedDir;
+	}
 }
 
 void UNativeFileDialogSubsystem::PollDialog()
@@ -375,6 +492,7 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 	if (SelectedFiles.Num() > 0)
 	{
 		const FString& SelectedPath = SelectedFiles[0];
+		UpdateLastDialogDirectory(SelectedPath);
 		
         // Simple logic: If we asked for Agent, result is Agent.
         // We can double check extension if we want.

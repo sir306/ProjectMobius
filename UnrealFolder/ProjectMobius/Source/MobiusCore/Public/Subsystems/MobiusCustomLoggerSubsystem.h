@@ -46,12 +46,21 @@ public:
 	/** Native delegate fired when a log line is flushed. */
 	FOnMobiusLogLine& OnLogLine();
 
+	/** Enable or disable logging (thread-safe). When disabled, EnqueueLogMessage becomes a no-op. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logging")
+	void SetLoggingEnabled(bool bEnabled);
+
+	/** Check if logging is currently enabled. */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Logging")
+	bool IsLoggingEnabled() const;
+
 private:
 	FString LogFilePath;
 	FCriticalSection QueueMutex;
 	TQueue<FString, EQueueMode::Mpsc> PendingMessages;
 	FTSTicker::FDelegateHandle FlushTickerHandle;
 	FThreadSafeBool bIsFlushing;
+	FThreadSafeBool bIsLoggingEnabled = true;
 	FOnMobiusLogLine LogLineDelegate;
 
 	bool PumpLogs(float DeltaTime);

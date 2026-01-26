@@ -149,6 +149,18 @@ private:
 	 */
 	void ResetDialogState();
 
+	/**
+	 * Resolve the initial directory for the file dialog.
+	 * @return Absolute path used to seed the file picker.
+	 */
+	FString ResolveInitialDialogDirectory() const;
+
+	/**
+	 * Cache the last directory chosen by the user.
+	 * @param SelectedPath File path selected by the dialog.
+	 */
+	void UpdateLastDialogDirectory(const FString& SelectedPath);
+
 private:
 	UPROPERTY()
 	bool bSelectionInProgress;
@@ -157,6 +169,8 @@ private:
 	FTimerHandle PollTimerHandle;
 
 	EDialogType ActiveDialogType;
+
+	FString LastDialogDirectory;
 
 	// Only use PFD dialog pointer on Windows/Linux 
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
