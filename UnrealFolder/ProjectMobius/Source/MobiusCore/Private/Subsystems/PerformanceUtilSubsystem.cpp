@@ -90,7 +90,7 @@ void UPerformanceUtilSubsystem::Tick(float DeltaTime)
 
 static bool ParseCVarString(const FString& InString, FString& OutName, FString& OutValue)
 {
-	// Split only on the first “=”
+	// Split only on the first ï¿½=ï¿½
 	if (!InString.Split(TEXT("="), &OutName, &OutValue))
 	{
 		return false;
@@ -369,6 +369,9 @@ void UPerformanceUtilSubsystem::UpdateScreenResolutions(FIntPoint NewResolution)
 
 	// Apply the changes to the game user settings
 	GameUserSettings->ApplySettings(false);
+
+	// Save settings to persist resolution change to config file
+	GameUserSettings->SaveSettings();
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();

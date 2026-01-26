@@ -148,7 +148,13 @@ void SLogWindowWidget::OpenLogWindow()
 		.WindowPanelContent(WindowPanel);
 
 	FSlateApplication::Get().AddWindow(LogWindowPtr.ToSharedRef());
-	
+
+	// Bring the window to front when opened
+	if (LogWindowPtr.IsValid())
+	{
+		LogWindowPtr->BringToFront(true);
+	}
+
 	// Bind our custom close event handler, so we can notify others when the log window is closed
 	LogWindowPtr.ToSharedRef()->GetOnWindowClosedEvent().AddSP(this, &SLogWindowWidget::HandleLogWindowClosedEvent);
 }
