@@ -171,6 +171,17 @@ NickMasters/*.zip
 # Custom Blender assets folder (models/textures that can be regenerated or re-downloaded)
 Blender/*
 
+# HDF5 third-party (scoped to vendored path)
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/**/java/.classes
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/**/*~
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/build*
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/src/H5config.h.in
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/.classpath
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/.claude/
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/CLAUDE.md
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/CMakeUserPresets.json
+UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/HDF5Examples/CMakeUserPresets.json
+
 
 # =====================================================
 # Qt and Node.js Specific Ignores
