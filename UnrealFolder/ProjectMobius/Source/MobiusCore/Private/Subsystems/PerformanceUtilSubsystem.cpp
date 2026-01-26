@@ -9,6 +9,7 @@
 #include "HAL/PlatformTime.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
+#include "UserConfig/UserProjectSettings.h"
 
 UPerformanceUtilSubsystem::UPerformanceUtilSubsystem()
 {
@@ -33,12 +34,16 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 	
 	// Get the game user setting
-	GameUserSettings = GEngine->GetGameUserSettings();
+	if (GEngine->GetGameUserSettings())
+	{
+		ProjectSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings());
+	}
 	
-	if (GameUserSettings)
+	
+	if (ProjectSettings)
 	{
 		// Log the current scalability level
-		UE_LOG(LogTemp, Log, TEXT("Current Scalability Level: %i"), GameUserSettings->GetOverallScalabilityLevel());
+		UE_LOG(LogTemp, Log, TEXT("Current Scalability Level: %i"), ProjectSettings->GetOverallScalabilityLevel());
 	}
 	else
 	{
@@ -60,9 +65,9 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UPerformanceUtilSubsystem::Deinitialize()
 {
 	// Clean up any resources or delegates here if needed
-	if (GameUserSettings)
+	if (ProjectSettings)
 	{
-		GameUserSettings = nullptr; // Clear the pointer to the game user settings
+		ProjectSettings = nullptr; // Clear the pointer to the game user settings
 	}
 	// Ensure Timer handle is cleared if used
 	if (AutoScalabilityTimerHandle.IsValid())
@@ -170,8 +175,8 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("ApplyScalabilityLevel -> Level:%d Category:%d"), static_cast<int32>(ScalabilityLevel.GetValue()), static_cast<int32>(ScalabilityCategory.GetValue())));
 	}
 
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return;
@@ -183,31 +188,31 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 		// We don't set resolution here, as it is handled separately
 		break;
 	case ESc_GlobalIllumination:
-		GameUserSettings->SetGlobalIlluminationQuality(ScalabilityLevel);
+		ProjectSettings->SetGlobalIlluminationQuality(ScalabilityLevel);
 		break;
 	case ESc_PostProcessing:
-		GameUserSettings->SetPostProcessingQuality(ScalabilityLevel);
+		ProjectSettings->SetPostProcessingQuality(ScalabilityLevel);
 		break;
 	case ESc_Shadows:
-		GameUserSettings->SetShadowQuality(ScalabilityLevel);
+		ProjectSettings->SetShadowQuality(ScalabilityLevel);
 		break;
 	case ESc_Textures:
-		GameUserSettings->SetTextureQuality(ScalabilityLevel);
+		ProjectSettings->SetTextureQuality(ScalabilityLevel);
 		break;
 	case ESc_Effects:
-		GameUserSettings->SetVisualEffectQuality(ScalabilityLevel);
+		ProjectSettings->SetVisualEffectQuality(ScalabilityLevel);
 		break;
 	case ESc_AntiAliasing:
-		GameUserSettings->SetAntiAliasingQuality(ScalabilityLevel);
+		ProjectSettings->SetAntiAliasingQuality(ScalabilityLevel);
 		break;
 	case ESc_ViewDistance:
-		GameUserSettings->SetViewDistanceQuality(ScalabilityLevel);
+		ProjectSettings->SetViewDistanceQuality(ScalabilityLevel);
 		break;
 	case ESc_Reflections:
-		GameUserSettings->SetReflectionQuality(ScalabilityLevel);
+		ProjectSettings->SetReflectionQuality(ScalabilityLevel);
 		break;
 	case ESc_Shading:
-		GameUserSettings->SetShadingQuality(ScalabilityLevel);
+		ProjectSettings->SetShadingQuality(ScalabilityLevel);
 		break;
 	case DefaultMax:
 		break;
@@ -216,7 +221,10 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevel(const TEnumAsByte<EScalabi
 	}
 
 	// Apply the changes to the game user settings
-	GameUserSettings->ApplySettings(false);
+	ProjectSettings->ApplySettings(false);
+
+	// Save settings to persist scalability changes to config file
+	ProjectSettings->SaveSettings();
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();
@@ -237,26 +245,29 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<ESc
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("ApplyScalabilityLevelToAll -> Level:%d"), static_cast<int32>(ScalabilityLevel.GetValue())));
 	}
 
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return;
 	}
 
 	// TODO: check if we can optimize this and reduce
-	GameUserSettings->SetGlobalIlluminationQuality(ScalabilityLevel);
-	GameUserSettings->SetPostProcessingQuality(ScalabilityLevel);
-	GameUserSettings->SetShadowQuality(ScalabilityLevel);
-	GameUserSettings->SetTextureQuality(ScalabilityLevel);
-	GameUserSettings->SetVisualEffectQuality(ScalabilityLevel);
-	GameUserSettings->SetAntiAliasingQuality(ScalabilityLevel);
-	GameUserSettings->SetViewDistanceQuality(ScalabilityLevel);
-	GameUserSettings->SetReflectionQuality(ScalabilityLevel);
-	GameUserSettings->SetShadingQuality(ScalabilityLevel);
-	
+	ProjectSettings->SetGlobalIlluminationQuality(ScalabilityLevel);
+	ProjectSettings->SetPostProcessingQuality(ScalabilityLevel);
+	ProjectSettings->SetShadowQuality(ScalabilityLevel);
+	ProjectSettings->SetTextureQuality(ScalabilityLevel);
+	ProjectSettings->SetVisualEffectQuality(ScalabilityLevel);
+	ProjectSettings->SetAntiAliasingQuality(ScalabilityLevel);
+	ProjectSettings->SetViewDistanceQuality(ScalabilityLevel);
+	ProjectSettings->SetReflectionQuality(ScalabilityLevel);
+	ProjectSettings->SetShadingQuality(ScalabilityLevel);
+
 	// Apply the changes to the game user settings
-	GameUserSettings->ApplySettings(false);
+	ProjectSettings->ApplySettings(false);
+
+	// Save settings to persist scalability changes to config file
+	ProjectSettings->SaveSettings();
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();
@@ -271,8 +282,8 @@ void UPerformanceUtilSubsystem::ApplyScalabilityLevelToAll(const TEnumAsByte<ESc
 EScalabilitySettings UPerformanceUtilSubsystem::GetScalabilityLevel(
 	const TEnumAsByte<EScalabilityCategories> ScalabilityCategory) const
 {
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return EScalabilitySettings::ESsl_Default;
@@ -286,31 +297,31 @@ EScalabilitySettings UPerformanceUtilSubsystem::GetScalabilityLevel(
 		// We don't set resolution here, as it is handled separately
 		break;
 	case ESc_GlobalIllumination:
-		ScalabilityLevel = GameUserSettings->GetGlobalIlluminationQuality();
+		ScalabilityLevel = ProjectSettings->GetGlobalIlluminationQuality();
 		break;
 	case ESc_PostProcessing:
-		ScalabilityLevel = GameUserSettings->GetPostProcessingQuality();
+		ScalabilityLevel = ProjectSettings->GetPostProcessingQuality();
 		break;
 	case ESc_Shadows:
-		ScalabilityLevel = GameUserSettings->GetShadowQuality();
+		ScalabilityLevel = ProjectSettings->GetShadowQuality();
 		break;
 	case ESc_Textures:
-		ScalabilityLevel = GameUserSettings->GetTextureQuality();
+		ScalabilityLevel = ProjectSettings->GetTextureQuality();
 		break;
 	case ESc_Effects:
-		ScalabilityLevel = GameUserSettings->GetVisualEffectQuality();
+		ScalabilityLevel = ProjectSettings->GetVisualEffectQuality();
 		break;
 	case ESc_AntiAliasing:
-		ScalabilityLevel = GameUserSettings->GetAntiAliasingQuality();
+		ScalabilityLevel = ProjectSettings->GetAntiAliasingQuality();
 		break;
 	case ESc_ViewDistance:
-		ScalabilityLevel = GameUserSettings->GetViewDistanceQuality();
+		ScalabilityLevel = ProjectSettings->GetViewDistanceQuality();
 		break;
 	case ESc_Reflections:
-		ScalabilityLevel = GameUserSettings->GetReflectionQuality();
+		ScalabilityLevel = ProjectSettings->GetReflectionQuality();
 		break;
 	case ESc_Shading:
-		ScalabilityLevel = GameUserSettings->GetShadingQuality();
+		ScalabilityLevel = ProjectSettings->GetShadingQuality();
 		break;
 	case DefaultMax:
 		break;
@@ -324,19 +335,19 @@ EScalabilitySettings UPerformanceUtilSubsystem::GetScalabilityLevel(
 
 FIntPoint UPerformanceUtilSubsystem::GetCurrentScreenResolution() const
 {
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return FIntPoint(800, 600); // A low default resolution that should be safe for all modern devices
 	}
-	return GameUserSettings->GetScreenResolution();
+	return ProjectSettings->GetScreenResolution();
 }
 
 TArray<FIntPoint> UPerformanceUtilSubsystem::GetSystemScreenResolutions() const
 {
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return TArray<FIntPoint>(); // Return an empty array if not found
@@ -359,19 +370,19 @@ TArray<FIntPoint> UPerformanceUtilSubsystem::GetSystemScreenResolutions() const
 
 void UPerformanceUtilSubsystem::UpdateScreenResolutions(FIntPoint NewResolution)
 {
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return;
 	}
-	GameUserSettings->SetScreenResolution(NewResolution);
+	ProjectSettings->SetScreenResolution(NewResolution);
 
 	// Apply the changes to the game user settings
-	GameUserSettings->ApplySettings(false);
+	ProjectSettings->ApplySettings(false);
 
 	// Save settings to persist resolution change to config file
-	GameUserSettings->SaveSettings();
+	ProjectSettings->SaveSettings();
 
 	// TODO: Extract private update method so we can update settings automatically or by users
 	//OnManualScalabilityChanged.Broadcast();
@@ -386,8 +397,8 @@ void UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting(TEnumAsByte<EGlob
 		StartupLogger->EnqueueLogMessage(FString::Printf(TEXT("UpdateGlobalScalabilitySetting -> %d"), static_cast<int32>(NewSetting.GetValue())));
 	}
 
-	// check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return;
@@ -438,8 +449,8 @@ TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulative
 {
 	TEnumAsByte<EGlobalScalabilitySettings> CumulativeSetting = EGss_Low;
 	
-	// Check if GameUserSettings is valid
-	if (!GameUserSettings)
+	// Check if ProjectSettings is valid
+	if (!ProjectSettings)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
 		return CumulativeSetting;
@@ -450,47 +461,47 @@ TEnumAsByte<EGlobalScalabilitySettings> UPerformanceUtilSubsystem::GetCumulative
 	// for each scalability category, check the current level and determine the cumulative setting
 
 	// the first check is to set the cumulative setting to the lowest level and then we will check each category
-	if (GameUserSettings->GetGlobalIlluminationQuality() != static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetGlobalIlluminationQuality() != static_cast<int32>(CumulativeSetting))
 	{
-		CumulativeSetting = static_cast<EGlobalScalabilitySettings>(GameUserSettings->GetGlobalIlluminationQuality());
+		CumulativeSetting = static_cast<EGlobalScalabilitySettings>(ProjectSettings->GetGlobalIlluminationQuality());
 	}
 	// Check Post Processing Quality - if they are not equal, then our global setting will be set to Custom
-	if (GameUserSettings->GetPostProcessingQuality() != static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetPostProcessingQuality() != static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check Shadows Quality
-	if (GameUserSettings->GetShadowQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetShadowQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check Texture Quality
-	if (GameUserSettings->GetTextureQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetTextureQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check Visual Effect Quality
-	if (GameUserSettings->GetVisualEffectQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetVisualEffectQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check Anti-Aliasing Quality
-	if (GameUserSettings->GetAntiAliasingQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetAntiAliasingQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check View Distance Quality
-	if (GameUserSettings->GetViewDistanceQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetViewDistanceQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check Reflection Quality
-	if (GameUserSettings->GetReflectionQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetReflectionQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
 	// Check Shading Quality
-	if (GameUserSettings->GetShadingQuality() > static_cast<int32>(CumulativeSetting))
+	if (ProjectSettings->GetShadingQuality() > static_cast<int32>(CumulativeSetting))
 	{
 		return CumulativeSetting = EGss_Custom;
 	}
