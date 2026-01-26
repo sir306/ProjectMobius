@@ -58,9 +58,6 @@ void UProjectMobiusGameInstance::Init()
 
 	bool bShowLogWindowAtStartup = ProjectUserSettings->GetDisplayMobiusLogWindowAtStartup();
 
-	UE_LOG(LogTemp, Warning, TEXT("ProjectMobiusGameInstance::Init - bEnableMobiusLoggerAtStartup: %s"), bStartLoggerAtStartup ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogTemp, Log, TEXT("ProjectMobiusGameInstance::Init - bDisplayMobiusLogWindowAtStartup: %s"), bShowLogWindowAtStartup ? TEXT("true") : TEXT("false"));
-
 	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
 	{

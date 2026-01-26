@@ -176,7 +176,7 @@ protected:
 	/** Ptr to the game user setting object -> we use this to apply scalability settings
 	 * (as the console commands to change do not apply without it) */
 	UPROPERTY()
-	TObjectPtr<UGameUserSettings> GameUserSettings;
+	TObjectPtr<UGameUserSettings> ProjectSettings;
 
 	/** Stores the global scalability setting value */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
