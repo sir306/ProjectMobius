@@ -10,5 +10,5 @@ Version: 2.0.0
 Cflags: -I${includedir} 
 Libs: -L${libdir}  -lhdf5
 Requires: 
-Libs.private: 
+Libs.private:  -lzlib-static
 Requires.private: 

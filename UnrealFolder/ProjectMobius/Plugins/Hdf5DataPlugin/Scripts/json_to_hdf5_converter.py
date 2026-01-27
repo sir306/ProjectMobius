@@ -263,7 +263,8 @@ def convert_json_to_hdf5(json_path: Path, hdf5_path: Path, verbose: bool = True)
 
                     sample_idx += 1
 
-            # Use chunking and compression for better performance with large files
+            # Use chunking and gzip compression for better I/O performance with large files
+            # Note: Requires HDF5 library built with HDF5_ENABLE_ZLIB_SUPPORT=ON
             if total_samples > 1000:
                 chunk_size = min(1000, total_samples)
                 sim_grp.create_dataset('samples', data=sample_data,

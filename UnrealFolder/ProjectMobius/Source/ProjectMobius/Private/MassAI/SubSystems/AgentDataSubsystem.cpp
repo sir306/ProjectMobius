@@ -287,17 +287,8 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		
 	}
 }
-// TODO: this requires altering to incorporate hdf5 support
 void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment& EntityInfoFragToUpdate) const
 {
-	if (!JSONObject.IsValid())
-	{
-		ReportAgentDataError(this,
-		                     TEXT("Simulation data missing"),
-		                     TEXT("No JSON data is loaded for entity info."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
 	if (Index < 0 || Index >= MaxAgents)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Index out of range"));
@@ -307,7 +298,40 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 		                     TEXT("AgentDataSubsystem"));
 		return;
 	}
-	
+
+	// Check if we have HDF5 data loaded via the runnable
+	if (JsonDataRunnable && JsonDataRunnable->SimulationFileType == ESimulationFileType::ESFT_HDF5)
+	{
+		const TArray<FHdf5EntityData>& Entities = JsonDataRunnable->Hdf5Data.Entities;
+		if (!Entities.IsValidIndex(Index))
+		{
+			ReportAgentDataError(this,
+			                     TEXT("Entity data missing"),
+			                     TEXT("Entity index is not present in the HDF5 data."),
+			                     TEXT("AgentDataSubsystem"));
+			return;
+		}
+
+		const FHdf5EntityData& Entity = Entities[Index];
+		EntityInfoFragToUpdate.EntityID = Entity.Id;
+		EntityInfoFragToUpdate.EntityName = Entity.Name;
+		EntityInfoFragToUpdate.EntitySimTimeS = FString::SanitizeFloat(Entity.SimTimeS);
+		EntityInfoFragToUpdate.EntityMaxSpeed = Entity.MaxSpeed;
+		EntityInfoFragToUpdate.EntityM_Plane = Entity.MPlane;
+		EntityInfoFragToUpdate.EntityMap = Entity.Map;
+		return;
+	}
+
+	// Fall back to JSON data
+	if (!JSONObject.IsValid())
+	{
+		ReportAgentDataError(this,
+		                     TEXT("Simulation data missing"),
+		                     TEXT("No simulation data is loaded for entity info."),
+		                     TEXT("AgentDataSubsystem"));
+		return;
+	}
+
 	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
 	if (!JsonEntityDataArray.IsValidIndex(Index))
 	{
@@ -318,24 +342,14 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 		return;
 	}
 
-	// Get the JSON object for this 
+	// Get the JSON object for this
 	TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
 
 	ParseEntityInfo(JSONEntityDataObject, EntityInfoFragToUpdate);
-
 }
-// TODO: this requires altering to incorporate hdf5 support
 void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
                                                     FEntityRenderingFragment& EntityRenderingFragToUpdate) const
 {
-	if (!JSONObject.IsValid())
-	{
-		ReportAgentDataError(this,
-		                     TEXT("Simulation data missing"),
-		                     TEXT("No JSON data is loaded for entity rendering."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
 	if (Index < 0 || Index >= MaxAgents)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Index out of range"));
@@ -347,32 +361,61 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 	}
 
 	EntityRenderingFragToUpdate.EntityID = Index;
-	
-	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
-	if (!JsonEntityDataArray.IsValidIndex(Index))
+
+	FString AgentName;
+
+	// Check if we have HDF5 data loaded via the runnable
+	if (JsonDataRunnable && JsonDataRunnable->SimulationFileType == ESimulationFileType::ESFT_HDF5)
 	{
-		ReportAgentDataError(this,
-		                     TEXT("Entity data missing"),
-		                     TEXT("Entity index is not present in the JSON data."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
+		const TArray<FHdf5EntityData>& Entities = JsonDataRunnable->Hdf5Data.Entities;
+		if (!Entities.IsValidIndex(Index))
+		{
+			ReportAgentDataError(this,
+			                     TEXT("Entity data missing"),
+			                     TEXT("Entity index is not present in the HDF5 data."),
+			                     TEXT("AgentDataSubsystem"));
+			return;
+		}
+
+		AgentName = Entities[Index].Name;
+	}
+	else
+	{
+		// Fall back to JSON data
+		if (!JSONObject.IsValid())
+		{
+			ReportAgentDataError(this,
+			                     TEXT("Simulation data missing"),
+			                     TEXT("No simulation data is loaded for entity rendering."),
+			                     TEXT("AgentDataSubsystem"));
+			return;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
+		if (!JsonEntityDataArray.IsValidIndex(Index))
+		{
+			ReportAgentDataError(this,
+			                     TEXT("Entity data missing"),
+			                     TEXT("Entity index is not present in the JSON data."),
+			                     TEXT("AgentDataSubsystem"));
+			return;
+		}
+
+		// Get the JSON object for this
+		TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
+
+		if (!JSONEntityDataObject.IsValid())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
+			ReportAgentDataError(this,
+			                     TEXT("Invalid entity data"),
+			                     TEXT("Entity object is invalid while parsing rendering data."),
+			                     TEXT("AgentDataSubsystem"));
+			return;
+		}
+		AgentName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name", 4));
 	}
 
-	// Get the JSON object for this 
-	TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
-
-	if (!JSONEntityDataObject.IsValid())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-		ReportAgentDataError(this,
-		                     TEXT("Invalid entity data"),
-		                     TEXT("Entity object is invalid while parsing rendering data."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
-	FString AgentName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name", 4));
-
-	
 	// update gender
 	EntityRenderingFragToUpdate.bIsMale = !(AgentName.Contains("Female"));
 
@@ -691,7 +734,7 @@ void FProcessSimulationDataRunnable::ReadJSONMetadataValues(bool& bCalculateTime
 void FProcessSimulationDataRunnable::ReadHDF5MetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime)
 {
 	// Check the hdf5 data object is valid, there should be samples to be classed valid
-	if (Hdf5Data.Samples.Num() > 0)// while sample numbers can be less than expected max time step, it can't be empty 
+	if (Hdf5Data.Samples.Num() == 0)// while sample numbers can be less than expected max time step, it can't be empty
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
 									  TEXT("Simulation data missing"),
@@ -1007,7 +1050,164 @@ void FProcessSimulationDataRunnable::RunJsonSimDataGatheringLoop(bool bCalculate
 void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculateTimeBetweenSteps,
 	bool bCalculateMaxTime)
 {
-	// TODO: MUST IMPLEMENT THIS FOR HDF5 SUPPORT
+	if (Hdf5Data.Samples.Num() == 0)
+	{
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+		                              TEXT("Simulation data missing"),
+		                              TEXT("HDF5 data was not loaded before processing simulation steps."),
+		                              TEXT("AgentDataSubsystem - FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop"));
+		bShouldStop = true;
+		return;
+	}
+
+	// Group samples by timestep index
+	// First, find the max timestep index to determine how many timesteps we have
+	int32 MaxTimestepIndex = 0;
+	for (const FHdf5SampleData& Sample : Hdf5Data.Samples)
+	{
+		if (Sample.TimestepIndex > MaxTimestepIndex)
+		{
+			MaxTimestepIndex = Sample.TimestepIndex;
+		}
+	}
+
+	// Update target data count if needed
+	if (TargetDataCount == 0)
+	{
+		TargetDataCount = MaxTimestepIndex + 1;
+	}
+
+	// Reserve space for the number of agents per time step
+	NumOfAgentsPerTimeStep.Reserve(TargetDataCount);
+
+	// Create a map to group samples by timestep
+	TMap<int32, TArray<const FHdf5SampleData*>> SamplesByTimestep;
+	for (const FHdf5SampleData& Sample : Hdf5Data.Samples)
+	{
+		SamplesByTimestep.FindOrAdd(Sample.TimestepIndex).Add(&Sample);
+	}
+
+	// Get unit conversion info from metadata
+	const bool bIsSI = Hdf5Data.Meta.bIsSI;
+	const bool bIsDeg = Hdf5Data.Meta.bIsDeg;
+
+	// Process each timestep
+	for (int32 TimestepIdx = 0; TimestepIdx <= MaxTimestepIndex && !bShouldStop; TimestepIdx++)
+	{
+		CurrentDataCount = TimestepIdx;
+
+		// Get samples for this timestep
+		TArray<const FHdf5SampleData*>* TimestepSamples = SamplesByTimestep.Find(TimestepIdx);
+
+		if (!TimestepSamples || TimestepSamples->Num() == 0)
+		{
+			// Empty timestep - add empty array and continue
+			NumOfAgentsPerTimeStep.Add(0);
+			AgentMovementInfoData.SimulationData.Add(TimestepIdx, TArray<FSimMovementSample>());
+			continue;
+		}
+
+		// Calculate time between steps if needed (use first sample with time > 0)
+		if (bCalculateTimeBetweenSteps && TimestepIdx == 1 && TimestepSamples->Num() > 0)
+		{
+			// Since HDF5 doesn't store time per sample directly, use metadata sampling rate
+			// or calculate from timestep index difference
+			if (Hdf5Data.Meta.SamplingRate > 0)
+			{
+				TimeBetweenSteps = Hdf5Data.Meta.SamplingRate;
+			}
+		}
+
+		// Update max time if calculating
+		if (bCalculateMaxTime && Hdf5Data.Meta.Duration > 0)
+		{
+			AgentMovementInfoData.MaxTime = Hdf5Data.Meta.Duration;
+		}
+		else if (bCalculateMaxTime && TimeBetweenSteps > 0)
+		{
+			AgentMovementInfoData.MaxTime = TimestepIdx * TimeBetweenSteps;
+		}
+
+		// Parameters for step-duration related smoothing
+		minimumStepDuration = 0.6;
+		maximumStepDuration = 1.0;
+		minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration * (int)std::round(((double)1.0 / (double)TimeBetweenSteps)));
+		maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps);
+		timeDurationPerRecord = 1.0 / (double)(int)std::round(((double)1.0 / (double)TimeBetweenSteps));
+
+		// Track number of agents for this timestep
+		NumOfAgentsPerTimeStep.Add(TimestepSamples->Num());
+
+		// Create movement samples array for this timestep
+		TArray<FSimMovementSample> MovementSamples;
+
+		// Process each sample
+		for (const FHdf5SampleData* SamplePtr : *TimestepSamples)
+		{
+			if (bShouldStop) break;
+
+			const FHdf5SampleData& Sample = *SamplePtr;
+
+			// Build position vector
+			FVector Position;
+			Position.X = Sample.PositionX;
+			Position.Y = -Sample.PositionY; // Negate Y like JSON does
+			Position.Z = Sample.PositionZ;
+
+			// Apply unit conversion
+			if (bIsSI)
+			{
+				// SI units (meters) - convert to cm
+				Position *= 100.0f;
+			}
+			else
+			{
+				// Non-SI units - apply same conversion as JSON
+				Position *= 10.0f;
+			}
+
+			// Build rotation
+			FRotator Rotation;
+			if (bIsDeg)
+			{
+				// Rotation is in degrees - apply same transformation as JSON
+				Rotation = FRotator(0.0f, (-Sample.Rotation - 90), 0.0f);
+			}
+			else
+			{
+				// Rotation is in radians - convert to degrees then apply transformation
+				Rotation = FRotator(0.0f, FMath::RadiansToDegrees(-Sample.Rotation) - 90, 0.0f);
+			}
+
+			// Create movement sample
+			FSimMovementSample MovementSample;
+			MovementSample.EntityID = Sample.EntityId;
+			MovementSample.Position = Position;
+			MovementSample.Rotation = Rotation;
+			MovementSample.Speed = Sample.Speed;
+
+			MovementSamples.Add(MovementSample);
+
+			// Add to agent data array for preprocessing
+			if (Sample.EntityId >= 0 && Sample.EntityId < AgentDataArray.Num())
+			{
+				AgentDataArray[Sample.EntityId].MovementData.Push(FMovementPreProcessData(Position));
+			}
+		}
+
+		// Store movement samples for this timestep
+		AgentMovementInfoData.SimulationData.Add(TimestepIdx, MovementSamples);
+
+		// Calculate and report progress
+		float CurrentPercentage = (float)CurrentDataCount / (float)TargetDataCount;
+		if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+		{
+			Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+		}
+	}
+
+	// Update CurrentDataCount to final value
+	CurrentDataCount = MaxTimestepIndex + 1;
 }
 
 void FProcessSimulationDataRunnable::FinalizeProgress()
@@ -1131,36 +1331,49 @@ void FProcessSimulationDataRunnable::Stop()
 {
 	bShouldStop = true;
 }
-//TODO: implement proper cleanup and HDF5 cleanup
 void FProcessSimulationDataRunnable::Exit()
 {
 	// as the runnable contains multiple properties that are not handled by garbage collection,
 	// we need to ensure that we clean up properly
 
-
 	// Immediately release any non–Garbage‑collected, thread‑safe pointers
 	// (your TSharedPtr will auto‑release, but Reset() here will drop the ref now)
 	JSONObject.Reset();
+
+	// Clean up HDF5 data
+	if (HDF5SimulationReader.IsOpen())
+	{
+		HDF5SimulationReader.CloseFile();
+	}
+	Hdf5Data.Entities.Empty();
+	Hdf5Data.Entities.Shrink();
+	Hdf5Data.Samples.Empty();
+	Hdf5Data.Samples.Shrink();
+	Hdf5Data.Meta = FHdf5SimulationMetadata();
+	SimulationFileType = ESimulationFileType::ESFT_Unknown;
 
 	for (auto& Pair : AgentMovementInfoData.SimulationData)
 	{
 		Pair.Value.Empty();   // frees any extra capacity in each TArray
 		Pair.Value.Shrink();   // frees any extra capacity in each TArray
 	}
-	
+
 	// Optionally clear large TArrays now to free memory immediately
 	AgentMovementInfoData.SimulationData.Empty();
 	AgentMovementInfoData.SimulationData.Shrink();
 
 	AgentDataArray.Empty();
 	AgentDataArray.Shrink();
-	
+
 	EmbAvatarAnims.Empty();
 	EmbAvatarAnims.Shrink();
-	
+
 	StepVectors.Empty();
 	StepVectors.Shrink();
-	
+
+	NumOfAgentsPerTimeStep.Empty();
+	NumOfAgentsPerTimeStep.Shrink();
+
 	bReadyToDelete = true; // Set the flag to true to indicate that the runnable is ready to be deleted
 }
 

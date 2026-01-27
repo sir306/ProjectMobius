@@ -40,13 +40,18 @@ public class UeHdf5Library : ModuleRules
             if (!Directory.Exists(LibDir)) throw new BuildException($"HDF5 lib dir not found: {LibDir}");
             if (!Directory.Exists(BinDir)) throw new BuildException($"HDF5 bin dir not found: {BinDir}");
             
-            // Pick import lib + dll by pattern
-            string ImportLib = Path.Combine(LibDir, "libhdf5.lib");
-            //string DllPath   = Path.Combine(BinDir, "hdf5.dll");
-            //string DllName   = Path.GetFileName(DllPath);
-            
-            // Link the import lib
-            PublicAdditionalLibraries.Add(ImportLib);
+            // Static libraries to link (HDF5 core, HL, and zlib for compression)
+            string[] Hdf5Libs = new string[]
+            {
+                "libhdf5.lib",
+                "libhdf5_hl.lib",
+                "zlib-static.lib"
+            };
+
+            foreach (string LibName in Hdf5Libs)
+            {
+                PublicAdditionalLibraries.Add(Path.Combine(LibDir, LibName));
+            }
 
             // MSVC treats undefined macro in #if as an error; HDF5 doesn't define this for MSVC.
             PublicDefinitions.Add("H5_HAVE_BUILTIN_EXPECT=0");

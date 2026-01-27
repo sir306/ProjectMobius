@@ -325,9 +325,15 @@ public:
 
 	bool bIsRunning = false; // Flag to indicate if the thread is running
 	bool bReadyToDelete = false; // Flag to indicate if the thread is ready to be deleted
-	
+
 	TArray<int32> NumOfAgentsPerTimeStep = TArray<int32>();
-	
+
+	/** The type of simulation file being processed */
+	ESimulationFileType SimulationFileType = ESimulationFileType::ESFT_Unknown;
+
+	/** HDF5 Simulation Data (public for subsystem access) */
+	FHdf5SimulationData Hdf5Data = FHdf5SimulationData();
+
 protected:
 	/** Pointer to a thread */
 	FRunnableThread* Thread = nullptr;
@@ -337,7 +343,7 @@ protected:
 
 	/** The Simulation Data File, acceptable formats include JSON (.json) and HDF5 (.h5) */
 	FString SimulationDataFile = FString();
-	
+
 	/** Current Data Count */
 	int32 CurrentDataCount = 0;
 
@@ -346,15 +352,9 @@ protected:
 
 	/** Bool to tell when the thread should stop */
 	FThreadSafeBool bShouldStop = false;
-	
-	/** The type of simulation file being processed */
-	ESimulationFileType SimulationFileType = ESimulationFileType::ESFT_Unknown;
-	
+
 	/** HDF5 Simulation Reader */
 	FHdf5SimulationReader HDF5SimulationReader;
-	
-	/** HDF5 Simulation Data */
-	FHdf5SimulationData Hdf5Data = FHdf5SimulationData();
 
 private:
 	/** Load the JSON file and deserialize it into the JSONObject */

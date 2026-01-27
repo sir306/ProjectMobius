@@ -209,6 +209,13 @@ set(_hdf5_cmake_args
   -DHDF5_BUILD_CPP_LIB=OFF
   -DHDF5_BUILD_FORTRAN=OFF
   -DHDF5_BUILD_JAVA=OFF
+  -DHDF5_BUILD_HL_LIB=ON
+  # Enable zlib/deflate compression support (downloads and builds zlib 1.3.1)
+  -DHDF5_ENABLE_ZLIB_SUPPORT=ON
+  -DHDF5_ALLOW_EXTERNAL_SUPPORT=TGZ
+  -DZLIB_TGZ_ORIGPATH=https://github.com/madler/zlib/releases/download/v1.3.1
+  -DZLIB_TGZ_NAME=zlib-1.3.1.tar.gz
+  -DHDF5_USE_ZLIB_STATIC=ON
   -DCMAKE_INSTALL_PREFIX=${HDF5_INST}
 )
 

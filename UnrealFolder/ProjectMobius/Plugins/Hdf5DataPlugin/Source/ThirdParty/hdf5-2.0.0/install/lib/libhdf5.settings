@@ -4,7 +4,7 @@
 General Information:
 -------------------
                    HDF5 Version: 2.0.0
-                  Configured on: 2026-01-27
+                  Configured on: 2026-01-28
                   Configured by: Visual Studio 17 2022
                     Host system: Windows-10.0.26200
               Uname information: Windows
@@ -78,7 +78,7 @@ Dimension scales w/ new references:
                        Concurrency: OFF
                Default API mapping: v200
     With deprecated public symbols: ON
-            I/O filters (external): 
+            I/O filters (external):  DEFLATE
                   _Float16 support: OFF
                      Map (H5M) API: OFF
                         Direct VFD: OFF

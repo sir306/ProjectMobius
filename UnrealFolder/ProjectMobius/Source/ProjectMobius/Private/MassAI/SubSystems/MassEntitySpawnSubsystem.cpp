@@ -375,12 +375,14 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	FSimulationFragment SimulationFragment;
 	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> JSONObjectLocal;
 	float TimeBetweenStepsLocal = 0.f;
+	ESimulationFileType LoadedFileType = ESimulationFileType::ESFT_Unknown;
 
 	if (AgentDataSubsystem->JsonDataRunnable)
 	{
 		SimulationFragment   = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
 		JSONObjectLocal      = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
 		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
+		LoadedFileType = AgentDataSubsystem->JsonDataRunnable->SimulationFileType;
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
@@ -400,8 +402,11 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
 	}
 
-	// Set the json object on the agent data subsystem
-	AgentDataSubsystem->JSONObject = JSONObjectLocal;
+	// Set the json object on the agent data subsystem only if we loaded a JSON file
+	if (LoadedFileType == ESimulationFileType::ESFT_JSON)
+	{
+		AgentDataSubsystem->JSONObject = JSONObjectLocal;
+	}
 
 	// Get Time Dilation from the ProjectMobius Game Instance
 	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
