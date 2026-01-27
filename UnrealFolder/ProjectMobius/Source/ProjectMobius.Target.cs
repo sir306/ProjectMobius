@@ -14,10 +14,11 @@ public class ProjectMobiusTarget : TargetRules
 			"HeatmapVisualization",
 		} );
 		RegisterModulesCreatedByRider();
+		
 	}
 
 	private void RegisterModulesCreatedByRider()
 	{
-		ExtraModuleNames.AddRange(new string[] { "MobiusWidgets", "Visualization", "MobiusCore" });
+		ExtraModuleNames.AddRange(new string[] { "MobiusWidgets", "Visualization", "MobiusCore", "Hdf5_DataImporter" });
 	}
 }

@@ -53,6 +53,11 @@
 			"Name": "MobiusLogging",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
+		},
+		{
+			"Name": "Hdf5_DataImporter",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
@@ -168,6 +173,10 @@
 		},
 		{
 			"Name": "XRBase",
+			"Enabled": true
+		},
+		{
+			"Name": "Hdf5Library",
 			"Enabled": true
 		}
 	],

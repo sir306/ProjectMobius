@@ -1,0 +1,14 @@
+prefix=D:/NickWork/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: hdf5
+Description: HDF5 (Hierarchical Data Format 5) Software Library
+Version: 2.0.0
+
+Cflags: -I${includedir} 
+Libs: -L${libdir}  -lhdf5
+Requires: 
+Libs.private: 
+Requires.private: 

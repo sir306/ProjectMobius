@@ -50,6 +50,7 @@ include(ExternalProject)
 # --- Project roots (adjust if your tree differs) ---
 set(UE_ROOT "${CMAKE_SOURCE_DIR}")
 set(ASSIMP_SRC      "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
+set(HDF5_SRC        "${UE_ROOT}/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0")
 
 # --- Platform output folders Unreal expects ---
 if(WIN32)
@@ -192,13 +193,43 @@ else()
   )
 endif()
 
+# ---------------------------------------
+# 2) Build HDF5 (Hdf5_DataImporter) and INSTALL into module ThirdParty layout
+# ---------------------------------------
+set(HDF5_BUILD "${CMAKE_BINARY_DIR}/hdf5-build")
+set(HDF5_INST "${HDF5_SRC}/install")
+
+set(_hdf5_cmake_args
+  -DCMAKE_BUILD_TYPE=Release
+  -DBUILD_SHARED_LIBS=OFF
+  -DBUILD_STATIC_LIBS=ON
+  -DHDF5_BUILD_TOOLS=OFF
+  -DHDF5_BUILD_EXAMPLES=OFF
+  -DBUILD_TESTING=OFF
+  -DHDF5_BUILD_CPP_LIB=OFF
+  -DHDF5_BUILD_FORTRAN=OFF
+  -DHDF5_BUILD_JAVA=OFF
+  -DCMAKE_INSTALL_PREFIX=${HDF5_INST}
+)
+
+ExternalProject_Add(hdf5_ep
+  SOURCE_DIR  "${HDF5_SRC}"
+  BINARY_DIR  "${HDF5_BUILD}"
+  INSTALL_DIR "${HDF5_INST}"
+  CMAKE_ARGS  ${_hdf5_cmake_args}
+  BUILD_COMMAND   ${CMAKE_COMMAND} --build . --config Release --parallel
+  INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install --config Release --parallel
+  UPDATE_DISCONNECTED 1
+)
+
 # Convenience umbrella target
 add_custom_target(all_external
-  DEPENDS assimp_stage
+  DEPENDS assimp_stage hdf5_ep
 )
 
 add_dependencies(all_external
   assimp_ep
+  hdf5_ep
 )
 
 # ------------------------------------------------------------
@@ -295,7 +326,7 @@ if(SUPERBUILD_ENABLE_TESTS)
   endif()
 
   add_custom_target(superbuild_tests
-    DEPENDS assimp_stage
+    DEPENDS assimp_stage hdf5_ep
     COMMENT "Running superbuild staging checks"
   )
 

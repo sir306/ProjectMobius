@@ -172,15 +172,15 @@ NickMasters/*.zip
 Blender/*
 
 # HDF5 third-party (scoped to vendored path)
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/**/java/.classes
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/**/*~
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/build*
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/src/H5config.h.in
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/.classpath
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/.claude/
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/CLAUDE.md
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/CMakeUserPresets.json
-UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/HDF5Examples/CMakeUserPresets.json
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/**/java/.classes
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/**/*~
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/build*
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/src/H5config.h.in
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/.classpath
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/.claude/
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/CLAUDE.md
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/CMakeUserPresets.json
+UnrealFolder/ProjectMobius/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0/HDF5Examples/CMakeUserPresets.json
 
 
 # =====================================================

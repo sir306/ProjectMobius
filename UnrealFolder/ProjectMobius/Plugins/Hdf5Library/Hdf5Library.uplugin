@@ -1,0 +1,23 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Hdf5Library",
+	"Description": "",
+	"Category": "Other",
+	"CreatedBy": "Nicholas Richard Harding",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "Hdf5Library",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
