@@ -49,7 +49,8 @@ namespace
 {
 	static bool IsAgentFileSupported(const FString& FilePath)
 	{
-		return FilePath.EndsWith(TEXT(".json"));
+		const FString Extension = FPaths::GetExtension(FilePath).ToLower();
+		return Extension == TEXT("json") || Extension == TEXT("h5");
 	}
 
 	static bool IsMeshFileSupported(const FString& FilePath)
@@ -368,7 +369,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	std::vector<std::string> Filters;
 	if (DialogType == EDialogType::AgentFile)
 	{
-		Filters = { "Agent Data", "*.json", "JSON Files", "*.json" };
+		Filters = { "Agent Data", "*.json *.h5", "JSON Files", "*.json", "HDF5 Files", "*.h5" };
 		ActiveDialog = MakeUnique<pfd::open_file>("Select Agent Data File", InitialDirUtf8, Filters, pfd::opt::none);
 	}
 	else
@@ -499,7 +500,7 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 		if (ActiveDialogType == EDialogType::AgentFile)
 		{
 			AgentPath = SelectedPath;
-			bAgentSuccess = AgentPath.EndsWith(".json") || AgentPath.EndsWith(".txt");
+			bAgentSuccess = AgentPath.EndsWith(".json") || AgentPath.EndsWith(".txt") || AgentPath.EndsWith(".h5");
 		}
 		else
 		{
