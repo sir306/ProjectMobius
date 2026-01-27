@@ -287,7 +287,7 @@ void UAgentDataSubsystem::BuildPedestrianAgentInfo()
 		
 	}
 }
-
+// TODO: this requires altering to incorporate hdf5 support
 void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment& EntityInfoFragToUpdate) const
 {
 	if (!JSONObject.IsValid())
@@ -324,7 +324,7 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 	ParseEntityInfo(JSONEntityDataObject, EntityInfoFragToUpdate);
 
 }
-
+// TODO: this requires altering to incorporate hdf5 support
 void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
                                                     FEntityRenderingFragment& EntityRenderingFragToUpdate) const
 {
@@ -442,7 +442,7 @@ void UAgentDataSubsystem::CreateJsonReaderAndString(FString& OutJsonString, TSha
 	OutJsonReader = TJsonReaderFactory<TCHAR>::Create(OutJsonString);
 }
 
-FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner)
+FProcessSimulationDataRunnable::FProcessSimulationDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner)
 {
 	// Set the owner subsystem if valid
 	if (Owner.IsValid())
@@ -458,13 +458,13 @@ FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAge
 		                              TEXT("AgentDataSubsystem"));
 		return;
 	}
-	JsonFilePath = InJsonDataFile;
+	SimulationDataFilePath = InJsonDataFile;
 	// check file actually exists before creating the thread
-	if (JsonFilePath.IsEmpty() || !FPaths::FileExists(JsonFilePath))
+	if (SimulationDataFilePath.IsEmpty() || !FPaths::FileExists(SimulationDataFilePath))
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
 		                              TEXT("Simulation file not found"),
-		                              FString::Printf(TEXT("JSON file does not exist: %s"), *JsonFilePath),
+		                              FString::Printf(TEXT("JSON file does not exist: %s"), *SimulationDataFilePath),
 		                              TEXT("AgentDataSubsystem"));
 		return;
 	}
@@ -472,10 +472,10 @@ FJsonDataRunnable::FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAge
 	
 	
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
-	Thread = FRunnableThread::Create(this, TEXT("FJsonDataRunnable"), 0, TPri_Normal);
+	Thread = FRunnableThread::Create(this, TEXT("FProcessSimulationDataRunnable"), 0, TPri_Normal);
 }
 
-FJsonDataRunnable::~FJsonDataRunnable()
+FProcessSimulationDataRunnable::~FProcessSimulationDataRunnable()
 {
 	// ensure you’ve called Stop() first
 	if (Thread)
@@ -495,32 +495,58 @@ FJsonDataRunnable::~FJsonDataRunnable()
 	// 	});
 }
 
-bool FJsonDataRunnable::LoadFileAndDeserialize()
+bool FProcessSimulationDataRunnable::LoadFileAndDeserialize()
 {
 	// check file actually exists before creating the thread
-	if (!FPaths::FileExists(JsonFilePath))
+	if (!FPaths::FileExists(SimulationDataFilePath))
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-		                              TEXT("Simulation file not found"),
-		                              FString::Printf(TEXT("JSON file does not exist: %s"), *JsonFilePath),
+		                              TEXT("Simulation file path not found"),
+		                              FString::Printf(TEXT("File path does not exist: %s"), *SimulationDataFilePath),
 		                              TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return false;
 	}
+	
+	// Ensure the simulation file type is set to unknown before loading - successful loading and deserializing will set this to the corresponding file type
+	SimulationFileType = ESimulationFileType::ESFT_Unknown;
+	//TODO: should really be doing equal not compare 
+	// check what the extension of the file is: JSON ? HDF5
+	if (FPaths::GetExtension(SimulationDataFilePath).Compare(FString("json"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
+	{
+		return LoadAndDeserializeJSONFile();
+	}
+	if (FPaths::GetExtension(SimulationDataFilePath).Compare(FString("h5"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
+	{
+		return LoadAndDeserializeHDF5File();
+	}
+	else
+	{
+		// invalid format
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+		                              TEXT("Unsupported simulation file format"),
+		                              FString::Printf(TEXT("File format not supported: %s"), *SimulationDataFilePath),
+		                              TEXT("AgentDataSubsystem"));
+		bShouldStop = true;
+		return false;
+	}
+}
 
+bool FProcessSimulationDataRunnable::LoadAndDeserializeJSONFile()
+{
 	// Load File to String
-	if (!FFileHelper::LoadFileToString(JsonDataFile, *JsonFilePath))
+	if (!FFileHelper::LoadFileToString(SimulationDataFile, *SimulationDataFilePath))
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-		                              TEXT("Failed to read simulation file"),
-		                              FString::Printf(TEXT("Unable to read JSON data from: %s"), *JsonFilePath),
-		                              TEXT("AgentDataSubsystem"));
+									  TEXT("Failed to read simulation file"),
+									  FString::Printf(TEXT("Unable to read JSON data from: %s"), *SimulationDataFilePath),
+									  TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return false;
 	}
 
 	// Create JSON Reader
-	TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(JsonDataFile);
+	TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(SimulationDataFile);
 
 	JSONObject.Reset();
 	
@@ -531,27 +557,81 @@ bool FJsonDataRunnable::LoadFileAndDeserialize()
 	if (!bDeserializeSuccess)
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-		                              TEXT("Failed to parse simulation file"),
-		                              FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *JsonFilePath),
-		                              TEXT("AgentDataSubsystem"));
+									  TEXT("Failed to parse simulation file"),
+									  FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *SimulationDataFilePath),
+									  TEXT("AgentDataSubsystem"));
 		bShouldStop = true;
 		return false;
 	}
+	
+	// if successful we can set the simulation file type
+	SimulationFileType = ESimulationFileType::ESFT_JSON;
 
 	return true;
 }
 
-void FJsonDataRunnable::ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime)
+bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
+{
+	if (!HDF5SimulationReader.OpenFile(*SimulationDataFilePath))
+	{
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+		                              TEXT("Failed to read simulation file"),
+		                              FString::Printf(TEXT("Unable to read HDF5 data from: %s"), *SimulationDataFilePath),
+		                              TEXT("AgentDataSubsystem"));
+		bShouldStop = true;
+		return false;
+	}
+	// clear old data
+	Hdf5Data = FHdf5SimulationData();
+	
+	// Read the HDF5 data into our Hdf5Data structure
+	// MetaData read
+	HDF5SimulationReader.ReadMetadata(Hdf5Data.Meta);
+	// Entities read
+	HDF5SimulationReader.ReadEntities(Hdf5Data.Entities);
+	// Samples read
+	HDF5SimulationReader.ReadAllSamples(Hdf5Data.Samples);
+	
+	// finished reading
+	HDF5SimulationReader.CloseFile();
+	
+	// if successful we can set the simulation file type
+	SimulationFileType = ESimulationFileType::ESFT_HDF5;
+	
+	return true;
+}
+
+void FProcessSimulationDataRunnable::ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime)
 {
 	bCalculateTimeBetweenSteps = true;
 	bCalculateMaxTime = true;
+	
+	// Check what file we are working with
+	switch (SimulationFileType)
+	{
+	case ESFT_Unknown:
+		// shouldn't happen but will add error stuff later
+		break;
+	case ESFT_JSON:
+		ReadJSONMetadataValues(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+		break;
+	case ESFT_HDF5:
+		ReadHDF5MetadataValues(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+		break;
+	case ESFT_MAX:
+		// shouldn't happen but will add error stuff later
+		break;
+	}
+}
 
+void FProcessSimulationDataRunnable::ReadJSONMetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime)
+{
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
 		                              TEXT("Simulation data missing"),
 		                              TEXT("JSON data was not loaded before processing metadata."),
-		                              TEXT("AgentDataSubsystem"));
+		                              TEXT("AgentDataSubsystem - FProcessSimulationDataRunnable::ReadJSONMetadataValues"));
 		bShouldStop = true;
 		return;
 	}
@@ -608,14 +688,99 @@ void FJsonDataRunnable::ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& 
 	}
 }
 
-void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime)
+void FProcessSimulationDataRunnable::ReadHDF5MetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime)
+{
+	// Check the hdf5 data object is valid, there should be samples to be classed valid
+	if (Hdf5Data.Samples.Num() > 0)// while sample numbers can be less than expected max time step, it can't be empty 
+	{
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+									  TEXT("Simulation data missing"),
+									  TEXT("HDF5 data was not processed due to missing simulation samples."),
+									  TEXT("AgentDataSubsystem - FProcessSimulationDataRunnable::ReadHDF5MetadataValues"));
+		bShouldStop = true;
+		return;
+	}
+	
+	// Did the HDF5 data contain metadata
+	if (Hdf5Data.Meta != FHdf5SimulationMetadata())//TODO: need to improve this equality check logic
+	{
+		// if not 0 then we have data
+		if (Hdf5Data.Meta.MaxNumEntities != 0)
+		{
+			MaxAgents = Hdf5Data.Meta.MaxNumEntities;
+		}
+		if (Hdf5Data.Meta.Duration > 0 && Hdf5Data.Meta.SamplingRate > 0)
+		{
+			// get the simulation metadata
+			AgentMovementInfoData.MaxTime = Hdf5Data.Meta.Duration;
+			// get the sampling rate of the simulation from the metadata
+			TimeBetweenSteps = Hdf5Data.Meta.SamplingRate;
+			
+			// Calculate the number of samples
+			TargetDataCount = AgentMovementInfoData.MaxTime / TimeBetweenSteps;
+			
+			// don't calculate the time between steps
+			bCalculateTimeBetweenSteps = false;
+
+			// don't calculate the max time
+			bCalculateMaxTime = false;
+		}
+		else
+		{
+			if (Hdf5Data.Meta.SamplingRate > 0)
+			{
+				// get the sampling rate of the simulation from the metadata
+				TimeBetweenSteps = Hdf5Data.Meta.SamplingRate;
+			}
+			if (Hdf5Data.Meta.Duration > 0)
+			{
+				// get the simulation metadata
+				AgentMovementInfoData.MaxTime = Hdf5Data.Meta.Duration;
+			}
+			
+			// Set the target count to the simulation array count - as we know there is simulation data
+			TargetDataCount = Hdf5Data.Samples.Num();
+		}
+		
+	}
+	else
+	{
+		// Set the entity count from count of entities in the hdf5 Entities array if the metadata fields are not present or blank
+		MaxAgents = Hdf5Data.Entities.Num();
+	}
+	
+}
+
+void FProcessSimulationDataRunnable::RunSimulationDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime)
+{
+	// TODO: refactor this to handle HDF5 data as well
+	// Check what file we are working with
+	switch (SimulationFileType)
+	{
+	case ESFT_Unknown:
+		// shouldn't happen but will add error stuff later
+		break;
+	case ESFT_JSON:
+		RunJsonSimDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+		break;
+	case ESFT_HDF5:
+		RunHdf5SimDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+		break;
+	case ESFT_MAX:
+		// shouldn't happen but will add error stuff later
+		break;
+	}
+}
+
+void FProcessSimulationDataRunnable::RunJsonSimDataGatheringLoop(bool bCalculateTimeBetweenSteps,
+	bool bCalculateMaxTime)
 {
 	if (!JSONObject.IsValid())
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
 		                              TEXT("Simulation data missing"),
 		                              TEXT("JSON data was not loaded before processing simulation steps."),
-		                              TEXT("AgentDataSubsystem"));
+		                              TEXT("AgentDataSubsystem - FProcessSimulationDataRunnable::RunSimulationDataGatheringLoop"));
 		bShouldStop = true;
 		return;
 	}
@@ -839,8 +1004,15 @@ void FJsonDataRunnable::RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool 
 	}
 }
 
-void FJsonDataRunnable::FinalizeProgress()
+void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculateTimeBetweenSteps,
+	bool bCalculateMaxTime)
 {
+	// TODO: MUST IMPLEMENT THIS FOR HDF5 SUPPORT
+}
+
+void FProcessSimulationDataRunnable::FinalizeProgress()
+{
+	// TODO: CHECK IF ANY HDF5 SPECIFIC FINALIZATION IS NEEDED
 	if (bShouldStop)
 	{
 		return;
@@ -889,7 +1061,7 @@ void FJsonDataRunnable::FinalizeProgress()
 	FPlatformProcess::Sleep(0.5f);
 }
 
-uint32 FJsonDataRunnable:: Run()
+uint32 FProcessSimulationDataRunnable:: Run()
 {
 	bIsRunning = true;
 	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get(); //TODO: this may need to be a weak ptr check/and/or variable
@@ -942,7 +1114,7 @@ uint32 FJsonDataRunnable:: Run()
 	}
 
 	// Run the main simulation loop
-	RunSimulationLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+	RunSimulationDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
 
 	if (bShouldStop)
 	{
@@ -955,12 +1127,12 @@ uint32 FJsonDataRunnable:: Run()
 	bIsRunning = false;
 	return 0; // return 0 to indicate that the thread has ended
 }
-void FJsonDataRunnable::Stop()
+void FProcessSimulationDataRunnable::Stop()
 {
 	bShouldStop = true;
 }
-
-void FJsonDataRunnable::Exit()
+//TODO: implement proper cleanup and HDF5 cleanup
+void FProcessSimulationDataRunnable::Exit()
 {
 	// as the runnable contains multiple properties that are not handled by garbage collection,
 	// we need to ensure that we clean up properly
@@ -992,7 +1164,7 @@ void FJsonDataRunnable::Exit()
 	bReadyToDelete = true; // Set the flag to true to indicate that the runnable is ready to be deleted
 }
 
-TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)
+TArray<FSimMovementSample> FProcessSimulationDataRunnable::GetMovementSamples(int32 AgentID)
 {
 	TArray<FSimMovementSample> MovementSamples;
 
@@ -1022,7 +1194,7 @@ TArray<FSimMovementSample> FJsonDataRunnable::GetMovementSamples(int32 AgentID)
 	return MovementSamples;
 }
 
-void FJsonDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> AgentSamples)
+void FProcessSimulationDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> AgentSamples)
 {
 	bool bNotDone = false;
 	while (!bShouldStop && !bNotDone)
@@ -1119,7 +1291,7 @@ void FJsonDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> Agen
 	}
 }
 
-int FJsonDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sample)
+int FProcessSimulationDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sample)
 {
 	if (Sample.MovementData.Num() > 2)
 	{
@@ -1136,7 +1308,7 @@ int FJsonDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sa
 	return (int)Sample.MovementData.Num();
 }
 // TODO: pass a in so can speed this up 
-void FJsonDataRunnable::SetAnimPt(int t, EPedestrianMovementBracket emb, float StepDuration)
+void FProcessSimulationDataRunnable::SetAnimPt(int t, EPedestrianMovementBracket emb, float StepDuration)
 {
 	EmbAvatarAnims[t].MovementBracket = emb;
 	EmbAvatarAnims[t].StepDurationMS = static_cast<unsigned long>(StepDuration * 1000.0f);
@@ -1153,14 +1325,14 @@ void FJsonDataRunnable::SetAnimPt(int t, EPedestrianMovementBracket emb, float S
 	}
 }
 
-void FJsonDataRunnable::AddManyVectors(TArray<FVector>& Vec3D, int TStartStep, int TSpanStepPts, FVector& SumVec)
+void FProcessSimulationDataRunnable::AddManyVectors(TArray<FVector>& Vec3D, int TStartStep, int TSpanStepPts, FVector& SumVec)
 {
 	for (int i = TStartStep; i < TStartStep + TSpanStepPts; i++){
 		SumVec = SumVec + Vec3D[i];
 	}
 }
 
-EPedestrianMovementBracket FJsonDataRunnable::CalculateStepAnimationParams(float CurrentSpeed, float& StepsPerSecond)
+EPedestrianMovementBracket FProcessSimulationDataRunnable::CalculateStepAnimationParams(float CurrentSpeed, float& StepsPerSecond)
 {
 	FVatMovementFrames Band = AvatarGaitSpeedBands[5]; // Default to the last band
 	// Fast loop through the GaitSpeedBands, testing CurrentSpeed against the HighVal, in ascending order, to assign the MovementBracket

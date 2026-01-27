@@ -24,6 +24,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Hdf5SimulationReader.h"
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Serialization/JsonReader.h"
@@ -37,7 +38,7 @@
 
 
 struct FVatMovementFrames;
-class FJsonDataRunnable;
+class FProcessSimulationDataRunnable;
 /**
  * Delegates for the Agent Data Subsystem
  */
@@ -156,7 +157,7 @@ protected:
 #pragma region PROPERTIES
 public:
         /** Pointer to the FRunnable JSON Parser */
-        TUniquePtr<FJsonDataRunnable> JsonDataRunnable;
+        TUniquePtr<FProcessSimulationDataRunnable> JsonDataRunnable;
 	
 	/** JSON Object */
 	TSharedPtr<FJsonObject> JSONObject;
@@ -238,7 +239,27 @@ struct FVatAnimDataMB
 };
 //#pragma pack(pop)   // Restore previous alignment
 
-class FJsonDataRunnable : public FRunnable
+/** Enum to help with identifying which file type the simulation data is */
+enum ESimulationFileType
+{
+	ESFT_Unknown = 0,
+	ESFT_JSON    = 1,
+	ESFT_HDF5    = 2,
+	ESFT_MAX     = 3
+};
+
+/** Struct to hold hdf5 data */
+struct FHdf5SimulationData
+{
+	FHdf5SimulationMetadata Meta = FHdf5SimulationMetadata();
+	TArray<FHdf5EntityData> Entities = TArray<FHdf5EntityData>();
+	TArray<FHdf5SampleData> Samples = TArray<FHdf5SampleData>();
+};
+
+/**
+ * Runnable class to process simulation data in a separate thread
+ */
+class FProcessSimulationDataRunnable : public FRunnable
 {
 public:
 	/**
@@ -247,10 +268,10 @@ public:
 	 *
 	 * @param[FString] InJsonDataFile: The JSON data file to load
 	 */
-	explicit FJsonDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner);
+	explicit FProcessSimulationDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner);
 
 	/** Destructor */
-	virtual ~FJsonDataRunnable() override;
+	virtual ~FProcessSimulationDataRunnable() override;
 	
 	// The FRunnable interface functions
 	virtual uint32 Run() override;
@@ -311,10 +332,11 @@ protected:
 	/** Pointer to a thread */
 	FRunnableThread* Thread = nullptr;
 
-	FString JsonFilePath = FString();
+	/** File Path to the simulation data */
+	FString SimulationDataFilePath = FString();
 
-	/** The JSON Data File */
-	FString JsonDataFile = FString();
+	/** The Simulation Data File, acceptable formats include JSON (.json) and HDF5 (.h5) */
+	FString SimulationDataFile = FString();
 	
 	/** Current Data Count */
 	int32 CurrentDataCount = 0;
@@ -324,16 +346,39 @@ protected:
 
 	/** Bool to tell when the thread should stop */
 	FThreadSafeBool bShouldStop = false;
+	
+	/** The type of simulation file being processed */
+	ESimulationFileType SimulationFileType = ESimulationFileType::ESFT_Unknown;
+	
+	/** HDF5 Simulation Reader */
+	FHdf5SimulationReader HDF5SimulationReader;
+	
+	/** HDF5 Simulation Data */
+	FHdf5SimulationData Hdf5Data = FHdf5SimulationData();
 
 private:
 	/** Load the JSON file and deserialize it into the JSONObject */
 	bool LoadFileAndDeserialize();
+	
+	/** Handles the loading of JSON files and deserializes it into a JSONObject */
+	bool LoadAndDeserializeJSONFile();
+	
+	/** Handles the loading of HDF5 file and deserializes it into a #add object type# */
+	bool LoadAndDeserializeHDF5File();
 
 	/** Read metadata values from the JSON */
 	void ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
+	
+	/** Read JSON Metadata Values */
+	void ReadJSONMetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
+	
+	/** Read HDF5 Metadata Values */
+	void ReadHDF5MetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
 
 	/** Main simulation processing loop */
-	void RunSimulationLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
+	void RunSimulationDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
+	void RunJsonSimDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
+	void RunHdf5SimDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
 
 	/** Send the final progress and completion events */
 	void FinalizeProgress();

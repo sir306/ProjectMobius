@@ -32,10 +32,20 @@
 struct FHdf5SimulationMetadata
 {
 	float Duration = 0.0f;
-	float SamplingRate = 0.1f;
+	float SamplingRate = 0.0f;
 	int32 MaxNumEntities = 0;
 	bool bIsSI = true;
 	bool bIsDeg = true;
+	
+	// Comparison operator to see that two metadata structs are equal
+	bool operator==(const FHdf5SimulationMetadata& Other) const
+	{
+		return FMath::IsNearlyEqual(Duration, Other.Duration) &&
+		       FMath::IsNearlyEqual(SamplingRate, Other.SamplingRate) &&
+		       MaxNumEntities == Other.MaxNumEntities &&
+		       bIsSI == Other.bIsSI &&
+		       bIsDeg == Other.bIsDeg;
+	}
 };
 
 /**

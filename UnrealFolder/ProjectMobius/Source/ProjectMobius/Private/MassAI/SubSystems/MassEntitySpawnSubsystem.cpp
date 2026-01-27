@@ -205,7 +205,7 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 	}
 }
 
-void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FJsonDataRunnable>& ToKill)
+void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimulationDataRunnable>& ToKill)
 {
         if (!ToKill) return;
 
@@ -332,7 +332,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
 	// Get the JSON Data File using the FRunnable class to get the data asynchronously
-        AgentDataSubsystem->JsonDataRunnable = MakeUnique<FJsonDataRunnable>(JSONDataFile, AgentDataSubsystem);
+        AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	//AgentDataSubsystem->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 

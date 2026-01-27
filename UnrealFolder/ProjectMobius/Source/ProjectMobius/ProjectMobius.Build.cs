@@ -22,7 +22,8 @@ public class ProjectMobius : ModuleRules
             // Physics -- following modules are required for PhysicsParallelFor
             "Chaos",
             "MassSignals",
-            "MobiusLogging",
+            "MobiusLogging", 
+            "Hdf5DataPlugin",
         });
 
         // The following modules are required for the MASS system to run with a couple of added modules for convenience
