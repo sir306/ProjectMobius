@@ -4,7 +4,7 @@
 
 #include "Modules/ModuleManager.h"
 
-class FHdf5LibraryModule : public IModuleInterface
+class FHdf5DataPluginModule : public IModuleInterface
 {
 public:
 

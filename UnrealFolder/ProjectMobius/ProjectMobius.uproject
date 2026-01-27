@@ -176,7 +176,7 @@
 			"Enabled": true
 		},
 		{
-			"Name": "Hdf5Library",
+			"Name": "Hdf5DataPlugin",
 			"Enabled": true
 		}
 	],

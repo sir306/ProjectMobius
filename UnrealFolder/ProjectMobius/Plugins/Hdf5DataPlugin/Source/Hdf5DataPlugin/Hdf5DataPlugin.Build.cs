@@ -2,9 +2,9 @@
 
 using UnrealBuildTool;
 
-public class Hdf5Library : ModuleRules
+public class Hdf5DataPlugin : ModuleRules
 {
-	public Hdf5Library(ReadOnlyTargetRules Target) : base(Target)
+	public Hdf5DataPlugin(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		

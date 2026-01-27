@@ -50,7 +50,7 @@ include(ExternalProject)
 # --- Project roots (adjust if your tree differs) ---
 set(UE_ROOT "${CMAKE_SOURCE_DIR}")
 set(ASSIMP_SRC      "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
-set(HDF5_SRC        "${UE_ROOT}/Plugins/Hdf5Library/Source/ThirdParty/hdf5-2.0.0")
+set(HDF5_SRC        "${UE_ROOT}/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0")
 
 # --- Platform output folders Unreal expects ---
 if(WIN32)
