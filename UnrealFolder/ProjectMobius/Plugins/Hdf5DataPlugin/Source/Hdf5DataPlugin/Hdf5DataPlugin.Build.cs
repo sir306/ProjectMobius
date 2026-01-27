@@ -31,6 +31,11 @@ public class Hdf5DataPlugin : ModuleRules
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
+
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			PublicSystemLibraries.Add("Shlwapi.lib");
+		}
 			
 		
 		PrivateDependencyModuleNames.AddRange(
@@ -47,5 +52,7 @@ public class Hdf5DataPlugin : ModuleRules
 				// ... add any modules that your module loads dynamically here ...
 			}
 			);
+		
+		// TODO: currently statically linking HDF5, may need to change to dynamic linking in future 
 	}
 }

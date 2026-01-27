@@ -47,6 +47,12 @@ public class UeHdf5Library : ModuleRules
             
             // Link the import lib
             PublicAdditionalLibraries.Add(ImportLib);
+
+            // MSVC treats undefined macro in #if as an error; HDF5 doesn't define this for MSVC.
+            PublicDefinitions.Add("H5_HAVE_BUILTIN_EXPECT=0");
+
+            // HDF5 uses StrStrIA (shlwapi) on Windows.
+            PublicSystemLibraries.Add("Shlwapi.lib");
             
             // dll loading not needed for static link - Maybe in future if we do dynamic link
             //PublicDelayLoadDLLs.Add(DllName); // filename only    

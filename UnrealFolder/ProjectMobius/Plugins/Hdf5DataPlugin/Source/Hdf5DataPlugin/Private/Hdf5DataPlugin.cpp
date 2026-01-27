@@ -1,22 +1,16 @@
 ﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Hdf5DataPlugin.h"
-#include "Misc/MessageDialog.h"
+#include "Hdf5DataExampleTest.h"
 #include "Modules/ModuleManager.h"
-#include "Interfaces/IPluginManager.h"
-#include "Misc/Paths.h"
-#include "HAL/PlatformProcess.h"
 
 #define LOCTEXT_NAMESPACE "FHdf5DataPluginModule"
 
 void FHdf5DataPluginModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-
-	// Get the base directory of this plugin
-	FString BaseDir = IPluginManager::Get().FindPlugin("Hdf5DataPlugin")->GetBaseDir();
-
-	
+	// Uncomment to run a simple HDF5 example file open/iterate log on startup.
+	FHdf5DataExampleTest::RunExampleFile();
 }
 
 void FHdf5DataPluginModule::ShutdownModule()

@@ -27,7 +27,7 @@
 #define H5_HAVE_VISUAL_STUDIO 1
 
 /* Define the default plugins path to compile */
-#define H5_DEFAULT_PLUGINDIR "D:/NickWork/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Source/Hdf5_DataImporter/ThirdParty/hdf5-2.0.0/install\\lib\\plugin;%ALLUSERSPROFILE%\\hdf5\\lib\\plugin"
+#define H5_DEFAULT_PLUGINDIR "D:/NickWork/Mobius/ProjectMobius/UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install\\lib\\plugin;%ALLUSERSPROFILE%\\hdf5\\lib\\plugin"
 
 /* Define if your system is IBM ppc64le and cannot convert some long double
    values correctly. */
