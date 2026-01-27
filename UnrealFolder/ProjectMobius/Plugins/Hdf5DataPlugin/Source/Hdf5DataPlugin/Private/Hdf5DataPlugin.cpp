@@ -9,8 +9,12 @@
 void FHdf5DataPluginModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-	// Uncomment to run a simple HDF5 example file open/iterate log on startup.
+
+	// Run original HDF5 example file open/iterate log test
 	FHdf5DataExampleTest::RunExampleFile();
+
+	// Test the simulation reader with generated test file
+	FHdf5DataExampleTest::TestSimulationReader();
 }
 
 void FHdf5DataPluginModule::ShutdownModule()
