@@ -626,21 +626,91 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
 	}
 	// clear old data
 	Hdf5Data = FHdf5SimulationData();
-	
-	// Read the HDF5 data into our Hdf5Data structure
-	// MetaData read
-	HDF5SimulationReader.ReadMetadata(Hdf5Data.Meta);
-	// Entities read
-	HDF5SimulationReader.ReadEntities(Hdf5Data.Entities);
-	// Samples read
-	HDF5SimulationReader.ReadAllSamples(Hdf5Data.Samples);
-	
+
+	// Check the detected format
+	EHdf5FormatType Format = HDF5SimulationReader.GetDetectedFormat();
+
+	if (Format == EHdf5FormatType::Juelich)
+	{
+		// Read Juelich format and convert to Mobius format
+		FHdf5JuelichMetadata JuelichMeta;
+		TArray<FHdf5JuelichTrajectoryRecord> Trajectories;
+
+		if (!HDF5SimulationReader.ReadJuelichMetadata(JuelichMeta))
+		{
+			ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+			                              TEXT("Failed to read Juelich metadata"),
+			                              FString::Printf(TEXT("Unable to read Juelich metadata from: %s"), *SimulationDataFilePath),
+			                              TEXT("AgentDataSubsystem"));
+			HDF5SimulationReader.CloseFile();
+			bShouldStop = true;
+			return false;
+		}
+
+		if (!HDF5SimulationReader.ReadJuelichTrajectories(Trajectories))
+		{
+			ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+			                              TEXT("Failed to read Juelich trajectories"),
+			                              FString::Printf(TEXT("Unable to read trajectory data from: %s"), *SimulationDataFilePath),
+			                              TEXT("AgentDataSubsystem"));
+			HDF5SimulationReader.CloseFile();
+			bShouldStop = true;
+			return false;
+		}
+
+		// Convert to Mobius format
+		if (!FHdf5SimulationReader::ConvertJuelichToMobiusFormat(
+			JuelichMeta, Trajectories,
+			Hdf5Data.Meta, Hdf5Data.Entities, Hdf5Data.Samples))
+		{
+			ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+			                              TEXT("Failed to convert Juelich data"),
+			                              FString::Printf(TEXT("Unable to convert Juelich format to Mobius format: %s"), *SimulationDataFilePath),
+			                              TEXT("AgentDataSubsystem"));
+			HDF5SimulationReader.CloseFile();
+			bShouldStop = true;
+			return false;
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("Loaded Juelich format HDF5 file: %d entities, %d samples"),
+			Hdf5Data.Entities.Num(), Hdf5Data.Samples.Num());
+	}
+	else if (Format == EHdf5FormatType::Mobius)
+	{
+		// Read Mobius format directly
+		// MetaData read
+		HDF5SimulationReader.ReadMetadata(Hdf5Data.Meta);
+		// Entities read
+		HDF5SimulationReader.ReadEntities(Hdf5Data.Entities);
+		// Samples read - also detect if rotation and speed fields exist
+		bool bHasRotationField = true;
+		bool bHasSpeedField = true;
+		HDF5SimulationReader.ReadAllSamples(Hdf5Data.Samples, &bHasRotationField, &bHasSpeedField);
+		Hdf5Data.Meta.bHasRotationData = bHasRotationField;
+		Hdf5Data.Meta.bHasSpeedData = bHasSpeedField;
+
+		UE_LOG(LogTemp, Log, TEXT("Loaded Mobius format HDF5 file: %d entities, %d samples, has rotation: %s, has speed: %s"),
+			Hdf5Data.Entities.Num(), Hdf5Data.Samples.Num(),
+			bHasRotationField ? TEXT("Yes") : TEXT("No"),
+			bHasSpeedField ? TEXT("Yes") : TEXT("No"));
+	}
+	else
+	{
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+		                              TEXT("Unknown HDF5 format"),
+		                              FString::Printf(TEXT("HDF5 file has unrecognized format: %s"), *SimulationDataFilePath),
+		                              TEXT("AgentDataSubsystem"));
+		HDF5SimulationReader.CloseFile();
+		bShouldStop = true;
+		return false;
+	}
+
 	// finished reading
 	HDF5SimulationReader.CloseFile();
-	
+
 	// if successful we can set the simulation file type
 	SimulationFileType = ESimulationFileType::ESFT_HDF5;
-	
+
 	return true;
 }
 
@@ -1151,7 +1221,7 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 			// Build position vector
 			FVector Position;
 			Position.X = Sample.PositionX;
-			Position.Y = -Sample.PositionY; // Negate Y like JSON does
+			Position.Y = Sample.PositionY;
 			Position.Z = Sample.PositionZ;
 
 			// Apply unit conversion
@@ -1208,6 +1278,225 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 
 	// Update CurrentDataCount to final value
 	CurrentDataCount = MaxTimestepIndex + 1;
+}
+
+/**
+ * Calculates rotation from movement direction when the HDF5 source data lacks rotation information.
+ *
+ * Algorithm:
+ * 1. For each entity, collect all position samples ordered by timestep
+ * 2. For each timestep, calculate direction vector to the NEXT position (look-ahead approach)
+ * 3. Convert direction to rotation angle in degrees using FMath::Atan2
+ * 4. For the last timestep, carry forward the previous calculated rotation
+ * 5. For stationary entities (no position change), maintain last valid rotation
+ *
+ * @note The -90 degree offset applied to the yaw is to correct for mesh orientation in Unreal Engine,
+ *       where the forward direction of the mesh faces +X but Atan2 returns 0 for movement along +X axis.
+ */
+void FProcessSimulationDataRunnable::CalculateRotationFromMovement()
+{
+	// Early out if the source data already contains rotation information
+	if (Hdf5Data.Meta.bHasRotationData)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Calculating rotation from movement direction for %d entities"), MaxAgents);
+
+	// Process each entity independently
+	for (int32 EntityIdx = 0; EntityIdx < MaxAgents; ++EntityIdx)
+	{
+		if (bShouldStop) break;
+
+		// Step 1: Collect all position samples for this entity across all timesteps
+		// We store (timestep index, position) pairs for later sorting
+		TArray<TPair<int32, FVector>> EntityPositions;
+
+		for (auto& Pair : AgentMovementInfoData.SimulationData)
+		{
+			for (const FSimMovementSample& Sample : Pair.Value)
+			{
+				if (Sample.EntityID == EntityIdx)
+				{
+					EntityPositions.Add(TPair<int32, FVector>(Pair.Key, Sample.Position));
+					break; // Only one sample per entity per timestep, so we can exit early
+				}
+			}
+		}
+
+		// Need at least 2 positions to calculate any rotation (need direction to next position)
+		if (EntityPositions.Num() < 2) continue;
+
+		// Step 2: Sort positions by timestep to ensure chronological order
+		EntityPositions.Sort([](const TPair<int32, FVector>& A, const TPair<int32, FVector>& B)
+		{
+			return A.Key < B.Key;
+		});
+
+		// Step 3: Calculate rotation for each timestep using look-ahead to next position
+		// LastValidRotation is used for stationary entities or the last frame
+		FRotator LastValidRotation = FRotator::ZeroRotator;
+
+		for (int32 i = 0; i < EntityPositions.Num(); ++i)
+		{
+			if (bShouldStop) break;
+
+			FRotator NewRotation = LastValidRotation;  // Default to previous rotation
+
+			// Calculate direction from current position to NEXT position (look-ahead approach)
+			if (i < EntityPositions.Num() - 1)
+			{
+				FVector Delta = EntityPositions[i + 1].Value - EntityPositions[i].Value;
+
+				// Only update rotation if there's meaningful movement (avoid jitter from tiny movements)
+				// Threshold of 0.1 cm filters out noise while allowing detection of real movement
+				if (!Delta.IsNearlyZero(0.1f))
+				{
+					// Calculate yaw angle from movement direction using atan2(Y, X)
+					// This gives us the angle in radians from the +X axis
+					float YawRad = FMath::Atan2(Delta.Y, Delta.X);
+					float YawDeg = FMath::RadiansToDegrees(YawRad);
+
+					// Apply -90 degree offset for mesh orientation correction
+					// Unreal meshes typically face +X when yaw=0, but our coordinate system
+					// expects facing direction to align with movement vector
+					NewRotation = FRotator(0.0f, YawDeg - 90.0f, 0.0f);
+					LastValidRotation = NewRotation;
+				}
+				// If position hasn't changed significantly, keep LastValidRotation
+			}
+			// For the last frame, we keep LastValidRotation (carry forward previous rotation)
+
+			// Step 4: Update the rotation value in the actual simulation data
+			int32 Timestep = EntityPositions[i].Key;
+			for (FSimMovementSample& Sample : AgentMovementInfoData.SimulationData[Timestep])
+			{
+				if (Sample.EntityID == EntityIdx)
+				{
+					Sample.Rotation = NewRotation;
+					break;
+				}
+			}
+		}
+
+		// Report progress to the subsystem for UI feedback (every 100 entities to avoid flooding)
+		if (EntityIdx % 100 == 0)
+		{
+			float CurrentPercentage = static_cast<float>(EntityIdx) / static_cast<float>(MaxAgents);
+			if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+			{
+				Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+			}
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Finished calculating rotation from movement"));
+}
+
+/**
+ * Calculates speed from position deltas when the HDF5 source data lacks speed information.
+ *
+ * Algorithm:
+ * 1. For each entity, collect all position samples ordered by timestep
+ * 2. Calculate speed using the formula: speed = distance / time
+ *    - Distance is the Euclidean distance between consecutive positions (in cm after unit conversion)
+ *    - Time is TimeBetweenSteps (the sampling interval in seconds)
+ * 3. Speed is converted to m/s by dividing by 100 (cm to m conversion)
+ * 4. For the last timestep, the previous calculated speed is carried forward
+ *
+ * @note TODO: Some agents appear to be moving but have 0 speed calculated. Investigate where
+ *       this discrepancy occurs - possible causes include:
+ *       - TimeBetweenSteps not being set correctly before this function is called
+ *       - Position data not being properly converted to cm before storage
+ *       - Entities that only appear in a single timestep (skipped due to Num() < 2 check)
+ *       - Floating point precision issues with very small movements
+ */
+void FProcessSimulationDataRunnable::CalculateSpeedFromMovement()
+{
+	// Early out if the source data already contains speed information
+	if (Hdf5Data.Meta.bHasSpeedData)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Calculating speed from position deltas for %d entities"), MaxAgents);
+
+	// Process each entity independently
+	for (int32 EntityIdx = 0; EntityIdx < MaxAgents; ++EntityIdx)
+	{
+		if (bShouldStop) break;
+
+		// Step 1: Collect all position samples for this entity across all timesteps
+		// We store (timestep index, position) pairs for later sorting
+		TArray<TPair<int32, FVector>> EntityPositions;
+
+		for (auto& Pair : AgentMovementInfoData.SimulationData)
+		{
+			for (const FSimMovementSample& Sample : Pair.Value)
+			{
+				if (Sample.EntityID == EntityIdx)
+				{
+					EntityPositions.Add(TPair<int32, FVector>(Pair.Key, Sample.Position));
+					break; // Only one sample per entity per timestep, so we can exit early
+				}
+			}
+		}
+
+		// Need at least 2 positions to calculate any speed
+		if (EntityPositions.Num() < 2) continue;
+
+		// Step 2: Sort positions by timestep to ensure chronological order
+		EntityPositions.Sort([](const TPair<int32, FVector>& A, const TPair<int32, FVector>& B)
+		{
+			return A.Key < B.Key;
+		});
+
+		// Step 3: Calculate speed for each timestep using look-ahead to next position
+		float LastValidSpeed = 0.0f;
+
+		for (int32 i = 0; i < EntityPositions.Num(); ++i)
+		{
+			if (bShouldStop) break;
+
+			float Speed = LastValidSpeed;  // Default to previous speed (used for last frame)
+
+			// Calculate speed from current position to next position
+			if (i < EntityPositions.Num() - 1)
+			{
+				FVector Delta = EntityPositions[i + 1].Value - EntityPositions[i].Value;
+				float Distance = Delta.Size();  // Distance in cm (positions are converted to cm during loading)
+
+				// Speed formula: speed (m/s) = distance (cm) / (time (s) * 100)
+				// The * 100 converts cm to m
+				Speed = Distance / (TimeBetweenSteps * 100.0f);
+				LastValidSpeed = Speed;
+			}
+			// For the last frame, we keep LastValidSpeed (carry forward previous speed)
+
+			// Step 4: Update the speed value in the actual simulation data
+			int32 Timestep = EntityPositions[i].Key;
+			for (FSimMovementSample& Sample : AgentMovementInfoData.SimulationData[Timestep])
+			{
+				if (Sample.EntityID == EntityIdx)
+				{
+					Sample.Speed = Speed;
+					break;
+				}
+			}
+		}
+
+		// Report progress to the subsystem for UI feedback (every 100 entities)
+		if (EntityIdx % 100 == 0)
+		{
+			float CurrentPercentage = static_cast<float>(EntityIdx) / static_cast<float>(MaxAgents);
+			if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+			{
+				Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+			}
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Finished calculating speed from movement"));
 }
 
 void FProcessSimulationDataRunnable::FinalizeProgress()
@@ -1315,6 +1604,36 @@ uint32 FProcessSimulationDataRunnable:: Run()
 
 	// Run the main simulation loop
 	RunSimulationDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+
+	if (bShouldStop)
+	{
+		return 0;
+	}
+
+	// Calculate rotation from movement if rotation data is missing
+	if (!Hdf5Data.Meta.bHasRotationData && SimulationFileType == ESimulationFileType::ESFT_HDF5)
+	{
+		if (Subsys)
+		{
+			Subsys->LoadingTaskQueue.Enqueue(TEXT("Calculating Rotation From Movement..."));
+		}
+		CalculateRotationFromMovement();
+	}
+
+	if (bShouldStop)
+	{
+		return 0;
+	}
+
+	// Calculate speed from movement if speed data is missing
+	if (!Hdf5Data.Meta.bHasSpeedData && SimulationFileType == ESimulationFileType::ESFT_HDF5)
+	{
+		if (Subsys)
+		{
+			Subsys->LoadingTaskQueue.Enqueue(TEXT("Calculating Speed From Movement..."));
+		}
+		CalculateSpeedFromMovement();
+	}
 
 	if (bShouldStop)
 	{

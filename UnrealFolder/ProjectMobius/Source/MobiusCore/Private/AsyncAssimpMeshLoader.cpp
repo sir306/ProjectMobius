@@ -34,6 +34,8 @@
 #include <array>
 #include <vector>
 #include <earcut_hpp/earcut.hpp>
+
+#include "Hdf5SimulationReader.h"
 using Coord = std::array<double,2>;
 
 
@@ -148,7 +150,7 @@ FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 
 uint32 FAssimpMeshLoaderRunnable::Run()
 {
-	if (bIsWktExtension)
+	if (bIsWktExtension || PathToMesh.EndsWith(".h5", ESearchCase::IgnoreCase))
 	{
 		ProcessMeshFromString();
 	}
@@ -370,6 +372,20 @@ bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& Ou
 		OutErrorMessage = FString::Printf(TEXT("File not found: %s"), *FilePath);
 		return false;
 	}
+	// TODO: add error handling to this Code and document
+	if (FilePath.EndsWith(TEXT(".h5"), ESearchCase::IgnoreCase))
+	{
+		FHdf5SimulationReader Reader;
+		if (Reader.OpenFile(FilePath))
+		{
+			if (Reader.ReadWktGeometry(OutWKTData))
+			{
+				Reader.CloseFile();
+				return true;
+			}
+		}
+		return false;
+	}
 
 	// Load the file content
 	if (FFileHelper::LoadFileToString(OutWKTData, *FilePath))
@@ -459,28 +475,34 @@ bool FAssimpMeshLoaderRunnable::ParseGeometryCollectionWkt(
 	Clean.ReplaceInline(TEXT("\r"), TEXT(""));
 	Clean.ReplaceInline(TEXT("\n"), TEXT(""));
 
-	if (!Clean.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase))
+	const bool bIsGeometryCollection = Clean.StartsWith(TEXT("GEOMETRYCOLLECTION"), ESearchCase::IgnoreCase);
+	const bool bIsPolygon = Clean.StartsWith(TEXT("POLYGON"), ESearchCase::IgnoreCase);
+	if (!bIsGeometryCollection && !bIsPolygon)
 	{
-		OutErrorMessage = TEXT("WKT does not begin with GEOMETRYCOLLECTION");
+		OutErrorMessage = TEXT("WKT is not GEOMETRYCOLLECTION or POLYGON");
 		return false;
 	}
 
-	// --- 2) strip GEOMETRYCOLLECTION(   )
-	int32 firstParen = Clean.Find(TEXT("("));
-	int32 lastParen  = INDEX_NONE;
-	Clean.FindLastChar(')', lastParen);
-	if (firstParen == INDEX_NONE || lastParen == INDEX_NONE || lastParen <= firstParen)
+	// --- 2) strip GEOMETRYCOLLECTION(   ) when present
+	FString inner = Clean;
+	if (bIsGeometryCollection)
 	{
-		OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION parentheses");
-		return false;
+		int32 firstParen = Clean.Find(TEXT("("));
+		int32 lastParen  = INDEX_NONE;
+		Clean.FindLastChar(')', lastParen);
+		if (firstParen == INDEX_NONE || lastParen == INDEX_NONE || lastParen <= firstParen)
+		{
+			OutErrorMessage = TEXT("Malformed GEOMETRYCOLLECTION parentheses");
+			return false;
+		}
+		inner = Clean.Mid(firstParen + 1, lastParen - firstParen - 1);
 	}
-	FString inner = Clean.Mid(firstParen + 1, lastParen - firstParen - 1);
 
 	// --- 3) find the first POLYGON(( ... ))
 	int32 polyStart = inner.Find(TEXT("POLYGON"), ESearchCase::IgnoreCase);
 	if (polyStart == INDEX_NONE)
 	{
-		OutErrorMessage = TEXT("No POLYGON found in GEOMETRYCOLLECTION");
+		OutErrorMessage = TEXT("No POLYGON found in WKT");
 		return false;
 	}
 	// locate the “((” and its matching “))”

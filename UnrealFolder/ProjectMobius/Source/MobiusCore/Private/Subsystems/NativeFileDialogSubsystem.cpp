@@ -60,7 +60,8 @@ namespace
 			|| Extension == TEXT("obj")
 			|| Extension == TEXT("udatasmith")
 			|| Extension == TEXT("ifc")
-			|| Extension == TEXT("wkt");
+			|| Extension == TEXT("wkt") 
+			|| (Extension == "h5");
 	}
 }
 #endif
@@ -375,12 +376,13 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	else
 	{
 		Filters = {
-			"Mesh Files", "*.fbx *.obj *.udatasmith *.ifc *.wkt",
+			"Mesh Files", "*.fbx *.obj *.udatasmith *.ifc *.wkt *.h5",
 			"FBX Files", "*.fbx",
 			"OBJ Files", "*.obj",
 			"Datasmith Files", "*.udatasmith",
 			"IFC Files", "*.ifc",
-			"WKT Files", "*.wkt"
+			"WKT Files", "*.wkt",
+			"HDF5 Files", "*.h5"
 		};
 		ActiveDialog = MakeUnique<pfd::open_file>("Select Mesh File", InitialDirUtf8, Filters, pfd::opt::none);
 	}
@@ -507,7 +509,7 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
 			MeshPath = SelectedPath;
             // Basic extension check
             FString Ext = FPaths::GetExtension(MeshPath).ToLower();
-			bMeshSuccess = (Ext == "fbx" || Ext == "obj" || Ext == "udatasmith" || Ext == "ifc" || Ext == "wkt");
+			bMeshSuccess = (Ext == "fbx" || Ext == "obj" || Ext == "udatasmith" || Ext == "ifc" || Ext == "wkt") || (Ext == "h5");
 		}
 	}
 

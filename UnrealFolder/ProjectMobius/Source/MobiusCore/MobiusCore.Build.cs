@@ -36,7 +36,7 @@ public class MobiusCore : ModuleRules
 			"DatasmithCore",
 			"Visualization",
 			"RenderCore",
-			"DatasmithContent",
+			"DatasmithContent", "Hdf5DataPlugin",
 		});
 
 		PublicIncludePaths.AddRange(new[]

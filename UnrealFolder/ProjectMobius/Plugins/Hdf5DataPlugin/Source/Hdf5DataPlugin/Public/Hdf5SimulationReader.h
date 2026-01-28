@@ -27,24 +27,71 @@
 #include "hdf5.h"
 
 /**
- * Metadata read from an HDF5 simulation file
+ * Enum for detected HDF5 file format type
+ */
+enum class EHdf5FormatType : uint8
+{
+	Unknown,
+	Mobius,    // Our format: /metadata, /entities, /simulation/*
+	Juelich    // External format: /trajectory with root @wkt_geometry, @fps
+};
+
+/**
+ * @brief Metadata read from an HDF5 simulation file.
+ *
+ * Contains simulation-wide parameters extracted from either Mobius or Juelich format HDF5 files.
+ * Also includes flags indicating whether certain data fields (rotation, speed) are present
+ * in the source file or need to be calculated from position data.
  */
 struct FHdf5SimulationMetadata
 {
+	/** @brief Total duration of the simulation in seconds */
 	float Duration = 0.0f;
+
+	/** @brief Time interval between samples in seconds (e.g., 0.1 for 10 Hz sampling) */
 	float SamplingRate = 0.0f;
+
+	/** @brief Maximum number of entities that appear at any single timestep */
 	int32 MaxNumEntities = 0;
+
+	/** @brief True if position values are in SI units (meters), false otherwise */
 	bool bIsSI = true;
+
+	/** @brief True if rotation values are in degrees, false if radians */
 	bool bIsDeg = true;
-	
-	// Comparison operator to see that two metadata structs are equal
+
+	/**
+	 * @brief Indicates whether rotation data is present in the source HDF5 file.
+	 *
+	 * When false, rotation must be calculated from movement direction using
+	 * FProcessSimulationDataRunnable::CalculateRotationFromMovement().
+	 * This is typically the case for Juelich format files which only contain position data.
+	 */
+	bool bHasRotationData = true;
+
+	/**
+	 * @brief Indicates whether speed data is present in the source HDF5 file.
+	 *
+	 * When false, speed must be calculated from position deltas using
+	 * FProcessSimulationDataRunnable::CalculateSpeedFromMovement().
+	 * This is typically the case for Juelich format files which only contain position data.
+	 */
+	bool bHasSpeedData = true;
+
+	/**
+	 * @brief Equality comparison operator for metadata structs.
+	 * @param Other The metadata to compare against
+	 * @return True if all fields are equal (using near-equality for floats)
+	 */
 	bool operator==(const FHdf5SimulationMetadata& Other) const
 	{
 		return FMath::IsNearlyEqual(Duration, Other.Duration) &&
 		       FMath::IsNearlyEqual(SamplingRate, Other.SamplingRate) &&
 		       MaxNumEntities == Other.MaxNumEntities &&
 		       bIsSI == Other.bIsSI &&
-		       bIsDeg == Other.bIsDeg;
+		       bIsDeg == Other.bIsDeg &&
+		       bHasRotationData == Other.bHasRotationData &&
+		       bHasSpeedData == Other.bHasSpeedData;
 	}
 };
 
@@ -77,15 +124,75 @@ struct FHdf5SampleData
 };
 
 /**
- * Reader class for HDF5 simulation files created by the json_to_hdf5_converter.py script.
- * Uses the HDF5 C API for maximum portability.
+ * Raw trajectory record from Juelich HDF5 format
+ */
+struct FHdf5JuelichTrajectoryRecord
+{
+	int64 Id = 0;
+	int64 Frame = 0;
+	double X = 0.0;
+	double Y = 0.0;
+	double Z = 0.0;
+};
+
+/**
+ * @brief Metadata extracted from Juelich HDF5 format root attributes.
  *
- * HDF5 File Schema:
+ * This struct captures the metadata attributes stored at the root level of Juelich-format
+ * HDF5 trajectory files. It also includes detection flags for optional data fields that
+ * may or may not be present in the /trajectory dataset's compound type.
+ *
+ * @see FHdf5SimulationReader::ReadJuelichMetadata() for how this data is populated
+ * @see FHdf5SimulationReader::ConvertJuelichToMobiusFormat() for conversion to unified format
+ */
+struct FHdf5JuelichMetadata
+{
+	/** @brief Well-Known Text (WKT) geometry string defining the simulation boundary/area */
+	FString WktGeometry;
+
+	/** @brief Frame rate of the trajectory recording in frames per second (default: 25.0 Hz) */
+	float Fps = 25.0f;
+
+	/** @brief Human-readable name/identifier for this recording run */
+	FString RunName;
+
+	/** @brief Total number of unique participants/entities in the trajectory data */
+	int32 NumParticipants = 0;
+
+	/**
+	 * @brief Indicates whether the /trajectory compound type contains a 'rotation' field.
+	 *
+	 * Detected at file load time using H5Tget_member_index(). When false, rotation values
+	 * must be calculated from movement direction after data loading.
+	 * @see FProcessSimulationDataRunnable::CalculateRotationFromMovement()
+	 */
+	bool bHasRotationField = false;
+
+	/**
+	 * @brief Indicates whether the /trajectory compound type contains a 'speed' field.
+	 *
+	 * Detected at file load time using H5Tget_member_index(). When false, speed values
+	 * must be calculated from position deltas after data loading.
+	 * @see FProcessSimulationDataRunnable::CalculateSpeedFromMovement()
+	 */
+	bool bHasSpeedField = false;
+};
+
+/**
+ * Reader class for HDF5 simulation files. Supports multiple formats:
+ *
+ * Mobius Format (our internal format):
  *   /metadata (Group with attributes: duration, sampling_rate, max_num_entities, is_si, is_deg)
  *   /entities (Dataset - compound type)
  *   /simulation/timesteps (Dataset - float array)
  *   /simulation/samples (Dataset - compound type)
  *   /simulation/samples_per_timestep (Dataset - int array)
+ *
+ * Juelich Format (external trajectory format):
+ *   Root attributes: wkt_geometry, fps, run_name, metadata
+ *   /trajectory (Dataset - compound type: id, frame, x, y, z)
+ *
+ * Uses the HDF5 C API for maximum portability.
  */
 class HDF5DATAPLUGIN_API FHdf5SimulationReader
 {
@@ -143,11 +250,28 @@ public:
 	bool ReadSamplesPerTimestep(TArray<int32>& OutSamplesPerTimestep);
 
 	/**
-	 * Read all sample data from the HDF5 file.
-	 * @param OutSamples - Output array of sample data
-	 * @return true if samples were read successfully
+	 * @brief Read all sample data from the HDF5 file.
+	 *
+	 * Reads the complete samples dataset from either Mobius (/simulation/samples) or
+	 * Juelich (/trajectory) format files. For each sample, extracts position data and
+	 * optionally rotation/speed if those fields exist in the compound type.
+	 *
+	 * The method dynamically detects the presence of 'rotation' and 'speed' fields in
+	 * the HDF5 compound type using H5Tget_member_index(). If a field is not present,
+	 * the corresponding values in FHdf5SampleData will be set to 0.0f and the caller
+	 * should calculate these values from position data post-load.
+	 *
+	 * @param OutSamples Output array populated with sample data for all entities across all timesteps
+	 * @param OutHasRotationField Optional pointer to receive whether 'rotation' field exists in the dataset.
+	 *        When non-null, set to true if rotation data was read from file, false if it needs calculation.
+	 * @param OutHasSpeedField Optional pointer to receive whether 'speed' field exists in the dataset.
+	 *        When non-null, set to true if speed data was read from file, false if it needs calculation.
+	 * @return true if samples were read successfully, false on HDF5 read error
+	 *
+	 * @see FProcessSimulationDataRunnable::CalculateRotationFromMovement() for rotation calculation
+	 * @see FProcessSimulationDataRunnable::CalculateSpeedFromMovement() for speed calculation
 	 */
-	bool ReadAllSamples(TArray<FHdf5SampleData>& OutSamples);
+	bool ReadAllSamples(TArray<FHdf5SampleData>& OutSamples, bool* OutHasRotationField = nullptr, bool* OutHasSpeedField = nullptr);
 
 	/**
 	 * Read samples for a specific timestep range.
@@ -185,9 +309,70 @@ public:
 	 */
 	static bool IsValidSimulationFile(const FString& FilePath);
 
+	// ========== Format Detection ==========
+
+	/**
+	 * Detect the format type of an HDF5 file without keeping it open.
+	 * @param FilePath - Path to the HDF5 file
+	 * @return The detected format type
+	 */
+	static EHdf5FormatType DetectFormat(const FString& FilePath);
+
+	/**
+	 * Get the detected format of the currently open file.
+	 * @return The format type detected when the file was opened
+	 */
+	EHdf5FormatType GetDetectedFormat() const { return DetectedFormat; }
+
+	// ========== Juelich Format Reading ==========
+
+	/**
+	 * Read metadata from a Juelich format HDF5 file.
+	 * Only valid if GetDetectedFormat() returns Juelich.
+	 * @param OutMetadata - Output metadata structure
+	 * @return true if metadata was read successfully
+	 */
+	bool ReadJuelichMetadata(FHdf5JuelichMetadata& OutMetadata);
+
+	/**
+	 * Read all trajectory records from a Juelich format HDF5 file.
+	 * Only valid if GetDetectedFormat() returns Juelich.
+	 * @param OutRecords - Output array of trajectory records
+	 * @return true if trajectories were read successfully
+	 */
+	bool ReadJuelichTrajectories(TArray<FHdf5JuelichTrajectoryRecord>& OutRecords);
+
+	/**
+	 * Read WKT geometry string from an HDF5 file's root attributes.
+	 * Can be called on any format that has wkt_geometry attribute.
+	 * @param OutWktGeometry - Output WKT string
+	 * @return true if WKT geometry was found and read
+	 */
+	bool ReadWktGeometry(FString& OutWktGeometry);
+
+	/**
+	 * Convert Juelich format data to Mobius format for unified downstream processing.
+	 * @param JuelichMeta - Juelich metadata (for fps)
+	 * @param Trajectories - Raw trajectory records
+	 * @param OutMetadata - Output Mobius metadata
+	 * @param OutEntities - Output entity array (created from unique IDs)
+	 * @param OutSamples - Output sample array (converted from trajectories)
+	 * @return true if conversion was successful
+	 */
+	static bool ConvertJuelichToMobiusFormat(
+		const FHdf5JuelichMetadata& JuelichMeta,
+		const TArray<FHdf5JuelichTrajectoryRecord>& Trajectories,
+		FHdf5SimulationMetadata& OutMetadata,
+		TArray<FHdf5EntityData>& OutEntities,
+		TArray<FHdf5SampleData>& OutSamples
+	);
+
 private:
 	/** HDF5 file handle */
 	hid_t FileId = -1;
+
+	/** Detected format type (populated on file open) */
+	EHdf5FormatType DetectedFormat = EHdf5FormatType::Unknown;
 
 	/** Cached counts (populated on file open) */
 	int32 TimestepCount = 0;

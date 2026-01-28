@@ -284,6 +284,66 @@ public:
 	/** Calculate smoothed step-motion animation movement brackets for each agent, using agent speeds smoothed (roughly) over a step duration */
 	void CalcSmoothedStepMovementBrackets(TArray<FAgentData> AgentSamples);
 
+	/**
+	 * @brief Calculates rotation from movement direction when the HDF5 source data lacks rotation information.
+	 *
+	 * This method is called when Hdf5Data.Meta.bHasRotationData is false, indicating that the source
+	 * HDF5 file (typically Juelich format) did not contain rotation/heading data for entities.
+	 *
+	 * @par Algorithm:
+	 * For each entity:
+	 * 1. Collect all position samples ordered by timestep
+	 * 2. For each timestep, calculate direction vector to the NEXT position (look-ahead approach)
+	 * 3. Convert direction to rotation angle in degrees using FMath::Atan2
+	 * 4. For the last timestep, carry forward the previous calculated rotation
+	 * 5. For stationary entities (no position change), maintain last valid rotation
+	 *
+	 * @par Unit Handling:
+	 * - Input positions are in centimeters (after SI conversion during HDF5 loading)
+	 * - Output rotation is in degrees, stored in FSimMovementSample::Rotation
+	 *
+	 * @note Thread-safe: Respects bShouldStop flag for early termination
+	 * @note This provides a reasonable approximation but may not match real-world heading
+	 *       for entities that move sideways or backwards
+	 *
+	 * @see Hdf5Data.Meta.bHasRotationData - Flag that triggers this calculation
+	 * @see FHdf5SimulationReader::ReadAllSamples() - Where rotation field detection occurs
+	 */
+	void CalculateRotationFromMovement();
+
+	/**
+	 * @brief Calculates speed from position deltas when the HDF5 source data lacks speed information.
+	 *
+	 * This method is called when Hdf5Data.Meta.bHasSpeedData is false, indicating that the source
+	 * HDF5 file did not contain speed data for entities.
+	 *
+	 * @par Algorithm:
+	 * For each entity:
+	 * 1. Collect all position samples ordered by timestep
+	 * 2. For each timestep (except last), calculate: speed = distance / TimeBetweenSteps
+	 *    - Distance is Euclidean distance to next position in centimeters
+	 *    - Speed is converted to m/s by dividing by 100
+	 * 3. For the last timestep, carry forward the previous calculated speed
+	 *
+	 * @par Unit Handling:
+	 * - Input positions are in centimeters (after SI conversion during HDF5 loading)
+	 * - TimeBetweenSteps is in seconds
+	 * - Output speed is in meters per second (m/s)
+	 *
+	 * @note Thread-safe: Respects bShouldStop flag for early termination
+	 *
+	 * @warning TODO: Some agents appear to be moving but have 0 speed calculated.
+	 *          Investigate possible causes:
+	 *          - TimeBetweenSteps not set correctly before this function is called
+	 *          - Position data not properly converted to cm before storage
+	 *          - Entities appearing in only a single timestep (skipped due to Num() < 2 check)
+	 *          - Floating point precision issues with very small movements
+	 *
+	 * @see Hdf5Data.Meta.bHasSpeedData - Flag that triggers this calculation
+	 * @see FHdf5SimulationReader::ReadAllSamples() - Where speed field detection occurs
+	 */
+	void CalculateSpeedFromMovement();
+
 	static int CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sample);
 
 	// Allocate space for the animPts, to reduce fragmentation

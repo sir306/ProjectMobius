@@ -174,17 +174,39 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 			//TODO: This is a poor assumption and should really be searching and checking
 			// assumption is that the movement data is ordered
-			EntityMovement.CurrentLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
-			EntityMovement.CurrentRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
-			EntityMovement.CurrentSpeed = AllAgentMovementSamples[EntityIndexOffset].Speed;
-
+			
+			float ZValue = 0.f;
 			auto& EntityRendering = EntityRenderingFragment[i];
+			/* Due to other simulation test data, it is possible that an entity index is out of range of the movement samples,
+			 * this can be due to bad data or the agent doesn't actually exist yet
+			 */ 
+			if (AllAgentMovementSamples.IsValidIndex(EntityIndexOffset))
+			{
+				EntityMovement.CurrentLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
+				EntityMovement.CurrentRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
+				EntityMovement.CurrentSpeed = AllAgentMovementSamples[EntityIndexOffset].Speed;
+				ZValue = AllAgentMovementSamples[EntityIndexOffset].Position.Z;
+			}
+			else
+			{
+				for (auto Sample :SharedAgentMovement.SimulationData)
+				{
+					if (AllAgentMovementSamples.IsValidIndex(EntityIndexOffset))
+					{
+						EntityMovement.CurrentLocation = Sample.Value[EntityIndexOffset].Position;
+						EntityMovement.CurrentRotation = Sample.Value[EntityIndexOffset].Rotation;
+						EntityMovement.CurrentSpeed = Sample.Value[EntityIndexOffset].Speed;
+						ZValue = Sample.Value[EntityIndexOffset].Position.Z;
+						break;
+					}
+				}
+				EntityRendering.bRenderAgent = false;// setting to false should prevent any rendering issues at start but our check in processor could be a problem
+			}
 			
 			UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();			
 			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndexOffset, EntityRendering);
 
 			// check all movement samples so we can get all unique Z values
-			float ZValue = AllAgentMovementSamples[EntityIndexOffset].Position.Z;
 			if (!UniqueZValues.Contains(ZValue))
 			{
 				UniqueZValues.Add(ZValue);
@@ -203,7 +225,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			}
 
 			// Initialize the collision fragment
-			FVector SpawnLocation = AllAgentMovementSamples[EntityIndexOffset].Position;
+			FVector SpawnLocation = EntityMovement.CurrentLocation;
 			//FRotator SpawnRotation = AllAgentMovementSamples[EntityIndexOffset].Rotation;
 			EntityCollisions[i].Capsule = NewObject<UCapsuleComponent>(PedestrianCollisionHolder);
 			EntityCollisions[i].Capsule->SetCapsuleHalfHeight(95.0f);
