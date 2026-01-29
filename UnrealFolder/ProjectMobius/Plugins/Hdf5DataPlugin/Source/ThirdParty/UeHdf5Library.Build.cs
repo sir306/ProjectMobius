@@ -70,6 +70,32 @@ public class UeHdf5Library : ModuleRules
             //    RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/" + DllName, DllPath);
             //}
         }
-        // HDF5 End
+        // Mac Support
+        else if (Target.Platform == UnrealTargetPlatform.Mac)
+        {
+            string LibDir = Path.Combine(Hdf5Root, "lib");
+            
+            if (!Directory.Exists(LibDir)) throw new BuildException($"HDF5 lib dir not found: {LibDir}");
+            
+            // Static libraries to link (HDF5 core, HL, and zlib for compression)
+            string[] Hdf5Libs = new string[]
+            {
+                "libhdf5.a",
+                "libhdf5_hl.a",
+                "libz.a"
+            };
+
+            foreach (string LibName in Hdf5Libs)
+            {
+                PublicAdditionalLibraries.Add(Path.Combine(LibDir, LibName));
+            }
+
+            // Mac specific definitions
+            PublicDefinitions.Add("H5_HAVE_BUILTIN_EXPECT=1");
+        }
+        else
+        {
+            throw new BuildException($"UeHdf5Library module not set up for platform {Target.Platform}");
+        }
     }
 }
