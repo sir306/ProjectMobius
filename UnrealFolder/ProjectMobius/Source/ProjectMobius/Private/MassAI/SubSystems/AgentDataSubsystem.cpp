@@ -628,9 +628,9 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
 	Hdf5Data = FHdf5SimulationData();
 
 	// Check the detected format
-	EHdf5FormatType Format = HDF5SimulationReader.GetDetectedFormat();
+	Hdf5Format = HDF5SimulationReader.GetDetectedFormat();
 
-	if (Format == EHdf5FormatType::Juelich)
+	if (Hdf5Format == EHdf5FormatType::Juelich)
 	{
 		// Read Juelich format and convert to Mobius format
 		FHdf5JuelichMetadata JuelichMeta;
@@ -675,7 +675,7 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
 		UE_LOG(LogTemp, Log, TEXT("Loaded Juelich format HDF5 file: %d entities, %d samples"),
 			Hdf5Data.Entities.Num(), Hdf5Data.Samples.Num());
 	}
-	else if (Format == EHdf5FormatType::Mobius)
+	else if (Hdf5Format == EHdf5FormatType::Mobius)
 	{
 		// Read Mobius format directly
 		// MetaData read
@@ -1218,11 +1218,25 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 
 			const FHdf5SampleData& Sample = *SamplePtr;
 
+			// Initialize the position variable
+			FVector Position = FVector::ZeroVector;
+			// Initialize the rotation variable
+			FRotator Rotation = FRotator::ZeroRotator;
+
 			// Build position vector
-			FVector Position;
 			Position.X = Sample.PositionX;
-			Position.Y = Sample.PositionY;
 			Position.Z = Sample.PositionZ;
+			
+			// detect format for correct Y axis handling
+			// Check the detected format			
+			if (Hdf5Format == EHdf5FormatType::Mobius)// TODO: need to add a axis parameter instead of relying on format type
+			{
+				Position.Y = -Sample.PositionY;
+			}
+			else
+			{
+				Position.Y = Sample.PositionY;
+			}
 
 			// Apply unit conversion
 			if (bIsSI)
@@ -1236,27 +1250,25 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 				Position *= 10.0f;
 			}
 
-			// Build rotation
-			FRotator Rotation;
+			// Build rotation - explicitly cast to float to avoid any implicit conversion issues
 			if (bIsDeg)
 			{
 				// Rotation is in degrees - apply same transformation as JSON
-				Rotation = FRotator(0.0f, (-Sample.Rotation - 90), 0.0f);
+				const float YawDeg = -Sample.Rotation - 90.0f;
+				Rotation = FRotator(0.0f, YawDeg, 0.0f);
 			}
 			else
 			{
 				// Rotation is in radians - convert to degrees then apply transformation
-				Rotation = FRotator(0.0f, FMath::RadiansToDegrees(-Sample.Rotation) - 90, 0.0f);
+				const float YawDeg = FMath::RadiansToDegrees(-Sample.Rotation) - 90.0f;
+				Rotation = FRotator(0.0f, YawDeg, 0.0f);
 			}
-
-			// Create movement sample
-			FSimMovementSample MovementSample;
+			// Create movement sample and add directly to array
+			FSimMovementSample& MovementSample = MovementSamples.AddDefaulted_GetRef();
 			MovementSample.EntityID = Sample.EntityId;
 			MovementSample.Position = Position;
 			MovementSample.Rotation = Rotation;
 			MovementSample.Speed = Sample.Speed;
-
-			MovementSamples.Add(MovementSample);
 
 			// Add to agent data array for preprocessing
 			if (Sample.EntityId >= 0 && Sample.EntityId < AgentDataArray.Num())

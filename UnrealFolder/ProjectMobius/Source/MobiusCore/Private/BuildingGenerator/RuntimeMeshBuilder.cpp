@@ -787,14 +787,15 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToSolidMaterials()
 void ARuntimeMeshBuilder::UpdateDatasmithMeshOpacity(float Opacity)
 {
 	UE_LOG(LogTemp, Warning, TEXT("UpdateDatasmithMeshOpacity Called"));
+	
 	// Check datasmith anchor is valid
 	if(RuntimeDatasmithAnchor == nullptr)
 	{
 		ReportError(this, 
-		            FString("Mesh Material Error"),
-		            FString("Datasmith anchor unavailable"),
-		            FString("Cannot update Datasmith mesh opacity without a valid Runtime Datasmith Anchor."),
-		            FString("RuntimeMeshBuilder::UpdateDatasmithMeshOpacity")
+					FString("Mesh Material Error"),
+					FString("Datasmith anchor unavailable"),
+					FString("Cannot update Datasmith mesh opacity without a valid Runtime Datasmith Anchor."),
+					FString("RuntimeMeshBuilder::UpdateDatasmithMeshOpacity")
 		);
 		UE_LOG(LogTemp, Error, TEXT("Runtime Datasmith Anchor is not valid"));
 		return;

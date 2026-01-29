@@ -393,6 +393,9 @@ public:
 
 	/** HDF5 Simulation Data (public for subsystem access) */
 	FHdf5SimulationData Hdf5Data = FHdf5SimulationData();
+	
+	/** Detected HDF5 Format Type */
+	EHdf5FormatType Hdf5Format = EHdf5FormatType::Unknown;
 
 protected:
 	/** Pointer to a thread */
