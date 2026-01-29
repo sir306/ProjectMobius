@@ -201,6 +201,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 				[Panel setMessage:@"Select Agent Data File"];
 				[AllowedTypes addObject:@"json"];
 				[AllowedTypes addObject:@"public.json"];
+				[AllowedTypes addObject:@"h5"];
 			}
 			else
 			{
@@ -210,6 +211,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 				[AllowedTypes addObject:@"udatasmith"];
 				[AllowedTypes addObject:@"ifc"];
 				[AllowedTypes addObject:@"wkt"];
+				[AllowedTypes addObject:@"h5"];
 			}
 
 			// Disable "Deprecated" warning for this specific line so it compiles cleanly
