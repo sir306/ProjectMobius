@@ -82,7 +82,7 @@ public class UeHdf5Library : ModuleRules
             {
                 "libhdf5.a",
                 "libhdf5_hl.a",
-                "libz.a"
+                "libzlib-static.a"
             };
 
             foreach (string LibName in Hdf5Libs)
