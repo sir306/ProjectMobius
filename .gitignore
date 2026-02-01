@@ -41,8 +41,6 @@
 *.a
 *.lib
 !ASSIMP_5.4.3/**/*.lib
-!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.lib
-!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/OpenCV/ThirdParty/**/*.lib
 
 # Dynamic libraries
 *.so
@@ -208,14 +206,11 @@ yarn-error.log*
 
 ## Static Libs manually added to project required for compiles
 !UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.lib
-!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.lib
-!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455d.lib
+
 
 ## Dynamic libraries manually added to project required for compiles
 !ASSIMP_5.4.3/**/*.dll
-!UnrealFolder/ProjectMobius/Source/Visualization/ThirdParty/Binaries/OpenCV/**/*.dll
-!UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.dll
-!UnrealFolder/ProjectMobius/Binaries/Win64/opencv_world455.dll
+
 
 # till i workout how to incorporate GeosJSON correctly ignore it
 GeosJSON/
