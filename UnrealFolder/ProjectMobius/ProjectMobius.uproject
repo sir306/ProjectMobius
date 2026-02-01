@@ -53,11 +53,6 @@
 			"Name": "MobiusLogging",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
-		},
-		{
-			"Name": "Hdf5_DataImporter",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
