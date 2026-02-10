@@ -24,20 +24,6 @@ Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in UE 5.5, generate Vis
 RunUAT.bat BuildCookRun -project="$(Resolve-Path ProjectMobius.uproject)" -noP4 -platform=Win64 -clientconfig=Development -cook -build -stage -pak -archive -archivedirectory=./Binaries/Release
 ```
 
-### Qt Tools (per app in `Tools/QT_Apps/<App>`)
-```bash
-cmake -S . -B build -G "Visual Studio 17 2022"
-cmake --build build --config Release
-cmake --install build --config Release
-```
-
-### Node.js Server (legacy, deprecated — prefer IPC subsystem)
-```bash
-cd UnrealFolder/ProjectMobius/Tools/NodeJS
-npm install
-npx pkg . --out-path dist
-```
-
 ## Testing
 
 - Automation tests go alongside their module, named `*Tests.cpp`, using Unreal's Automation framework.
@@ -58,7 +44,7 @@ HeatmapVisualization   (GPU heatmap rendering)
 Visualization          (OpenCV integration, texture processing)
     ↓
 ProjectMobius          (main gameplay — MASS ECS crowd AI, Niagara, UI)
-MobiusWidgets          (UMG widgets — has known circular dep with ProjectMobius)
+MobiusWidgets          (UMG/Slate widgets, ImPlot overlay — has known circular dep with ProjectMobius)
 HIT_ThesisWork         (research module for crowd behavior)
 ```
 
@@ -66,7 +52,7 @@ HIT_ThesisWork         (research module for crowd behavior)
 
 | Subsystem | Purpose |
 |-----------|---------|
-| `IpcSubsystem` | Named pipes (Win) / Unix sockets (Mac) to Qt apps — **primary IPC** |
+| `IpcSubsystem` | Named pipes (Win) / Unix sockets (Mac) — **primary IPC** |
 | `HeatmapSubsystem` | GPU heatmap rendering pipeline |
 | `StatisticSubsystem` | Metrics collection |
 | `MobiusUserFeedbackSubsystem` | Throttled error popups to user |
@@ -98,22 +84,23 @@ Uses Epic's **MASS Entity** framework (ECS pattern):
 | `UE4_Assimp` | Multi-format 3D model importing (FBX, OBJ, GLTF, etc.) |
 | `UE_OpenCV` | OpenCV 4.5.5 integration for image processing |
 
-### External Tools
+### Deprecated External Tools
 
-- **Qt Plotting App** — real-time metric visualization via IPC (sub-100ms intervals)
-- **Qt File-Dialog Server** — REST/TCP native file dialog exposure
-- **Node.js Server** — legacy WebSocket bridge (deprecated, prefer `IpcSubsystem`)
+- **Qt Plotting App** — replaced by in-engine ImPlot/ImGui overlay (`UImPlotVisualizationSubsystem`)
+- **Qt File-Dialog Server** — replaced by `NativeFileDialogSubsystem`
+- **Node.js Server** — removed Nov 2025; replaced by `IpcSubsystem`
 
 ### Third-Party Libraries (bundled)
 
 | Library | Location | License |
 |---------|----------|---------|
 | ASSIMP 5.4.3 | `ASSIMP_5.4.3/` | BSD-3-Clause |
-| HDF5 2.0.0 | `HDF5/` | HDF5 License |
+| HDF5 2.0.0 | `Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/` | HDF5 License |
 | OpenCV 4.5.5 | `Plugins/UE_OpenCV/` | BSD-3-Clause |
 | earcut.hpp | `Source/MobiusCore/ThirdParty/` | ISC |
 | Dear ImGui 1.92.5 | `Source/MobiusWidgets/ThirdParty/ImGui/` | MIT |
 | ImPlot 0.17 | `Source/MobiusWidgets/ThirdParty/ImPlot/` | MIT |
+| portable-file-dialogs | `Source/MobiusCore/ThirdParty/PortableFileDialogs/` | WTFPL |
 
 ## Coding Conventions
 
