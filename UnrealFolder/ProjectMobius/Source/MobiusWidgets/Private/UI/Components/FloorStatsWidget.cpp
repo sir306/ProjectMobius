@@ -390,7 +390,7 @@ void UFloorStatsWidget::ToggleImPlotOverlay()
 
 void UFloorStatsWidget::BuildDataForImPlotOverlay()
 {
-        if (TimeDilationSubSystem == nullptr)
+        if (TimeDilationSubSystem == nullptr || TimeDilationSubSystem->TimeBetweenSteps <= 0.0f)
         {
                 return;
         }
@@ -415,6 +415,15 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                                 MaxAgentCountToSend = MES_Subsystem->AgentDataSubsystem->GetMaxAgents();
                         }
 
+                        // Fallback: if MaxAgents is 0 (e.g. incomplete data), derive from actual data
+                        if (MaxAgentCountToSend == 0)
+                        {
+                                for (int32 i = 0; i < MES_Subsystem->NumOfAgentsPerTimeStep.Num(); i++)
+                                {
+                                        MaxAgentCountToSend = FMath::Max(MaxAgentCountToSend, MES_Subsystem->NumOfAgentsPerTimeStep[i]);
+                                }
+                        }
+
                         int32 SmallestFoundSampleCount = INT32_MAX;
 
                         // loop through samples
@@ -428,8 +437,8 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                                         SmallestFoundSampleCount = RemainingCount;
                                 }
 
-                                // minus the sample count from the max to get the number evacuated
-                                int32 SampleCount = MaxAgentCountToSend - RemainingCount;
+                                // minus the sample count from the max to get the number evacuated (clamp to 0)
+                                int32 SampleCount = FMath::Max(0, MaxAgentCountToSend - RemainingCount);
 
                                 // get the time frequency from time dilation subsystem
                                 float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
@@ -495,16 +504,21 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                 return;
         }
 
+        // Get sorted keys from the TMap to handle non-sequential timestep indices
+        TArray<int32> SortedKeys;
+        SimulationFragment->SimulationData.GetKeys(SortedKeys);
+        SortedKeys.Sort();
+
         TArray<int32> SampleCounts;
-        SampleCounts.SetNum(NumSteps);
+        SampleCounts.SetNum(SortedKeys.Num());
 
         int32 SmallestFoundSampleCount = INT32_MAX;
         int32 LargestFoundSampleCount = 0;
 
-        for (int32 StepIndex = 0; StepIndex < NumSteps; ++StepIndex)
+        for (int32 i = 0; i < SortedKeys.Num(); ++i)
         {
                 int32 StepCount = 0;
-                if (const TArray<FSimMovementSample>* Samples = SimulationFragment->SimulationData.Find(StepIndex))
+                if (const TArray<FSimMovementSample>* Samples = SimulationFragment->SimulationData.Find(SortedKeys[i]))
                 {
                         for (const FSimMovementSample& Sample : *Samples)
                         {
@@ -522,7 +536,7 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                         }
                 }
 
-                SampleCounts[StepIndex] = StepCount;
+                SampleCounts[i] = StepCount;
                 SmallestFoundSampleCount = FMath::Min(SmallestFoundSampleCount, StepCount);
                 LargestFoundSampleCount = FMath::Max(LargestFoundSampleCount, StepCount);
         }
@@ -531,11 +545,11 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
         MaxAgentCountToSend = LargestFoundSampleCount;
 
         const float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
-        ImPlotPoints.Reserve(NumSteps);
-        for (int32 StepIndex = 0; StepIndex < NumSteps; ++StepIndex)
+        ImPlotPoints.Reserve(SortedKeys.Num());
+        for (int32 i = 0; i < SortedKeys.Num(); ++i)
         {
-                float CurrentTime = StepIndex * TimeBetweenSteps;
-                int32 SampleCount = MaxAgentCountToSend - SampleCounts[StepIndex];
+                float CurrentTime = SortedKeys[i] * TimeBetweenSteps;
+                int32 SampleCount = FMath::Max(0, MaxAgentCountToSend - SampleCounts[i]);
                 ImPlotPoints.Add(FVector2D(CurrentTime, SampleCount));
         }
 

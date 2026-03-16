@@ -1126,7 +1126,8 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 		                              TEXT("Simulation data missing"),
 		                              TEXT("HDF5 data was not loaded before processing simulation steps."),
 		                              TEXT("AgentDataSubsystem - FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop"));
-		bShouldStop = true;
+		// Don't set bShouldStop — let FinalizeProgress() still run so bIsDataLoaded gets set
+		// and OnLoadSimulationDataComplete fires, allowing charts to render an empty state
 		return;
 	}
 
@@ -1218,57 +1219,105 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 
 			const FHdf5SampleData& Sample = *SamplePtr;
 
-			// Initialize the position variable
+			// --- Per-sample validation (mirrors JSON path's graceful handling) ---
+
+			// Skip samples with negative EntityId
+			if (Sample.EntityId < 0)
+			{
+				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+				                              TEXT("Invalid entity ID"),
+				                              FString::Printf(TEXT("HDF5 sample at timestep %d has negative EntityId (%d). Skipping sample."), TimestepIdx, Sample.EntityId),
+				                              TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+				continue;
+			}
+
+			// Initialize the position variable — fallback to zero if NaN/Inf
 			FVector Position = FVector::ZeroVector;
-			// Initialize the rotation variable
+			if (FMath::IsNaN(Sample.PositionX) || FMath::IsNaN(Sample.PositionY) || FMath::IsNaN(Sample.PositionZ) ||
+			    !FMath::IsFinite(Sample.PositionX) || !FMath::IsFinite(Sample.PositionY) || !FMath::IsFinite(Sample.PositionZ))
+			{
+				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+				                              TEXT("Invalid position data"),
+				                              FString::Printf(TEXT("HDF5 sample at timestep %d, entity %d has NaN/Inf position. Using ZeroVector."), TimestepIdx, Sample.EntityId),
+				                              TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+				// Position stays at ZeroVector
+			}
+
+			// Initialize the rotation variable — fallback to zero if NaN/Inf
 			FRotator Rotation = FRotator::ZeroRotator;
-
-			// Build position vector
-			Position.X = Sample.PositionX;
-			Position.Z = Sample.PositionZ;
-			
-			// detect format for correct Y axis handling
-			// Check the detected format			
-			if (Hdf5Format == EHdf5FormatType::Mobius)// TODO: need to add a axis parameter instead of relying on format type
+			if (FMath::IsNaN(Sample.Rotation) || !FMath::IsFinite(Sample.Rotation))
 			{
-				Position.Y = -Sample.PositionY;
-			}
-			else
-			{
-				Position.Y = Sample.PositionY;
+				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+				                              TEXT("Invalid rotation data"),
+				                              FString::Printf(TEXT("HDF5 sample at timestep %d, entity %d has NaN/Inf rotation. Using ZeroRotator."), TimestepIdx, Sample.EntityId),
+				                              TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+				// Rotation stays at ZeroRotator — skip rotation computation below
 			}
 
-			// Apply unit conversion
-			if (bIsSI)
+			// Validate speed — fallback to 0 if NaN/Inf/negative
+			float ValidatedSpeed = Sample.Speed;
+			if (FMath::IsNaN(Sample.Speed) || !FMath::IsFinite(Sample.Speed) || Sample.Speed < 0.0f)
 			{
-				// SI units (meters) - convert to cm
-				Position *= 100.0f;
-			}
-			else
-			{
-				// Non-SI units - apply same conversion as JSON
-				Position *= 10.0f;
+				ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+				                              TEXT("Invalid speed data"),
+				                              FString::Printf(TEXT("HDF5 sample at timestep %d, entity %d has invalid speed (%.2f). Using 0."), TimestepIdx, Sample.EntityId, Sample.Speed),
+				                              TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+				ValidatedSpeed = 0.0f;
 			}
 
-			// Build rotation - explicitly cast to float to avoid any implicit conversion issues
-			if (bIsDeg)
+			// Build position vector (only if position was valid)
+			if (!FMath::IsNaN(Sample.PositionX))
 			{
-				// Rotation is in degrees - apply same transformation as JSON
-				const float YawDeg = -Sample.Rotation - 90.0f;
-				Rotation = FRotator(0.0f, YawDeg, 0.0f);
+				Position.X = Sample.PositionX;
+				Position.Z = Sample.PositionZ;
+
+				// detect format for correct Y axis handling
+				// Check the detected format
+				if (Hdf5Format == EHdf5FormatType::Mobius)// TODO: need to add a axis parameter instead of relying on format type
+				{
+					Position.Y = -Sample.PositionY;
+				}
+				else
+				{
+					Position.Y = Sample.PositionY;
+				}
+
+				// Apply unit conversion
+				if (bIsSI)
+				{
+					// SI units (meters) - convert to cm
+					Position *= 100.0f;
+				}
+				else
+				{
+					// Non-SI units - apply same conversion as JSON
+					Position *= 10.0f;
+				}
 			}
-			else
+
+			// Build rotation - only if rotation was valid (not NaN/Inf)
+			if (!FMath::IsNaN(Sample.Rotation) && FMath::IsFinite(Sample.Rotation))
 			{
-				// Rotation is in radians - convert to degrees then apply transformation
-				const float YawDeg = FMath::RadiansToDegrees(-Sample.Rotation) - 90.0f;
-				Rotation = FRotator(0.0f, YawDeg, 0.0f);
+				if (bIsDeg)
+				{
+					// Rotation is in degrees - apply same transformation as JSON
+					const float YawDeg = -Sample.Rotation - 90.0f;
+					Rotation = FRotator(0.0f, YawDeg, 0.0f);
+				}
+				else
+				{
+					// Rotation is in radians - convert to degrees then apply transformation
+					const float YawDeg = FMath::RadiansToDegrees(-Sample.Rotation) - 90.0f;
+					Rotation = FRotator(0.0f, YawDeg, 0.0f);
+				}
 			}
+
 			// Create movement sample and add directly to array
 			FSimMovementSample& MovementSample = MovementSamples.AddDefaulted_GetRef();
 			MovementSample.EntityID = Sample.EntityId;
 			MovementSample.Position = Position;
 			MovementSample.Rotation = Rotation;
-			MovementSample.Speed = Sample.Speed;
+			MovementSample.Speed = ValidatedSpeed;
 
 			// Add to agent data array for preprocessing
 			if (Sample.EntityId >= 0 && Sample.EntityId < AgentDataArray.Num())
