@@ -284,7 +284,7 @@ Copyright (c) 2025 ProjectMobius contributors -- Nicholas R. Harding and Peter T
 
 | Library | Version | Location | License |
 |---------|---------|----------|---------|
-| Assimp | 5.4.3 | `ASSIMP_5.4.3/` | BSD-3-Clause |
+| Assimp | 5.4.3 | `UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/` | BSD-3-Clause |
 | HDF5 | 2.0.0 | `UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/` | HDF5 License |
 | OpenCV | 4.5.5 | `UnrealFolder/ProjectMobius/Plugins/UE_OpenCV/` | BSD-3-Clause |
 | Dear ImGui | 1.92.5 | `UnrealFolder/ProjectMobius/Source/MobiusWidgets/ThirdParty/ImGui/` | MIT |
@@ -293,8 +293,8 @@ Copyright (c) 2025 ProjectMobius contributors -- Nicholas R. Harding and Peter T
 | portable-file-dialogs | -- | `UnrealFolder/ProjectMobius/Source/MobiusCore/ThirdParty/PortableFileDialogs/` | WTFPL |
 
 - **Unreal Engine** content is subject to the [Epic Games EULA](https://www.unrealengine.com/eula)
-- **Creative Commons assets** -- see [ASSET_LICENSES.md](ASSET_LICENSES.md)
-- **Full licensing details** -- see [LICENSE.md](LICENSE.md) and [COPYING.LGPL-3.0.txt](COPYING.LGPL-3.0.txt)
+- **Creative Commons assets** -- see [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)
+- **Full licensing details** -- see [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)
 
 ---
 
@@ -303,6 +303,5 @@ Copyright (c) 2025 ProjectMobius contributors -- Nicholas R. Harding and Peter T
 - [BuildDocs/](UnrealFolder/ProjectMobius/BuildDocs/) -- build guides, superbuild ctest guide, UE automation guide
 - [BuildDocs/Visualization-ImPlot.md](UnrealFolder/ProjectMobius/BuildDocs/Visualization-ImPlot.md) -- ImPlot overlay integration details
 - [BuildDocs/Project Mobius Key Bindings.md](UnrealFolder/ProjectMobius/BuildDocs/Project%20Mobius%20Key%20Bindings.md) -- complete input reference
-- [ERROR_HANDLING_COVERAGE.md](ERROR_HANDLING_COVERAGE.md) -- error handling coverage report
 - [CLAUDE.md](CLAUDE.md) -- AI assistant context and architecture reference
 - [AGENTS.md](AGENTS.md) -- repository guidelines for AI agents

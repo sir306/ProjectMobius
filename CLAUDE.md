@@ -94,7 +94,7 @@ Uses Epic's **MASS Entity** framework (ECS pattern):
 
 | Library | Location | License |
 |---------|----------|---------|
-| ASSIMP 5.4.3 | `ASSIMP_5.4.3/` | BSD-3-Clause |
+| ASSIMP 5.4.3 | `Plugins/UE4_Assimp/` | BSD-3-Clause |
 | HDF5 2.0.0 | `Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/` | HDF5 License |
 | OpenCV 4.5.5 | `Plugins/UE_OpenCV/` | BSD-3-Clause |
 | earcut.hpp | `Source/MobiusCore/ThirdParty/` | ISC |
@@ -110,7 +110,7 @@ Uses Epic's **MASS Entity** framework (ECS pattern):
 - **Documentation**: Doxygen-style block comments for complex/new code (`/** @param ParamName description */`).
 - **Blueprint renames**: when renaming `UFUNCTION`/`UCLASS` or moving files that affect Blueprints, add `[CoreRedirects]` entries.
 - **Generated folders**: never edit `Intermediate/`, `Saved/`, `DerivedDataCache/`, `Binaries/`.
-- **Third-party folders**: treat `ASSIMP_5.4.3/`, `HDF5/`, `ThirdParty/`, `ImportedOpenSourceAssets/` as vendored — avoid edits unless updating licenses or upstream drops.
+- **Third-party folders**: treat `Plugins/UE4_Assimp/`, `HDF5/`, `ThirdParty/`, `ImportedOpenSourceAssets/` as vendored — avoid edits unless updating licenses or upstream drops.
 - **Commits**: short, imperative messages (e.g., "Refactor SMoveableWindow"). PRs describe scope, list build/test commands, link issues, include screenshots for UI changes.
 - **Assets**: organize under `Content/FeatureName/`. Update `LICENSE.md`, `ASSET_LICENSES.md`, and `BuildDocs/` when adding assets or tooling.
 
