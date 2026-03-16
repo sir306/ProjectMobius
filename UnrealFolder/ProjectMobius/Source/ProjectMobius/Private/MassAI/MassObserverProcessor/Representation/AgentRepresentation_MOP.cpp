@@ -208,10 +208,6 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		{
 			auto Entity = Entities[i];
 
-			// TODO
-			// Get the float value for the agent variation
-			float AgentVariationFloat = FMath::FRandRange(0.0f, 20.0f);
-
 			auto& EntityMovement = EntityMovementFragment[i];
 			auto& EntityRendering = EntityRenderingFragment[i];
 			// Process the entity and set up the corresponding niagara system for the demographic of this entity

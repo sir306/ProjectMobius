@@ -164,7 +164,6 @@ void UTimeDilationSubSystem::UpdateTotalTime(float NewTotalTime)
 
 	// Reconfigure the max time steps
 	UpdateMaxTimeSteps(FMath::CeilToInt32(TotalTime / TimeBetweenSteps)); //TODO: TimeBetweenSteps should be read from file or a setting for the user
-	//UpdateMaxTimeSteps((TotalTime / TimeBetweenSteps)); //TODO: TimeBetweenSteps should be read from file or a setting for the user
 
 }
 

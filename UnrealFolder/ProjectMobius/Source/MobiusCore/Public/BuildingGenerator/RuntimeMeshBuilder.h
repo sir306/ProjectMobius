@@ -262,13 +262,6 @@ public:
 	
 	
 	/*
-	* Array to store the Procedural Meshes UV0 to Generate 
-	* - These are stored as 2D Vectors Structures, length must be the same as the length of vertices array 
-	*/
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|MeshData")
-	//TArray<FVector2D> UV0;//TODO: find struct
-
-	/*
 	* Array to store the Procedural Meshes Vertex Colors to Generate
 	* - These are stored as Linear Colour Structures, length must be the same as the length of vertices array 
 	*/

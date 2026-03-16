@@ -24,7 +24,6 @@
 
 #include "Widgets/Simulation/TimeDilationWidget.h"
 #include "Components/TextBlock.h" // UTextBlock component
-//#include "Components/RichTextBlock.h" // URichTextBlock component TODO
 #include "Kismet/GameplayStatics.h"
 #include <SubSystems/TimeDilationSubSystem.h>
 

@@ -27,7 +27,6 @@
 #include "Components/CanvasPanel.h" // UCanvasPanel component
 #include "Components/Button.h" // UButton component
 #include "Components/TextBlock.h" // UTextBlock component
-//#include "Components/RichTextBlock.h" // URichTextBlock component TODO
 // headers for opening file dialogs
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"

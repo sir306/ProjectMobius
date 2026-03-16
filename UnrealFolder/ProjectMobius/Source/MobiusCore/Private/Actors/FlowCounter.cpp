@@ -767,15 +767,6 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 			// if we intersect, then add it to the completed agent set and increment the flow counter
 			if (bAgentCrossed)
 			{
-				// FlowCounter->AgentsPassedThroughCounter.Add(Data.AgentID, FFlowCounterCountedAgentData(Data.SimTime, IntersectionOnLine, TOnLine));
-				// FlowCounter->FlowCounterCount.store(FlowCounter->AgentsPassedThroughCounter.Num());
-				//
-				// FBuckectTempData Temp = FBuckectTempData();
-				// Temp.AgentID = Data.AgentID;
-				// Temp.IntersectionThreshold = TOnLine;
-				// FlowCounter->ThreadSafeNewAgentDataQueue.Enqueue(Temp);// TODO: using queues could be an issue if time changes but we queued data 
-				//
-
 				FFlowCrossingResult R;
 				R.AgentID                = Data.AgentID;
 				R.IntersectionOnLine     = IntersectionOnLine;

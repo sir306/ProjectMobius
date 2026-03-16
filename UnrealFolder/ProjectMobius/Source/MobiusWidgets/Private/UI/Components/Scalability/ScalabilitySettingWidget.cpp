@@ -170,49 +170,35 @@ void UScalabilitySettingWidget::ConfigureButtonStyles()
 		return;
 	}
 	// Apply the ScalabilityButtonStyle to all buttons
+	// TODO: Add text style configuration for scalability buttons
 	if (LowSetting_Button)
 	{
 		LowSetting_Button->bShouldSwitchNormalWithHovered = false;
-		// Set the button style to the ScalabilityButtonStyle
 		LowSetting_Button->ButtonStyleDefault = ScalabilityButtonStyle;
-		// TODO Text style
-		// Apply Style
 		LowSetting_Button->ApplyMobiusButtonStyle();
 	}
 	if (MedSetting_Button)
 	{
 		MedSetting_Button->bShouldSwitchNormalWithHovered = false;
-		// Set the button style to the ScalabilityButtonStyle
 		MedSetting_Button->ButtonStyleDefault = ScalabilityButtonStyle;
-		// TODO Text style
-		// Apply Style
 		MedSetting_Button->ApplyMobiusButtonStyle();
 	}
 	if (HighSetting_Button)
 	{
-		HighSetting_Button->bShouldSwitchNormalWithHovered = false; 
-		// Set the button style to the ScalabilityButtonStyle
+		HighSetting_Button->bShouldSwitchNormalWithHovered = false;
 		HighSetting_Button->ButtonStyleDefault = ScalabilityButtonStyle;
-		// TODO Text style
-		// Apply Style
 		HighSetting_Button->ApplyMobiusButtonStyle();
 	}
 	if (EpicSetting_Button)
 	{
-		EpicSetting_Button->bShouldSwitchNormalWithHovered = false; 
-		// Set the button style to the ScalabilityButtonStyle
+		EpicSetting_Button->bShouldSwitchNormalWithHovered = false;
 		EpicSetting_Button->ButtonStyleDefault = ScalabilityButtonStyle;
-		// TODO Text style
-		// Apply Style
 		EpicSetting_Button->ApplyMobiusButtonStyle();
 	}
 	if (CineSetting_Button)
 	{
-		CineSetting_Button->bShouldSwitchNormalWithHovered = false; 
-		// Set the button style to the ScalabilityButtonStyle
+		CineSetting_Button->bShouldSwitchNormalWithHovered = false;
 		CineSetting_Button->ButtonStyleDefault = ScalabilityButtonStyle;
-		// TODO Text style
-		// Apply Style
 		CineSetting_Button->ApplyMobiusButtonStyle();
 	}
 }

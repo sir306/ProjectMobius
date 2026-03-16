@@ -305,18 +305,9 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(int32 InEntityID, FEntityInfoFragment& EntityInfoToAssign)
 {
-	// Get AgentDataSubsystem
-	//auto& SubProcessorReqSubBits = ProcessorRequirements.GetRequiredConstSubsystems(); // TODO figure this out
 	UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();
 	
 	AgentDataSubsystem->SetEntityInfoByIndex(InEntityID, EntityInfoToAssign);
-
-	// // log the InEntityID
-	// UE_LOG(LogTemp, Warning, TEXT("InEntityID: %d"), InEntityID);
-	//
-	// // Log the entity info
-	// UE_LOG(LogTemp, Warning, TEXT("Entity ID: %d"), EntityInfoToAssign.EntityID);
-	// UE_LOG(LogTemp, Warning, TEXT("Entity Name: %s"), *EntityInfoToAssign.EntityName);
 }
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(FEntityInfoFragment& EntityInfoToAssign, int32 InEntityID, FString InEntityName, FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane, int32 InEntityMap)
@@ -331,12 +322,3 @@ void UPedestrianInitializeMOP::InitializeEntityInfoAgent(FEntityInfoFragment& En
 
 	UAgentDataSubsystem::ParseEntityInfo(TempObj, EntityInfoToAssign);
 }
-
-//void UPedestrianInitializeMOP::SetEntitiesPedestrianMovement(FPedestrianMovementFragment& PedestrianMovementToAssign, FSimMovementSample InSharedMovementData)
-//{
-//	PedestrianMovementToAssign.CurrentLocation = InSharedMovementData.Position;
-//	PedestrianMovementToAssign.CurrentRotation = InSharedMovementData.Rotation;
-//
-//	//TODO: Review fragment codes as this is a mess and needs to be cleaned up
-//	//PedestrianMovementToAssign.TargetLocation;
-//}

@@ -729,7 +729,7 @@ void UDynamicPixelRenderingTexture::ApplyKernelDensityEstimation(const TArray<FV
 
 void UDynamicPixelRenderingTexture::BuildVoronoiDiagram(const TArray<FVector2D>& DataPoints, int32 RelaxationIterations)
 {
-	// TODO: removed old code for obsolete plugin, will be adding the JFA algorithm for this a @Nicholas - has the rendering logic done just needs translating into this
+	// Stub: pending JFA algorithm implementation
 }
 
 void UDynamicPixelRenderingTexture::ConvertTextureToRGBTexture(int32 ColourDeficiencyType)

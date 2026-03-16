@@ -85,7 +85,6 @@ public:
 		}
 
 		TArray<uint32> Indices;
-		//UDeformableQuadComponent::BuildIndices(Indices); //TODO:Update this method
 		Indices = { 0,1,2, 0,2,3,    // front
 			6,5,4, 7,6,4 };  // back (reversed)
 		Buffers->IndexBuffer.AppendIndices(Indices.GetData(), Indices.Num());

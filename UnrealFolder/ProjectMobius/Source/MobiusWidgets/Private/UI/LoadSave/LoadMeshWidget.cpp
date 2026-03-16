@@ -34,9 +34,6 @@ void ULoadMeshWidget::NativeConstruct()
 
 void ULoadMeshWidget::OnSelectFileButtonClicked()
 {
-
-	//TODO: IMPLEMENT SPECIFIC HTTP REQUESTS!!!
-	
 	if (UNativeFileDialogSubsystem* FileDialogSubsystem = GetWorld()->GetSubsystem<UNativeFileDialogSubsystem>())
 	{
 		FOnFileSelectedDelegate OnFileSelectedDelegate;

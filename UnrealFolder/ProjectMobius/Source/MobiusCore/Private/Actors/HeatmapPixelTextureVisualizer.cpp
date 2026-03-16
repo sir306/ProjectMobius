@@ -379,13 +379,6 @@ bool AHeatmapPixelTextureVisualizer::CheckHeatmapAndLocationValid(const FVector&
 	{
 		return false;
 	}
-
-	// check if the render target and material instance is valid
-	// if(!DynamicTexture && !HeatmapMaterialInstance) //TODO ==> move this to a check before we call this method and loop over all actors
-	// {
-	// 	return false; //TODO: Add better error handling
-	// }
-
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmap(const FVector& AgentLocation, bool bUpdateHeatmap) const

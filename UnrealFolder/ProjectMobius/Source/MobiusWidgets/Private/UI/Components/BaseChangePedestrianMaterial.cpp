@@ -263,8 +263,6 @@ void UBaseChangePedestrianMaterial::OnMaterialTypeChanged(FString SelectedItem, 
 			UpdateSliderProperties();
 		}
 	}
-
-	// TODO: Implement the logic to change the material of the pedestrian
 }
 
 void UBaseChangePedestrianMaterial::OnRandomClothingCheckBoxChanged(bool bIsChecked)

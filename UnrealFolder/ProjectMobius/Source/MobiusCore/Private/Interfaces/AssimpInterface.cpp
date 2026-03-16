@@ -210,39 +210,7 @@ bool IAssimpInterface::OpenMeshFileGetWithAssimp(const FString PathToMesh, int32
 // Warning      LogTemp                   Key: SourceAsset_Generator
 // Warning      LogTemp                   Key: SourceAsset_Format
 		
-	// Faces.Add(MIndex);
-	// Vertices.Add(FVector(Scene->mMeshes[MIndex]->mVertices[2].x,
-	// 	Scene->mMeshes[MIndex]->mVertices[2].y,
-	// 	Scene->mMeshes[MIndex]->mVertices[2].z));
-	// Vertices.Add(FVector(Scene->mMeshes[MIndex]->mVertices[0].x,
-	// 	Scene->mMeshes[MIndex]->mVertices[0].y,
-	// 	Scene->mMeshes[MIndex]->mVertices[0].z));
-	// Vertices.Add(FVector(Scene->mMeshes[MIndex]->mVertices[1].x,
-	// 	Scene->mMeshes[MIndex]->mVertices[1].y,
-	// 	Scene->mMeshes[MIndex]->mVertices[1].z));
-
-	// Check to see if the scene has any materials
-	// if (!Scene->HasMaterials())
-	// {
-	// 	ErrorMessageCode = "The scene does not have any materials";
-	// 	return false; //TODO we dont want to return false apply our own materials
-	// }
-	// else
-	// {
-	// 	Materials = Scene->mMaterials;
-	// }
-	//
-	// // check to see if the scene has any textures
-	// if (!Scene->HasTextures())
-	// {
-	// 	ErrorMessageCode = "The scene does not have any textures";
-	// 	return false; //TODO we dont want to return false apply our own texture
-	// }
-	// else
-	// {
-	// 	Textures = Scene->mTextures;
-	// }
-	return true;	
+	return true;
 }
 
 bool IAssimpInterface::GetMeshSection(int32 SectionIndex, TArray<FVector>& Vertices, TArray<int32>& Faces, TArray<FVector>& Normals, TArray<FVector2D>& UV, TArray<FVector>& Tangents)
