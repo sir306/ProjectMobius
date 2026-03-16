@@ -1,6 +1,21 @@
 # Project Mobius
 
+**Real-time crowd simulation and visualization in Unreal Engine 5.5**
+
+<p align="center">
+  <img src="docs/images/hero-crowd-simulation.png" alt="Project Mobius — 1000-agent crowd simulation" width="720">
+</p>
+
+<p align="center">
+  <em>1,000 pedestrian agents simulated in real time using MASS Entity ECS and Niagara particle rendering</em>
+</p>
+
 Project Mobius is an Unreal Engine 5.5 crowd simulation and visualization suite for Windows (macOS partial support). It combines real-time pedestrian simulation using Epic's MASS Entity framework with GPU-driven Gaussian density heatmaps, HDF5 trajectory data import, multi-format 3D model loading via Assimp, and an in-engine ImPlot/ImGui data visualization overlay.
+
+<p align="center">
+  <img src="docs/images/crowd-simulation-overview.png" alt="Crowd simulation overview" width="360">
+  <img src="docs/images/vr-demo-loading.png" alt="VR demo mode" width="180">
+</p>
 
 ---
 
@@ -47,8 +62,7 @@ Project Mobius is an Unreal Engine 5.5 crowd simulation and visualization suite 
 
 ```
 ProjectMobius/
-├── ASSIMP_5.4.3/                      # Assimp source (vendored, BSD-3)
-├── Blender/                           # Blender source files for 3D assets
+├── docs/images/                       # README screenshots and visuals
 ├── DemoProgressVideos/                # Development progress recordings
 ├── HelpfulTextDocs/                   # Reference documentation
 ├── ImportedOpenSourceAssets/           # CC-licensed Blender models (.fbx)
@@ -58,7 +72,6 @@ ProjectMobius/
 │   └── ProjectMobius/
 │       ├── ProjectMobius.uproject
 │       ├── CMakeLists.txt             # Superbuild (Assimp + HDF5)
-│       ├── BuildDocs/                 # Build guides, key bindings, licenses
 │       ├── Config/                    # Unreal .ini configuration
 │       ├── Content/                   # Unreal assets (Blueprints, maps, UI)
 │       ├── UnitTestSampleData/        # Automation test fixtures
@@ -75,9 +88,7 @@ ProjectMobius/
 │           ├── MobiusWidgets/         # UMG/Slate widgets, ImPlot overlay
 │           └── HIT_ThesisWork/        # Research module for crowd behavior
 ├── LICENSE                            # MIT license
-├── LICENSE.md                         # Detailed licensing breakdown
-├── ASSET_LICENSES.md                  # Creative Commons asset licenses
-├── COPYING.LGPL-3.0.txt              # LGPL-3.0 text (historical Qt reference)
+├── THIRD-PARTY-LICENSES.md           # Third-party and asset license details
 └── CLAUDE.md                          # AI assistant context file
 ```
 

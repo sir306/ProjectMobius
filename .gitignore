@@ -163,7 +163,7 @@ TestData/Technical-School.udatasmith
 TestData/LargeTestCases/*
 UnrealFolder/ProjectMobius/UnitTestSampleData/TechSchoolTest/LargeTestCases/*
 
-# ZIP archives in NickMasters (example projects/tools backups)
+# Archived project backups
 NickMasters/*.zip
 
 # Custom Blender assets folder (models/textures that can be regenerated or re-downloaded)
@@ -201,18 +201,17 @@ yarn-debug.log*
 yarn-error.log*
 
 # =====================================================
-# Specific Libs and Dlls required for compilining that have been manually added
+# Manually Added Libs and DLLs Required for Compilation
 # =====================================================
 
-## Static Libs manually added to project required for compiles
+# Static libs
 !UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.lib
 
-
-## Dynamic libraries manually added to project required for compiles
+# Dynamic libraries
 !ASSIMP_5.4.3/**/*.dll
 
 
-# till i workout how to incorporate GeosJSON correctly ignore it
+# GeoJSON integration (not yet incorporated)
 GeosJSON/
 UnrealFolder/ProjectMobius/source/MobiusCore/ThirdParty/GeosJSON/*
 UnrealFolder/ProjectMobius/UnitTestSampleData/WKT_Test/double_bottleneck.wkt
@@ -286,6 +285,7 @@ Thumbs.db
 /UnrealFolder/ProjectMobius/Content/LevelPrototyping
 /UnrealFolder/ProjectMobius/Content/FPWeapon
 /UnrealFolder/ProjectMobius/MobiusCaptures
+# Temporary session files
 UnrealFolder/ProjectMobius/codex sesh.txt
 UnrealFolder/ProjectMobius/.claude/settings.local.json
 UnrealFolder/ProjectMobius/PlotOverlay.png
