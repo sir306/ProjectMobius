@@ -25,6 +25,10 @@ document.getElementById("NoMatches").style.display="none";
 var searchResults = new SearchResults("searchResults");
 searchResults.Search();
 window.addEventListener("message", function(event) {
+  var trustedOrigin = window.location.origin;
+  if (event.origin !== trustedOrigin) {
+    return;
+  }
   if (event.data == "take_focus") {
     var elem = searchResults.NavNext(0);
     if (elem) elem.focus();
