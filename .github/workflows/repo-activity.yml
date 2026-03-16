@@ -1,0 +1,93 @@
+# Generates a commit activity summary and contributor stats as a workflow
+# artifact. Runs weekly and on-demand. The passing badge on the repo page
+# signals that the project is actively maintained.
+#
+name: "Repository Activity"
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  activity-report:
+    name: Generate Activity Report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for accurate stats
+
+    - name: Generate commit activity summary
+      shell: bash
+      run: |
+        echo "# Repository Activity Report" > activity-report.md
+        echo "" >> activity-report.md
+        echo "Generated: $(date -u '+%Y-%m-%d %H:%M UTC')" >> activity-report.md
+        echo "" >> activity-report.md
+
+        echo "## Commit Activity (Last 90 Days)" >> activity-report.md
+        echo "" >> activity-report.md
+        echo "| Period | Commits |" >> activity-report.md
+        echo "|--------|---------|" >> activity-report.md
+
+        LAST_7=$(git rev-list --count --since="7 days ago" HEAD)
+        LAST_30=$(git rev-list --count --since="30 days ago" HEAD)
+        LAST_90=$(git rev-list --count --since="90 days ago" HEAD)
+        TOTAL=$(git rev-list --count HEAD)
+
+        echo "| Last 7 days | $LAST_7 |" >> activity-report.md
+        echo "| Last 30 days | $LAST_30 |" >> activity-report.md
+        echo "| Last 90 days | $LAST_90 |" >> activity-report.md
+        echo "| All time | $TOTAL |" >> activity-report.md
+        echo "" >> activity-report.md
+
+        echo "## Contributors" >> activity-report.md
+        echo "" >> activity-report.md
+        echo "| Author | Commits (90d) | Commits (all) |" >> activity-report.md
+        echo "|--------|---------------|---------------|" >> activity-report.md
+
+        git log --since="90 days ago" --format='%aN' | sort | uniq -c | sort -rn | while read count name; do
+          all_count=$(git log --format='%aN' --author="$name" | wc -l)
+          echo "| $name | $count | $all_count |" >> activity-report.md
+        done
+        echo "" >> activity-report.md
+
+        echo "## Recent Commits (Last 30 Days)" >> activity-report.md
+        echo "" >> activity-report.md
+        git log --since="30 days ago" --format="- **%ad** %s (%aN)" --date=short >> activity-report.md
+
+        echo "" >> activity-report.md
+        echo "## Source Lines of Code" >> activity-report.md
+        echo "" >> activity-report.md
+        echo "| Language | Files | Lines |" >> activity-report.md
+        echo "|----------|-------|-------|" >> activity-report.md
+
+        # Count project source (exclude vendored third-party)
+        CPP_FILES=$(find UnrealFolder/ProjectMobius/Source -name "*.cpp" -o -name "*.h" 2>/dev/null | wc -l)
+        CPP_LINES=$(find UnrealFolder/ProjectMobius/Source -name "*.cpp" -o -name "*.h" 2>/dev/null -exec cat {} + | wc -l)
+        echo "| C++ (Source/) | $CPP_FILES | $CPP_LINES |" >> activity-report.md
+
+        CMAKE_FILES=$(find UnrealFolder/ProjectMobius -maxdepth 2 -name "CMakeLists.txt" 2>/dev/null | wc -l)
+        CMAKE_LINES=$(find UnrealFolder/ProjectMobius -maxdepth 2 -name "CMakeLists.txt" 2>/dev/null -exec cat {} + | wc -l)
+        echo "| CMake | $CMAKE_FILES | $CMAKE_LINES |" >> activity-report.md
+
+        CS_FILES=$(find UnrealFolder/ProjectMobius/Source -name "*.cs" 2>/dev/null | wc -l)
+        CS_LINES=$(find UnrealFolder/ProjectMobius/Source -name "*.cs" 2>/dev/null -exec cat {} + | wc -l)
+        echo "| C# (Build scripts) | $CS_FILES | $CS_LINES |" >> activity-report.md
+
+        cat activity-report.md
+        echo ""
+        echo "--- Activity report generated successfully ---"
+
+    - name: Upload activity report
+      uses: actions/upload-artifact@v4
+      with:
+        name: activity-report
+        path: activity-report.md
+        retention-days: 90

@@ -1,5 +1,10 @@
 # Project Mobius
 
+[![CodeQL](https://github.com/sir306/ProjectMobius/actions/workflows/codeql.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/codeql.yml)
+[![Repository Activity](https://github.com/sir306/ProjectMobius/actions/workflows/repo-activity.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/repo-activity.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.5-black?logo=unrealengine)](https://www.unrealengine.com/)
+
 **Real-time crowd simulation and visualization in Unreal Engine 5.5**
 
 <p align="center">
