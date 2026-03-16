@@ -8,7 +8,7 @@ This document covers all third-party libraries, assets, and tools bundled in the
 
 | Library | Version | License | Location |
 |---------|---------|---------|----------|
-| ASSIMP | 5.4.3 | BSD-3-Clause | `ASSIMP_5.4.3/`, `Plugins/UE4_Assimp/` |
+| ASSIMP | 5.4.3 | BSD-3-Clause | `Plugins/UE4_Assimp/` |
 | HDF5 | 2.0.0 | HDF5 License (BSD-style) | `Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/` |
 | OpenCV | 4.5.5 | BSD-3-Clause | `Plugins/UE_OpenCV/`, `Source/Visualization/ThirdParty/OpenCV/` |
 | Dear ImGui | 1.92.5 | MIT | `Source/MobiusWidgets/ThirdParty/ImGui/` |
@@ -32,7 +32,7 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 
 ### 2.1 ASSIMP (Open Asset Import Library)
 
-- **Location:** `ASSIMP_5.4.3/` (standalone source), `Plugins/UE4_Assimp/` (UE plugin)
+- **Location:** `Plugins/UE4_Assimp/`
 - **License:** BSD-3-Clause
 - **URL:** https://github.com/assimp/assimp/blob/master/LICENSE
 
@@ -78,9 +78,9 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 
 | Asset Path | License | Notes |
 |------------|---------|-------|
-| `ASSIMP_5.4.3/assimp-master/test/models-nonbsd/BLEND/` | CC-BY 2.0 | Model by Tiziana (TiZeta). Duplicate under `Win64/test/models-nonbsd/BLEND/`. |
-| `ASSIMP_5.4.3/assimp-master/test/models-nonbsd/MD5/` | CC-BY-SA | "BoarMan" by zphr (Christian Lenke). Duplicate under `Win64/test/models-nonbsd/MD5/`. |
-| `ASSIMP_5.4.3/assimp-master/test/models/glTF2/issue_3269/` | CC-BY 4.0 | `texcoord_crash.gltf` by Ed Mackey, Analytical Graphics, Inc. Duplicate under `Win64/test/models/glTF2/issue_3269/`. |
+| `Plugins/UE4_Assimp/.../test/models-nonbsd/BLEND/` | CC-BY 2.0 | Model by Tiziana (TiZeta) |
+| `Plugins/UE4_Assimp/.../test/models-nonbsd/MD5/` | CC-BY-SA | "BoarMan" by zphr (Christian Lenke) |
+| `Plugins/UE4_Assimp/.../test/models/glTF2/issue_3269/` | CC-BY 4.0 | `texcoord_crash.gltf` by Ed Mackey, Analytical Graphics, Inc. |
 
 Assets in `ImportedOpenSourceAssets/` are third-party resources with their own licenses — see `ImportedOpenSourceAssets/LICENSE.txt` for details.
 
@@ -91,7 +91,6 @@ Assets in `ImportedOpenSourceAssets/` are third-party resources with their own l
 ```
 LICENSE                    ← MIT License (this project's own code)
 THIRD-PARTY-LICENSES.md   ← This file
-ASSIMP_5.4.3/             ← Standalone ASSIMP source (BSD-3-Clause)
 ImportedOpenSourceAssets/  ← Third-party assets (see per-asset licenses)
 HelpfulTextDocs/          ← Additional documentation
 TestData/                 ← Sample datasets for unit tests
