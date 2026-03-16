@@ -188,7 +188,7 @@ function SearchBox(name, resultsPath, label, extension)
       }
       else
       {
-        window.frames.MSearchResults.postMessage("take_focus", "*");
+        window.frames.MSearchResults.postMessage("take_focus", window.location.origin);
       }
     }
     else if (e.keyCode==27) // Escape out of the search field
