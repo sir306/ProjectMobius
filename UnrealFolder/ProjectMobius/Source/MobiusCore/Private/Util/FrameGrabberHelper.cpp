@@ -183,7 +183,7 @@ bool UFrameGrabberHelper::TryInitialize()
 		return false;
 	}
 
-	FrameGrabber = MakeUnique<FFrameGrabber>(SceneViewport.ToSharedRef(), TargetSize);
+	FrameGrabber = MakeUnique<FFrameGrabber>(SceneViewport.ToSharedRef(), ViewportSize);
 	FrameGrabber->StartCapturingFrames();
 
 	MobiusLog(FString::Printf(TEXT("[FrameGrabber] Initialized successfully. ViewportSize: %dx%d, TargetSize: %dx%d"),
@@ -304,6 +304,33 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 				EMobiusErrorSeverity::Warning,
 				true);
 			return;
+		}
+	}
+
+	// Re-initialize if viewport has been resized since last init
+	if (GEngine && GEngine->GameViewport)
+	{
+		TSharedPtr<SViewport> GameViewportWidget = GEngine->GameViewport->GetGameViewportWidget();
+		if (GameViewportWidget.IsValid())
+		{
+			TSharedPtr<ISlateViewport> SlateViewportInterface = GameViewportWidget->GetViewportInterface().Pin();
+			TSharedPtr<FSceneViewport> SceneViewport = StaticCastSharedPtr<FSceneViewport>(SlateViewportInterface);
+			if (SceneViewport.IsValid())
+			{
+				FIntPoint CurrentViewportSize = SceneViewport->GetSizeXY();
+				if (CurrentViewportSize != ViewportSize && CurrentViewportSize.X > 0 && CurrentViewportSize.Y > 0)
+				{
+					MobiusLog(FString::Printf(TEXT("[FrameGrabber] Viewport resized from %dx%d to %dx%d, reinitializing..."),
+						ViewportSize.X, ViewportSize.Y, CurrentViewportSize.X, CurrentViewportSize.Y));
+					FrameGrabber->StopCapturingFrames();
+					FrameGrabber.Reset();
+					if (!TryInitialize())
+					{
+						MobiusLog(TEXT("[FrameGrabber] Error: Failed to reinitialize after viewport resize."));
+						return;
+					}
+				}
+			}
 		}
 	}
 
