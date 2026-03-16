@@ -1,0 +1,21 @@
+name: "ProjectMobius CodeQL Config"
+
+# Exclude vendored / third-party code from analysis.
+# These directories contain upstream library sources (ImGui, ImPlot, HDF5,
+# earcut, portable-file-dialogs, Assimp) that inflate result sets and are not
+# maintained by this project.
+paths-ignore:
+  - '**/ThirdParty/**'
+  - 'ASSIMP_5.4.3/**'
+  - 'UnrealFolder/ProjectMobius/_superbuild/**'
+  - 'UnrealFolder/ProjectMobius/Intermediate/**'
+  - 'ImportedOpenSourceAssets/**'
+  - 'ThirdParty/**'
+
+# MistypedFunctionArguments.ql produces a result set exceeding 2 GiB even
+# after path exclusions, because UE macro-heavy code generates enormous
+# numbers of matches.  Excluding it lets the remaining 180 queries run
+# cleanly.
+query-filters:
+  - exclude:
+      id: cpp/mistyped-function-arguments
