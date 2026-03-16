@@ -4,8 +4,8 @@
 [![C++ Style](https://github.com/sir306/ProjectMobius/actions/workflows/cpp-style-check.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/cpp-style-check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.5-black?logo=unrealengine)](https://www.unrealengine.com/)
-[![Last Commit](https://img.shields.io/github/last-commit/sir306/ProjectMobius)](https://github.com/sir306/ProjectMobius/commits/main)
-[![Contributors](https://img.shields.io/github/contributors/sir306/ProjectMobius)](https://github.com/sir306/ProjectMobius/graphs/contributors)
+[![Last Commit](https://img.shields.io/github/last-commit/sir306/ProjectMobius?label=Last%20Commit)](https://github.com/sir306/ProjectMobius/commits/main)
+[![Human Contributors](https://img.shields.io/github/contributors/sir306/ProjectMobius?label=Human%20Contributors)](https://github.com/sir306/ProjectMobius/graphs/contributors)
 
 **Real-time crowd simulation and visualization in Unreal Engine 5.5**
 
