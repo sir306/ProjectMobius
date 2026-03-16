@@ -1,9 +1,11 @@
 # Project Mobius
 
 [![CodeQL](https://github.com/sir306/ProjectMobius/actions/workflows/codeql.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/codeql.yml)
-[![Repository Activity](https://github.com/sir306/ProjectMobius/actions/workflows/repo-activity.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/repo-activity.yml)
+[![C++ Style](https://github.com/sir306/ProjectMobius/actions/workflows/cpp-style-check.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/cpp-style-check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.5-black?logo=unrealengine)](https://www.unrealengine.com/)
+[![Last Commit](https://img.shields.io/github/last-commit/sir306/ProjectMobius)](https://github.com/sir306/ProjectMobius/commits/main)
+[![Contributors](https://img.shields.io/github/contributors/sir306/ProjectMobius)](https://github.com/sir306/ProjectMobius/graphs/contributors)
 
 **Real-time crowd simulation and visualization in Unreal Engine 5.5**
 
@@ -44,7 +46,8 @@ Project Mobius is an Unreal Engine 5.5 crowd simulation and visualization suite 
 6. [Testing](#testing)
 7. [Deprecated Components](#deprecated-components)
 8. [License](#license)
-9. [Further Documentation](#further-documentation)
+9. [CI Workflows](#ci-workflows)
+10. [Further Documentation](#further-documentation)
 
 ---
 
@@ -314,8 +317,19 @@ Copyright (c) 2025 ProjectMobius contributors -- Nicholas R. Harding and Peter T
 
 ---
 
+## CI Workflows
+
+| Badge | Workflow | What it checks |
+|-------|----------|----------------|
+| CodeQL | Security scanning | Buffer overflows, injection, null-deref patterns (C++, JS, Python) |
+| C++ Style | Format & naming | clang-format consistency, UE naming conventions (U/A/F/I/S prefixes, bool `b` prefix) |
+| Repository Activity | Weekly report | Commit stats, contributor counts, SLOC — results in [docs/ACTIVITY.md](docs/ACTIVITY.md) |
+
+---
+
 ## Further Documentation
 
+- [docs/ACTIVITY.md](docs/ACTIVITY.md) -- auto-generated weekly activity report (commits, contributors, SLOC)
 - [BuildDocs/](UnrealFolder/ProjectMobius/BuildDocs/) -- build guides, superbuild ctest guide, UE automation guide
 - [BuildDocs/Visualization-ImPlot.md](UnrealFolder/ProjectMobius/BuildDocs/Visualization-ImPlot.md) -- ImPlot overlay integration details
 - [BuildDocs/Project Mobius Key Bindings.md](UnrealFolder/ProjectMobius/BuildDocs/Project%20Mobius%20Key%20Bindings.md) -- complete input reference

@@ -1,0 +1,46 @@
+# EditorConfig — consistent editor settings across the team
+# https://editorconfig.org
+
+root = true
+
+# Default
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C++ and C# source
+[*.{h,cpp,cs}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+# Config, data, and docs
+[*.{yml,yaml,json,md}]
+indent_style = space
+indent_size = 2
+
+# Unreal .ini files
+[*.ini]
+indent_style = space
+indent_size = 0
+
+# Shell scripts
+[*.sh]
+end_of_line = lf
+indent_style = space
+indent_size = 2
+
+# Makefiles require tabs
+[Makefile]
+indent_style = tab
+
+# CMake
+[CMakeLists.txt]
+indent_style = space
+indent_size = 2
+
+[*.cmake]
+indent_style = space
+indent_size = 2
