@@ -322,7 +322,8 @@ Copyright (c) 2025 ProjectMobius contributors -- Nicholas R. Harding and Peter T
 | Badge | Workflow | What it checks |
 |-------|----------|----------------|
 | CodeQL | Security scanning | Buffer overflows, injection, null-deref patterns (C++, JS, Python) |
-| C++ Style | Format & naming | clang-format consistency, UE naming conventions (U/A/F/I/S prefixes, bool `b` prefix) |
+| C++ Style | Format & naming | clang-format consistency, UE naming conventions (U/A/F/I/S prefixes, bool `b` prefix), MIT license headers |
+| TODO Tracker | Tech debt | Scans `TODO`/`FIXME`/`HACK`/`XXX`/`WORKAROUND` comments — results in [docs/TECH-DEBT.md](docs/TECH-DEBT.md) |
 | Repository Activity | Weekly report | Commit stats, contributor counts, SLOC — results in [docs/ACTIVITY.md](docs/ACTIVITY.md) |
 
 ---
@@ -330,6 +331,7 @@ Copyright (c) 2025 ProjectMobius contributors -- Nicholas R. Harding and Peter T
 ## Further Documentation
 
 - [docs/ACTIVITY.md](docs/ACTIVITY.md) -- auto-generated weekly activity report (commits, contributors, SLOC)
+- [docs/TECH-DEBT.md](docs/TECH-DEBT.md) -- auto-generated TODO/FIXME/HACK tracker by module
 - [BuildDocs/](UnrealFolder/ProjectMobius/BuildDocs/) -- build guides, superbuild ctest guide, UE automation guide
 - [BuildDocs/Visualization-ImPlot.md](UnrealFolder/ProjectMobius/BuildDocs/Visualization-ImPlot.md) -- ImPlot overlay integration details
 - [BuildDocs/Project Mobius Key Bindings.md](UnrealFolder/ProjectMobius/BuildDocs/Project%20Mobius%20Key%20Bindings.md) -- complete input reference

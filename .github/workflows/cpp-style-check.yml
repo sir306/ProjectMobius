@@ -1,4 +1,4 @@
-# C++ Style Check — clang-format consistency and UE naming conventions
+# C++ Style Check — clang-format, UE naming conventions, and license headers
 #
 # Runs on pushes/PRs to main that touch Source/**/*.{h,cpp}.
 # Currently warn-only; switch to enforcing after a format-all commit.
@@ -82,3 +82,19 @@ jobs:
       run: |
         # Warn-only for now; set STRICT=1 to enforce
         bash .github/scripts/check-ue-naming.sh
+
+  license-header:
+    name: License Headers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Check license headers
+      shell: bash
+      run: |
+        # Warn-only for now; set STRICT=1 to enforce
+        bash .github/scripts/check-license-header.sh
