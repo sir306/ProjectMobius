@@ -810,17 +810,22 @@ void FProcessSimulationDataRunnable::ReadHDF5MetadataValues(bool& bCalculateTime
 									  TEXT("Simulation data missing"),
 									  TEXT("HDF5 data was not processed due to missing simulation samples."),
 									  TEXT("AgentDataSubsystem - FProcessSimulationDataRunnable::ReadHDF5MetadataValues"));
-		bShouldStop = true;
+		// Don't set bShouldStop — let the gathering loop handle zero samples gracefully
+		// so that FinalizeProgress() still runs and charts render an empty state
 		return;
 	}
 	
 	// Did the HDF5 data contain metadata
 	if (Hdf5Data.Meta != FHdf5SimulationMetadata())//TODO: need to improve this equality check logic
 	{
-		// if not 0 then we have data
+		// if not 0 then we have data, otherwise fallback to entity array count
 		if (Hdf5Data.Meta.MaxNumEntities != 0)
 		{
 			MaxAgents = Hdf5Data.Meta.MaxNumEntities;
+		}
+		else
+		{
+			MaxAgents = Hdf5Data.Entities.Num();
 		}
 		if (Hdf5Data.Meta.Duration > 0 && Hdf5Data.Meta.SamplingRate > 0)
 		{
@@ -922,26 +927,30 @@ void FProcessSimulationDataRunnable::RunJsonSimDataGatheringLoop(bool bCalculate
 		// Get the JSON object for this
 		TSharedPtr<FJsonObject> JSONSimDataObject = JsonSimDataArray[CurrentDataCount]->AsObject();
 
-		// if metadata is present for max time then no need to calculate
-		if(bCalculateMaxTime)
+		// Calculate TimeBetweenSteps BEFORE updating MaxTime (uses previous MaxTime as baseline)
+		// Only calculate from timestep 1+ so we have a valid previous time to diff against
+		if (bCalculateTimeBetweenSteps && CurrentDataCount > 0)
 		{
-			AgentMovementInfoData.MaxTime = JSONSimDataObject->GetNumberField(StringCast<TCHAR>("time"));
-		}
-
-		// if metadata is present for time steps then no need to calculate
-		if(bCalculateTimeBetweenSteps)
-		{
-			// get time field
 			float TimeVal = JSONSimDataObject->GetNumberField(StringCast<TCHAR>("time"));
 			TimeBetweenSteps = TimeVal - AgentMovementInfoData.MaxTime;
+			bCalculateTimeBetweenSteps = false; // only need to calculate once
+		}
+
+		// Update MaxTime after TimeBetweenSteps uses it
+		if (bCalculateMaxTime)
+		{
+			AgentMovementInfoData.MaxTime = JSONSimDataObject->GetNumberField(StringCast<TCHAR>("time"));
 		}
 
 		// Parameters for step-duration related smoothing, to account for head-tracking  body sway over step duration
 		minimumStepDuration = 0.6; // Minimum step duration in seconds, to assess suitable animation
 		maximumStepDuration = 1.0; // Maximum step duration in seconds, to assess suitable animation
-		minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration*(int)std::round(((double)1.0 / (double)TimeBetweenSteps))); // Min. num. time steps to forward-assess
-		maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps); // Max. num. time steps to forward-assess
-		timeDurationPerRecord = 1.0 / (double)(int)std::round(((double)1.0 / (double)TimeBetweenSteps));
+		if (TimeBetweenSteps > 0)
+		{
+			minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration*(int)std::round(((double)1.0 / (double)TimeBetweenSteps))); // Min. num. time steps to forward-assess
+			maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps); // Max. num. time steps to forward-assess
+			timeDurationPerRecord = 1.0 / (double)(int)std::round(((double)1.0 / (double)TimeBetweenSteps));
+		}
 
 		// get the sample array for this
 		TArray<TSharedPtr<FJsonValue>> JSONSampleArray = JSONSimDataObject->GetArrayField(StringCast<TCHAR>("samples"));
@@ -1202,9 +1211,12 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 		// Parameters for step-duration related smoothing
 		minimumStepDuration = 0.6;
 		maximumStepDuration = 1.0;
-		minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration * (int)std::round(((double)1.0 / (double)TimeBetweenSteps)));
-		maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps);
-		timeDurationPerRecord = 1.0 / (double)(int)std::round(((double)1.0 / (double)TimeBetweenSteps));
+		if (TimeBetweenSteps > 0)
+		{
+			minTimedSrcRecordsForStep = (int)std::round(minimumStepDuration * (int)std::round(((double)1.0 / (double)TimeBetweenSteps)));
+			maxTimedSrcRecordsForStep = (int)std::round(maximumStepDuration * (double)TimeBetweenSteps);
+			timeDurationPerRecord = 1.0 / (double)(int)std::round(((double)1.0 / (double)TimeBetweenSteps));
+		}
 
 		// Track number of agents for this timestep
 		NumOfAgentsPerTimeStep.Add(TimestepSamples->Num());
@@ -1339,6 +1351,38 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 
 	// Update CurrentDataCount to final value
 	CurrentDataCount = MaxTimestepIndex + 1;
+
+	// --- Incomplete data detection ---
+	int32 ActualTimestepCount = MaxTimestepIndex + 1;
+	int32 PeakEntityCount = 0;
+	for (int32 Count : NumOfAgentsPerTimeStep)
+	{
+		PeakEntityCount = FMath::Max(PeakEntityCount, Count);
+	}
+
+	// Timestep mismatch: metadata says more timesteps than we actually loaded
+	if (Hdf5Data.Meta.Duration > 0 && Hdf5Data.Meta.SamplingRate > 0)
+	{
+		int32 ExpectedTimesteps = FMath::CeilToInt(Hdf5Data.Meta.Duration / Hdf5Data.Meta.SamplingRate);
+		if (ActualTimestepCount < ExpectedTimesteps)
+		{
+			ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+				TEXT("Incomplete simulation data"),
+				FString::Printf(TEXT("HDF5: loaded %d of %d expected timesteps. Data may be truncated."),
+					ActualTimestepCount, ExpectedTimesteps),
+				TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+		}
+	}
+
+	// Entity count mismatch: fewer entities observed than metadata declares
+	if (MaxAgents > 0 && PeakEntityCount > 0 && PeakEntityCount < MaxAgents)
+	{
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+			TEXT("Incomplete entity data"),
+			FString::Printf(TEXT("HDF5: peak entity count %d < MaxAgents %d. Some entities may be missing."),
+				PeakEntityCount, MaxAgents),
+			TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+	}
 }
 
 /**

@@ -294,23 +294,10 @@ void UFloorStatsWidget::BuildImPlotAxisSetting()
                         MaxAgentCount = AgentDataSubSystem->GetMaxAgents();
                 }
         }
+        // Y-axis always starts at 0 — evacuation count goes from 0 upward
         if (MaxAgentCount <= 0)
         {
                 MaxAgentCount = 1;
-        }
-
-        // we cant have axis mins and max == the same or be min > max
-        if (MinAgentCountToSend > MaxAgentCount)
-        {
-                // if greater then swap them
-                int32 temp = MinAgentCountToSend;
-                MinAgentCountToSend = MaxAgentCount;
-                MaxAgentCount = temp;
-        }
-        if (MinAgentCountToSend == MaxAgentCount)
-        {
-                // they cant be equal so increase max
-                MaxAgentCount += 1;
         }
         if (MaxTime == 0.0f)
         {
@@ -326,7 +313,7 @@ void UFloorStatsWidget::BuildImPlotAxisSetting()
                         FText::FromString("Number of Occupants Evacuated"),
                         0.0,
                         MaxTime,
-                        MinAgentCountToSend,
+                        0.0,
                         MaxAgentCount);
         }
 }
@@ -390,7 +377,7 @@ void UFloorStatsWidget::ToggleImPlotOverlay()
 
 void UFloorStatsWidget::BuildDataForImPlotOverlay()
 {
-        if (TimeDilationSubSystem == nullptr || TimeDilationSubSystem->TimeBetweenSteps <= 0.0f)
+        if (TimeDilationSubSystem == nullptr)
         {
                 return;
         }
@@ -440,8 +427,8 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                                 // minus the sample count from the max to get the number evacuated (clamp to 0)
                                 int32 SampleCount = FMath::Max(0, MaxAgentCountToSend - RemainingCount);
 
-                                // get the time frequency from time dilation subsystem
-                                float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
+                                // get the time frequency from time dilation subsystem (guard against zero)
+                                float TimeBetweenSteps = FMath::Max(TimeDilationSubSystem->TimeBetweenSteps, KINDA_SMALL_NUMBER);
 
                                 // time of current sample -> assumes no missing data
                                 float CurrentTime = i * TimeBetweenSteps;
@@ -544,7 +531,7 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
         MinAgentCountToSend = SmallestFoundSampleCount == INT32_MAX ? 0 : SmallestFoundSampleCount;
         MaxAgentCountToSend = LargestFoundSampleCount;
 
-        const float TimeBetweenSteps = TimeDilationSubSystem->TimeBetweenSteps;
+        const float TimeBetweenSteps = FMath::Max(TimeDilationSubSystem->TimeBetweenSteps, KINDA_SMALL_NUMBER);
         ImPlotPoints.Reserve(SortedKeys.Num());
         for (int32 i = 0; i < SortedKeys.Num(); ++i)
         {
