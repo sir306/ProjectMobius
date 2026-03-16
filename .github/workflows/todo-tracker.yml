@@ -42,11 +42,11 @@ jobs:
           echo ""
 
           # Count by tag
-          TODO_COUNT=$(grep -rn "TODO" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
-          FIXME_COUNT=$(grep -rn "FIXME" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
-          HACK_COUNT=$(grep -rn "HACK" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
-          XXX_COUNT=$(grep -rn "XXX" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
-          WORKAROUND_COUNT=$(grep -rn "WORKAROUND" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
+          TODO_COUNT=$(grep -rn "TODO" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
+          FIXME_COUNT=$(grep -rn "FIXME" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
+          HACK_COUNT=$(grep -rn "HACK" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
+          XXX_COUNT=$(grep -rn "XXX" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
+          WORKAROUND_COUNT=$(grep -rn "WORKAROUND" "$SOURCE_DIR" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
           TOTAL=$((TODO_COUNT + FIXME_COUNT + HACK_COUNT + XXX_COUNT + WORKAROUND_COUNT))
 
           echo "## Summary"
@@ -69,9 +69,9 @@ jobs:
 
           for module_dir in "$SOURCE_DIR"/*/; do
             module=$(basename "$module_dir")
-            m_todo=$(grep -rn "TODO" "$module_dir" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
-            m_fixme=$(grep -rn "FIXME" "$module_dir" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
-            m_hack=$(grep -rn "HACK" "$module_dir" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l)
+            m_todo=$(grep -rn "TODO" "$module_dir" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
+            m_fixme=$(grep -rn "FIXME" "$module_dir" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
+            m_hack=$(grep -rn "HACK" "$module_dir" --include="*.h" --include="*.cpp" --exclude-dir=ThirdParty 2>/dev/null | wc -l || true)
             m_total=$((m_todo + m_fixme + m_hack))
             if [[ $m_total -gt 0 ]]; then
               echo "| $module | $m_todo | $m_fixme | $m_hack | $m_total |"
