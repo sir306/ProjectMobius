@@ -17,8 +17,82 @@ on:
     branches: [ "main" ]
 
 jobs:
+  define-matrix:
+    name: Define CodeQL Matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has-languages: ${{ steps.set-matrix.outputs.has-languages }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Detect analyzable languages
+      id: set-matrix
+      shell: bash
+      run: |
+        python3 - <<'PY' >> "$GITHUB_OUTPUT"
+        import json
+        import subprocess
+
+        files = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+
+        js_suffixes = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+        cpp_suffixes = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
+
+        def starts_with_any(path, prefixes):
+            return any(path.startswith(prefix) for prefix in prefixes)
+
+        has_cpp = any(
+            path.startswith("UnrealFolder/ProjectMobius/") and path.endswith(cpp_suffixes)
+            and "/ThirdParty/" not in path
+            and not path.startswith("UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/docs/")
+            for path in files
+        )
+
+        has_js = any(
+            path.endswith(js_suffixes)
+            and not starts_with_any(path, (
+                "ThirdParty/",
+                "ASSIMP_5.4.3/",
+                "ImportedOpenSourceAssets/",
+                "UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/docs/",
+            ))
+            and "/ThirdParty/" not in path
+            for path in files
+        )
+
+        has_python = any(
+            path.endswith(".py")
+            and not starts_with_any(path, (
+                "ThirdParty/",
+                "ASSIMP_5.4.3/",
+                "ImportedOpenSourceAssets/",
+            ))
+            and "/ThirdParty/" not in path
+            and not path.startswith("UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/docs/")
+            for path in files
+        )
+
+        matrix = {"include": []}
+        if has_cpp:
+            matrix["include"].append({"language": "c-cpp", "build-mode": "none"})
+        if has_js:
+            matrix["include"].append({"language": "javascript-typescript", "build-mode": "none"})
+        if has_python:
+            matrix["include"].append({"language": "python", "build-mode": "none"})
+
+        print(f"matrix={json.dumps(matrix, separators=(',', ':'))}")
+        print(f"has-languages={'true' if matrix['include'] else 'false'}")
+        PY
+
   analyze:
     name: Analyze (${{ matrix.language }})
+    needs: define-matrix
+    if: ${{ needs.define-matrix.outputs.has-languages == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -28,14 +102,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-        - language: c-cpp
-          build-mode: none
-        - language: javascript-typescript
-          build-mode: none
-        - language: python
-          build-mode: none
+      matrix: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
 
     steps:
     - name: Checkout repository
