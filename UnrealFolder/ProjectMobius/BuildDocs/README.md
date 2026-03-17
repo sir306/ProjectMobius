@@ -8,4 +8,5 @@ Contents:
 - SUMMARY-OF-FOLDER-STRUCTURE-&-LICENSE.md
 - README.md (project overview)
 - UnrealFolder_README.md
+- Agent-Sample-Data-Guide.md
 - EpicEULA.txt
