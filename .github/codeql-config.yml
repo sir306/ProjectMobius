@@ -1,14 +1,14 @@
 name: "ProjectMobius CodeQL Config"
 
-# Exclude vendored / third-party code from analysis.
-# These directories contain upstream library sources (ImGui, ImPlot, HDF5,
-# earcut, portable-file-dialogs, Assimp) that inflate result sets and are not
-# maintained by this project.
+# Exclude vendored and generated code from analysis.
+# These directories contain upstream library sources or generated documentation
+# that inflate result sets and are not maintained as first-party code.
 paths-ignore:
   - '**/ThirdParty/**'
   - 'ASSIMP_5.4.3/**'
   - 'UnrealFolder/ProjectMobius/_superbuild/**'
   - 'UnrealFolder/ProjectMobius/Intermediate/**'
+  - 'UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/docs/**'
   - 'ImportedOpenSourceAssets/**'
   - 'ThirdParty/**'
 

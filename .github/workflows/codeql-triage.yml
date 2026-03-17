@@ -1,24 +1,18 @@
-# CodeQL security scanning for Project Mobius
+# Broader CodeQL triage workflow for scheduled and manual review.
 #
-# C/C++ uses "none" build mode (extraction-based analysis) because the Unreal
-# Engine project requires UE 5.5 + Windows which is unavailable on GitHub
-# hosted runners. This still catches common vulnerability patterns (buffer
-# overflows, injection, null-deref, etc.) without a full build.
+# This runs security-and-quality to surface maintainability and reliability
+# findings without uploading them into the main Code Scanning alert stream.
 #
-# C# is excluded because the only .cs files are Unreal Build Tool scripts
-# (.Build.cs, .Target.cs), not application code.
-#
-name: "CodeQL CI"
+name: "CodeQL Triage"
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
+  schedule:
+    - cron: '24 0 * * 4'
 
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
+    name: Triage (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -46,10 +40,21 @@ jobs:
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
-        queries: security-extended
+        queries: security-and-quality
         config-file: ./.github/codeql-config.yml
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
       with:
-        category: "/language:${{ matrix.language }}/ci"
+        category: "/language:${{ matrix.language }}/triage"
+        output: codeql-results
+        upload: failure-only
+
+    - name: Upload triage SARIF artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: codeql-triage-${{ matrix.language }}
+        path: codeql-results
+        if-no-files-found: warn
+        retention-days: 14
