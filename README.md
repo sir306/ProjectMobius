@@ -21,11 +21,11 @@ Project Mobius is an Unreal Engine 5.5 application for loading pedestrian trajec
 
 <p align="center">
   <img src="docs/images/transparent-building-overview.png" alt="Transparent building view showing all agents" width="360">
-  <img src="docs/images/3d-heatmap-transparent.png" alt="3D density heatmap overlay" width="360">
+  <img src="docs/images/2d-heatmap-transparent.png" alt="2D density heatmap overlay" width="360">
 </p>
 
 <p align="center">
-  <em>Left: transparent geometry reveals agents on every floor — Right: GPU-driven 3D density heatmap</em>
+  <em>Left: transparent geometry reveals agents on every floor — Right: GPU-driven 2D density heatmap</em>
 </p>
 
 ## What It Does
@@ -50,12 +50,12 @@ Project Mobius is an Unreal Engine 5.5 application for loading pedestrian trajec
 </p>
 
 <p align="center">
-  <img src="docs/images/heatmap-interior-closeup.png" alt="Ground-level 3D heatmap view" width="360">
-  <img src="docs/images/3d-heatmap-with-settings.png" alt="Heatmap settings and colour legend" width="360">
+  <img src="docs/images/heatmap-interior-closeup.png" alt="Ground-level 2D heatmap view" width="360">
+  <img src="docs/images/2d-heatmap-with-settings.png" alt="2D heatmap with settings and colour legend" width="360">
 </p>
 
 <p align="center">
-  <em>Ground-level density heatmap with colour-coded congestion — configurable via the Heatmap Settings panel</em>
+  <em>Ground-level 2D density heatmap with colour-coded congestion — configurable via the Heatmap Settings panel</em>
 </p>
 
 <p align="center">
