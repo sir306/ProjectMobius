@@ -904,7 +904,15 @@ void FProcessSimulationDataRunnable::RunJsonSimDataGatheringLoop(bool bCalculate
 	}
 	// get the simulation data array
 	TArray<TSharedPtr<FJsonValue>> JsonSimDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("simulation"));
-	
+
+	// Cap TargetDataCount to the last valid index to prevent false
+	// "incomplete data" errors when metadata arithmetic overshoots
+	// the actual simulation array size by 1
+	if (TargetDataCount >= JsonSimDataArray.Num())
+	{
+		TargetDataCount = JsonSimDataArray.Num() - 1;
+	}
+
 	// reserve the num of sim data arrays for the num of agents per time step
 	NumOfAgentsPerTimeStep.Reserve(JsonSimDataArray.Num());
 
