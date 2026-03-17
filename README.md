@@ -140,17 +140,14 @@ assets, and other third-party notices.
 
 ## AI-Assisted Development
 
-All architecture, algorithms, and creative direction in Project Mobius are
-human-authored — including the MASS ECS crowd simulation, GPU heatmap rendering
-pipeline, IPC subsystem, and data loading pipeline. Design decisions,
-problem-solving, and Unreal Engine integration are entirely the work of the
-project contributors.
+All modules, systems, and plugin integrations in Project Mobius were designed and
+written by the project contributors. This includes the architecture, algorithms,
+engine integration, and creative direction across the entire codebase.
 
-AI coding assistants (OpenAI Codex, Claude, GitHub Copilot) have been used as
-productivity tools for routine tasks such as refactoring, documentation
-formatting, and code cleanup — similar to using a linter or IDE autocomplete.
-All AI-suggested changes were reviewed, tested, and accepted by the human
-contributors before merging.
+AI coding assistants (OpenAI Codex, Claude, GitHub Copilot) were used as
+productivity tools for routine maintenance — refactoring, documentation
+formatting, and code cleanup. Every AI-suggested change was reviewed, tested,
+and accepted by a human contributor before merging.
 
 Contributors using AI tools must follow the
 [AI Tool Usage Policy](CONTRIBUTING.md#ai-tool-usage-policy).
