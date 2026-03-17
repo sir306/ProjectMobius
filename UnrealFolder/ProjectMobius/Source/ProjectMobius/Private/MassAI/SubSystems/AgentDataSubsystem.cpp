@@ -1831,110 +1831,112 @@ TArray<FSimMovementSample> FProcessSimulationDataRunnable::GetMovementSamples(in
 	return MovementSamples;
 }
 
-void FProcessSimulationDataRunnable::CalcSmoothedStepMovementBrackets(TArray<FAgentData> AgentSamples)
+void FProcessSimulationDataRunnable::CalcSmoothedStepMovementBrackets(const TArray<FAgentData>& AgentSamples)
 {
-	bool bNotDone = false;
-	while (!bShouldStop && !bNotDone)
+	// Build O(1) lookup: SampleIndex[timestep][entityID] -> FSimMovementSample*
+	// This replaces the O(S) linear scan per SetAnimPt call with O(1) hash lookup
+	TMap<int32, TMap<int32, FSimMovementSample*>> SampleIndex;
+	SampleIndex.Reserve(AgentMovementInfoData.SimulationData.Num());
+	for (auto& Pair : AgentMovementInfoData.SimulationData)
 	{
-		// Loop through the agentsData, calculating the vectors for each agent
-		for (int a = 0; a < AgentSamples.Num(); a++)
+		if (bShouldStop) break;
+		TMap<int32, FSimMovementSample*>& IndexMap = SampleIndex.Add(Pair.Key);
+		IndexMap.Reserve(Pair.Value.Num());
+		for (FSimMovementSample& Sample : Pair.Value)
 		{
-			if (bShouldStop) break;
-			const int  DebugAgent = 0;
-			TArray<FVector> RecordVectors = TArray<FVector>();
-			CalculateSrcVectors(RecordVectors, AgentSamples[a]); // Calculate the short-time source vectors for the agent
-			AllocateAnimPts(RecordVectors.Num()); // Pre-allocate an array to receive the animation brackets
-			CurrentAgentAnimSmoothing = a;
-			FVector StepVector = FVector::ZeroVector;
-			int t = 0, tSpan = 1;
-			EPedestrianMovementBracket lastEmb = EPedestrianMovementBracket::Emb_NotMoving;
-			float stepDuration = 0.0f;
-
-			// Iterate t through all recordVectors, rapidly moving through the initial zero-speed records
-			for (t = 0; t < RecordVectors.Num() && (RecordVectors[t].Length()/(timeDurationPerRecord) < MinSpeedWalking); t++) {
-				if (bShouldStop) break;
-				SetAnimPt(t, EPedestrianMovementBracket::Emb_NotMoving, 1.0f);
-				// Debug info for tracing a single person consecutive output to assess the benefits of movement bracket smoothing
-				// if ((DebugAgent > -1) && (DebugAgent== a)){
-				// 	double recordSpeed = RecordVectors[t].Length()/(TimeBetweenSteps);
-				// 	std::cout << std::fixed << std::setprecision(2) << std::setw(4) << std::setfill('0');
-				// 	std::cout << "Motion[" << std::setw(3) << t << "] = " << RecordVectors[t].Length() * 100.0 << "cm, "
-				// 		<< recordSpeed << "m/s V(" << tSpan << ")step-pts " << std::endl;
-				// }
-			}
-			if (bShouldStop) break;
-			// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
-			// Note: we increase and decrease tSpan (rough timesteps in a step) depending on the required step duration
-			// 
-			// StepVector is the sum of the vectors from index t to t+tSpan (the rolling sum-vector for a following estimated step)
-			double lastSpeed = 0.0, stepSpeed = RecordVectors[t].Length()/(timeDurationPerRecord);
-			tSpan = minTimedSrcRecordsForStep;
-			AddManyVectors(RecordVectors, t, tSpan, StepVector); // Starting to move from zero, so animate the step that we are starting to take
-
-			// Now, we have a meaningful speed, so we can start calculating the proceeding records as part of moving steps
-			// Iterate from t to the end of the recordVectors, calculating the sum-vector for the next step duration
-			for (; t < RecordVectors.Num(); t++) {
-				if (bShouldStop) break;
-				stepSpeed = StepVector.Length()/(static_cast<double>(tSpan) * timeDurationPerRecord) / 100; // This 100 value is coming from the isSI conversion
-				EPedestrianMovementBracket thisAnimMF = CalculateStepAnimationParams(static_cast<float>(stepSpeed), stepDuration);
-				SetAnimPt(t, thisAnimMF, stepDuration);
-
-				// Debug info for tracing a single person consecutive output to assess the benefits of movement bracket smoothing
-				// if ((DebugAgent > -1) && (DebugAgent== a)) {
-				// 	double recordSpeed = RecordVectors[t].Length()/(TimeBetweenSteps);
-				// 	EPedestrianMovementBracket instantAnimF = CalculateStepAnimationParams((float)recordSpeed, stepDuration);
-				// 	const double speedDiff = recordSpeed - stepSpeed;
-				// 	std::cout << "Motion[" << std::setw(3) << t << "] = " << RecordVectors[t].Length() * 100.0 << "cm, "
-				// 		<< recordSpeed << "m/s V(" << tSpan << "pts) = " << stepSpeed << "m/s diff = " << speedDiff << "m/s"
-				// 		<< " Step Anim: " << (int)thisAnimMF << " Record: " << (int)instantAnimF
-				// 		<< std::endl;
-				// }
-
-				// Move the step forward by one record, by subtracting the last vector and adding the new one
-				StepVector -= RecordVectors[t]; // subtract this record single vector, ahead of the next step assessment, from t+1
-
-				int newtSpan = static_cast<int>(std::round(stepDuration / timeDurationPerRecord));
-
-				// Reduce tSpan? if the new tSpan is less than current one. No need to adjust the evctor sum, as we just removed record[t]
-				if ((newtSpan < tSpan) && (tSpan > minTimedSrcRecordsForStep)) {
-					tSpan--;
-				}
-				else // Assess increasing tSpan, if required, and within limits
-				{
-					if ((newtSpan > tSpan) && (tSpan < maxTimedSrcRecordsForStep) && (t + 1 + tSpan < RecordVectors.Num())) {
-						StepVector += RecordVectors[t + tSpan]; // add the next vector to the sum-vector
-						tSpan++; // increase the span if the step duration expected is longer than the current span
-					}
-
-					if (t + tSpan < RecordVectors.Num()) {
-						StepVector += RecordVectors[t + tSpan]; // add the new vector to the sum-vector
-					}
-					else tSpan--; // reduce the span if we are at the end of the recordVectors
-				}
-			}
-
-			if (bShouldStop) break;
-			//Calculate the current percentage of the data loaded
-			float CurrentPercentage = static_cast<float>(a) / static_cast<float>(MaxAgents);
-			// Broadcast the current percentage of the data loaded
-			if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
-			{
-				Subsys->ProgressQueue.Enqueue(CurrentPercentage);
-			}
-		
-			// Now: the animation movement brackets are stored in IKVectorSteps::agentsData[nPeople].embAvatarAnims[nTimeSteps]
+			IndexMap.Add(Sample.EntityID, &Sample);
 		}
-		bNotDone = true; // we are done with the processing
+	}
+	if (bShouldStop) return;
+
+	// Reuse allocation across agents to avoid per-agent heap churn
+	TArray<FVector> RecordVectors;
+
+	// Loop through the agentsData, calculating the vectors for each agent
+	for (int a = 0; a < AgentSamples.Num(); a++)
+	{
+		if (bShouldStop) break;
+		CalculateSrcVectors(RecordVectors, AgentSamples[a]); // Calculate the short-time source vectors for the agent
+
+		// Lambda for O(1) indexed write to SimulationData (replaces SetAnimPt linear scan)
+		auto WriteAnimData = [&SampleIndex, a](int32 TimeStep, EPedestrianMovementBracket emb, float StepDuration)
+		{
+			if (TMap<int32, FSimMovementSample*>* TimeMap = SampleIndex.Find(TimeStep))
+			{
+				if (FSimMovementSample** SamplePtr = TimeMap->Find(a))
+				{
+					(*SamplePtr)->MovementBracket = emb;
+					(*SamplePtr)->StepDurationMS = static_cast<unsigned long>(StepDuration * 1000.0f);
+				}
+			}
+		};
+
+		FVector StepVector = FVector::ZeroVector;
+		int t = 0, tSpan = 1;
+		float stepDuration = 0.0f;
+
+		// Iterate t through all recordVectors, rapidly moving through the initial zero-speed records
+		for (t = 0; t < RecordVectors.Num() && (RecordVectors[t].Length()/(timeDurationPerRecord) < MinSpeedWalking); t++) {
+			if (bShouldStop) break;
+			WriteAnimData(t, EPedestrianMovementBracket::Emb_NotMoving, 1.0f);
+		}
+		if (bShouldStop) break;
+		// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
+		// Note: we increase and decrease tSpan (rough timesteps in a step) depending on the required step duration
+		//
+		// StepVector is the sum of the vectors from index t to t+tSpan (the rolling sum-vector for a following estimated step)
+		double stepSpeed = RecordVectors[t].Length()/(timeDurationPerRecord);
+		tSpan = minTimedSrcRecordsForStep;
+		AddManyVectors(RecordVectors, t, tSpan, StepVector); // Starting to move from zero, so animate the step that we are starting to take
+
+		// Now, we have a meaningful speed, so we can start calculating the proceeding records as part of moving steps
+		// Iterate from t to the end of the recordVectors, calculating the sum-vector for the next step duration
+		for (; t < RecordVectors.Num(); t++) {
+			if (bShouldStop) break;
+			stepSpeed = StepVector.Length()/(static_cast<double>(tSpan) * timeDurationPerRecord) / 100; // This 100 value is coming from the isSI conversion
+			EPedestrianMovementBracket thisAnimMF = CalculateStepAnimationParams(static_cast<float>(stepSpeed), stepDuration);
+			WriteAnimData(t, thisAnimMF, stepDuration);
+
+			// Move the step forward by one record, by subtracting the last vector and adding the new one
+			StepVector -= RecordVectors[t]; // subtract this record single vector, ahead of the next step assessment, from t+1
+
+			int newtSpan = static_cast<int>(std::round(stepDuration / timeDurationPerRecord));
+
+			// Reduce tSpan? if the new tSpan is less than current one. No need to adjust the vector sum, as we just removed record[t]
+			if ((newtSpan < tSpan) && (tSpan > minTimedSrcRecordsForStep)) {
+				tSpan--;
+			}
+			else // Assess increasing tSpan, if required, and within limits
+			{
+				if ((newtSpan > tSpan) && (tSpan < maxTimedSrcRecordsForStep) && (t + 1 + tSpan < RecordVectors.Num())) {
+					StepVector += RecordVectors[t + tSpan]; // add the next vector to the sum-vector
+					tSpan++; // increase the span if the step duration expected is longer than the current span
+				}
+
+				if (t + tSpan < RecordVectors.Num()) {
+					StepVector += RecordVectors[t + tSpan]; // add the new vector to the sum-vector
+				}
+				else tSpan--; // reduce the span if we are at the end of the recordVectors
+			}
+		}
+
+		if (bShouldStop) break;
+		//Calculate the current percentage of the data loaded
+		float CurrentPercentage = static_cast<float>(a) / static_cast<float>(MaxAgents);
+		// Broadcast the current percentage of the data loaded
+		if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+		{
+			Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+		}
 	}
 }
 
-int FProcessSimulationDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sample)
+int FProcessSimulationDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, const FAgentData& Sample)
 {
+	// Always set logical size so reused array has correct Num() for this agent
+	Vec3D.SetNum(Sample.MovementData.Num(), EAllowShrinking::No);
 	if (Sample.MovementData.Num() > 2)
 	{
-		if (Vec3D.Num() < Sample.MovementData.Num())
-			Vec3D.SetNum(Sample.MovementData.Num(), EAllowShrinking::No);
-		
 		int i = 0;
 		for (; i < Sample.MovementData.Num() - 1; i++)
 		{
@@ -1944,24 +1946,6 @@ int FProcessSimulationDataRunnable::CalculateSrcVectors(TArray<FVector>& Vec3D, 
 	}
 	return (int)Sample.MovementData.Num();
 }
-// TODO: pass a in so can speed this up 
-void FProcessSimulationDataRunnable::SetAnimPt(int t, EPedestrianMovementBracket emb, float StepDuration)
-{
-	EmbAvatarAnims[t].MovementBracket = emb;
-	EmbAvatarAnims[t].StepDurationMS = static_cast<unsigned long>(StepDuration * 1000.0f);
-
-	// Set the agent animation smoothing data
-	for (FSimMovementSample& MovementSample : AgentMovementInfoData.SimulationData[t])
-	{
-		if (bShouldStop) break;
-		if (MovementSample.EntityID == CurrentAgentAnimSmoothing)
-		{
-			MovementSample.MovementBracket = static_cast<EPedestrianMovementBracket>(emb);
-			MovementSample.StepDurationMS = EmbAvatarAnims[t].StepDurationMS;
-		}
-	}
-}
-
 void FProcessSimulationDataRunnable::AddManyVectors(TArray<FVector>& Vec3D, int TStartStep, int TSpanStepPts, FVector& SumVec)
 {
 	for (int i = TStartStep; i < TStartStep + TSpanStepPts; i++){

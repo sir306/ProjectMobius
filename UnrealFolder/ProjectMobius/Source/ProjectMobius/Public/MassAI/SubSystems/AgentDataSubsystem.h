@@ -282,7 +282,7 @@ public:
 	TArray<FSimMovementSample> GetMovementSamples(int32 AgentID);
 
 	/** Calculate smoothed step-motion animation movement brackets for each agent, using agent speeds smoothed (roughly) over a step duration */
-	void CalcSmoothedStepMovementBrackets(TArray<FAgentData> AgentSamples);
+	void CalcSmoothedStepMovementBrackets(const TArray<FAgentData>& AgentSamples);
 
 	/**
 	 * @brief Calculates rotation from movement direction when the HDF5 source data lacks rotation information.
@@ -344,12 +344,10 @@ public:
 	 */
 	void CalculateSpeedFromMovement();
 
-	static int CalculateSrcVectors(TArray<FVector>& Vec3D, FAgentData Sample);
+	static int CalculateSrcVectors(TArray<FVector>& Vec3D, const FAgentData& Sample);
 
 	// Allocate space for the animPts, to reduce fragmentation
 	void AllocateAnimPts(size_t size) { EmbAvatarAnims.SetNum(size, EAllowShrinking::No); }
-
-	void SetAnimPt(int t, EPedestrianMovementBracket emb, float StepDuration);
 
 	// Create a 3D vector-sum over a duration of timestep records
 	static void AddManyVectors(TArray<FVector>& Vec3D, int TStartStep, int TSpanStepPts, FVector& SumVec);
