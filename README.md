@@ -127,6 +127,7 @@ Full build, packaging, and automation notes live in
 - [Data Pipeline](docs/DATA-PIPELINE.md)
 - [Agent Sample Data](docs/AGENT-SAMPLE-DATA.md)
 - [UE Automation Guide](UnrealFolder/ProjectMobius/BuildDocs/UE-Automation-Guide.md)
+- [Contributing](CONTRIBUTING.md)
 - [Third-Party Licenses](THIRD-PARTY-LICENSES.md)
 
 ## License
@@ -139,15 +140,17 @@ assets, and other third-party notices.
 
 ## AI-Assisted Development
 
-AI coding tools (Claude, GitHub Copilot) have been used as **assistive tools**
-for bug fixing, refactoring, and code review. All AI-assisted changes were
-directed, reviewed, and accepted by the human contributors. Core systems — crowd
-simulation (MASS ECS), GPU heatmap rendering, IPC subsystem, and the data
-pipeline — are entirely human-authored.
+All architecture, algorithms, and creative direction in Project Mobius are
+human-authored — including the MASS ECS crowd simulation, GPU heatmap rendering
+pipeline, IPC subsystem, and data loading pipeline. Design decisions,
+problem-solving, and Unreal Engine integration are entirely the work of the
+project contributors.
 
-**Contributor guidelines for AI-assisted contributions:**
+AI coding assistants (OpenAI Codex, Claude, GitHub Copilot) have been used as
+productivity tools for routine tasks such as refactoring, documentation
+formatting, and code cleanup — similar to using a linter or IDE autocomplete.
+All AI-suggested changes were reviewed, tested, and accepted by the human
+contributors before merging.
 
-- Changes must be reviewed and understood before committing
-- Contributors take responsibility for correctness, security, and licensing
-- AI tools must not be used to reproduce copyrighted or proprietary code
-- Substantial new implementations should be verified against project conventions
+Contributors using AI tools must follow the
+[AI Tool Usage Policy](CONTRIBUTING.md#ai-tool-usage-policy).
