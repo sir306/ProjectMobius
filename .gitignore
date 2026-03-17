@@ -303,5 +303,10 @@ UnrealFolder/ProjectMobius/nul
 /ScreenshotIssues
 .claude/settings.local.json
 
+# AI agent configuration files (local use only)
+CLAUDE.md
+AGENTS.md
+UnrealFolder/ProjectMobius/AGENTS.md
+
 # Generated packaged documentation mirror
 UnrealFolder/ProjectMobius/BuildDocs/Docs/
