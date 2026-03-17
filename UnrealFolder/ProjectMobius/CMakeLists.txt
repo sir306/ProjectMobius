@@ -144,16 +144,6 @@ ExternalProject_Add(assimp_ep
   UPDATE_DISCONNECTED 1
 )
 
-# Build the unit test target (but don't run during build - only via ctest)
-if(SUPERBUILD_RUN_TESTS)
-  ExternalProject_Add_Step(assimp_ep build_unit_tests
-    COMMAND ${CMAKE_COMMAND} --build . --config ${SUPERBUILD_CTEST_CONFIG} --target unit --parallel
-    DEPENDEES build
-    WORKING_DIRECTORY "${ASSIMP_BUILD}"
-    COMMENT "Building Assimp unit tests"
-  )
-endif()
-
 # Ensure generated headers (revision.h, config.h) exist under include/assimp after install.
 # Upstream generates them in the build tree; copy them into our install include tree.
 ExternalProject_Add_Step(assimp_ep install_generated_headers
@@ -277,30 +267,7 @@ if(SUPERBUILD_ENABLE_TESTS)
     set_tests_properties(${Name} PROPERTIES TIMEOUT 30)
   endfunction()
 
-  if(WIN32)
-    if(SUPERBUILD_RUN_TESTS)
-      add_test(NAME run_assimp_unit
-        COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}"
-                "${ASSIMP_BUILD}/bin/${SUPERBUILD_CTEST_CONFIG}/unit.exe")
-      set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
-    endif()
-
-  elseif(APPLE)
-    if(SUPERBUILD_RUN_TESTS)
-      add_test(NAME run_assimp_unit
-        COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}"
-                "${ASSIMP_BUILD}/bin/unit")
-      set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
-    endif()
-
-  else()
-    if(SUPERBUILD_RUN_TESTS)
-      add_test(NAME run_assimp_unit
-        COMMAND ${CMAKE_COMMAND} -E chdir "${ASSIMP_BUILD}"
-                "${ASSIMP_BUILD}/bin/unit")
-      set_tests_properties(run_assimp_unit PROPERTIES TIMEOUT 120)
-    endif()
-  endif()
+  # Assimp unit tests removed — test/ directory no longer shipped.
 
   add_path_exists_test(builddocs_build_and_run "${BUILD_DOCS_MIRROR_DIR}/BUILD-AND-RUN.md")
   add_path_exists_test(builddocs_agent_sample_data "${BUILD_DOCS_MIRROR_DIR}/AGENT-SAMPLE-DATA.md")
