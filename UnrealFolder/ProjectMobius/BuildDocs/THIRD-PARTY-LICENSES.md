@@ -74,10 +74,10 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 
 ---
 
-## 3. Third-Party Assets (Creative Commons)
+## 3. Third-Party Assets & Data
+
+> **Note:** The upstream Assimp `test/` directory (which contained CC-BY-SA and other Creative Commons test models) has been removed from this repository. Those assets are part of Assimp's upstream test infrastructure and are not used by the UE4_Assimp plugin at runtime.
 
 | Asset Path | License | Notes |
 |------------|---------|-------|
-| `Plugins/UE4_Assimp/.../test/models-nonbsd/BLEND/` | CC-BY 2.0 | Model by Tiziana (TiZeta) |
-| `Plugins/UE4_Assimp/.../test/models-nonbsd/MD5/` | CC-BY-SA | "BoarMan" by zphr (Christian Lenke) |
-| `Plugins/UE4_Assimp/.../test/models/glTF2/issue_3269/` | CC-BY 4.0 | `texcoord_crash.gltf` by Ed Mackey, Analytical Graphics, Inc. |
+| `Plugins/Hdf5DataPlugin/Hdf5TestData/JuelichTestCases/` | CC-BY 4.0 | Pedestrian trajectory data from Forschungszentrum Jülich |

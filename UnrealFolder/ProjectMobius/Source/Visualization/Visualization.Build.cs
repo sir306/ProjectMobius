@@ -37,10 +37,7 @@ public class Visualization : ModuleRules
         
         //TODO: Sort different build versions for different platforms and use the dll and libs from the ThirdParty folder not manually added
         // Add OpenCV dll and lib files
-        //string opencvProjectDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(ModuleDirectory, "../../"));
-        string UnrealEnginePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(EngineDirectory, "../../"));
-        
-        string opencvProjectDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(UnrealEnginePath, "UE_5.5/Engine/Plugins/Runtime/OpenCV/"));
+        string opencvProjectDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(EngineDirectory, "Plugins/Runtime/OpenCV/"));
         // Windows
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {

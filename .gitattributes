@@ -1,3 +1,55 @@
+# Unreal Engine binary assets
+*.uasset binary
+*.umap binary
+
+# Compiled libraries
+*.lib binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.a binary
+# Data files
+*.h5 binary
+*.hdf5 binary
+# 3D model formats
+*.fbx binary
+*.obj binary
+*.gltf binary
+*.glb binary
+*.3ds binary
+*.blend binary
+# Images and textures
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.tga binary
+*.bmp binary
+*.exr binary
+*.hdr binary
+# Archives
+*.zip binary
+*.gz binary
+*.tar binary
+# Documents
+*.pdf binary
+# Force LF for text files commonly edited cross-platform
+*.md text eol=lf
+*.txt text eol=lf
+*.cs text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.c text eol=lf
+*.py text eol=lf
+*.cmake text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
 *.uasset filter=lfs diff=lfs merge=lfs -text
 *.umap filter=lfs diff=lfs merge=lfs -text
 *.mkv filter=lfs diff=lfs merge=lfs -text

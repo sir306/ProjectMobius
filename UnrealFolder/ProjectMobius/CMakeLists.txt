@@ -88,12 +88,9 @@ set(ASSIMP_BUILD "${CMAKE_BINARY_DIR}/assimp-build")
 # Install directly where UE modules expect it:
 set(ASSIMP_INST "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
 
-# Common args
-if(SUPERBUILD_RUN_TESTS)
-  set(_assimp_build_tests ON)
-else()
-  set(_assimp_build_tests OFF)
-endif()
+# Assimp tests are unconditionally disabled — the upstream test/ directory
+# (which contained CC-BY-SA content) has been removed from this repository.
+set(_assimp_build_tests OFF)
 
 set(_assimp_cmake_args
   -DCMAKE_BUILD_TYPE=Release
