@@ -344,7 +344,7 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 			.ActivationPolicy(EWindowActivationPolicy::Never)
 			.SupportsMaximize(true)
 			.SupportsMinimize(true)
-			.IsTopmostWindow(false)
+			.IsTopmostWindow(true)
 			.HasCloseButton(true)
 			.AutoCenter(EAutoCenter::PreferredWorkArea)
 			.ClientSize(FVector2D(640.0f, 420.0f))
