@@ -29,25 +29,26 @@ Project Mobius is an Unreal Engine 5.5 crowd simulation and visualization suite 
 ## Table of Contents
 
 1. [Features](#features)
-2. [Repository Structure](#repository-structure)
-3. [Architecture](#architecture)
+2. [JSON to HDF5 Conversion](#json-to-hdf5-conversion)
+3. [Repository Structure](#repository-structure)
+4. [Architecture](#architecture)
    - [Module Dependency Graph](#module-dependency-graph)
    - [Key Subsystems](#key-subsystems)
    - [In-Engine Visualization (ImPlot/ImGui)](#in-engine-visualization-implotimgui)
    - [Crowd Simulation](#crowd-simulation)
    - [Plugins](#plugins)
-4. [Getting Started](#getting-started)
+5. [Getting Started](#getting-started)
    - [Prerequisites](#prerequisites)
    - [Cloning the Repository](#cloning-the-repository)
    - [Superbuild (External Dependencies)](#superbuild-external-dependencies)
    - [Unreal Editor Build](#unreal-editor-build)
    - [Packaging (UAT)](#packaging-uat)
-5. [Key Bindings](#key-bindings)
-6. [Testing](#testing)
-7. [Deprecated Components](#deprecated-components)
-8. [License](#license)
-9. [CI Workflows](#ci-workflows)
-10. [Further Documentation](#further-documentation)
+6. [Key Bindings](#key-bindings)
+7. [Testing](#testing)
+8. [Deprecated Components](#deprecated-components)
+9. [License](#license)
+10. [CI Workflows](#ci-workflows)
+11. [Further Documentation](#further-documentation)
 
 ---
 
@@ -63,6 +64,46 @@ Project Mobius is an Unreal Engine 5.5 crowd simulation and visualization suite 
 - **Procedural Mesh Generation** -- polygon triangulation using earcut.hpp
 - **VR Support** -- VR input bindings (in development)
 - **Platform-Native File Dialogs** -- built-in file selection without external tools
+
+---
+
+## JSON to HDF5 Conversion
+
+If your simulation output is still in JSON, convert it before loading larger runs in Unreal. Project Mobius includes a converter script at [`UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Scripts/json_to_hdf5_converter.py`](UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Scripts/json_to_hdf5_converter.py) that rewrites supported simulation JSON into the binary format consumed directly by the `Hdf5DataPlugin`.
+
+```bash
+cd UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Scripts
+python json_to_hdf5_converter.py path/to/input.json path/to/output.h5
+```
+
+The script requires a Python environment with `numpy` and `h5py` installed.
+
+<p align="center">
+  <img src="docs/images/SpedUpJsonHDF5Load5000Agents.gif" alt="Project Mobius loading a 5,000-agent sample converted from JSON to HDF5" width="900">
+</p>
+
+<p align="center">
+  <em>5,000-agent sample loaded through the HDF5 pipeline in Project Mobius</em>
+</p>
+
+### Why convert JSON to HDF5?
+
+- **Much faster load times** -- binary datasets avoid the cost of parsing a large text document before simulation playback starts.
+- **Lower memory use during import** -- HDF5 reduces the temporary allocation overhead that comes with deserializing large JSON files.
+- **Better fit for large trajectory datasets** -- the on-disk structure maps more directly to the plugin reader used inside Project Mobius.
+
+For one 5,000-agent sample converted with the bundled script, loading the HDF5 file reduced load time from `21.29 s` to `3.18 s` and memory use from `317,555 KB` to `55,283 KB`.
+
+| Format | Load time | Memory use |
+|--------|-----------|------------|
+| JSON | `21.29 s` | `317,555 KB` |
+| HDF5 | `3.18 s` | `55,283 KB` |
+
+That benchmark represents:
+
+- `6.69x` faster loading
+- `262,272 KB` less memory used
+- About `82.6%` lower memory consumption
 
 ---
 
