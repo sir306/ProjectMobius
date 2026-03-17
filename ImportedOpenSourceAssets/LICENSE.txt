@@ -1,3 +1,54 @@
-Unless otherwise noted, assets in this folder are from third-party sources.
+ImportedOpenSourceAssets — License Information
+================================================
 
-License: CC-BY 4.0. Include attribution to the original creators when distributing.
+This folder contains a mix of original work and third-party assets.
+Each category is listed below with its applicable license.
+
+
+1. Original Work — MIT License
+-------------------------------
+
+The following icons and images were created by Project Mobius contributors
+and are licensed under the MIT License (see ../LICENSE):
+
+  Arrow.png, Arrow.xcf
+  CameraScreenshotIcon.png
+  StatButtonIcon.png
+  cross_icon.png
+  MobiusVR_DemoLoadingScreen.png
+  MobiusVR_DemoLoadingScreenReduced.png
+  T_CameraViewCycleIcon.png
+  T_DownArrow.png
+  T_DownArrowWithSoftEdge.png
+  T_EyeViewCycleIcon.png
+  T_EyeViewCycleIcon256.png
+  T_QuestionIcon.png
+  T_SaveCameraLocation.png
+  T_SettingIcon.png
+
+
+2. Third-Party Assets — Attribution Pending
+--------------------------------------------
+
+The following assets are from external sources. If you are the original
+creator and would like to be credited or have the asset removed, please
+open an issue on the repository.
+
+  gui_pack_White/          GUI icon pack (play, pause, restart, config,
+                           home, music, sound icons).
+                           TODO: identify original source and creator.
+
+  click.wav                Click sound effect.
+                           TODO: identify original source and creator.
+
+
+3. Fonts — SIL Open Font License
+----------------------------------
+
+All fonts in the Fonts/ subdirectory are licensed under the
+SIL Open Font License (OFL). Each font family includes its own OFL.txt
+with the full license text and copyright holders:
+
+  Fonts/DM_Serif_Text/     — see Fonts/DM_Serif_Text/OFL.txt
+  Fonts/Open_Sans/         — see Fonts/Open_Sans/OFL.txt
+  Fonts/Roboto/Roboto/     — see Fonts/Roboto/Roboto/OFL.txt

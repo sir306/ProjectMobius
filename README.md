@@ -3,6 +3,7 @@
 [![CodeQL](https://github.com/sir306/ProjectMobius/actions/workflows/codeql.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/codeql.yml)
 [![C++ Style](https://github.com/sir306/ProjectMobius/actions/workflows/cpp-style-check.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/cpp-style-check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License Compat](https://github.com/sir306/ProjectMobius/actions/workflows/license-compat.yml/badge.svg)](https://github.com/sir306/ProjectMobius/actions/workflows/license-compat.yml)
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.5-black?logo=unrealengine)](https://www.unrealengine.com/)
 [![Last Commit](https://img.shields.io/github/last-commit/sir306/ProjectMobius?label=Last%20Commit)](https://github.com/sir306/ProjectMobius/commits/main)
 [![Contributors](https://img.shields.io/github/contributors/sir306/ProjectMobius?label=Contributors)](https://github.com/sir306/ProjectMobius/graphs/contributors)
@@ -135,3 +136,18 @@ Project Mobius source code is released under the **MIT License**.
 See [LICENSE](LICENSE) for the project license and
 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for bundled dependencies,
 assets, and other third-party notices.
+
+## AI-Assisted Development
+
+AI coding tools (Claude, GitHub Copilot) have been used as **assistive tools**
+for bug fixing, refactoring, and code review. All AI-assisted changes were
+directed, reviewed, and accepted by the human contributors. Core systems — crowd
+simulation (MASS ECS), GPU heatmap rendering, IPC subsystem, and the data
+pipeline — are entirely human-authored.
+
+**Contributor guidelines for AI-assisted contributions:**
+
+- Changes must be reviewed and understood before committing
+- Contributors take responsibility for correctness, security, and licensing
+- AI tools must not be used to reproduce copyrighted or proprietary code
+- Substantial new implementations should be verified against project conventions

@@ -173,7 +173,7 @@ void UHeatmapSubsystem::AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapA
 	}
 	else
 	{
-		// TODO: this is the only part of this subsystem that relies on the widget subsystem and causes this module to have a circular dependency 
+		// TODO: this widget subsystem reference was removed to avoid a cross-module dependency on MobiusWidgets
 		// UMobiusWidgetSubsystem* ErrorSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>();
 		// if(ErrorSubsystem)
 		// {

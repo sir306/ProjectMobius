@@ -83,7 +83,7 @@ Referenced by 10+ includes across MassAI modules. Renaming requires updating all
 
 ## 6. Architecture Issues
 
-- **Circular dependency:** `MobiusWidgets` <-> `ProjectMobius` (via `FloorStatsWidget`). `HeatmapSubsystem.cpp:176` depends on widget subsystem. Fix: move shared MASS components to `MobiusCore`.
+- **Cross-module coupling:** `MobiusWidgets` depends on `ProjectMobius` (via `FloorStatsWidget` accessing MassAI subsystems). Fix: move shared MASS components to `MobiusCore`.
 - **Code duplication:** `PerformanceUtilSubsystem.cpp` has identical TODO "Extract private update method" at lines 229, 272, 387, 438.
 - **Hardcoded values:** Heatmap step size `650.0f`, FlowCounter UE content path.
 
