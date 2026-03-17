@@ -1,0 +1,34 @@
+# License Compatibility Check
+#
+# Scans the repository for copyleft or MIT-incompatible licenses in
+# LICENSE/COPYING files and source headers. Fails the build if GPL, AGPL,
+# LGPL, CC-BY-SA, CC-BY-NC, CC-BY-ND, or SSPL content is detected.
+#
+# Runs on PRs, pushes to main, and weekly to catch upstream changes.
+
+name: "License Compatibility"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 07:00 UTC — catch any upstream vendored updates
+    - cron: "0 7 * * 1"
+
+jobs:
+  license-check:
+    name: Check for incompatible licenses
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Run license compatibility scan
+      shell: bash
+      run: bash .github/scripts/check-license-compat.sh
