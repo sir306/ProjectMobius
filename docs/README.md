@@ -3,12 +3,15 @@
 This folder keeps the longer documentation that was removed from the root
 README and is also structured so it can be reused for a GitHub wiki later.
 
+Packaged builds mirror a selected subset of these pages into UnrealFolder/ProjectMobius/BuildDocs/Docs/ via the superbuild so the Unreal staging path stays stable without introducing a second authored docs tree.
+
 ## Core Pages
 
 - [Build and Run](BUILD-AND-RUN.md)
 - [Controls](CONTROLS.md)
 - [Architecture](ARCHITECTURE.md)
 - [Data Pipeline](DATA-PIPELINE.md)
+- [Agent Sample Data](AGENT-SAMPLE-DATA.md)
 
 ## Generated Reports
 

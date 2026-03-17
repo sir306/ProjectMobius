@@ -49,8 +49,19 @@ include(ExternalProject)
 
 # --- Project roots (adjust if your tree differs) ---
 set(UE_ROOT "${CMAKE_SOURCE_DIR}")
+set(REPO_ROOT "${CMAKE_SOURCE_DIR}/../..")
+set(REPO_DOCS_SRC_DIR "${REPO_ROOT}/docs")
+set(BUILD_DOCS_DIR "${UE_ROOT}/BuildDocs")
+set(BUILD_DOCS_MIRROR_DIR "${BUILD_DOCS_DIR}/Docs")
+set(BUILD_DOCS_SYNC_SCRIPT "${CMAKE_BINARY_DIR}/SyncBuildDocs.cmake")
 set(ASSIMP_SRC      "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
 set(HDF5_SRC        "${UE_ROOT}/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0")
+
+configure_file(
+  "${UE_ROOT}/cmake/SyncBuildDocs.cmake.in"
+  "${BUILD_DOCS_SYNC_SCRIPT}"
+  @ONLY
+)
 
 # --- Platform output folders Unreal expects ---
 if(WIN32)
@@ -63,6 +74,11 @@ endif()
 
 # Plugin runtime dir where UBT/packager picks up DLLs/DYLIBs
 set(ASSIMP_STAGE_DIR "${UE_ROOT}/Plugins/UE4_Assimp/Binaries/${PLAT}")
+
+add_custom_target(sync_builddocs ALL
+  COMMAND ${CMAKE_COMMAND} -P "${BUILD_DOCS_SYNC_SCRIPT}"
+  COMMENT "Syncing repo-level docs into ${BUILD_DOCS_MIRROR_DIR}"
+)
 
 # ---------------------------------------
 # 1) Build Assimp as shared and INSTALL into the plugin's ThirdParty layout
@@ -231,12 +247,13 @@ ExternalProject_Add(hdf5_ep
 
 # Convenience umbrella target
 add_custom_target(all_external
-  DEPENDS assimp_stage hdf5_ep
+  DEPENDS assimp_stage hdf5_ep sync_builddocs
 )
 
 add_dependencies(all_external
   assimp_ep
   hdf5_ep
+  sync_builddocs
 )
 
 # ------------------------------------------------------------
@@ -288,6 +305,9 @@ if(SUPERBUILD_ENABLE_TESTS)
     endif()
   endif()
 
+  add_path_exists_test(builddocs_build_and_run "${BUILD_DOCS_MIRROR_DIR}/BUILD-AND-RUN.md")
+  add_path_exists_test(builddocs_agent_sample_data "${BUILD_DOCS_MIRROR_DIR}/AGENT-SAMPLE-DATA.md")
+
   # Optional Unreal automation and GenerateProjectFiles/build checks
   if(SUPERBUILD_ENABLE_UE_AUTOMATION AND NOT UE_AUTOMATION_EXE STREQUAL "")
     if(EXISTS "${UE_AUTOMATION_EXE}")
@@ -333,7 +353,7 @@ if(SUPERBUILD_ENABLE_TESTS)
   endif()
 
   add_custom_target(superbuild_tests
-    DEPENDS assimp_stage hdf5_ep
+    DEPENDS assimp_stage hdf5_ep sync_builddocs
     COMMENT "Running superbuild staging checks"
   )
 

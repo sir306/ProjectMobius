@@ -10,18 +10,22 @@
 **Crowd dataset playback and analysis in Unreal Engine 5.5**
 
 <p align="center">
-  <img src="docs/images/hero-crowd-simulation.png" alt="Project Mobius crowd simulation" width="720">
+  <img src="docs/images/hero-crowd-simulation.png" alt="Project Mobius — 5,000 agents in a multi-storey building" width="720">
 </p>
 
 <p align="center">
-  <em>1,000 pedestrian agents replayed in real time with MASS Entity and Niagara rendering</em>
+  <em>5,000 pedestrian agents replayed in real time with MASS Entity and Niagara rendering</em>
 </p>
 
 Project Mobius is an Unreal Engine 5.5 application for loading pedestrian trajectory datasets, replaying them in 3D, and analyzing crowd movement with heatmaps, flow counters, and in-engine charts. Windows is the primary target; macOS support is partial.
 
 <p align="center">
-  <img src="docs/images/crowd-simulation-overview.png" alt="Crowd simulation overview" width="360">
-  <img src="docs/images/vr-demo-loading.png" alt="Project Mobius viewport" width="180">
+  <img src="docs/images/transparent-building-overview.png" alt="Transparent building view showing all agents" width="360">
+  <img src="docs/images/3d-heatmap-transparent.png" alt="3D density heatmap overlay" width="360">
+</p>
+
+<p align="center">
+  <em>Left: transparent geometry reveals agents on every floor — Right: GPU-driven 3D density heatmap</em>
 </p>
 
 ## What It Does
@@ -33,6 +37,35 @@ Project Mobius is an Unreal Engine 5.5 application for loading pedestrian trajec
 - Displays in-engine charts and overlays through the ImPlot and Slate UI stack
 - Imports environment geometry from common formats such as FBX, OBJ, UDatasmith, IFC, and WKT
 - Supports flow counters, agent inspection, screenshots, and pedestrian appearance/scalability controls
+
+### Visualization Modes
+
+<p align="center">
+  <img src="docs/images/solid-building-interior.png" alt="Interior view with solid building geometry" width="360">
+  <img src="docs/images/transparent-interior-closeup.png" alt="Interior view with transparent geometry" width="360">
+</p>
+
+<p align="center">
+  <em>Solid and transparent geometry modes — navigate interior spaces alongside simulated pedestrians</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/heatmap-interior-closeup.png" alt="Ground-level 3D heatmap view" width="360">
+  <img src="docs/images/3d-heatmap-with-settings.png" alt="Heatmap settings and colour legend" width="360">
+</p>
+
+<p align="center">
+  <em>Ground-level density heatmap with colour-coded congestion — configurable via the Heatmap Settings panel</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/crowd-hallway-uniform.png" alt="Crowd hallway with uniform agent appearance" width="360">
+  <img src="docs/images/crowd-hallway-diverse.png" alt="Crowd hallway with diverse agent appearances" width="360">
+</p>
+
+<p align="center">
+  <em>Pedestrian appearance controls: uniform (left) and diverse (right) agent rendering</em>
+</p>
 
 ## Why HDF5
 
@@ -81,7 +114,7 @@ Full build, packaging, and automation notes live in
 - `UnrealFolder/ProjectMobius/`: the Unreal project, superbuild, config, content, and source
 - `UnrealFolder/ProjectMobius/Source/`: runtime modules for playback, UI, analytics, and core systems
 - `UnrealFolder/ProjectMobius/Plugins/`: bundled HDF5, Assimp, and OpenCV integrations
-- `BuildDocs/`: Unreal-specific build and automation notes distributed with the project
+- `UnrealFolder/ProjectMobius/BuildDocs/`: packaging/staging folder; the superbuild mirrors selected canonical repo docs into `BuildDocs/Docs/` for packaged builds
 - `docs/`: repo-level documentation and wiki seed pages
 
 ## Documentation
@@ -91,6 +124,7 @@ Full build, packaging, and automation notes live in
 - [Controls](docs/CONTROLS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data Pipeline](docs/DATA-PIPELINE.md)
+- [Agent Sample Data](docs/AGENT-SAMPLE-DATA.md)
 - [UE Automation Guide](UnrealFolder/ProjectMobius/BuildDocs/UE-Automation-Guide.md)
 - [Third-Party Licenses](THIRD-PARTY-LICENSES.md)
 

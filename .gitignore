@@ -293,3 +293,6 @@ UnrealFolder/ProjectMobius/MobiusCustomLog.txt
 UnrealFolder/ProjectMobius/nul
 /ScreenshotIssues
 .claude/settings.local.json
+
+# Generated packaged documentation mirror
+UnrealFolder/ProjectMobius/BuildDocs/Docs/

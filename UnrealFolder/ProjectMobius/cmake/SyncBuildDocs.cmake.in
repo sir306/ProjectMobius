@@ -1,0 +1,45 @@
+set(_repo_docs_dir "@REPO_DOCS_SRC_DIR@")
+set(_build_docs_mirror_dir "@BUILD_DOCS_MIRROR_DIR@")
+
+set(_doc_files
+  "AGENT-SAMPLE-DATA.md"
+  "ARCHITECTURE.md"
+  "BUILD-AND-RUN.md"
+  "CONTROLS.md"
+  "DATA-PIPELINE.md"
+)
+
+file(REMOVE_RECURSE "${_build_docs_mirror_dir}")
+file(MAKE_DIRECTORY "${_build_docs_mirror_dir}")
+
+foreach(_doc_file IN LISTS _doc_files)
+  set(_src "${_repo_docs_dir}/${_doc_file}")
+  set(_dst "${_build_docs_mirror_dir}/${_doc_file}")
+
+  if(NOT EXISTS "${_src}")
+    message(FATAL_ERROR "Missing canonical documentation source: ${_src}")
+  endif()
+
+  execute_process(
+    COMMAND "@CMAKE_COMMAND@" -E copy_if_different "${_src}" "${_dst}"
+    RESULT_VARIABLE _copy_result
+  )
+
+  if(NOT _copy_result EQUAL 0)
+    message(FATAL_ERROR "Failed to mirror documentation file: ${_src}")
+  endif()
+endforeach()
+
+set(_repo_docs_images_dir "${_repo_docs_dir}/images")
+if(EXISTS "${_repo_docs_images_dir}")
+  execute_process(
+    COMMAND "@CMAKE_COMMAND@" -E copy_directory
+            "${_repo_docs_images_dir}"
+            "${_build_docs_mirror_dir}/images"
+    RESULT_VARIABLE _image_copy_result
+  )
+
+  if(NOT _image_copy_result EQUAL 0)
+    message(FATAL_ERROR "Failed to mirror documentation images from: ${_repo_docs_images_dir}")
+  endif()
+endif()
