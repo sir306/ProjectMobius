@@ -70,6 +70,8 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> FMaterialCache::CreateMaterialInsta
         {
                 if (!ResolveMaterialParams(InMaterial, ResolvedParams))
                 {
+                        UE_LOG(LogTemp, Error, TEXT("CreateMaterialInstancesUsingCache: ResolveMaterialParams failed for %s"),
+                                InMaterial ? *InMaterial->GetName() : TEXT("null"));
                         return Out;
                 }
                 MaterialParamsCache.Add(InMaterial, ResolvedParams);
@@ -109,6 +111,8 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> FMaterialCache::CreateMaterialInsta
         UMaterialInstanceConstant* TemplateMIC = GetOrLoadMasterMaterial(MaterialPath);
         if (!TemplateMIC)
         {
+                UE_LOG(LogTemp, Error, TEXT("CreateMaterialInstancesUsingCache: GetOrLoadMasterMaterial returned null for path '%s'"),
+                        *MaterialPath);
                 return Out;
         }
 
@@ -116,6 +120,8 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> FMaterialCache::CreateMaterialInsta
                 UMaterialInstanceDynamic::Create(TemplateMIC, Owner.Get());
         if (!DynamicMaterial)
         {
+                UE_LOG(LogTemp, Error, TEXT("CreateMaterialInstancesUsingCache: UMaterialInstanceDynamic::Create returned null for template '%s'"),
+                        *TemplateMIC->GetName());
                 return Out;
         }
 
