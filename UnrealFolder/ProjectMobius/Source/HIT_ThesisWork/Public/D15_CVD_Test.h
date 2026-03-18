@@ -298,7 +298,6 @@ public:
 
 
 	
-	// chatgpt
 	UFUNCTION(BlueprintCallable)
 	void CalculateD15CVDTest();
 

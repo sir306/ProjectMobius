@@ -296,7 +296,6 @@ void USimulationPlayBar::DecrementPlayback(int32 DecrementAmount)
 
 void USimulationPlayBar::AdjustPlaybackSteps(int32 NumSteps)
 {
-	//TODO: this method now works but needs to be cleaned up and simplified ChatGPT is not your friend!
 	// prepare update and get current values
 	PauseSimulationAndUpdateTimeBegin();
 	

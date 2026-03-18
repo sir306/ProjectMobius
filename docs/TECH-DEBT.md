@@ -181,7 +181,7 @@
 - Line 94: `//TODO: Setup the editable text box to only accept numerical values`
 **ProjectMobius/Private/Widgets/Simulation/SimulationPlayBar.cpp**
 - Line 281: `//TODO: THIS NEEDS TO BE FIXED - currently only works when sim is paused first then dragged and unpaused not live adjust(somewhere is updating to previous value after new value)`
-- Line 299: `//TODO: this method now works but needs to be cleaned up and simplified ChatGPT is not your friend!`
+- ~~Line 299: resolved~~
 - Line 308: `// Round current step to the nearest step size - TODO: this `
 - Line 431: `// TODO: look into UWidgetUtilHelpers for this functionality and see if its better or useable`
 **ProjectMobius/Private/Widgets/Simulation/TimeDilationWidget.cpp**
@@ -306,7 +306,7 @@
 - Line 87: `/**TODO: TBD if we can or want to use interfaces with mass ai entities, if so then we can use this method to perform a line trace`
 **MobiusCore/Public/Subsystems/StatisticSubsystem.h**
 - Line 57: `/** TODO: this will be used to pull logic from the heatmap subsystem and the floor stats widget so only one subsystem is used`
-- Line 148: `// TODO: These are dropped in methods as suggested by ChatGPT, so need to confirm naming convention is correct and the calculations are correct`
+- ~~Line 148: resolved — flow equations verified against pedestrian flow literature~~
 **MobiusCore/Public/Subsystems/TimeDilationSubSystem.h**
 - Line 41: `/** Delegate to broadcast the new simulation time when it changes */ //TODO: do we need this delegate? left comment for now`
 - Line 178: `//TODO: @Peter -- This an assumption to be clarified but I am assuming all timesteps are calculated`

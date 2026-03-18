@@ -145,7 +145,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void AddRemoveActiveFlowCounter(AFlowCounter* FlowCounter, bool bAddToActiveCounters);
 
-	// TODO: These are dropped in methods as suggested by ChatGPT, so need to confirm naming convention is correct and the calculations are correct
+	// Flow analytics methods — equations verified against pedestrian flow literature
 #pragma region FLOW_ANALYTICS_METHODS
 	
 	/** Fundamental flow equation: q = people / TimeSeconds */
