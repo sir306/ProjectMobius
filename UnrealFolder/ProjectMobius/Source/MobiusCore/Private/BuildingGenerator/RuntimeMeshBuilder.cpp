@@ -96,6 +96,15 @@ void ARuntimeMeshBuilder::BeginPlay()
 
 	Super::BeginPlay();
 
+	// Warn if generated Datasmith override materials are missing
+	{
+		static const FString RuntimeOverridePath = TEXT("/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque");
+		if (!FPackageName::DoesPackageExist(RuntimeOverridePath))
+		{
+			UE_LOG(LogTemp, Error, TEXT("Missing generated Datasmith materials. Run Scripts/GenerateDatasmithMaterials.bat"));
+		}
+	}
+
 	// As mesh generation needs to happen when the game starts and the world is required the delegate is bound here
 	if(GetWorld())
 	{
