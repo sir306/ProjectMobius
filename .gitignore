@@ -40,10 +40,10 @@
 *.la
 *.a
 *.lib
-!ASSIMP_5.4.3/**/*.lib
 
 # Dynamic libraries
 *.so
+*.so.*
 *.dylib
 *.dll
 
@@ -214,11 +214,6 @@ yarn-error.log*
 # Manually Added Libs and DLLs Required for Compilation
 # =====================================================
 
-# Static libs
-!UnrealFolder/ProjectMobius/Binaries/Win64/assimp-vc143-mt.lib
-
-# Dynamic libraries
-!ASSIMP_5.4.3/**/*.dll
 
 
 # GeoJSON integration (not yet incorporated)
