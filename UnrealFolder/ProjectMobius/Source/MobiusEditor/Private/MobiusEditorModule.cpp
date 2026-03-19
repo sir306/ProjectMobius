@@ -30,15 +30,27 @@ public:
 private:
 	void OnAssetRegistryReady()
 	{
-		static const FString TestAsset = TEXT("/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque");
+		static const FString RuntimeTestAsset = TEXT("/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Opaque");
+		static const FString TwinmotionTestAsset = TEXT("/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked");
+		const FString TwinmotionContentDir = FPaths::ProjectContentDir() / TEXT("Twinmotion");
 
-		if (UEditorAssetLibrary::DoesAssetExist(TestAsset))
+		const bool bRuntimeExists = UEditorAssetLibrary::DoesAssetExist(RuntimeTestAsset);
+		const bool bTwinmotionNeeded = FPaths::DirectoryExists(TwinmotionContentDir) && !UEditorAssetLibrary::DoesAssetExist(TwinmotionTestAsset);
+
+		if (bRuntimeExists && !bTwinmotionNeeded)
 		{
 			UE_LOG(LogMobiusEditor, Display, TEXT("Datasmith override materials already exist — skipping generation."));
 			return;
 		}
 
-		UE_LOG(LogMobiusEditor, Warning, TEXT("Datasmith override materials not found — auto-generating from engine sources..."));
+		if (!bRuntimeExists)
+		{
+			UE_LOG(LogMobiusEditor, Warning, TEXT("Datasmith override materials not found — auto-generating..."));
+		}
+		else if (bTwinmotionNeeded)
+		{
+			UE_LOG(LogMobiusEditor, Warning, TEXT("Twinmotion DatasmithMasterMaterials not found — auto-generating..."));
+		}
 
 		UGenerateDatasmithMaterialsCommandlet* Generator = NewObject<UGenerateDatasmithMaterialsCommandlet>();
 		const int32 Result = Generator->Main(TEXT(""));

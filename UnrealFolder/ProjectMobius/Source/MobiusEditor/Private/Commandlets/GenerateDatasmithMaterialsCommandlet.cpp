@@ -29,6 +29,13 @@ namespace DatasmithMatPaths
 	// Material function paths (project-owned)
 	static const FString MF_Opaque       = TEXT("/Game/01_Dev/RuntimeMeshGenerator/MF_ControlDatasmithMaterial");
 	static const FString MF_Transparent  = TEXT("/Game/01_Dev/RuntimeMeshGenerator/MF_ControlDatasmithMaterialTransparency");
+
+	// Twinmotion source paths (full game content paths)
+	static const FString TwinmotionSrc_Opaque      = TEXT("/Game/Twinmotion/Materials/StdOpaque/M_TMStdOpaque");
+	static const FString TwinmotionSrc_Translucent  = TEXT("/Game/Twinmotion/Materials/StdTranslucent/M_StdTranslucentNEW");
+
+	// Twinmotion target path prefix
+	static const FString TwinmotionDest = TEXT("/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/");
 }
 
 // ── Constructor ────────────────────────────────────────────────────────────────
@@ -86,6 +93,21 @@ int32 UGenerateDatasmithMaterialsCommandlet::Main(const FString& Params)
 		}
 	}
 
+	// ── Generate Twinmotion materials (if available) ─────────────────────────
+
+	int32 TwinmotionAssetCount = 0;
+	if (IsTwinmotionContentAvailable())
+	{
+		if (!GenerateTwinmotionMaterials())
+		{
+			bAllOk = false;
+		}
+		else
+		{
+			TwinmotionAssetCount = 5;
+		}
+	}
+
 	// ── Validate ───────────────────────────────────────────────────────────────
 
 	if (bAllOk)
@@ -93,9 +115,10 @@ int32 UGenerateDatasmithMaterialsCommandlet::Main(const FString& Params)
 		bAllOk = ValidateGeneratedAssets();
 	}
 
+	const int32 TotalAssets = 9 + TwinmotionAssetCount;
 	if (bAllOk)
 	{
-		UE_LOG(LogGenDatasmithMats, Display, TEXT("=== GenerateDatasmithMaterials: SUCCESS — all 9 assets generated ==="));
+		UE_LOG(LogGenDatasmithMats, Display, TEXT("=== GenerateDatasmithMaterials: SUCCESS — all %d assets generated ==="), TotalAssets);
 	}
 	else
 	{
@@ -315,11 +338,203 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMaterialInstance(const FMate
 	return true;
 }
 
+// ── Twinmotion Content Check ───────────────────────────────────────────────
+
+bool UGenerateDatasmithMaterialsCommandlet::IsTwinmotionContentAvailable() const
+{
+	const FString TwinmotionDir = FPaths::ProjectContentDir() / TEXT("Twinmotion");
+	const bool bExists = FPaths::DirectoryExists(TwinmotionDir);
+	if (!bExists)
+	{
+		UE_LOG(LogGenDatasmithMats, Display, TEXT("Twinmotion content not found at %s — skipping Twinmotion material generation."), *TwinmotionDir);
+	}
+	return bExists;
+}
+
+// ── Generate Twinmotion Master Material ────────────────────────────────────
+
+bool UGenerateDatasmithMaterialsCommandlet::GenerateTwinmotionMasterMaterial(const FTwinmotionMaterialEntry& Entry)
+{
+	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating Twinmotion: %s -> %s"), *Entry.SourcePath, *Entry.DestPath);
+
+	// Delete any existing asset at the destination so we start clean
+	if (UEditorAssetLibrary::DoesAssetExist(Entry.DestPath))
+	{
+		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing asset at %s"), *Entry.DestPath);
+		UEditorAssetLibrary::DeleteAsset(Entry.DestPath);
+	}
+
+	// Step 1: Duplicate Twinmotion material to target path
+	UObject* Duplicated = UEditorAssetLibrary::DuplicateAsset(Entry.SourcePath, Entry.DestPath);
+	if (!Duplicated)
+	{
+		UE_LOG(LogGenDatasmithMats, Error, TEXT("  FAILED to duplicate %s to %s"), *Entry.SourcePath, *Entry.DestPath);
+		return false;
+	}
+
+	UMaterial* Material = Cast<UMaterial>(Duplicated);
+	if (!Material)
+	{
+		UE_LOG(LogGenDatasmithMats, Error, TEXT("  Duplicated asset is not a UMaterial: %s"), *Entry.DestPath);
+		return false;
+	}
+
+	// Step 2: Ensure bUseMaterialAttributes is true
+	Material->bUseMaterialAttributes = true;
+
+	// Step 2b: Override blend mode if specified
+	if (Entry.BlendModeOverride.IsSet())
+	{
+		Material->BlendMode = Entry.BlendModeOverride.GetValue();
+		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Set BlendMode to %d"), (int32)Material->BlendMode);
+	}
+
+	// Step 3: Load the material function
+	UMaterialFunction* MatFunc = LoadObject<UMaterialFunction>(nullptr, *Entry.MaterialFuncPath);
+	if (!MatFunc)
+	{
+		UE_LOG(LogGenDatasmithMats, Error, TEXT("  FAILED to load material function: %s"), *Entry.MaterialFuncPath);
+		return false;
+	}
+
+	// Step 4: Find what's currently connected to root MaterialAttributes
+	// Twinmotion materials chain MaterialFunctionCall nodes directly to root,
+	// unlike DatasmithRuntime materials which use MakeMaterialAttributes nodes.
+	UMaterialExpression* ExistingExpression = Material->GetEditorOnlyData()->MaterialAttributes.Expression;
+	if (!ExistingExpression)
+	{
+		UE_LOG(LogGenDatasmithMats, Error, TEXT("  No expression connected to MaterialAttributes in %s"), *Entry.SourcePath);
+		return false;
+	}
+
+	const int32 ExistingOutputIndex = Material->GetEditorOnlyData()->MaterialAttributes.OutputIndex;
+
+	UE_LOG(LogGenDatasmithMats, Display, TEXT("  Found existing root connection: %s (output %d)"), *ExistingExpression->GetName(), ExistingOutputIndex);
+
+	// Step 5: Create a MaterialFunctionCall expression
+	UMaterialExpressionMaterialFunctionCall* FuncCallNode = NewObject<UMaterialExpressionMaterialFunctionCall>(Material);
+	FuncCallNode->MaterialFunction = MatFunc;
+	FuncCallNode->UpdateFromFunctionResource();
+	Material->GetExpressionCollection().AddExpression(FuncCallNode);
+
+	// Position the function call node to the right of the existing expression
+	FuncCallNode->MaterialExpressionEditorX = ExistingExpression->MaterialExpressionEditorX + 400;
+	FuncCallNode->MaterialExpressionEditorY = ExistingExpression->MaterialExpressionEditorY;
+
+	// Step 6: Rewire the graph
+	// Wire: [ExistingExpression] -> FuncCall input -> FuncCall output -> Root.MaterialAttributes
+
+	// Find the function call's input pin named "Non Modified Material Input"
+	int32 InputIdx = INDEX_NONE;
+	for (int32 i = 0; i < FuncCallNode->FunctionInputs.Num(); ++i)
+	{
+		if (FuncCallNode->FunctionInputs[i].ExpressionInput.Get()->InputName == TEXT("Non Modified Material Input") ||
+			FuncCallNode->FunctionInputs[i].Input.InputName == TEXT("Non Modified Material Input"))
+		{
+			InputIdx = i;
+			break;
+		}
+	}
+
+	if (InputIdx == INDEX_NONE)
+	{
+		for (int32 i = 0; i < FuncCallNode->FunctionInputs.Num(); ++i)
+		{
+			const FString& Name = FuncCallNode->FunctionInputs[i].ExpressionInput.Get()->InputName.ToString();
+			if (Name.Contains(TEXT("Non Modified")) || Name.Contains(TEXT("Material Input")))
+			{
+				InputIdx = i;
+				break;
+			}
+		}
+	}
+
+	if (InputIdx == INDEX_NONE && FuncCallNode->FunctionInputs.Num() > 0)
+	{
+		UE_LOG(LogGenDatasmithMats, Warning, TEXT("  Could not find 'Non Modified Material Input' pin — using first input (index 0)"));
+		InputIdx = 0;
+	}
+
+	if (InputIdx == INDEX_NONE)
+	{
+		UE_LOG(LogGenDatasmithMats, Error, TEXT("  Material function %s has no inputs"), *Entry.MaterialFuncPath);
+		return false;
+	}
+
+	// Connect ExistingExpression -> FuncCall input
+	FuncCallNode->FunctionInputs[InputIdx].Input.Connect(ExistingOutputIndex, ExistingExpression);
+
+	// Connect FuncCall output -> root node's MaterialAttributes
+	Material->GetEditorOnlyData()->MaterialAttributes.Connect(0, FuncCallNode);
+
+	// Step 7: Recompile and save
+	UMaterialEditingLibrary::RecompileMaterial(Material);
+
+	Material->PreEditChange(nullptr);
+	Material->PostEditChange();
+	Material->MarkPackageDirty();
+
+	UPackage* Package = Material->GetOutermost();
+	const FString PackageFilename = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Standalone;
+	const FSavePackageResultStruct Result = UPackage::Save(Package, Material, *PackageFilename, SaveArgs);
+
+	if (!Result.IsSuccessful())
+	{
+		UE_LOG(LogGenDatasmithMats, Error, TEXT("  FAILED to save package: %s"), *PackageFilename);
+		return false;
+	}
+
+	UE_LOG(LogGenDatasmithMats, Display, TEXT("  OK: %s"), *Entry.DestPath);
+	return true;
+}
+
+// ── Generate Twinmotion Materials ──────────────────────────────────────────
+
+bool UGenerateDatasmithMaterialsCommandlet::GenerateTwinmotionMaterials()
+{
+	UE_LOG(LogGenDatasmithMats, Display, TEXT("--- Generating Twinmotion DatasmithMasterMaterials ---"));
+
+	// Master materials
+	const TArray<FTwinmotionMaterialEntry> TwinmotionMasters = {
+		{ DatasmithMatPaths::TwinmotionSrc_Opaque,      DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithOpaqueMasked"),  DatasmithMatPaths::MF_Opaque,      EBlendMode::BLEND_Masked },
+		{ DatasmithMatPaths::TwinmotionSrc_Translucent,  DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithTranslucent"),   DatasmithMatPaths::MF_Transparent, {} },
+	};
+
+	// Material instances
+	const TArray<FMaterialInstanceEntry> TwinmotionInstances = {
+		{ TEXT("MI_DatasmithOpaqueMasked"),  DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithOpaqueMasked"),  DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithOpaqueMasked") },
+		{ TEXT("MI_DatasmithTranslucent"),   DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithTranslucent"),   DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithTranslucent") },
+		{ TEXT("MI_DatasmithTranslucent"),   DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithTranslucent"),   DatasmithMatPaths::TwinmotionDest + TEXT("WindowsGlass/MI_DatasmithTranslucent") },
+	};
+
+	bool bAllOk = true;
+
+	for (const FTwinmotionMaterialEntry& Entry : TwinmotionMasters)
+	{
+		if (!GenerateTwinmotionMasterMaterial(Entry))
+		{
+			bAllOk = false;
+		}
+	}
+
+	for (const FMaterialInstanceEntry& Entry : TwinmotionInstances)
+	{
+		if (!GenerateMaterialInstance(Entry))
+		{
+			bAllOk = false;
+		}
+	}
+
+	return bAllOk;
+}
+
 // ── Validation ─────────────────────────────────────────────────────────────────
 
 bool UGenerateDatasmithMaterialsCommandlet::ValidateGeneratedAssets()
 {
-	const TArray<FString> ExpectedAssets = {
+	TArray<FString> ExpectedAssets = {
 		DatasmithMatPaths::GameDest + TEXT("M_Opaque"),
 		DatasmithMatPaths::GameDest + TEXT("M_PbrOpaque"),
 		DatasmithMatPaths::GameDest + TEXT("M_PbrOpaque_2Sided"),
@@ -330,6 +545,18 @@ bool UGenerateDatasmithMaterialsCommandlet::ValidateGeneratedAssets()
 		DatasmithMatPaths::GameDest + TEXT("MI_Opaque"),
 		DatasmithMatPaths::GameDest + TEXT("MI_Transparent"),
 	};
+
+	// Conditionally add Twinmotion assets if that content is present
+	if (IsTwinmotionContentAvailable())
+	{
+		ExpectedAssets.Append({
+			DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithOpaqueMasked"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithTranslucent"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithOpaqueMasked"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithTranslucent"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("WindowsGlass/MI_DatasmithTranslucent"),
+		});
+	}
 
 	bool bAllExist = true;
 	for (const FString& Path : ExpectedAssets)
@@ -343,7 +570,7 @@ bool UGenerateDatasmithMaterialsCommandlet::ValidateGeneratedAssets()
 
 	if (bAllExist)
 	{
-		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Validation passed: all 9 assets exist"));
+		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Validation passed: all %d assets exist"), ExpectedAssets.Num());
 	}
 
 	return bAllExist;

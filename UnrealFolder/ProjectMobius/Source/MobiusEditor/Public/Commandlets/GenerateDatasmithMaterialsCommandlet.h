@@ -43,8 +43,26 @@ private:
 		FString DestPath;   // Game content path for the MI
 	};
 
+	/** Info about one Twinmotion-based master material to generate. */
+	struct FTwinmotionMaterialEntry
+	{
+		FString SourcePath;       // Full game content path (e.g. /Game/Twinmotion/...)
+		FString DestPath;         // Game content path for output
+		FString MaterialFuncPath; // Material function to inject
+		TOptional<EBlendMode> BlendModeOverride;
+	};
+
 	/** Duplicate engine material to target path and inject a material function. */
 	bool GenerateMasterMaterial(const FMaterialEntry& Entry);
+
+	/** Duplicate Twinmotion material to target path and inject a material function. */
+	bool GenerateTwinmotionMasterMaterial(const FTwinmotionMaterialEntry& Entry);
+
+	/** Generate all Twinmotion-based DatasmithMasterMaterials (if Twinmotion content is present). */
+	bool GenerateTwinmotionMaterials();
+
+	/** Check whether Content/Twinmotion/ directory exists. */
+	bool IsTwinmotionContentAvailable() const;
 
 	/** Create a material instance constant with the given parent. */
 	bool GenerateMaterialInstance(const FMaterialInstanceEntry& Entry);

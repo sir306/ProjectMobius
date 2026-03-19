@@ -13,6 +13,7 @@ simulation playback, UI, analytics, and supporting infrastructure.
 | `Visualization` | Visualization helpers and related processing support |
 | `ProjectMobius` | Main playback, controller logic, MASS processors, and simulation-facing widgets |
 | `MobiusWidgets` | UMG, Slate, in-world widgets, and ImPlot overlay support |
+| `MobiusEditor` | Editor-only module that auto-generates Datasmith override materials on startup |
 | `HIT_ThesisWork` | Research and experiment-specific functionality |
 
 ## High-Level Flow

@@ -52,6 +52,63 @@ ctest -C Release --output-on-failure
 UnrealEditor-Cmd.exe ProjectMobius.uproject -run=Automation -Test=All -unattended -nop4 -log
 ```
 
+## Datasmith Override Materials
+
+When the Unreal editor opens the project for the first time, the `MobiusEditor`
+module automatically generates the Datasmith override materials that
+`RuntimeMeshBuilder` needs at runtime. No manual steps are required — the
+generation runs once and the results are saved into the Content directory.
+
+### What gets generated
+
+Two families of overrides are produced:
+
+- **RuntimeDatasmithOverrides** (9 assets) — duplicated from the engine
+  `DatasmithRuntime` plugin materials (`M_Opaque`, `M_Transparent`, etc.). A
+  project-owned material function (`MF_ControlDatasmithMaterial` or
+  `MF_ControlDatasmithMaterialTransparency`) is injected into each material
+  graph so that the runtime can control visibility and masking.
+
+- **DatasmithMasterMaterials** (5 assets) — duplicated from the Twinmotion
+  plugin materials (`M_TMStdOpaque`, `M_StdTranslucentNEW`). These are only
+  generated when the `Content/Twinmotion/` directory is present. The same
+  material functions are injected, but the wiring strategy differs because
+  Twinmotion materials chain `MaterialFunctionCall` nodes directly to the root
+  `MaterialAttributes` pin rather than using `MakeMaterialAttributes` nodes.
+
+### How it works
+
+1. On editor startup `FMobiusEditorModule` waits for the asset registry to
+   finish scanning, then checks whether the expected material instances already
+   exist (`MI_Opaque` for runtime overrides, `MI_DatasmithOpaqueMasked` for
+   Twinmotion overrides).
+2. If any are missing it instantiates `UGenerateDatasmithMaterialsCommandlet`
+   and calls `Main()` in-process (no subprocess needed).
+3. The commandlet duplicates each source material, injects the control material
+   function between the existing graph output and the root node, overrides the
+   blend mode where needed, recompiles, and saves the `.uasset` to disk.
+4. A validation pass confirms every expected asset exists before reporting
+   success.
+
+### Manual regeneration
+
+To regenerate all overrides from scratch (e.g. after upgrading the engine or
+Twinmotion plugin), delete the output folders and reopen the editor:
+
+```
+Content/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/
+Content/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/
+```
+
+Alternatively, run the commandlet from the command line:
+
+```bash
+UnrealEditor-Cmd.exe ProjectMobius.uproject -run=GenerateDatasmithMaterials -unattended -nop4 -nosplash -nullrhi
+```
+
+Or use the provided scripts: `Scripts/GenerateDatasmithMaterials.bat` (Windows)
+/ `Scripts/GenerateDatasmithMaterials.sh` (macOS/Linux).
+
 ## Package Example
 
 ```bash
