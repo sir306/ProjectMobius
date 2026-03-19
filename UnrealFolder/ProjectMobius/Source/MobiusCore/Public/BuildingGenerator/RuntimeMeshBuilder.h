@@ -233,7 +233,7 @@ public:
 
 	/** Holds the filename to the mesh */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|MeshData")
-	FString MeshFileName = "C:\\Users\\User_VR4\\Desktop\\WORK\\ProjectMobius\\ProjectMobius\\TestData\\TechnicalSchool1000People\\Technical-School-For-Lab-3D.fbx";
+	FString MeshFileName;
 
 	/** Async Loader for assimp */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MeshGenerator|AsyncLoader")

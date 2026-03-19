@@ -145,9 +145,12 @@ written by the project contributors. This includes the architecture, algorithms,
 engine integration, and creative direction across the entire codebase.
 
 AI coding assistants (OpenAI Codex, Claude, GitHub Copilot) were used as
-productivity tools for routine maintenance — refactoring, documentation
-formatting, and code cleanup. Every AI-suggested change was reviewed, tested,
-and accepted by a human contributor before merging.
+productivity tools during development — primarily for refactoring, documentation
+formatting, code cleanup, and boilerplate generation. A subset of pull requests
+were drafted with AI assistance; these represent a small fraction of the
+project's commits and many required further revision or were superseded by
+human-written improvements. Every AI-suggested change was reviewed, tested, and
+accepted by a human contributor before merging.
 
 Contributors using AI tools must follow the
 [AI Tool Usage Policy](CONTRIBUTING.md#ai-tool-usage-policy).
