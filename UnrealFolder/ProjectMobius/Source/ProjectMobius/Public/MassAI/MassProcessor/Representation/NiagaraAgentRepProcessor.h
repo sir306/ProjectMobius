@@ -26,7 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "MassProcessor.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "NiagaraAgentRepProcessor.generated.h"
 
 

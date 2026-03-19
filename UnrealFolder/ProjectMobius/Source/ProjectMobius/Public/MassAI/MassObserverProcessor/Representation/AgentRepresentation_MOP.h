@@ -28,7 +28,7 @@
 #include "MassObserverProcessor.h"
 #include "NiagaraComponent.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 #include "AgentRepresentation_MOP.generated.h"
 
 struct FAgentNiagaraDataFrag;

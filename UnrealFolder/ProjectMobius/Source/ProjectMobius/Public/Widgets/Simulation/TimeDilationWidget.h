@@ -51,7 +51,7 @@ protected:
 
 private:
 	/** This will set the TimeDilationSubsystem ptr if the widget is in game */
-	void SetTimeDilationSubsytem();
+	void SetTimeDilationSubsystem();
 
 #pragma endregion METHODS
 

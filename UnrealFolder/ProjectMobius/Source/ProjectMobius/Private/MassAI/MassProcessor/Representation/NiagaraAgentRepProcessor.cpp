@@ -31,7 +31,7 @@
 // Fragments to include with this processor
 #include "MassAI/Fragments/EntityInfoFragment.h"
 // Shared Fragments to include with the processor
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Tags
 #include "MassAI/Tags/MassAITags.h"
 // Subsystems to include with the processor
@@ -43,7 +43,7 @@
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 // Niagara
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 

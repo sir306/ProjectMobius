@@ -204,10 +204,10 @@
 **ProjectMobius/Public/MassAI/Fragments/SharedFragments/SimulationFragment.h**
 - Line 81: `// TODO: Add buffer method and not store all data in this struct`
 - Line 82: `// TODO: This Map logic needs improving as it is not efficient with large data sets and looping over all data is poor`
-**ProjectMobius/Public/MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h**
+**ProjectMobius/Public/MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h**
 - Line 53: `TArray<int32> MaleAdultAnimationStates; // TODO: likely when we bring dif age brackets we want all of them to be in one array`
 - Line 77: `TArray<int32> FemaleAdultAnimationStates; // TODO: likely when we bring dif age brackets we want all of them to be in one array`
-**ProjectMobius/Public/MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h**
+**ProjectMobius/Public/MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h**
 - Line 90: `int32 NumberOfChildren = 0;// TODO: Maybe do different genders`
 - Line 92: `//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too`
 - Line 135: `int32 NumberOfChildren = 0;// TODO: Maybe do different genders`

@@ -9,7 +9,7 @@
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 #include "MassAI/Tags/MassAITags.h"
 #include "Subsystems/MobiusControllerSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"

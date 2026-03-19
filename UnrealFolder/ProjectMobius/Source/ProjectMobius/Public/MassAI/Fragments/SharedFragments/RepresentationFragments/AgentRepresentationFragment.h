@@ -26,7 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "MassEntityTypes.h"
-#include "AgentRepresenatationFragment.generated.h"
+#include "AgentRepresentationFragment.generated.h"
 
 class AAgentRepresentationActorISM;
 class ANiagaraAgentRepActor;
@@ -40,58 +40,58 @@ struct PROJECTMOBIUS_API FAgentRepresentationFragment : public FMassSharedFragme
 
 #pragma region PROPERTIES
 	/** Actor Class that holds instances that are created */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	TObjectPtr<AAgentRepresentationActorISM> ActorRepresentationClass = nullptr;
 	
 	/** The Male Static Mesh that is used */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	UStaticMesh* MaleStaticMesh = nullptr;
 	
 	/** The Female Static Mesh that is used */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	UStaticMesh* FemaleStaticMesh = nullptr;
 	
 	/** The Material that is used for the static mesh*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	UMaterial* Material = nullptr;
 	
 	/** The Skeletal Mesh that is used */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	USkeletalMesh* SkeletalMesh = nullptr;
 	
-	///** The Skeletal Mesh Animation that is used for the skelatal mesh */
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	///** The Skeletal Mesh Animation that is used for the skeletal mesh */
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	//class UAnimInstance* Animation;
 	
 	//NOTE: this is were things are progressing towards
 	
 	/** The Niagara System Actor for the rendering of agents */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	TObjectPtr<ANiagaraAgentRepActor> NiagaraAgentRepActor = nullptr;
 	
 	/** Number of Male Adults */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfMaleAdults = 0;
 	
 	/** Number of Male Elderly */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfMaleElderly = 0;
 	
 	/** Number of Female Adults */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfFemaleAdults = 0;
 	
 	/** Number of Female Elderly */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfFemaleElderly = 0;
 	
 	/** Number of Female Adults */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfChildren = 0;// TODO: Maybe do different genders
 	
 	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
 	/** Using low spec agent render effect? */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	bool bUseLowSpecAgentRenderEffect = false;
 	
 #pragma endregion PROPERTIES
@@ -111,32 +111,32 @@ public:
 
 #pragma region PROPERTIES
 	/** Actor Class that holds instances that are created */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	TWeakObjectPtr<class ANiagaraAgentRepActor> NiagaraRepresentationActor = nullptr;
 
 	/** Number of Male Adults */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfMaleAdults = 0;
 
 	/** Number of Male Elderly */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfMaleElderly = 0;
 
 	/** Number of Female Adults */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfFemaleAdults = 0;
 
 	/** Number of Female Elderly */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfFemaleElderly = 0;
 
 	/** Number of Female Adults */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfChildren = 0;// TODO: Maybe do different genders
 
 	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
 	/** Using low spec agent render effect? */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresenatation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	bool bUseLowSpecAgentRenderEffect = false;
 
 #pragma endregion PROPERTIES

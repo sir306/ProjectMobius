@@ -185,7 +185,7 @@ private:
 
 	/*
 	 * This method will configure the sub systems that are required for the processor and query to function
-	 * it will not allocate the subsytems if we are not in world, this is to prevent the processor from trying to
+	 * it will not allocate the subsystems if we are not in world, this is to prevent the processor from trying to
 	 * allocate and increase performance as the processor won't need to check if in world every call
 	 *
 	 * @param ExecutionContext: The execution context to check if we are in world

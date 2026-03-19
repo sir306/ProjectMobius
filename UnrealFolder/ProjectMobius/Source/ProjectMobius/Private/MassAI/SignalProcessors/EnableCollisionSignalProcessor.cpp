@@ -6,7 +6,7 @@
 #include "MassExecutionContext.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 #include "Subsystems/MobiusControllerSubsystem.h"
 

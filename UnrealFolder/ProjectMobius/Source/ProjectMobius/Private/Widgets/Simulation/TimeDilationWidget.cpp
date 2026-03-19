@@ -36,7 +36,7 @@ void UTimeDilationWidget::NativeConstruct()
 	// Update the simulation time text block
 	//UpdateSimulationTimeTextBlock();
 
-	SetTimeDilationSubsytem();
+	SetTimeDilationSubsystem();
 }
 
 void UTimeDilationWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -50,7 +50,7 @@ void UTimeDilationWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaT
 	}
 	else 
 	{
-		SetTimeDilationSubsytem();
+		SetTimeDilationSubsystem();
 	}
 }
 
@@ -67,7 +67,7 @@ void UTimeDilationWidget::UpdateSimulationTimeTextBlock()
 	CurrentSimTimeTextBlock->SetText(FText::FromString(SimulationTimeText));
 }
 
-void UTimeDilationWidget::SetTimeDilationSubsytem()
+void UTimeDilationWidget::SetTimeDilationSubsystem()
 {
 	if (GetWorld() == nullptr)
 	{

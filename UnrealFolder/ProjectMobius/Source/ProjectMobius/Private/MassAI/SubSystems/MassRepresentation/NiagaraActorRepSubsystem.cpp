@@ -24,7 +24,7 @@
 
 #include "MassAI/SubSystems/MassRepresentation/NiagaraActorRepSubsystem.h"
 #include "MassEntitySubsystem.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 
 void UNiagaraActorRepSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {

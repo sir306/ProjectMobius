@@ -5,7 +5,7 @@
 
 #include "MassExecutionContext.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "MassAI/Tags/MassAITags.h"
 #include "Subsystems/MobiusControllerSubsystem.h"

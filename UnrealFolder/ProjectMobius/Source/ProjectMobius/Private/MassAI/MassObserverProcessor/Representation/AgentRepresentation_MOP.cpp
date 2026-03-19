@@ -32,7 +32,7 @@
 // Fragments
 #include "MassAI/Fragments/EntityInfoFragment.h"
 // Shared Fragments
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Subsystems
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 // Tags
@@ -52,7 +52,7 @@
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "NiagaraDataInterface.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 
 class UTimeDilationSubSystem;
 

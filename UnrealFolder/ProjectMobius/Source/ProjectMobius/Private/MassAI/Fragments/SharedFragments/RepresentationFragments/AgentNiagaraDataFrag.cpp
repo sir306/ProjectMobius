@@ -22,7 +22,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 
 
 FAgentNiagaraDataFrag::FAgentNiagaraDataFrag()

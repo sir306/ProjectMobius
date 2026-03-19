@@ -245,7 +245,7 @@ void UMRS_RepresentationSubsystem::SetPedestrianMaterial(UMaterialInstanceDynami
 							GetMobiusGameInstance(GetWorld())->SetSelectedFemaleElderlyEyesMaterialInstance(MaterialInstEyes);
 							break;
 						case EPedestrianGender::Epg_Default:
-							// TODO: no seperate gender logic yet
+							// TODO: no separate gender logic yet
 							// Update the Niagara component with the selected material instance
 							NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableMaterial(TEXT("ElderlyMaleMaterialBody"), MaterialInstBody);
 							NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableMaterial(TEXT("ElderlyMaleMaterialEyes"), MaterialInstEyes);

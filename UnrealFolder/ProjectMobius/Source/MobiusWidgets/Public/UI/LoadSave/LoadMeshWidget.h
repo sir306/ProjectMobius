@@ -44,19 +44,19 @@ public:
 	
 	/**
 	 * Method to call when the SelectFileButton is clicked
-	 * It is overriden from the parent class to get the mesh data file
+	 * It is overridden from the parent class to get the mesh data file
 	 */ 
 	virtual void OnSelectFileButtonClicked() override;
 
 	/**
 	 * Get Mobius Game Instance data --
-	 * It is overriden from the parent class to get the mesh data
+	 * It is overridden from the parent class to get the mesh data
 	 */ 
 	virtual void GetMobiusGameInstanceData() override;
 
 	/**
 	 * Method to update the Mobius Game Instance data --
-	 * It is overriden from the parent class to update the mesh data
+	 * It is overridden from the parent class to update the mesh data
 	 */ 
 	virtual void UpdateMobiusGameInstanceData() override;
 	

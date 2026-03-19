@@ -42,19 +42,19 @@ public:
 	
 	/**
 	 * Method to call when the SelectFileButton is clicked
-	 * It is overriden from the parent class to get the pedestrian data
+	 * It is overridden from the parent class to get the pedestrian data
 	 */ 
 	virtual void OnSelectFileButtonClicked() override;
 
 	/**
 	 * Get Mobius Game Instance data --
-	 * It is overriden from the parent class to get the pedestrian data
+	 * It is overridden from the parent class to get the pedestrian data
 	 */ 
 	virtual void GetMobiusGameInstanceData() override;
 
 	/**
 	 * Method to update the Mobius Game Instance data --
-	 * It is overriden from the parent class to update the pedestrian data
+	 * It is overridden from the parent class to update the pedestrian data
 	 */ 
 	virtual void UpdateMobiusGameInstanceData() override;
 

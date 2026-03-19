@@ -28,7 +28,7 @@
 #include "MassSpawnerSubsystem.h"
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Templates/UniquePtr.h"
 #include "MassEntitySpawnSubsystem.generated.h"
@@ -59,7 +59,7 @@ public:
 	*/
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
-	/** Deintialize the subsystem */
+	/** Deinitialize the subsystem */
 	virtual void Deinitialize() override;
 
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;

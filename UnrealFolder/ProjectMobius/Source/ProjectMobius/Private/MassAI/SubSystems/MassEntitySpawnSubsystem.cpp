@@ -28,7 +28,7 @@
 // Fragments
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentRepresenatationFragment.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Actors to include
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
 // Other Subsystems we want to use
@@ -48,7 +48,7 @@
 #include "NiagaraSystem.h"
 #include "Components/CapsuleComponent.h"
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
-#include "MassAI/Fragments/SharedFragments/RepresenatationFragments/AgentNiagaraDataFrag.h"
+#include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
 

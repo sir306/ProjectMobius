@@ -73,9 +73,9 @@ Only 15 of 113 first-party source files have error handling implemented.
 
 ## 5. Misspelled Directory Names
 
-`RepresenatationFragments/` (should be `RepresentationFragments/`) exists in both:
-- `Source/ProjectMobius/Public/MassAI/Fragments/RepresenatationFragments/`
-- `Source/ProjectMobius/Private/MassAI/Fragments/RepresenatationFragments/`
+`RepresentationFragments/` (should be `RepresentationFragments/`) exists in both:
+- `Source/ProjectMobius/Public/MassAI/Fragments/RepresentationFragments/`
+- `Source/ProjectMobius/Private/MassAI/Fragments/RepresentationFragments/`
 
 Referenced by 10+ includes across MassAI modules. Renaming requires updating all includes and verifying no Blueprint/asset soft-references use the path.
 
