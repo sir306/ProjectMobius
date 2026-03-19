@@ -1,8 +1,8 @@
 {
 	"FileVersion": 3,
 	"EngineAssociation": "5.5",
-	"Category": "",
-	"Description": " ",
+	"Category": "Simulation",
+	"Description": "Crowd trajectory playback and analysis in Unreal Engine 5.5",
 	"Modules": [
 		{
 			"Name": "ProjectMobius",

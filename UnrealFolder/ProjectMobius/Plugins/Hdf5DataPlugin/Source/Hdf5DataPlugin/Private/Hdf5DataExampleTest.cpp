@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright (c) 2025 ProjectMobius contributors. Licensed under MIT.
 
 #include "Hdf5DataExampleTest.h"
 #include "Hdf5SimulationReader.h"
