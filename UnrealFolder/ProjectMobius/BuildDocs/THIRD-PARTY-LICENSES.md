@@ -10,11 +10,12 @@ This document covers all third-party libraries, assets, and tools bundled in the
 |---------|---------|---------|----------|
 | ASSIMP | 5.4.3 | BSD-3-Clause | `Plugins/UE4_Assimp/` |
 | HDF5 | 2.0.0 | HDF5 License (BSD-style) | `Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/` |
-| OpenCV | 4.5.5 | BSD-3-Clause | `Plugins/UE_OpenCV/`, `Source/Visualization/ThirdParty/OpenCV/` |
+| OpenCV | 4.5.5 | BSD-3-Clause | `Source/Visualization/ThirdParty/OpenCV/` (runtime via Epic's built-in OpenCV engine plugin) |
 | Dear ImGui | 1.92.5 | MIT | `Source/MobiusWidgets/ThirdParty/ImGui/` |
 | ImPlot | 0.17 | MIT | `Source/MobiusWidgets/ThirdParty/ImPlot/` |
 | earcut.hpp | — | ISC | `Source/MobiusCore/ThirdParty/earcut_hpp/` |
 | portable-file-dialogs | — | WTFPL | `Source/MobiusCore/ThirdParty/PortableFileDialogs/` |
+| MakeHuman meshes | — | CC0 1.0 | `Content/MakeHuman/` |
 
 ---
 
@@ -38,7 +39,7 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 
 ### 2.2 OpenCV
 
-- **Location:** `Plugins/UE_OpenCV/`, `Source/Visualization/ThirdParty/OpenCV/`, `Source/Visualization/ThirdParty/OpenCV_Lib/`
+- **Location:** `Source/Visualization/ThirdParty/OpenCV/` (runtime provided by Epic's built-in OpenCV engine plugin)
 - **License:** BSD-3-Clause
 - **URL:** https://github.com/opencv/opencv/blob/master/LICENSE
 
@@ -81,3 +82,4 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 | Asset Path | License | Notes |
 |------------|---------|-------|
 | `Plugins/Hdf5DataPlugin/Hdf5TestData/JuelichTestCases/` | CC-BY 4.0 | Pedestrian trajectory data from Forschungszentrum Jülich |
+| `Content/MakeHuman/` | CC0 1.0 | Character meshes exported from MakeHuman |
