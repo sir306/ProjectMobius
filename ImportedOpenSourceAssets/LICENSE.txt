@@ -13,8 +13,6 @@ and are licensed under the MIT License (see ../LICENSE):
 
   Arrow.png, Arrow.xcf
   CameraScreenshotIcon.png
-  StatButtonIcon.png
-  cross_icon.png
   MobiusVR_DemoLoadingScreen.png
   MobiusVR_DemoLoadingScreenReduced.png
   T_CameraViewCycleIcon.png
@@ -27,19 +25,26 @@ and are licensed under the MIT License (see ../LICENSE):
   T_SettingIcon.png
 
 
-2. Third-Party Assets — Attribution Pending
---------------------------------------------
-
-The following assets are from external sources. If you are the original
-creator and would like to be credited or have the asset removed, please
-open an issue on the repository.
+2. Third-Party Assets
+---------------------
 
   gui_pack_White/          GUI icon pack (play, pause, restart, config,
                            home, music, sound icons).
-                           TODO: identify original source and creator.
+                           License: CC0 1.0
+                           Source: https://opengameart.org/content/gui-pack
 
   click.wav                Click sound effect.
-                           TODO: identify original source and creator.
+                           License: CC0 1.0
+                           Source: https://opengameart.org/content/click
+
+  StatButtonIcon.png       Bar chart icon used for statistics button.
+                           License: CC BY 4.0
+                           Source: https://icon-icons.com/icon/chart-bar/194545
+                           Modifications: resized.
+
+  cross_icon.png           Close/cross icon.
+                           License: Free for commercial use
+                           Source: https://icon-icons.com/icon/square-close-cross/128691
 
 
 3. Fonts — SIL Open Font License
@@ -52,3 +57,5 @@ with the full license text and copyright holders:
   Fonts/DM_Serif_Text/     — see Fonts/DM_Serif_Text/OFL.txt
   Fonts/Open_Sans/         — see Fonts/Open_Sans/OFL.txt
   Fonts/Roboto/Roboto/     — see Fonts/Roboto/Roboto/OFL.txt
+  Fonts/Roboto_Flex/       — see Fonts/Roboto_Flex/OFL.txt
+  Fonts/Work_Sans/         — see Fonts/Work_Sans/OFL.txt

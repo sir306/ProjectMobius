@@ -83,3 +83,7 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 |------------|---------|-------|
 | `Plugins/Hdf5DataPlugin/Hdf5TestData/JuelichTestCases/` | CC-BY 4.0 | Pedestrian trajectory data from Forschungszentrum Jülich |
 | `Content/MakeHuman/` | CC0 1.0 | Character meshes exported from MakeHuman |
+| `ImportedOpenSourceAssets/gui_pack_White/` | CC0 1.0 | GUI icon pack from [OpenGameArt](https://opengameart.org/content/gui-pack) |
+| `ImportedOpenSourceAssets/click.wav` | CC0 1.0 | Click sound from [OpenGameArt](https://opengameart.org/content/click) |
+| `ImportedOpenSourceAssets/StatButtonIcon.png` | CC BY 4.0 | Bar chart icon from [icon-icons.com](https://icon-icons.com/icon/chart-bar/194545), resized |
+| `ImportedOpenSourceAssets/cross_icon.png` | Free for commercial use | Close icon from [icon-icons.com](https://icon-icons.com/icon/square-close-cross/128691) |
