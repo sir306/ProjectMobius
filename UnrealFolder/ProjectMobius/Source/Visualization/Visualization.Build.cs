@@ -9,7 +9,7 @@ public class Visualization : ModuleRules
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
-                "Core", 
+                "Core",
                 "OpenCV",
                 "UMG",
                 "OpenCVHelper",
@@ -29,12 +29,12 @@ public class Visualization : ModuleRules
                 "MobiusLogging",
             }
         );
-        
-        PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});     
+
+        PublicIncludePaths.AddRange(new string[] {"Visualization/Public"});
         PrivateIncludePaths.AddRange(new string[] { "Visualization/Private" });
 
 
-        
+
         //TODO: Sort different build versions for different platforms and use the dll and libs from the ThirdParty folder not manually added
         // Add OpenCV dll and lib files
         string opencvProjectDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(EngineDirectory, "Plugins/Runtime/OpenCV/"));
@@ -53,9 +53,14 @@ public class Visualization : ModuleRules
         // Mac
         else if(Target.Platform == UnrealTargetPlatform.Mac)
         {
-            // TODO: Add Mac OpenCV Libraries
+            /* TODO: Add Mac OpenCV Libraries - Epic plugin doesn't contain builds or libs for Mac devices the easiest fix is to create our own.
+			   Creating the plugin will require careful steps and planning as it requires similar logic as the epic version to ensure our version
+			   compiles, as special helpers have been made to resolve naming and type conflicts, likely the plugin should derive the already
+			   created helpers and provide the necessary build files to compile the OpenCV libraries for Mac and link them to the project.
+			*/
+
         }
-        
-        
+
+
     }
 }
