@@ -43,8 +43,8 @@ and are licensed under the MIT License (see ../LICENSE):
                            Modifications: resized.
 
   cross_icon.png           Close/cross icon.
-                           License: Free for commercial use
-                           Source: https://icon-icons.com/icon/square-close-cross/128691
+                           License: CC BY 4.0
+                           Source: https://icon-icons.com/icon/x-square/197594
 
 
 3. Fonts — SIL Open Font License
