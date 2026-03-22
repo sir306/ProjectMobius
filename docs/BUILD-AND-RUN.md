@@ -86,7 +86,7 @@ Two families of overrides are produced:
   graph so that the runtime can control visibility and masking.
 
 - **DatasmithMasterMaterials** (5 assets) — duplicated from the Twinmotion
-  plugin materials (`M_TMStdOpaque`, `M_StdTranslucentNEW`). These are only
+  materials (`M_TMStdOpaque`, `M_StdTranslucentNEW`). These are only
   generated when the `Content/Twinmotion/` directory is present. The same
   material functions are injected, but the wiring strategy differs because
   Twinmotion materials chain `MaterialFunctionCall` nodes directly to the root
