@@ -91,11 +91,17 @@ More on supported formats, the conversion command, and the benchmark:
 
 ### Prerequisites
 
+- Git
 - Unreal Engine 5.5
-- Visual Studio 2022
+- Windows 10 or 11 with Visual Studio 2022 and C++ tooling, or macOS 11+ on Apple Silicon with Xcode Command Line Tools
 - CMake 3.21 or newer
+- Ninja if you plan to use the macOS superbuild path shown below
+- Internet access during the first superbuild so HDF5 can fetch `zlib-1.3.1` for compression support
+- Python if you plan to use the JSON-to-HDF5 conversion script
 
 ### Build
+
+Windows:
 
 ```bash
 git clone https://github.com/sir306/ProjectMobius.git
@@ -104,8 +110,21 @@ cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64
 cmake --build _superbuild --config Release --parallel
 ```
 
-Then open `UnrealFolder/ProjectMobius/ProjectMobius.uproject`, generate Visual
-Studio project files, and build `ProjectMobiusEditor` in `Development Editor`.
+macOS (Ninja, Apple Silicon):
+
+```bash
+git clone https://github.com/sir306/ProjectMobius.git
+cd ProjectMobius/UnrealFolder/ProjectMobius
+cmake -S . -B _superbuild -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build _superbuild --parallel
+```
+
+The superbuild compiles the vendored Assimp and HDF5 dependencies into the
+locations expected by the Unreal project. No separate HDF5 install is required.
+
+Then open `UnrealFolder/ProjectMobius/ProjectMobius.uproject`, generate IDE
+project files if needed for your platform, and build `ProjectMobiusEditor` in
+`Development Editor`.
 
 Full build, packaging, and automation notes live in
 [docs/BUILD-AND-RUN.md](docs/BUILD-AND-RUN.md).

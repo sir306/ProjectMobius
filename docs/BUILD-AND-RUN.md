@@ -4,10 +4,15 @@ This page keeps the longer setup and testing notes out of the root README.
 
 ## Prerequisites
 
+- Git
 - Windows 10 or 11 is the verified platform
 - Unreal Engine 5.5
-- Visual Studio 2022 with C++ tooling
+- Visual Studio 2022 with C++ tooling on Windows
+- Xcode Command Line Tools on macOS (Apple Silicon)
 - CMake 3.21 or newer
+- Ninja for the macOS superbuild flow shown below
+- Internet access during the first superbuild so HDF5 can fetch `zlib-1.3.1`
+  for compression support
 - Python if you plan to use the JSON-to-HDF5 conversion script
 
 macOS support exists in parts of the codebase, but Windows is the primary
@@ -25,17 +30,28 @@ No submodules are required for the standard source checkout.
 ## Build External Dependencies
 
 The superbuild compiles the vendored HDF5 and Assimp dependencies into the
-locations expected by the Unreal project.
+locations expected by the Unreal project. No separate HDF5 installation is
+required, but the first HDF5 build downloads `zlib-1.3.1` unless that archive
+is already cached or redirected locally.
+
+### Windows (Visual Studio generator)
 
 ```bash
 cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64
 cmake --build _superbuild --config Release --parallel
 ```
 
+### macOS (Ninja generator, Apple Silicon)
+
+```bash
+cmake -S . -B _superbuild -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build _superbuild --parallel
+```
+
 ## Build the Unreal Editor Target
 
 1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
-2. Generate Visual Studio project files from the `.uproject`.
+2. Generate IDE project files from the `.uproject` if you need them for your platform.
 3. Build `ProjectMobiusEditor` in `Development Editor`.
 
 ## Run Tests
