@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-This document covers all third-party libraries, assets, and tools bundled in the Project Mobius repository. Project Mobius's own source code is released under the **MIT License** (see `LICENSE`).
+This document covers third-party libraries, assets, and tools included in the Project Mobius source repository. Original ProjectMobius-authored source code and original ProjectMobius-authored assets contained in the repository are released under the **MIT License** (see `LICENSE`), except where a file or directory states another license.
 
 ---
 
@@ -19,13 +19,21 @@ This document covers all third-party libraries, assets, and tools bundled in the
 
 ---
 
-## 1. Unreal Engine 5.5
+## 1. Unreal Engine dependency
 
-All content in this distribution (C++ code, Blueprints, assets, plugins, etc.) is subject to the **Unreal Engine End User License Agreement (EULA)**. You must comply with Epic Games' terms.
+The source repository does not include Unreal Engine itself, Epic Starter Content, Epic template/sample content, or Twinmotion-generated content. Those materials, if added locally by a user to build or run Project Mobius, are obtained or generated separately under the user's own Epic license and are not part of the repository's MIT-licensed contents.
 
-- **Unreal Engine EULA:** https://www.unrealengine.com/en-US/eula
+- **Unreal Engine EULA:** https://www.unrealengine.com/en-US/eula/unreal
+- **Epic Content License Agreement:** https://www.unrealengine.com/en-US/eula/content
 
-You retain ownership of your own source files and assets (e.g., anything in `Source/`, `Content/`, `Plugins/`), but redistribution or commercial usage must comply with the EULA. Recipients must have a valid Unreal Engine license.
+As between Project Mobius contributors and Epic, contributors retain copyright in their original repository-authored source files and assets.
+
+Users must not commit or upload Epic-provided content to this repository. Any Epic content added or generated locally to build or run the project, including VRTemplate files or Twinmotion-generated files, must remain untracked by Git and continue to be governed by Epic's terms rather than this repository's MIT License.
+
+This means:
+- Original ProjectMobius-authored code, Blueprints, and assets in the repository are MIT-licensed unless stated otherwise.
+- Unreal Engine and any Epic-provided content added locally by a user remain under Epic's license terms and are not included in the repository's MIT License.
+- Third-party libraries and third-party assets included in the repository remain under their own licenses listed below.
 
 ---
 
@@ -88,7 +96,3 @@ Mobius uses Unreal's built-in `OpenCV` engine plugin, enabled in
 |------------|---------|-------|
 | `Plugins/Hdf5DataPlugin/Hdf5TestData/JuelichTestCases/` | CC-BY 4.0 | Pedestrian trajectory data from Forschungszentrum Jülich |
 | `Content/MakeHuman/` | CC0 1.0 | Character meshes exported from MakeHuman |
-| `ImportedOpenSourceAssets/gui_pack_White/` | CC0 1.0 | GUI icon pack from [OpenGameArt](https://opengameart.org/content/gui-pack) |
-| `ImportedOpenSourceAssets/click.wav` | CC0 1.0 | Click sound from [OpenGameArt](https://opengameart.org/content/click) |
-| `ImportedOpenSourceAssets/StatButtonIcon.png` | CC BY 4.0 | Bar chart icon from [icon-icons.com](https://icon-icons.com/icon/chart-bar/194545), resized |
-| `ImportedOpenSourceAssets/cross_icon.png` | CC BY 4.0 | Close icon from [icon-icons.com](https://icon-icons.com/icon/x-square/197594) |

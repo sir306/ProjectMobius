@@ -1,0 +1,6 @@
+# Epic-provided local-only content must not be committed to this repository.
+ProjectMobius/Content/VRTemplate/
+ProjectMobius/Content/Twinmotion/
+ProjectMobius/Content/FPWeapon/
+ProjectMobius/Content/LevelPrototyping/
+ProjectMobius/Content/Characters/MannequinsXR/
