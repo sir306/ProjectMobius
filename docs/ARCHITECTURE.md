@@ -48,13 +48,13 @@ simulation playback, UI, analytics, and supporting infrastructure.
 | `UAgentInfoDisplay` | In-world agent information |
 | `SImPlotOverlay` | Slate-hosted plotting overlay |
 
-## Bundled Plugins
+## Plugin Dependencies
 
 | Plugin | Purpose |
 |--------|---------|
 | `Hdf5DataPlugin` | HDF5 trajectory file reading |
 | `UE4_Assimp` | Geometry and mesh import support |
-| `UE_OpenCV` | OpenCV integration used by visualization-related code |
+| `OpenCV` | Epic's built-in Unreal engine plugin that provides the OpenCV runtime used by visualization-related code |
 
 ## Related References
 

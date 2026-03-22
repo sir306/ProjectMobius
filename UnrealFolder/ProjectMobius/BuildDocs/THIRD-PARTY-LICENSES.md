@@ -43,6 +43,11 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 - **License:** BSD-3-Clause
 - **URL:** https://github.com/opencv/opencv/blob/master/LICENSE
 
+This distribution does not ship a standalone `UE_OpenCV` plugin. Project
+Mobius uses Unreal's built-in `OpenCV` engine plugin, enabled in
+`ProjectMobius.uproject`, with local headers and license files kept under
+`Source/Visualization/ThirdParty/OpenCV/`.
+
 ### 2.3 HDF5
 
 - **Location:** `Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/`

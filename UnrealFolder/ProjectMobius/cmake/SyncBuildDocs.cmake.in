@@ -7,6 +7,7 @@ set(_doc_files
   "BUILD-AND-RUN.md"
   "CONTROLS.md"
   "DATA-PIPELINE.md"
+  "RESEARCH.md"
 )
 
 file(REMOVE_RECURSE "${_build_docs_mirror_dir}")

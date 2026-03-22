@@ -10,6 +10,7 @@ Packaged docs mirrored into `Docs/`:
 - `Docs/ARCHITECTURE.md`
 - `Docs/DATA-PIPELINE.md`
 - `Docs/AGENT-SAMPLE-DATA.md`
+- `Docs/RESEARCH.md`
 - `Docs/images/`
 
 Packaging-specific references kept here:

@@ -114,7 +114,7 @@ Full build, packaging, and automation notes live in
 
 - `UnrealFolder/ProjectMobius/`: the Unreal project, superbuild, config, content, and source
 - `UnrealFolder/ProjectMobius/Source/`: runtime modules for playback, UI, analytics, and core systems
-- `UnrealFolder/ProjectMobius/Plugins/`: bundled HDF5, Assimp, and OpenCV integrations
+- `UnrealFolder/ProjectMobius/Plugins/`: bundled HDF5 and Assimp integrations; OpenCV runtime is provided by Unreal's built-in `OpenCV` engine plugin
 - `UnrealFolder/ProjectMobius/BuildDocs/`: packaging/staging folder; the superbuild mirrors selected canonical repo docs into `BuildDocs/Docs/` for packaged builds
 - `docs/`: repo-level documentation and wiki seed pages
 
@@ -126,6 +126,7 @@ Full build, packaging, and automation notes live in
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data Pipeline](docs/DATA-PIPELINE.md)
 - [Agent Sample Data](docs/AGENT-SAMPLE-DATA.md)
+- [Research and Publications](docs/RESEARCH.md)
 - [UE Automation Guide](UnrealFolder/ProjectMobius/BuildDocs/UE-Automation-Guide.md)
 - [Contributing](CONTRIBUTING.md)
 - [Third-Party Licenses](THIRD-PARTY-LICENSES.md)

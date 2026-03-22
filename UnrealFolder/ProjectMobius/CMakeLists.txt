@@ -271,6 +271,7 @@ if(SUPERBUILD_ENABLE_TESTS)
 
   add_path_exists_test(builddocs_build_and_run "${BUILD_DOCS_MIRROR_DIR}/BUILD-AND-RUN.md")
   add_path_exists_test(builddocs_agent_sample_data "${BUILD_DOCS_MIRROR_DIR}/AGENT-SAMPLE-DATA.md")
+  add_path_exists_test(builddocs_research "${BUILD_DOCS_MIRROR_DIR}/RESEARCH.md")
 
   # Optional Unreal automation and GenerateProjectFiles/build checks
   if(SUPERBUILD_ENABLE_UE_AUTOMATION AND NOT UE_AUTOMATION_EXE STREQUAL "")

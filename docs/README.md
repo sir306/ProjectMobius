@@ -13,6 +13,10 @@ Packaged builds mirror a selected subset of these pages into UnrealFolder/Projec
 - [Data Pipeline](DATA-PIPELINE.md)
 - [Agent Sample Data](AGENT-SAMPLE-DATA.md)
 
+## Research
+
+- [Research and Publications](RESEARCH.md)
+
 ## Generated Reports
 
 - [Activity Report](ACTIVITY.md)

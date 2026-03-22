@@ -10,7 +10,7 @@ This document covers all third-party libraries, assets, and tools bundled in the
 |---------|---------|---------|----------|
 | ASSIMP | 5.4.3 | BSD-3-Clause | `Plugins/UE4_Assimp/` |
 | HDF5 | 2.0.0 | HDF5 License (BSD-style) | `Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/` |
-| OpenCV | 4.5.5 | BSD-3-Clause | `Plugins/UE_OpenCV/`, `Source/Visualization/ThirdParty/OpenCV/` |
+| OpenCV | 4.5.5 | BSD-3-Clause | `Source/Visualization/ThirdParty/OpenCV/` (runtime via Epic's built-in `OpenCV` engine plugin) |
 | Dear ImGui | 1.92.5 | MIT | `Source/MobiusWidgets/ThirdParty/ImGui/` |
 | ImPlot | 0.17 | MIT | `Source/MobiusWidgets/ThirdParty/ImPlot/` |
 | earcut.hpp | — | ISC | `Source/MobiusCore/ThirdParty/earcut_hpp/` |
@@ -38,9 +38,14 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 
 ### 2.2 OpenCV
 
-- **Location:** `Plugins/UE_OpenCV/`, `Source/Visualization/ThirdParty/OpenCV/`, `Source/Visualization/ThirdParty/OpenCV_Lib/`
+- **Location:** `Source/Visualization/ThirdParty/OpenCV/` (runtime provided by Epic's built-in `OpenCV` engine plugin)
 - **License:** BSD-3-Clause
 - **URL:** https://github.com/opencv/opencv/blob/master/LICENSE
+
+The repository no longer ships a standalone `UE_OpenCV` plugin. Project Mobius
+uses Unreal's built-in `OpenCV` engine plugin, enabled in
+`UnrealFolder/ProjectMobius/ProjectMobius.uproject`, with local headers and
+license files kept under `Source/Visualization/ThirdParty/OpenCV/`.
 
 ### 2.3 HDF5
 
@@ -106,9 +111,6 @@ UnrealFolder/
     │   ├─ UE4_Assimp/            ← Multi-format 3D model importing
     │   │   └─ Source/ThirdParty/
     │   │       └─ assimp/        ← ASSIMP (BSD-3-Clause)
-    │   └─ UE_OpenCV/             ← OpenCV integration
-    │       └─ Source/ThirdParty/
-    │           └─ opencv/        ← OpenCV (BSD-3-Clause)
     ├─ Source/
     │   ├─ MobiusLogging/         ← Logging module (MIT)
     │   ├─ MobiusCore/            ← Central hub module (MIT)
@@ -128,3 +130,6 @@ UnrealFolder/
     ├─ BuildDocs/             ← License and build documentation for redistribution
     └─ UnitTestSampleData/    ← Test data
 ```
+
+Epic's built-in `OpenCV` engine plugin is an external Unreal Engine dependency
+and is not stored under this repository's `Plugins/` directory.
