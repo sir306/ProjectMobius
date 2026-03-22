@@ -130,6 +130,22 @@ Full build, packaging, and automation notes live in
 - [Contributing](CONTRIBUTING.md)
 - [Third-Party Licenses](THIRD-PARTY-LICENSES.md)
 
+## Funders & Sponsors
+
+Project Mobius is made possible with the generous support of:
+
+<p align="center">
+  <img src="docs/images/Mobius%20Funders/Branz.png" alt="BRANZ" height="60" style="margin: 8px 16px;">
+  <img src="docs/images/Mobius%20Funders/Building%20Innovation%20Partnership.png" alt="Building Innovation Partnership" height="60" style="margin: 8px 16px;">
+  <img src="docs/images/Mobius%20Funders/Fire%20Emergency%20New%20Zealand.png" alt="Fire and Emergency New Zealand" height="60" style="margin: 8px 16px;">
+</p>
+
+<p align="center">
+  <img src="docs/images/Mobius%20Funders/Fire%20Research%20Group.png" alt="Fire Research Group" height="60" style="margin: 8px 16px;">
+  <img src="docs/images/Mobius%20Funders/GHD.png" alt="GHD" height="60" style="margin: 8px 16px;">
+  <img src="docs/images/Mobius%20Funders/Halliwell_logo.png" alt="Halliwell" height="60" style="margin: 8px 16px;">
+</p>
+
 ## License
 
 Project Mobius source code is released under the **MIT License**.
