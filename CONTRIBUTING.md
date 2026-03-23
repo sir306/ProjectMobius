@@ -3,15 +3,50 @@
 Thank you for your interest in contributing to Project Mobius! This document
 covers how to get started and the policies contributors are expected to follow.
 
+## Branching Strategy
+
+The repository uses a two-tier branching model:
+
+```
+main              ← stable, release-ready code only
+  └── dev         ← integration branch; all work lands here first
+        └── feature/my-big-thing   ← isolated branches for larger work
+```
+
+### Which branch to use
+
+| Work type | Branch from | Merge into |
+|-----------|-------------|------------|
+| Quick fix or small feature | `dev` | `dev` (via PR) |
+| Large or disruptive feature | `main` | `dev` (via PR), then `dev` → `main` |
+| Hotfix on released code | `main` | `main` directly, then back-merge to `dev` |
+
+**Large feature branches start from `main`** (not `dev`) to avoid picking up
+unstable work-in-progress from `dev`. Once the feature is complete it is merged
+into `dev` for integration testing, and only then promoted to `main`.
+
+**Nothing goes directly to `main`** except hotfixes. All other contributions
+reach `main` through `dev`.
+
+### Branch naming
+
+| Prefix | When to use | Example |
+|--------|-------------|---------|
+| `feature/` | New functionality | `feature/hdf5-streaming` |
+| `fix/` | Bug fixes | `fix/heatmap-null-crash` |
+| `docs/` | Documentation only | `docs/update-controls` |
+| `chore/` | Build, CI, tooling | `chore/lfs-guard` |
+
 ## Getting Started
 
 1. Fork the repository and clone your fork
 2. Follow the build instructions in [README.md](README.md#quick-start)
-3. Create a feature branch from `main` for your work
-4. Submit a pull request describing your changes
+3. Create a branch from `dev` (or `main` for large features — see above)
+4. Submit a pull request targeting `dev`
 
 ## Pull Requests
 
+- Target `dev` unless this is a hotfix against a released build
 - Keep PRs focused — one logical change per PR
 - Describe the scope of the change and include build/test commands used
 - Link related issues where applicable
