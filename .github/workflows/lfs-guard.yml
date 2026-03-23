@@ -1,0 +1,139 @@
+# LFS Guard — protects GitHub's free-tier LFS quota (1 GB storage / 1 GB bandwidth)
+#
+# Three checks run on every PR targeting main:
+#   1. Raw-binary detection  — fails if a file that should be an LFS pointer was
+#                              committed as a raw binary (i.e. contributor bypassed LFS).
+#   2. Per-file size limit   — fails if any single new LFS object exceeds MAX_SINGLE_FILE_MB.
+#   3. Per-PR size budget    — fails if the total new LFS data in the PR exceeds MAX_PR_TOTAL_MB.
+#   4. Repo-total warning    — warns (does not fail) when the cumulative LFS footprint
+#                              of the whole repo approaches the free-tier ceiling.
+#
+# Adjust the four env vars below to tune the thresholds.
+
+name: LFS Guard
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+env:
+  MAX_SINGLE_FILE_MB: 150   # hard limit per individual LFS file
+  MAX_PR_TOTAL_MB: 300      # hard limit on total new LFS data added in one PR
+  WARN_REPO_TOTAL_MB: 800   # soft warning threshold for the whole repo (free tier = 1024 MB)
+
+jobs:
+  lfs-guard:
+    name: LFS storage guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (pointers only — no LFS download)
+        uses: actions/checkout@v4
+        with:
+          lfs: false      # leaves LFS pointer files in place; does not fetch blobs
+          fetch-depth: 0  # full history required for cross-branch diff
+
+      # ------------------------------------------------------------------
+      # 1. Detect raw binaries that bypassed LFS
+      # ------------------------------------------------------------------
+      - name: Detect binary files committed without LFS
+        run: |
+          echo "=== Checking for binaries that bypassed LFS ==="
+          failed=0
+
+          while IFS= read -r file; do
+            [[ -z "$file" || ! -f "$file" ]] && continue
+
+            # Is this file supposed to be tracked by LFS per .gitattributes?
+            filter=$(git check-attr filter -- "$file" | awk -F': ' '{print $NF}')
+            [[ "$filter" != "lfs" ]] && continue
+
+            # A valid LFS pointer always begins with this exact header line.
+            # If the file was committed as a raw binary the header will be absent.
+            header=$(git show "HEAD:$file" 2>/dev/null | head -c 50 || true)
+            if [[ "$header" != "version https://git-lfs"* ]]; then
+              echo "::error file=$file::$file matches an LFS tracking rule but was committed as a raw binary. Re-commit it with Git LFS enabled."
+              failed=1
+            fi
+          done < <(git diff --name-only --diff-filter=ACM "origin/${{ github.base_ref }}...HEAD")
+
+          if [[ $failed -eq 0 ]]; then
+            echo "✓ All new files are proper LFS pointers."
+          fi
+          exit $failed
+
+      # ------------------------------------------------------------------
+      # 2 & 3. Per-file and per-PR LFS size limits
+      # ------------------------------------------------------------------
+      - name: Enforce LFS size limits
+        run: |
+          echo "=== Checking LFS object sizes ==="
+
+          max_single_bytes=$(( MAX_SINGLE_FILE_MB * 1024 * 1024 ))
+          max_pr_bytes=$(( MAX_PR_TOTAL_MB * 1024 * 1024 ))
+          pr_total=0
+          failed=0
+
+          while IFS= read -r file; do
+            [[ -z "$file" || ! -f "$file" ]] && continue
+
+            filter=$(git check-attr filter -- "$file" | awk -F': ' '{print $NF}')
+            [[ "$filter" != "lfs" ]] && continue
+
+            # Parse the size field from the LFS pointer (e.g. "size 104857600")
+            size=$(git show "HEAD:$file" 2>/dev/null | awk '/^size /{print $2; exit}')
+            [[ -z "$size" ]] && continue
+
+            pr_total=$(( pr_total + size ))
+
+            if (( size > max_single_bytes )); then
+              size_mb=$(( size / 1024 / 1024 ))
+              echo "::error file=$file::$file is ${size_mb} MB which exceeds the per-file limit of ${MAX_SINGLE_FILE_MB} MB. Discuss with the maintainer before adding very large assets."
+              failed=1
+            fi
+          done < <(git diff --name-only --diff-filter=ACM "origin/${{ github.base_ref }}...HEAD")
+
+          pr_total_mb=$(( pr_total / 1024 / 1024 ))
+          echo "New LFS data in this PR: ${pr_total_mb} MB"
+
+          if (( pr_total > max_pr_bytes )); then
+            echo "::error::This PR adds ${pr_total_mb} MB of LFS data which exceeds the per-PR limit of ${MAX_PR_TOTAL_MB} MB. Please split the PR or discuss with the maintainer before merging."
+            failed=1
+          fi
+
+          if [[ $failed -eq 0 ]]; then
+            echo "✓ LFS sizes are within limits."
+          fi
+          exit $failed
+
+      # ------------------------------------------------------------------
+      # 4. Total repository LFS usage warning
+      # ------------------------------------------------------------------
+      - name: Report total repository LFS usage
+        run: |
+          echo "=== Calculating total repository LFS usage ==="
+
+          # Sum the size field from every LFS pointer file currently in HEAD.
+          # Reading pointer files via git-show is fast — no blob downloads needed.
+          total_bytes=$(
+            git ls-files \
+              | git check-attr --stdin filter \
+              | awk -F': ' '$3 == "lfs" {print $1}' \
+              | while IFS= read -r f; do
+                  git show "HEAD:$f" 2>/dev/null | awk '/^size /{print $2; exit}'
+                done \
+              | awk '{s += $1} END {print s + 0}'
+          )
+
+          total_mb=$(( total_bytes / 1024 / 1024 ))
+          free_tier_mb=1024
+
+          echo "Total repository LFS usage: ${total_mb} MB / ${free_tier_mb} MB free tier"
+
+          if (( total_mb >= WARN_REPO_TOTAL_MB )); then
+            remaining=$(( free_tier_mb - total_mb ))
+            echo "::warning::Repository LFS usage is ${total_mb} MB — only ~${remaining} MB remain before hitting GitHub's 1 GB free tier. Consider purchasing an LFS data pack or removing unused assets."
+          else
+            echo "✓ Repository LFS usage is within safe limits."
+          fi

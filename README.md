@@ -7,6 +7,7 @@
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.5-black?logo=unrealengine)](https://www.unrealengine.com/)
 [![Last Commit](https://img.shields.io/github/last-commit/sir306/ProjectMobius?label=Last%20Commit)](https://github.com/sir306/ProjectMobius/commits/main)
 [![Contributors](https://img.shields.io/github/contributors/sir306/ProjectMobius?label=Contributors)](https://github.com/sir306/ProjectMobius/graphs/contributors)
+[![Git LFS](https://img.shields.io/badge/assets-git%20lfs-blue)](https://git-lfs.com)
 
 **Crowd dataset playback and analysis in Unreal Engine 5.5**
 
