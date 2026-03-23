@@ -24,7 +24,6 @@
 
 #include "Subsystems/HeatmapSubsystem.h"
 
-//#include "Core/MobiusWidgetSubsystem.h"
 #include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
@@ -161,25 +160,18 @@ void UHeatmapSubsystem::CreateHeatmap(const FVector& Location, int32 HeatmapInde
 
 void UHeatmapSubsystem::AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor)
 {
-	// check actor valid
-	if(HeatmapActor)
+	if (!HeatmapActor)
 	{
-		// add the actor to the array
-		Heatmaps.Add(HeatmapActor);
-		OnHeatmapAdded.Broadcast(HeatmapActor);
+		UE_LOG(LogTemp, Warning, TEXT("Heatmap Actor is invalid, failed to add it to the HeatmapSubsystem"));
+		return;
+	}
 
-		// log the number of heatmaps
-		//UE_LOG(LogTemp, Warning, TEXT("Heatmap Actor Added to Heatmap Subsystem, Number of Heatmaps: %d"), Heatmaps.Num());
-	}
-	else
-	{
-		// TODO: this widget subsystem reference was removed to avoid a cross-module dependency on MobiusWidgets
-		// UMobiusWidgetSubsystem* ErrorSubsystem = GetWorld()->GetSubsystem<UMobiusWidgetSubsystem>();
-		// if(ErrorSubsystem)
-		// {
-		// 	ErrorSubsystem->DisplayErrorWidget(FText::FromString("Heatmap Subsystem Error"), FText::FromString("Heatmap Actor is invalid, Failed to add it to the Heatmap Subsystem"));
-		// }
-	}
+	// add the actor to the array
+	Heatmaps.Add(HeatmapActor);
+	OnHeatmapAdded.Broadcast(HeatmapActor);
+
+	// log the number of heatmaps
+	//UE_LOG(LogTemp, Warning, TEXT("Heatmap Actor Added to Heatmap Subsystem, Number of Heatmaps: %d"), Heatmaps.Num());
 }
 
 void UHeatmapSubsystem::RemoveHeatmapActor(class AHeatmapPixelTextureVisualizer* HeatmapActor)
