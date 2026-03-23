@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -56,13 +56,13 @@ struct TMassExternalSubsystemTraits<UHeatmapSubsystem> final
 	};
 };
 /**
- * 
+ *
  */
 UCLASS()
 class MOBIUSCORE_API UHeatmapSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
-	
+
 #pragma region METHODS
 public:
 	/** Constructor */
@@ -74,13 +74,13 @@ public:
 	/** De-Initializer */
 	virtual void Deinitialize() override;
 
-	
+
 	/**
 	 * Updates the XY spawn location of the heatmap spawn point
 	 *
 	 * @param[FVector] SpawnOrigin - The origin of the heatmap spawn point
 	 * @param[FVector] BoundExtents - The extents of the bounding box
-	   // TODO: bound it to the OnMeshBuilt delegate -> this needs refactoring to do as this needs moving to prevent circular dependencies
+	 * Currently called by the mesh-building flow after bounds are known, via the OnMeshBuilt delegate.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
 	void UpdateSpawnLocationAndHeatmapSize(const FVector& SpawnOrigin, const FVector& BoundExtents);
@@ -92,7 +92,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
 	void UpdateSpawnHeightLocations(const TArray<float>& NewHeightSpawnLocations);
-	
+
 	/**
 	 * Create a Heatmap at the given location, and the index will be used for naming the heatmap
 	 *
@@ -105,7 +105,7 @@ public:
 
 	/**
 	 * Naming convention method for naming the heatmap actor
-	 * 
+	 *
 	 */
 
 	/**
@@ -117,16 +117,16 @@ public:
 	 * Adds a heatmap actor to this subsystem
 	 *
 	 * @param HeatmapActor The heatmap actor to add
-	 * 
+	 *
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem")
 	void AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor);
 	void RemoveHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapActor);
 
 	void UpdateHeatmaps(const FVector& AgentLocation);
-	
+
 	void UpdateHeatmapsWithLocations_Mpmc(UE::TConsumeAllMpmcQueue<FVector>& LocationQueue);
-	
+
 	void UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray);
 
 
@@ -151,7 +151,7 @@ public:
 
 	//TODO: this method needs to be placed in a more appropriate place as it is not really a heatmap method but we have bound the visualiser chart logic to this system
 	/** Broadcast the total agent count, for total stat count */
-	void BroadcastTotalAgentCount(int32 NewTotalAgentCount) 
+	void BroadcastTotalAgentCount(int32 NewTotalAgentCount)
 	{
 		if (TotalAgentCount != NewTotalAgentCount)
 		{
@@ -166,7 +166,7 @@ private:
 	// these methods are responsible for debouncing the heatmap generation and preventing collisions on updating data
 	/** Schedule Heatmap Generation */
 	void ScheduleHeatmapGeneration();
-	
+
 	/** Process Heatmap Generation */
 	void ProcessHeatmapGeneration();
 
@@ -191,19 +191,19 @@ private:
 	void RunAsyncHeatmapUpdate_Mpmc(
 	const TArray<TArray<FVector>>& ValidLocations,
 	const TArray<FVector>& FallbackLocations);
-	
+
 	/** Run the asynchronous heatmap update using the provided locations */
 	void RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArray,
 	                           const TArray<TArray<FVector>>& ValidLocations);
 
 #pragma endregion METHODS
-	
+
 #pragma region PROPERTIES
 public:
 	/** Event to broadcast when a heatmap is added */
 	UPROPERTY(BlueprintAssignable, Category = "Heatmap|Subsystem")
 	FHeatmapAdded OnHeatmapAdded;
-	
+
 	/** Event to broadcast when a heatmap is removed */
 	UPROPERTY(BlueprintAssignable, Category = "Heatmap|Subsystem")
 	FHeatmapRemoved OnHeatmapRemoved;
@@ -216,19 +216,19 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Heatmap|Subsystem")
 	FOnNewSpawnHeights OnNewSpawnHeights;
-	
+
 protected:
 	/** Stores all the heatmaps of the world */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Heatmap|Subsystem")
 	//TArray<class AHeatmapVisualizer*> Heatmaps;
 	TArray<AHeatmapPixelTextureVisualizer*> Heatmaps;
 
-	
+
 private:
 	/** The XY spawn point for the heatmaps */
 	UPROPERTY()
 	FVector2D XYSpawnLocation;
-	
+
 	/** 2D Bounding Size of the heatmap  */
 	UPROPERTY()
 	FVector2D HeatmapBoundingSize = FVector2D(0, 0);
