@@ -2,19 +2,13 @@
 *.uasset binary
 *.umap binary
 
-# Compiled libraries
-*.lib binary
-*.dll binary
-*.so binary
-*.dylib binary
-*.a binary
 # Data files
 *.h5 binary
 *.hdf5 binary
 # 3D model formats
 *.fbx binary
 *.obj binary
-*.gltf binary
+*.gltf text eol=lf
 *.glb binary
 *.3ds binary
 *.blend binary
@@ -32,6 +26,30 @@
 *.tar binary
 # Documents
 *.pdf binary
+# Git LFS tracked assets
+# Scope LFS rules to versioned asset paths so ignored/generated outputs remain
+# outside the LFS policy.
+DemoProgressVideos/**/*.mkv filter=lfs diff=lfs merge=lfs -text
+docs/images/**/*.gif filter=lfs diff=lfs merge=lfs -text
+TestData/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+UnrealFolder/ProjectMobius/BuildDocs/*.pdf filter=lfs diff=lfs merge=lfs -text
+UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Hdf5TestData/**/*.h5 filter=lfs diff=lfs merge=lfs -text
+UnrealFolder/ProjectMobius/Content/**/*.uasset filter=lfs diff=lfs merge=lfs -text
+UnrealFolder/ProjectMobius/Content/**/*.umap filter=lfs diff=lfs merge=lfs -text
+# Explicitly keep ignored/generated folders out of LFS tracking.
+TestData/LargeTestCases/** -filter -diff -merge
+TestData/Technical*/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/Crowd/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/Character/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/Characters/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/StarterContent/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/Twinmotion/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/VRTemplate/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/VRSpectator/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/LevelPrototyping/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/FPWeapon/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/** -filter -diff -merge
+UnrealFolder/ProjectMobius/Content/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/** -filter -diff -merge
 # Force LF for text files commonly edited cross-platform
 *.md text eol=lf
 *.txt text eol=lf
@@ -50,6 +68,8 @@
 *.yml text eol=lf
 *.sh text eol=lf
 *.bat text eol=crlf
+*.uproject text eol=lf
+*.uplugin text eol=lf
 *.uasset filter=lfs diff=lfs merge=lfs -text
 *.umap filter=lfs diff=lfs merge=lfs -text
 *.mkv filter=lfs diff=lfs merge=lfs -text
