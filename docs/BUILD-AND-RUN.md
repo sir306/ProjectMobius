@@ -17,18 +17,8 @@ This walkthrough covers the full developer setup pipeline for Project Mobius:
   applicable third-party software licenses.
 
 Watch the tutorial:
-[Project Mobius Build and Package Walkthrough](https://youtu.be/q48IM4RXzTg)
 
-<iframe
-  width="560"
-  height="315"
-  src="https://www.youtube.com/embed/q48IM4RXzTg"
-  title="Project Mobius Build and Package Walkthrough"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  referrerpolicy="strict-origin-when-cross-origin"
-  allowfullscreen>
-</iframe>
+[![Project Mobius Build and Package Walkthrough](https://img.youtube.com/vi/q48IM4RXzTg/maxresdefault.jpg)](https://youtu.be/q48IM4RXzTg)
 
 ## Prerequisites
 
