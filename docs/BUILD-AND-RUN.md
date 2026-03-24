@@ -2,6 +2,34 @@
 
 This page keeps the longer setup and testing notes out of the root README.
 
+## Video Walkthrough
+
+This walkthrough covers the full developer setup pipeline for Project Mobius:
+
+- Clone the repository
+- Configure and build with CMake
+- Compile the Unreal target
+- Package a distributable build*
+- Add Twinmotion compatibility
+- Understand Datasmith modes in Unreal Engine (`Runtime Datasmith` vs `Twinmotion Datasmith`)
+
+* Any packaged build you share must comply with the Epic EULA and all
+  applicable third-party software licenses.
+
+Watch the tutorial:
+[Project Mobius Build and Package Walkthrough](https://youtu.be/q48IM4RXzTg)
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/q48IM4RXzTg"
+  title="Project Mobius Build and Package Walkthrough"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+  referrerpolicy="strict-origin-when-cross-origin"
+  allowfullscreen>
+</iframe>
+
 ## Prerequisites
 
 Common:
