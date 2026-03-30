@@ -170,7 +170,9 @@ UnrealEditor-Cmd.exe ProjectMobius.uproject -run=GenerateDatasmithMaterials -una
 Or use the provided scripts: `Scripts/GenerateDatasmithMaterials.bat` (Windows)
 / `Scripts/GenerateDatasmithMaterials.sh` (macOS/Linux).
 
-## Package Example
+## Package
+
+### Example command
 
 ```bash
 RunUAT.bat BuildCookRun ^
@@ -179,6 +181,78 @@ RunUAT.bat BuildCookRun ^
   -cook -build -stage -pak -archive ^
   -archivedirectory=./Binaries/Release
 ```
+
+### macOS packaged build configuration
+
+Project Mobius currently packages macOS development builds with the App
+Sandbox whitelist disabled. This is intentional for the current file workflow.
+The packaged app opens user-selected simulation data files and writes
+screenshots and related output into a `MobiusCaptures` folder beside the
+selected data file. That flow is not currently implemented against the stricter
+macOS sandbox access model, so the sandbox whitelist must remain disabled for
+these builds.
+
+Change these source entitlement files before packaging a macOS build:
+
+- `UnrealFolder/ProjectMobius/Build/Mac/Resources/Sandbox.NoNet.entitlements`
+- `UnrealFolder/ProjectMobius/Build/Mac/Resources/Sandbox.Server.entitlements`
+
+In both files, keep the App Sandbox setting disabled:
+
+```xml
+<key>com.apple.security.app-sandbox</key>
+<false/>
+```
+
+The network-enabled entitlement file also keeps client and server access
+enabled:
+
+```xml
+<key>com.apple.security.network.client</key>
+<true/>
+<key>com.apple.security.network.server</key>
+<true/>
+```
+
+For local macOS packaging, keep the following setting in
+`UnrealFolder/ProjectMobius/Config/DefaultEngine.ini`:
+
+```ini
+[/Script/MacTargetPlatform.XcodeProjectSettings]
+bMacSignToRunLocally=True
+```
+
+After packaging, verify the generated entitlements in:
+
+`UnrealFolder/ProjectMobius/Saved/StagedBuilds/ProjectMobius (Mac).build/Mac/ProjectMobius.build/DerivedSources/Entitlements.plist`
+
+Do not edit the generated entitlements file directly. It is recreated during
+packaging. The source of truth is the entitlement templates under
+`UnrealFolder/ProjectMobius/Build/Mac/Resources/`.
+
+### macOS packaged build runtime permissions
+
+Disabling the App Sandbox whitelist does not bypass macOS privacy prompts. If
+the packaged app opens or saves data in protected folders such as `Documents`,
+`Desktop`, or `Downloads`, macOS may still require the user to approve access
+before Project Mobius can save screenshots beside the selected data file.
+
+To review or change that permission on macOS:
+
+1. Open `Apple menu > System Settings`.
+2. Go to `Privacy & Security`.
+3. Open `Files & Folders`.
+4. Find `Project Mobius`.
+5. Enable access for the folder in use, such as `Documents`, `Desktop`, or
+   `Downloads`.
+
+If `Project Mobius` is not listed yet, launch the packaged build and try
+opening or saving a file in the target folder once. macOS should then prompt
+for access.
+
+Repackaged local builds may need this approval again after a rebuild, because
+macOS tracks Files & Folders access against the packaged app's signing
+identity.
 
 ## Related References
 

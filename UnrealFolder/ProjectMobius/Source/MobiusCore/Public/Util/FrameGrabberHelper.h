@@ -34,6 +34,8 @@ public:
 	/** Tick to be called each frame to poll frames internally */
 	void Tick(float DeltaTime);
 
+	virtual void BeginDestroy() override;
+
 	bool IsCapturing() const { return bIsCapturing; }
 #if PLATFORM_MAC
 	bool IsInitialized() const { return true; } // Mac uses FScreenshotRequest, always "initialized"
@@ -47,6 +49,21 @@ private:
 	bool TryInitialize();
 
 	TUniquePtr<FFrameGrabber> FrameGrabber;
+#endif
+
+#if PLATFORM_MAC
+	/** Try creating and removing a small probe file so macOS write denials are surfaced early. */
+	bool PreflightMacScreenshotWrite(const FString& DestPath, FString& OutFailureReason) const;
+
+	/** Handle the raw screenshot pixels so macOS writes go through our own code path. */
+	void HandleMacScreenshotCaptured(int32 InSizeX, int32 InSizeY, const TArray<FColor>& InImageData);
+
+	/** Reset macOS screenshot state and clear any timeout. */
+	void ResetMacCaptureState();
+
+	bool bMacScreenshotDelegateBound = false;
+	FString PendingOutputPath;
+	FTimerHandle MacCaptureTimeoutHandle;
 #endif
 
 	FIntPoint TargetSize;
