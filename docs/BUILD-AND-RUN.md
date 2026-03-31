@@ -8,7 +8,7 @@ This walkthrough covers the full developer setup pipeline for Project Mobius:
 
 - Clone the repository
 - Configure and build with CMake
-- Compile the Unreal target
+- Open the Unreal project and let Unreal rebuild missing modules when needed
 - Package a distributable build*
 - Add Twinmotion compatibility
 - Understand Datasmith modes in Unreal Engine (`Runtime Datasmith` vs `Twinmotion Datasmith`)
@@ -43,7 +43,10 @@ Common:
 <summary><strong>macOS (Apple Silicon)</strong></summary>
 
 - macOS 11 or newer on Apple Silicon
-- Xcode Command Line Tools
+- Full Xcode selected via `xcode-select`
+- Unreal Engine 5.5 Xcode compatibility in the local engine source:
+  `15.2.0` minimum, `16.9.0` maximum
+- Current local setup used `Xcode 16.4`
 - Ninja
 
 macOS support exists in parts of the codebase, but Windows is still the
@@ -78,8 +81,8 @@ cmake --build _superbuild --config Release --parallel
 Build the Unreal target after the superbuild:
 
 1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
-2. Generate Visual Studio project files from the `.uproject` if needed.
-3. Build `ProjectMobiusEditor` in `Development Editor`.
+2. If Unreal prompts to rebuild missing modules, allow it to compile the editor target.
+3. Generate Visual Studio project files and build `ProjectMobiusEditor` manually only if the automatic rebuild fails or you want IDE integration.
 
 </details>
 
@@ -94,8 +97,8 @@ cmake --build _superbuild --parallel
 Build the Unreal target after the superbuild:
 
 1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
-2. Generate IDE project files from the `.uproject` if you need them for your platform.
-3. Build `ProjectMobiusEditor` in `Development Editor`.
+2. If Unreal prompts to rebuild missing modules, allow it to compile the editor target.
+3. Generate IDE project files and build `ProjectMobiusEditor` manually only if the automatic rebuild fails or you want IDE integration.
 
 </details>
 
