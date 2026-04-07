@@ -8,7 +8,7 @@ This walkthrough covers the full developer setup pipeline for Project Mobius:
 
 - Clone the repository
 - Configure and build with CMake
-- Compile the Unreal target
+- Open the Unreal project and let Unreal rebuild missing modules when needed
 - Package a distributable build*
 - Add Twinmotion compatibility
 - Understand Datasmith modes in Unreal Engine (`Runtime Datasmith` vs `Twinmotion Datasmith`)
@@ -43,11 +43,20 @@ Common:
 <summary><strong>macOS (Apple Silicon)</strong></summary>
 
 - macOS 11 or newer on Apple Silicon
-- Xcode Command Line Tools
+- Full Xcode selected via `xcode-select`
+- Unreal Engine 5.5 in the local engine source supports Xcode `15.2.0`
+  through `16.9.0`
+- These notes were last tested with `Xcode 16.4`
 - Ninja
 
 macOS support exists in parts of the codebase, but Windows is still the
 primary development and validation target.
+
+Known macOS limitation: heatmap Gaussian blur is currently unavailable. The
+current Visualization module relies on Epic's built-in OpenCV plugin, and this
+project does not yet ship the Mac OpenCV libraries needed for that path.
+Supporting Gaussian blur on macOS will require a custom plugin or an equivalent
+code-side replacement.
 
 </details>
 
@@ -78,8 +87,12 @@ cmake --build _superbuild --config Release --parallel
 Build the Unreal target after the superbuild:
 
 1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
-2. Generate Visual Studio project files from the `.uproject` if needed.
-3. Build `ProjectMobiusEditor` in `Development Editor`.
+2. If Unreal prompts to rebuild missing modules, let it compile the editor
+   target.
+3. If you want IDE integration, open the `.uproject` directly in an IDE that
+   supports it, or generate Visual Studio project files if your setup requires
+   them. Build `ProjectMobiusEditor` manually only if the automatic rebuild
+   fails.
 
 </details>
 
@@ -94,8 +107,11 @@ cmake --build _superbuild --parallel
 Build the Unreal target after the superbuild:
 
 1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
-2. Generate IDE project files from the `.uproject` if you need them for your platform.
-3. Build `ProjectMobiusEditor` in `Development Editor`.
+2. If Unreal prompts to rebuild missing modules, let it compile the editor
+   target.
+3. If you want IDE integration, generate the Xcode project or workspace from
+   the `.uproject` if your setup requires it. Build `ProjectMobiusEditor`
+   manually only if the automatic rebuild fails.
 
 </details>
 
@@ -170,7 +186,9 @@ UnrealEditor-Cmd.exe ProjectMobius.uproject -run=GenerateDatasmithMaterials -una
 Or use the provided scripts: `Scripts/GenerateDatasmithMaterials.bat` (Windows)
 / `Scripts/GenerateDatasmithMaterials.sh` (macOS/Linux).
 
-## Package Example
+## Package
+
+### Example command
 
 ```bash
 RunUAT.bat BuildCookRun ^
@@ -179,6 +197,90 @@ RunUAT.bat BuildCookRun ^
   -cook -build -stage -pak -archive ^
   -archivedirectory=./Binaries/Release
 ```
+
+### macOS packaged build configuration
+
+Project Mobius currently packages macOS development builds with the App
+Sandbox disabled. This is intentional for the current file workflow.
+The packaged app opens user-selected simulation data files and writes
+screenshots and related output into a `MobiusCaptures` folder beside the
+selected data file. That flow is not currently implemented against the stricter
+macOS sandbox access model, so the App Sandbox must remain disabled for these
+builds.
+
+Local macOS packaging uses the following entitlement templates when they are
+present:
+
+- `UnrealFolder/ProjectMobius/Build/Mac/Resources/Sandbox.NoNet.entitlements`
+- `UnrealFolder/ProjectMobius/Build/Mac/Resources/Sandbox.Server.entitlements`
+
+These are local packaging resources, not authored project source. A fresh
+checkout may not contain them yet.
+
+If these files are missing on your machine, run one local macOS packaging pass
+first so Unreal creates the local Mac packaging resources. Then review the
+local entitlement files before packaging again.
+
+Because this is a public repository, keep files under
+`UnrealFolder/ProjectMobius/Build/Mac/Resources/` local and do not commit them.
+Do not commit generated files under `Saved/StagedBuilds/...` either.
+
+In both files, keep the App Sandbox disabled:
+
+```xml
+<key>com.apple.security.app-sandbox</key>
+<false/>
+```
+
+The network-enabled entitlement file also keeps client and server access
+enabled:
+
+```xml
+<key>com.apple.security.network.client</key>
+<true/>
+<key>com.apple.security.network.server</key>
+<true/>
+```
+
+For local macOS packaging, keep the following setting in
+`UnrealFolder/ProjectMobius/Config/DefaultEngine.ini`:
+
+```ini
+[/Script/MacTargetPlatform.XcodeProjectSettings]
+bMacSignToRunLocally=True
+```
+
+After packaging, verify the generated entitlements in:
+
+`UnrealFolder/ProjectMobius/Saved/StagedBuilds/ProjectMobius (Mac).build/Mac/ProjectMobius.build/DerivedSources/Entitlements.plist`
+
+Do not edit the generated entitlements file directly. It is recreated during
+packaging. The source of truth is the entitlement templates under
+`UnrealFolder/ProjectMobius/Build/Mac/Resources/`.
+
+### macOS packaged build runtime permissions
+
+Disabling the App Sandbox does not bypass macOS privacy prompts. If
+the packaged app opens or saves data in protected folders such as `Documents`,
+`Desktop`, or `Downloads`, macOS may still require the user to approve access
+before Project Mobius can save screenshots beside the selected data file.
+
+To review or change that permission on macOS:
+
+1. Open `Apple menu > System Settings`.
+2. Go to `Privacy & Security`.
+3. Open `Files & Folders`.
+4. Find `Project Mobius`.
+5. Enable access for the folder in use, such as `Documents`, `Desktop`, or
+   `Downloads`.
+
+If `Project Mobius` is not listed yet, launch the packaged build and try
+opening or saving a file in the target folder once. macOS should then prompt
+for access.
+
+Repackaged local builds may need this approval again after a rebuild, because
+macOS tracks Files & Folders access against the packaged app's signing
+identity.
 
 ## Related References
 

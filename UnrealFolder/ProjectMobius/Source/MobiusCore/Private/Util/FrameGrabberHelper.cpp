@@ -7,6 +7,7 @@
 #include "HAL/PlatformFileManager.h"
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "RenderingThread.h"  // For FlushRenderingCommands (Mac GPU sync)
 #include "Slate/SceneViewport.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
@@ -76,6 +77,45 @@ namespace
 			});
 		}
 	}
+
+#if PLATFORM_MAC
+	bool IsLikelyMacPrivacyProtectedPath(const FString& Path)
+	{
+		FString NormalizedPath = Path;
+		FPaths::NormalizeFilename(NormalizedPath);
+
+		FString UserDir = FPlatformProcess::UserDir();
+		FPaths::NormalizeDirectoryName(UserDir);
+
+		const TArray<FString> ProtectedRoots =
+		{
+			FPaths::Combine(UserDir, TEXT("Desktop")),
+			FPaths::Combine(UserDir, TEXT("Documents")),
+			FPaths::Combine(UserDir, TEXT("Downloads"))
+		};
+
+		for (FString ProtectedRoot : ProtectedRoots)
+		{
+			FPaths::NormalizeDirectoryName(ProtectedRoot);
+			if (NormalizedPath.StartsWith(ProtectedRoot))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	FString BuildMacWriteFailureDetail(const FString& Path)
+	{
+		if (IsLikelyMacPrivacyProtectedPath(Path))
+		{
+			return TEXT(" macOS Files & Folders privacy may be blocking access to this Desktop/Documents/Downloads location.");
+		}
+
+		return TEXT(" The path is valid, so the failure is likely a macOS permission or Unreal screenshot write-path issue.");
+	}
+#endif
 }
 
 void UFrameGrabberHelper::Configure(bool bInUseFullResolution, FIntPoint InDownscaleSize)
@@ -101,6 +141,21 @@ void UFrameGrabberHelper::Configure(bool bInUseFullResolution, FIntPoint InDowns
 	TargetSize = bConfiguredUseFullResolution ? FIntPoint(1920, 1080) : ConfiguredDownscaleSize;
 	MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Target size set to: %dx%d"), TargetSize.X, TargetSize.Y));
 #endif
+}
+
+void UFrameGrabberHelper::BeginDestroy()
+{
+#if PLATFORM_MAC
+	ResetMacCaptureState();
+
+	if (bMacScreenshotDelegateBound)
+	{
+		UGameViewportClient::OnScreenshotCaptured().RemoveAll(this);
+		bMacScreenshotDelegateBound = false;
+	}
+#endif
+
+	Super::BeginDestroy();
 }
 
 #if !PLATFORM_MAC
@@ -258,35 +313,68 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 		MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Created directory: %s"), *DestPath));
 	}
 
-	// Full path for the screenshot (without .png - engine may add it)
-	FString FullPath = DestPath / PendingFileName;
+	PendingOutputPath = DestPath / (PendingFileName + TEXT(".png"));
+	FPaths::NormalizeFilename(PendingOutputPath);
 
-	MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Requesting screenshot via FScreenshotRequest: %s"), *FullPath));
+	FString PreflightFailureReason;
+	if (!PreflightMacScreenshotWrite(DestPath, PreflightFailureReason))
+	{
+		MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Error: Write preflight failed for %s. Reason: %s"),
+			*DestPath,
+			*PreflightFailureReason));
+		MobiusReportError(
+			FText::FromString(TEXT("Save Permission Error")),
+			FText::FromString(PreflightFailureReason),
+			FText::FromString(TEXT("FrameGrabberHelper::TriggerCapture")),
+			EMobiusErrorSeverity::Error,
+			true);
+		PendingOutputPath.Empty();
+		return;
+	}
 
-	// Request screenshot with filename, no HDR, show UI notification, no unique suffix
-	// Signature: RequestScreenshot(const FString& Filename, bool bShowUI, bool bAddFilenameSuffix, bool bInHDR)
-	FScreenshotRequest::RequestScreenshot(FullPath, true, false, false);
+	if (!bMacScreenshotDelegateBound)
+	{
+		UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &UFrameGrabberHelper::HandleMacScreenshotCaptured);
+		bMacScreenshotDelegateBound = true;
+	}
+
+	MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Requesting screenshot via FScreenshotRequest: %s"), *PendingOutputPath));
+
+	// Request screenshot with filename, no HDR, show UI notification, no unique suffix.
+	// We still request Unreal's screenshot flow, but the pixel buffer is saved by our own delegate so the
+	// final write reports explicit permission/path failures instead of silently disappearing.
+	FScreenshotRequest::RequestScreenshot(PendingOutputPath, true, false, false);
 
 	bIsCapturing = true;
 
-	// Reset capturing flag after a delay since the engine saves asynchronously
-	FTimerHandle TimerHandle;
 	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->GetWorld())
 	{
 		GEngine->GameViewport->GetWorld()->GetTimerManager().SetTimer(
-			TimerHandle,
+			MacCaptureTimeoutHandle,
 			[this]() {
-				bIsCapturing = false;
-				MobiusLog(TEXT("[FrameGrabber][Mac] Capture flag reset after timeout."));
+				if (!bIsCapturing)
+				{
+					return;
+				}
+
+				const FString TimedOutOutputPath = PendingOutputPath;
+				ResetMacCaptureState();
+				MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Error: Screenshot capture timed out before a save callback for %s"), *TimedOutOutputPath));
+				MobiusReportError(
+					FText::FromString(TEXT("Capture Timed Out")),
+					FText::FromString(TEXT("The screenshot was requested, but macOS never delivered image data back to the game. This points to an Unreal capture-path problem rather than simple folder creation.")),
+					FText::FromString(TEXT("FrameGrabberHelper::TriggerCapture")),
+					EMobiusErrorSeverity::Error,
+					true);
 			},
-			0.5f,
+			3.0f,
 			false
 		);
 	}
 	else
 	{
 		MobiusLog(TEXT("[FrameGrabber][Mac] Warning: Could not set timer for capture reset - no valid world context."));
-		bIsCapturing = false;
+		ResetMacCaptureState();
 	}
 #else
 	// Windows/other: Use FFrameGrabber
@@ -339,6 +427,110 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 	bIsCapturing = true;
 #endif
 }
+
+#if PLATFORM_MAC
+bool UFrameGrabberHelper::PreflightMacScreenshotWrite(const FString& DestPath, FString& OutFailureReason) const
+{
+	const FString ProbePath = DestPath / FString::Printf(TEXT(".mobius_write_probe_%llu.tmp"), static_cast<uint64>(FPlatformTime::Cycles64()));
+	const bool bProbeWritten = FFileHelper::SaveStringToFile(
+		TEXT("probe"),
+		*ProbePath,
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+
+	if (!bProbeWritten)
+	{
+		OutFailureReason = FString::Printf(
+			TEXT("Project Mobius could create or resolve the folder but could not create a test file in %s.%s"),
+			*DestPath,
+			*BuildMacWriteFailureDetail(DestPath));
+		return false;
+	}
+
+	IFileManager::Get().Delete(*ProbePath, false, true, true);
+	return true;
+}
+
+void UFrameGrabberHelper::HandleMacScreenshotCaptured(int32 InSizeX, int32 InSizeY, const TArray<FColor>& InImageData)
+{
+	if (!bIsCapturing)
+	{
+		return;
+	}
+
+	if (PendingOutputPath.IsEmpty())
+	{
+		MobiusLog(TEXT("[FrameGrabber][Mac] Warning: Received screenshot pixels with no pending output path."));
+		ResetMacCaptureState();
+		return;
+	}
+
+	if (InSizeX <= 0 || InSizeY <= 0 || InImageData.Num() == 0)
+	{
+		const FString FailedOutputPath = PendingOutputPath;
+		ResetMacCaptureState();
+		MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Error: Invalid screenshot pixel data for %s"), *FailedOutputPath));
+		MobiusReportError(
+			FText::FromString(TEXT("Capture Failed")),
+			FText::FromString(TEXT("The screenshot completed but returned no pixel data.")),
+			FText::FromString(TEXT("FrameGrabberHelper::HandleMacScreenshotCaptured")),
+			EMobiusErrorSeverity::Error,
+			true);
+		return;
+	}
+
+	const FString OutputPath = PendingOutputPath;
+	TArray<FColor> ImageData = InImageData;
+	for (FColor& Pixel : ImageData)
+	{
+		Pixel.A = 255;
+	}
+
+	Async(EAsyncExecution::ThreadPool, [WeakThis = TWeakObjectPtr<UFrameGrabberHelper>(this), OutputPath, InSizeX, InSizeY, ImageData = MoveTemp(ImageData)]() mutable
+	{
+		TArray64<uint8> PNGData;
+		FImageUtils::PNGCompressImageArray(InSizeX, InSizeY, ImageData, PNGData);
+
+		const bool bSaved = PNGData.Num() > 0 && FFileHelper::SaveArrayToFile(PNGData, *OutputPath);
+
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, OutputPath, InSizeX, InSizeY, bSaved]()
+		{
+			if (!WeakThis.IsValid())
+			{
+				return;
+			}
+
+			WeakThis->ResetMacCaptureState();
+
+			if (!bSaved)
+			{
+				MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Error: Failed to save screenshot after capture: %s"), *OutputPath));
+				MobiusReportError(
+					FText::FromString(TEXT("Save Failed")),
+					FText::FromString(FString::Printf(TEXT("Captured screenshot pixels successfully but could not write %s.%s"), *OutputPath, *BuildMacWriteFailureDetail(OutputPath))),
+					FText::FromString(TEXT("FrameGrabberHelper::HandleMacScreenshotCaptured")),
+					EMobiusErrorSeverity::Error,
+					true);
+				return;
+			}
+
+			MobiusLog(FString::Printf(TEXT("[FrameGrabber][Mac] Screenshot saved successfully (%dx%d): %s"),
+				InSizeX, InSizeY, *OutputPath));
+		});
+	});
+}
+
+void UFrameGrabberHelper::ResetMacCaptureState()
+{
+	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->GetWorld() && MacCaptureTimeoutHandle.IsValid())
+	{
+		GEngine->GameViewport->GetWorld()->GetTimerManager().ClearTimer(MacCaptureTimeoutHandle);
+	}
+
+	MacCaptureTimeoutHandle.Invalidate();
+	PendingOutputPath.Empty();
+	bIsCapturing = false;
+}
+#endif
 
 void UFrameGrabberHelper::Tick(float DeltaTime)
 {
