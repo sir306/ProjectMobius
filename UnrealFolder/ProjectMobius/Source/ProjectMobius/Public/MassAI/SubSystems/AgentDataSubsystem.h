@@ -158,9 +158,17 @@ protected:
 public:
         /** Pointer to the FRunnable JSON Parser */
         TUniquePtr<FProcessSimulationDataRunnable> JsonDataRunnable;
-	
+
 	/** JSON Object */
 	TSharedPtr<FJsonObject> JSONObject;
+
+	/**
+	 * HDF5 entity metadata cached before the runnable is torn down.
+	 * Populated in BuildPedestrianMovementFragmentData() so that
+	 * PedestrianInitializeMOP can access entity info after AgentDataRunnableCleanup
+	 * has already destroyed JsonDataRunnable.
+	 */
+	TArray<FHdf5EntityData> CachedHdf5Entities;
 
 	/** Delegate to broadcast when the simulation data has finished loading */
 	UPROPERTY()

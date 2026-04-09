@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -67,14 +67,14 @@ void UMassEntitySpawnSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// Add the AgentDataSubsystem to the collection Dependency
 	AgentDataSubsystem = Collection.InitializeDependency<UAgentDataSubsystem>();
-	
+
 	// Get the entity manager from the MassSubsystem
 	//EntityManager = GetWorld()->GetSubsystem<UMassEntitySubsystem>()->GetMutableEntityManager().AsShared();
 
 	// If we have other subsystems that we depend on we can initialize them here before super
 	Super::Initialize(Collection);
 
-	// Get the Game Instance 
+	// Get the Game Instance
 	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
 	{
 		// Bind the required Game Instance Delegates
@@ -107,7 +107,7 @@ void UMassEntitySpawnSubsystem::Deinitialize()
 void UMassEntitySpawnSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
-	
+
 	// Ensure rep actor exists BEFORE Mass creates entities
 	if (UWorld* World = GetWorld())
 	{
@@ -124,7 +124,7 @@ void UMassEntitySpawnSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestriansToSpawn, FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
 {
         auto PedestrianArchetypeHandle = CreatePedestrianArchetype();
-	
+
 	// check shared fragment values are sorted and sort if not
 	// -- this has been debugged and is redundant but in place as a safety measure
 	if (!ArchetypeSharedFragmentValues.IsSorted())
@@ -160,7 +160,7 @@ void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragment
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Max Pedestrians is less than 0, likely a bad data file."));
 	}
-	
+
 }
 
 void UMassEntitySpawnSubsystem::DestroySpawnedPedestrians(TConstArrayView<FMassEntityHandle> EntitiesToDestroy)
@@ -233,9 +233,12 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 	// Get this traits template id
 	FMassEntityTemplateID DebugEntityLocationTraitID = PedestrianLocationTraitBuildContext.GetTemplateID();
-	
+
+	// Remember the ID so CreatePedestrianTemplateData can call DestroyTemplate on file switch
+	RegisteredPedestrianTemplateID = DebugEntityLocationTraitID;
+
 	TemplateRegistryInstance.FindOrAddTemplate(DebugEntityLocationTraitID, MoveTemp(PedestrianTemplateData));
-	
+
 	auto PedestrianArchetypeHandle = EntityManager->CreateArchetype(PedestrianTemplateData.GetCompositionDescriptor());
 
 	return PedestrianArchetypeHandle;
@@ -245,22 +248,22 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-	
+
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 
 		FString LoadingText = FString::Printf(TEXT("Clearing Old Data..."));
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
-	
+
         // Cleanup any existing runnable to avoid memory leaks
         AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
         bHasResetFlowCounters = false;
-	
+
 	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
 	// capsule components are cleared and marked for destruction so that we don't have memory leaks
 	for (auto& EntityHandle : SpawnedEntityPedestrianHandles)
@@ -271,21 +274,32 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 			Fragment.Capsule->DestroyComponent();
 		}
 	}
-	
+
 	// Destroy any existing spawned pedestrians and clear the Niagara simulation
 	DestroyAllSpawnedPedestrians();
 	ClearNiagaraSim();
 
 	// Empty out the handles array
 	SpawnedEntityPedestrianHandles.Empty();
-	
+
 	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
 	// data is created
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
+	// Destroy old template entry in the registry — FindOrAddTemplate never replaces existing
+	// entries (UE5 returns the old one and silently discards new data), so we must explicitly
+	// remove it. This drops the registry's FSharedStruct ref to the old FSimulationFragment.
+	// Safe because all entities using this template have already been destroyed above.
+	TemplateRegistryInstance.DestroyTemplate(RegisteredPedestrianTemplateID);
+	RegisteredPedestrianTemplateID.Invalidate();
+
 	// Reset the template data
 	PedestrianTemplateData = FMassEntityTemplateData();
-	
+
+	// Drop our ref to the old simulation fragment so it can be freed now that the
+	// TemplateRegistryInstance has also released its ref.
+	SharedSimulationFragment = FSharedStruct();
+
 	LoadPedestrianData();
 }
 
@@ -293,25 +307,25 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 {
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-	
+
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 
 		FString LoadingText = FString::Printf(TEXT("Fetching Pedestrian Data File..."));
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
-	
+
 	FString JSONDataFile = "";
-	// Get the Game Instance 
+	// Get the Game Instance
 	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
 	{
 		// do we have a file to use from the game instance
 		JSONDataFile = GameInst->GetPedestrianDataFilePath();
 	}
-	
+
 	// Check Agent Data Subsystem is valid
 	if (!AgentDataSubsystem)
 	{
@@ -346,27 +360,27 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		FString FileName = FPaths::GetCleanFilename(JSONDataFile);
 
 		FString LoadingText = FString::Printf(TEXT("Loading File: %s"), *FileName);
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
 
-	
+
 }
 
 void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
-	
+
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-	
+
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 
 		FString LoadingText = FString::Printf(TEXT("Building Pedestrian Movement AI Data..."));
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 		LoadingSubsystem->BroadcastNewLoadPercent(0.0f);
@@ -383,6 +397,19 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		JSONObjectLocal      = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
 		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
 		LoadedFileType = AgentDataSubsystem->JsonDataRunnable->SimulationFileType;
+
+		// Cache HDF5 entity metadata before the runnable is torn down.
+		// PedestrianInitializeMOP fires after SpawnMaxPedestrians destroys the runnable,
+		// so SetEntityInfoByIndex / SetEntityRenderingByIndex must read from here instead.
+		if (LoadedFileType == ESimulationFileType::ESFT_HDF5)
+		{
+			AgentDataSubsystem->CachedHdf5Entities = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
+		}
+		else
+		{
+			AgentDataSubsystem->CachedHdf5Entities.Empty();
+			AgentDataSubsystem->CachedHdf5Entities.Shrink();
+		}
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
@@ -407,6 +434,10 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	{
 		AgentDataSubsystem->JSONObject = JSONObjectLocal;
 	}
+	else
+	{
+		AgentDataSubsystem->JSONObject.Reset();
+	}
 
 	// Get Time Dilation from the ProjectMobius Game Instance
 	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
@@ -417,16 +448,16 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
 	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
 
-        auto SharedSimulationFragmentData = FSharedStruct::Make(SimulationFragment);
+        auto SharedSimulationFragmentData = FSharedStruct::Make(MoveTemp(SimulationFragment));
 
         SharedSimulationFragment = SharedSimulationFragmentData;
 
 	// Add the shared fragment to the build context
         PedestrianTemplateData.AddSharedFragment(SharedSimulationFragmentData);
-	
+
 	// Create the Pedestrian Representation Fragment Data
 	BuildPedestrianRepresentationFragmentData();
-		
+
 	auto ArchetypeSharedFragmentValues = PedestrianTemplateData.GetSharedFragmentValues();
 
 	// check shared fragment values are sorted and sort if not
@@ -437,7 +468,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Broadcast that the pedestrian data is ready to spawn
 	OnPedestrianDataReadyToSpawn.Broadcast();
-	
+
 	// At this point data should be ready to spawn
 	SpawnMaxPedestrians(ArchetypeSharedFragmentValues);
 }
@@ -468,5 +499,5 @@ void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
 		// Add the shared fragment to the build context
 		PedestrianTemplateData.AddSharedFragment(NiagaraSharedDataFrag);
 	}
-	
+
 }

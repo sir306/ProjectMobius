@@ -299,11 +299,10 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 		return;
 	}
 
-	// Check if we have HDF5 data loaded via the runnable
-	if (JsonDataRunnable && JsonDataRunnable->SimulationFileType == ESimulationFileType::ESFT_HDF5)
+	// Check if we have HDF5 entity data cached (moved out of runnable before it was torn down)
+	if (CachedHdf5Entities.Num() > 0)
 	{
-		const TArray<FHdf5EntityData>& Entities = JsonDataRunnable->Hdf5Data.Entities;
-		if (!Entities.IsValidIndex(Index))
+		if (!CachedHdf5Entities.IsValidIndex(Index))
 		{
 			ReportAgentDataError(this,
 			                     TEXT("Entity data missing"),
@@ -312,7 +311,7 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 			return;
 		}
 
-		const FHdf5EntityData& Entity = Entities[Index];
+		const FHdf5EntityData& Entity = CachedHdf5Entities[Index];
 		EntityInfoFragToUpdate.EntityID = Entity.Id;
 		EntityInfoFragToUpdate.EntityName = Entity.Name;
 		EntityInfoFragToUpdate.EntitySimTimeS = FString::SanitizeFloat(Entity.SimTimeS);
@@ -364,11 +363,10 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 
 	FString AgentName;
 
-	// Check if we have HDF5 data loaded via the runnable
-	if (JsonDataRunnable && JsonDataRunnable->SimulationFileType == ESimulationFileType::ESFT_HDF5)
+	// Check if we have HDF5 entity data cached (moved out of runnable before it was torn down)
+	if (CachedHdf5Entities.Num() > 0)
 	{
-		const TArray<FHdf5EntityData>& Entities = JsonDataRunnable->Hdf5Data.Entities;
-		if (!Entities.IsValidIndex(Index))
+		if (!CachedHdf5Entities.IsValidIndex(Index))
 		{
 			ReportAgentDataError(this,
 			                     TEXT("Entity data missing"),
@@ -377,7 +375,7 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 			return;
 		}
 
-		AgentName = Entities[Index].Name;
+		AgentName = CachedHdf5Entities[Index].Name;
 	}
 	else
 	{
@@ -1751,6 +1749,17 @@ uint32 FProcessSimulationDataRunnable:: Run()
 	if (bShouldStop)
 	{
 		return 0;
+	}
+
+	// Free raw sample buffer now — RunSimulationDataGatheringLoop has fully consumed it and
+	// the local SamplesByTimestep (which held raw pointers into Samples) is out of scope.
+	// Hdf5Data.Entities must NOT be freed here — PedestrianInitializeMOP accesses it on the
+	// game thread after BatchCreateEntities, before BuildPedestrianMovementFragmentData moves
+	// it into AgentDataSubsystem::CachedHdf5Entities.
+	if (SimulationFileType == ESimulationFileType::ESFT_HDF5)
+	{
+		Hdf5Data.Samples.Empty();
+		Hdf5Data.Samples.Shrink();
 	}
 
 	// Send the final progress and completion events
