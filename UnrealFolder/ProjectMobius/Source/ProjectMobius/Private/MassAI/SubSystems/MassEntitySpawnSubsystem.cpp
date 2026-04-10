@@ -50,6 +50,7 @@
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
+#include "MassAI/SubSystems/MemoryTraceHelper.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 class UTimeDilationSubSystem;
@@ -209,6 +210,11 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimu
 {
         if (!ToKill) return;
 
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapCleanupStart = FMobiusMemSnapshot::Take(TEXT("RunnableCleanup_Start"));
+	SnapCleanupStart.LogAbsolute();
+#endif
+
 	// 1) Stop on calling thread
 	ToKill->Stop();
 
@@ -224,6 +230,10 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimu
 
         // 4) Delete
         ToKill.Reset();
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("RunnableCleanup_AfterReset")).LogDelta(SnapCleanupStart);
+#endif
 }
 
 FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
@@ -264,6 +274,11 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 
         bHasResetFlowCounters = false;
 
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapSwitchStart = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterRunnableCleanup"));
+	SnapSwitchStart.LogAbsolute();
+#endif
+
 	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
 	// capsule components are cleared and marked for destruction so that we don't have memory leaks
 	for (auto& EntityHandle : SpawnedEntityPedestrianHandles)
@@ -286,6 +301,10 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	// data is created
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterDestroyAllAndGC")).LogDelta(SnapSwitchStart);
+#endif
+
 	// Destroy old template entry in the registry — FindOrAddTemplate never replaces existing
 	// entries (UE5 returns the old one and silently discards new data), so we must explicitly
 	// remove it. This drops the registry's FSharedStruct ref to the old FSimulationFragment.
@@ -298,7 +317,24 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 
 	// Drop our ref to the old simulation fragment so it can be freed now that the
 	// TemplateRegistryInstance has also released its ref.
+	// We aggressively clear the data map first because Mass AI may still hold
+	// references to the fragment in lingering chunks, which would otherwise
+	// prevent the ~900MB of TMap/TArray memory from being reclaimed.
+	if (FSimulationFragment* Frag = SharedSimulationFragment.GetPtr<FSimulationFragment>())
+	{
+		for (auto& Pair : Frag->SimulationData)
+		{
+			Pair.Value.Empty();
+			Pair.Value.Shrink();
+		}
+		Frag->SimulationData.Empty();
+		Frag->SimulationData.Shrink();
+	}
 	SharedSimulationFragment = FSharedStruct();
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSharedFragReset")).LogDelta(SnapSwitchStart);
+#endif
 
 	LoadPedestrianData();
 }
@@ -372,6 +408,11 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
 
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapBuildStart = FMobiusMemSnapshot::Take(TEXT("BuildFrag_Start"));
+	SnapBuildStart.LogAbsolute();
+#endif
+
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
 
@@ -387,29 +428,20 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	}
 
 	FSimulationFragment SimulationFragment;
-	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> JSONObjectLocal;
 	float TimeBetweenStepsLocal = 0.f;
 	ESimulationFileType LoadedFileType = ESimulationFileType::ESFT_Unknown;
 
 	if (AgentDataSubsystem->JsonDataRunnable)
 	{
-		SimulationFragment   = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
-		JSONObjectLocal      = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
+		SimulationFragment    = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
 		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
-		LoadedFileType = AgentDataSubsystem->JsonDataRunnable->SimulationFileType;
+		LoadedFileType        = AgentDataSubsystem->JsonDataRunnable->SimulationFileType;
+		NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
 
-		// Cache HDF5 entity metadata before the runnable is torn down.
+		// Cache entity metadata before the runnable is torn down.
 		// PedestrianInitializeMOP fires after SpawnMaxPedestrians destroys the runnable,
 		// so SetEntityInfoByIndex / SetEntityRenderingByIndex must read from here instead.
-		if (LoadedFileType == ESimulationFileType::ESFT_HDF5)
-		{
-			AgentDataSubsystem->CachedHdf5Entities = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
-		}
-		else
-		{
-			AgentDataSubsystem->CachedHdf5Entities.Empty();
-			AgentDataSubsystem->CachedHdf5Entities.Shrink();
-		}
+		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
@@ -421,22 +453,10 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// Add the tag to prevent collision updates
 	PedestrianTemplateData.AddTag<FPedestrianCollisionsDisabled>();
 
-	NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
-
 	if (NumOfAgentsPerTimeStep.IsValidIndex(0))
 	{
 		// log i 0 for the number of agents per time step
 		UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
-	}
-
-	// Set the json object on the agent data subsystem only if we loaded a JSON file
-	if (LoadedFileType == ESimulationFileType::ESFT_JSON)
-	{
-		AgentDataSubsystem->JSONObject = JSONObjectLocal;
-	}
-	else
-	{
-		AgentDataSubsystem->JSONObject.Reset();
 	}
 
 	// Get Time Dilation from the ProjectMobius Game Instance
@@ -470,7 +490,13 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	OnPedestrianDataReadyToSpawn.Broadcast();
 
 	// At this point data should be ready to spawn
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("BuildFrag_PreSpawn")).LogDelta(SnapBuildStart);
+#endif
 	SpawnMaxPedestrians(ArchetypeSharedFragmentValues);
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("BuildFrag_AfterSpawn")).LogDelta(SnapBuildStart);
+#endif
 }
 
 const FSimulationFragment* UMassEntitySpawnSubsystem::GetSimulationFragment() const

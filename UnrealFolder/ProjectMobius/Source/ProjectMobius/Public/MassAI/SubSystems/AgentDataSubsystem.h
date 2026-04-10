@@ -85,27 +85,13 @@ public:
 	virtual void Deinitialize() override;
 
 	virtual void Tick(float DeltaTime) override;
-
-	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UAgentDataSubsystem, STATGROUP_Tickables); }
-
-	/** Get JSON Data File */
-	UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
-	void GetJSONDataFile(FString InJsonDataFile);
+virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UAgentDataSubsystem, STATGROUP_Tickables); }
 
 	/**
-	 * Gets Json data when file has been changed 
+	 * Helper used to parse entity info fields from a JSON object into an EntityInfoFragment.
+	 * Called by PedestrianInitializeMOP when the JSON path is active.
 	 */
-	UFUNCTION()
-	void GetUpdatedJSONDataFile();
-	
-	/** Build Pedestrian Agent Info */
-        UFUNCTION(BlueprintCallable, Category = "MassAI|Data")
-        void BuildPedestrianAgentInfo();
-
-       /**
-        * Helper used to parse entity info fields from a JSON object
-        */
-       static void ParseEntityInfo(const TSharedPtr<FJsonObject>& JsonObject, FEntityInfoFragment& OutInfo);
+	static void ParseEntityInfo(const TSharedPtr<FJsonObject>& JsonObject, FEntityInfoFragment& OutInfo);
 
 	/**
 	 * Set the Entity Info fragment by Index from the JSON data
@@ -159,16 +145,13 @@ public:
         /** Pointer to the FRunnable JSON Parser */
         TUniquePtr<FProcessSimulationDataRunnable> JsonDataRunnable;
 
-	/** JSON Object */
-	TSharedPtr<FJsonObject> JSONObject;
-
 	/**
-	 * HDF5 entity metadata cached before the runnable is torn down.
+	 * Entity metadata cached before the runnable is torn down.
 	 * Populated in BuildPedestrianMovementFragmentData() so that
 	 * PedestrianInitializeMOP can access entity info after AgentDataRunnableCleanup
 	 * has already destroyed JsonDataRunnable.
 	 */
-	TArray<FHdf5EntityData> CachedHdf5Entities;
+	TArray<FHdf5EntityData> CachedEntityData;
 
 	/** Delegate to broadcast when the simulation data has finished loading */
 	UPROPERTY()

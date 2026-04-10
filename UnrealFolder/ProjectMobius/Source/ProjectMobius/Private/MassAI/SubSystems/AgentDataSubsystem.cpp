@@ -42,6 +42,11 @@
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "MassAI/SubSystems/MemoryTraceHelper.h"
+
+#if !UE_BUILD_SHIPPING
+DEFINE_LOG_CATEGORY(LogMobiusMemory);
+#endif
 
 namespace
 {
@@ -186,107 +191,6 @@ void UAgentDataSubsystem::Tick(float DeltaTime)
 	}
 }
 
-void UAgentDataSubsystem::GetJSONDataFile(FString InJsonDataFile)
-{
-	if (!CheckFilePathExists(InJsonDataFile))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("File Path does not exist"));
-		ReportAgentDataError(this,
-		                     TEXT("Simulation file not found"),
-		                     FString::Printf(TEXT("JSON file does not exist: %s"), *InJsonDataFile),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
-	TSharedRef<TJsonReader<TCHAR>> JSONReader = TJsonReaderFactory<TCHAR>::Create(JSONDataString);
-
-	// Create JSON Reader and load String
-	CreateJsonReaderAndString(JSONDataString, JSONReader, InJsonDataFile);
-
-	// Deserialize JSON Data
-	bool bDeserializeSuccess = FJsonSerializer::Deserialize(JSONReader, JSONObject);
-
-	if (!bDeserializeSuccess)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Failed to Deserialize JSON Data"));
-		ReportAgentDataError(this,
-		                     TEXT("Failed to parse simulation file"),
-		                     FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *InJsonDataFile),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
-}
-
-void UAgentDataSubsystem::GetUpdatedJSONDataFile()
-{
-	// log the file has changed
-	UE_LOG(LogTemp, Warning, TEXT("Data File Changed"));
-
-	// Get the Game Instance 
-	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
-	{
-		// update the data file
-		JSONDataFile = GameInst->GetPedestrianDataFilePath();
-
-		// Get the JSON Data File
-		GetJSONDataFile(JSONDataFile);
-		
-		// Check that json object is not still nullptr
-		if (JSONObject == nullptr)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("JSON Object is nullptr"));
-			ReportAgentDataError(this,
-			                     TEXT("Simulation file invalid"),
-			                     TEXT("JSON object is null after loading the simulation file."),
-			                     TEXT("AgentDataSubsystem"));
-		}
-		else
-		{
-			//CalculateMaxEntitiesPermitted();
-		}
-	}
-	else
-	{
-		ReportAgentDataError(this,
-		                     TEXT("Game instance missing"),
-		                     TEXT("Unable to access the game instance while loading simulation data."),
-		                     TEXT("AgentDataSubsystem"));
-	}
-	
-}
-
-void UAgentDataSubsystem::BuildPedestrianAgentInfo()
-{
-	if (!JSONObject.IsValid())
-	{
-		ReportAgentDataError(this,
-		                     TEXT("Simulation data missing"),
-		                     TEXT("No JSON data is loaded for pedestrian info."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
-	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities"));
-
-	// loop through the JSON array
-	for (int32 entityIndex = 0; entityIndex < JsonEntityDataArray.Num(); entityIndex++)
-	{
-		if (!JsonEntityDataArray[entityIndex]->AsObject().IsValid())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-			ReportAgentDataError(this,
-			                     TEXT("Invalid entity data"),
-			                     TEXT("Encountered an invalid entity object while parsing."),
-			                     TEXT("AgentDataSubsystem"));
-			break;
-		}
-
-		// Get the JSON object for this 
-		TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[entityIndex]->AsObject();
-
-		FEntityInfoFragment EntityInfo;
-		ParseEntityInfo(JSONEntityDataObject, EntityInfo);
-		
-	}
-}
 void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment& EntityInfoFragToUpdate) const
 {
 	if (Index < 0 || Index >= MaxAgents)
@@ -299,19 +203,19 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 		return;
 	}
 
-	// Check if we have HDF5 entity data cached (moved out of runnable before it was torn down)
-	if (CachedHdf5Entities.Num() > 0)
+	// Check if we have entity data cached (moved out of runnable before it was torn down)
+	if (CachedEntityData.Num() > 0)
 	{
-		if (!CachedHdf5Entities.IsValidIndex(Index))
+		if (!CachedEntityData.IsValidIndex(Index))
 		{
 			ReportAgentDataError(this,
 			                     TEXT("Entity data missing"),
-			                     TEXT("Entity index is not present in the HDF5 data."),
+			                     TEXT("Entity index is not present in the simulation data."),
 			                     TEXT("AgentDataSubsystem"));
 			return;
 		}
 
-		const FHdf5EntityData& Entity = CachedHdf5Entities[Index];
+		const FHdf5EntityData& Entity = CachedEntityData[Index];
 		EntityInfoFragToUpdate.EntityID = Entity.Id;
 		EntityInfoFragToUpdate.EntityName = Entity.Name;
 		EntityInfoFragToUpdate.EntitySimTimeS = FString::SanitizeFloat(Entity.SimTimeS);
@@ -321,30 +225,10 @@ void UAgentDataSubsystem::SetEntityInfoByIndex(int32 Index, FEntityInfoFragment&
 		return;
 	}
 
-	// Fall back to JSON data
-	if (!JSONObject.IsValid())
-	{
-		ReportAgentDataError(this,
-		                     TEXT("Simulation data missing"),
-		                     TEXT("No simulation data is loaded for entity info."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
-
-	TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
-	if (!JsonEntityDataArray.IsValidIndex(Index))
-	{
-		ReportAgentDataError(this,
-		                     TEXT("Entity data missing"),
-		                     TEXT("Entity index is not present in the JSON data."),
-		                     TEXT("AgentDataSubsystem"));
-		return;
-	}
-
-	// Get the JSON object for this
-	TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
-
-	ParseEntityInfo(JSONEntityDataObject, EntityInfoFragToUpdate);
+	ReportAgentDataError(this,
+						 TEXT("Simulation data missing"),
+						 TEXT("No simulation data is loaded for entity info."),
+						 TEXT("AgentDataSubsystem"));
 }
 void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
                                                     FEntityRenderingFragment& EntityRenderingFragToUpdate) const
@@ -363,55 +247,27 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 
 	FString AgentName;
 
-	// Check if we have HDF5 entity data cached (moved out of runnable before it was torn down)
-	if (CachedHdf5Entities.Num() > 0)
+	// Check if we have entity data cached (moved out of runnable before it was torn down)
+	if (CachedEntityData.Num() > 0)
 	{
-		if (!CachedHdf5Entities.IsValidIndex(Index))
+		if (!CachedEntityData.IsValidIndex(Index))
 		{
 			ReportAgentDataError(this,
 			                     TEXT("Entity data missing"),
-			                     TEXT("Entity index is not present in the HDF5 data."),
+			                     TEXT("Entity index is not present in the simulation data."),
 			                     TEXT("AgentDataSubsystem"));
 			return;
 		}
 
-		AgentName = CachedHdf5Entities[Index].Name;
+		AgentName = CachedEntityData[Index].Name;
 	}
 	else
 	{
-		// Fall back to JSON data
-		if (!JSONObject.IsValid())
-		{
-			ReportAgentDataError(this,
-			                     TEXT("Simulation data missing"),
-			                     TEXT("No simulation data is loaded for entity rendering."),
-			                     TEXT("AgentDataSubsystem"));
-			return;
-		}
-
-		TArray<TSharedPtr<FJsonValue>> JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities", 8));
-		if (!JsonEntityDataArray.IsValidIndex(Index))
-		{
-			ReportAgentDataError(this,
-			                     TEXT("Entity data missing"),
-			                     TEXT("Entity index is not present in the JSON data."),
-			                     TEXT("AgentDataSubsystem"));
-			return;
-		}
-
-		// Get the JSON object for this
-		TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[Index]->AsObject();
-
-		if (!JSONEntityDataObject.IsValid())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Invalid JSON Object"));
-			ReportAgentDataError(this,
-			                     TEXT("Invalid entity data"),
-			                     TEXT("Entity object is invalid while parsing rendering data."),
-			                     TEXT("AgentDataSubsystem"));
-			return;
-		}
-		AgentName = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name", 4));
+		ReportAgentDataError(this,
+							 TEXT("Simulation data missing"),
+							 TEXT("No simulation data is loaded for entity rendering."),
+							 TEXT("AgentDataSubsystem"));
+		return;
 	}
 
 	// update gender
@@ -796,6 +652,27 @@ void FProcessSimulationDataRunnable::ReadJSONMetadataValues(bool& bCalculateTime
 	{
 		// Set the entity count from count of entities in the JSON object array if the metadata fields are not present or blank
 		MaxAgents = JSONObject->GetArrayField(StringCast<TCHAR>("entities")).Num();
+	}
+
+	// Extract entities to Hdf5Data.Entities to unify data paths and allow JSONObject to be deleted
+	if (JSONObject->HasField(StringCast<TCHAR>("entities")))
+	{
+		const TArray<TSharedPtr<FJsonValue>>& JsonEntityDataArray = JSONObject->GetArrayField(StringCast<TCHAR>("entities"));
+		Hdf5Data.Entities.SetNum(JsonEntityDataArray.Num());
+		for (int32 i = 0; i < JsonEntityDataArray.Num(); ++i)
+		{
+			if (!JsonEntityDataArray[i].IsValid() || !JsonEntityDataArray[i]->AsObject().IsValid()) continue;
+			TSharedPtr<FJsonObject> JSONEntityDataObject = JsonEntityDataArray[i]->AsObject();
+			FHdf5EntityData& Entity = Hdf5Data.Entities[i];
+			Entity.Id = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("id"));
+			Entity.Name = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("name"));
+			// JSON string to float conversion for SimTimeS
+			FString SimTimeString = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("simTimeS"));
+			Entity.SimTimeS = FCString::Atof(*SimTimeString);
+			Entity.MaxSpeed = JSONEntityDataObject->GetNumberField(StringCast<TCHAR>("max_speed"));
+			Entity.MPlane = JSONEntityDataObject->GetStringField(StringCast<TCHAR>("m_plane"));
+			Entity.Map = JSONEntityDataObject->GetIntegerField(StringCast<TCHAR>("map"));
+		}
 	}
 }
 
@@ -1664,12 +1541,18 @@ void FProcessSimulationDataRunnable::FinalizeProgress()
 uint32 FProcessSimulationDataRunnable:: Run()
 {
 	bIsRunning = true;
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapRunStart = FMobiusMemSnapshot::Take(TEXT("Run_Start"));
+	SnapRunStart.LogAbsolute();
+#endif
+
 	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get(); //TODO: this may need to be a weak ptr check/and/or variable
 	// Broadcast the current percentage of the data loaded
 	if (Subsys)
 	{
 		Subsys->ProgressQueue.Enqueue(0.0f);
-		
+
 		// First loading task
 		Subsys->LoadingTaskQueue.Enqueue(TEXT("Loading Simulation Data From File..."));
 	}
@@ -1680,6 +1563,10 @@ uint32 FProcessSimulationDataRunnable:: Run()
 		bIsRunning = false;
 		return 0;
 	}
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("Run_AfterDeserialize")).LogDelta(SnapRunStart);
+#endif
 
 	bool bCalculateTimeBetweenSteps = true;
 	bool bCalculateMaxTime = true;
@@ -1715,6 +1602,10 @@ uint32 FProcessSimulationDataRunnable:: Run()
 
 	// Run the main simulation loop
 	RunSimulationDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("Run_AfterGatherLoop")).LogDelta(SnapRunStart);
+#endif
 
 	if (bShouldStop)
 	{
@@ -1755,15 +1646,30 @@ uint32 FProcessSimulationDataRunnable:: Run()
 	// the local SamplesByTimestep (which held raw pointers into Samples) is out of scope.
 	// Hdf5Data.Entities must NOT be freed here — PedestrianInitializeMOP accesses it on the
 	// game thread after BatchCreateEntities, before BuildPedestrianMovementFragmentData moves
-	// it into AgentDataSubsystem::CachedHdf5Entities.
+	// it into AgentDataSubsystem::CachedEntityData.
 	if (SimulationFileType == ESimulationFileType::ESFT_HDF5)
 	{
 		Hdf5Data.Samples.Empty();
 		Hdf5Data.Samples.Shrink();
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot::Take(TEXT("Run_AfterSamplesFree")).LogDelta(SnapRunStart);
+#endif
+	}
+	else if (SimulationFileType == ESimulationFileType::ESFT_JSON)
+	{
+		JSONObject.Reset();
+		SimulationDataFile.Empty();
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot::Take(TEXT("Run_AfterSamplesFree")).LogDelta(SnapRunStart);
+#endif
 	}
 
 	// Send the final progress and completion events
 	FinalizeProgress();
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("Run_FinalizeComplete")).LogDelta(SnapRunStart);
+#endif
 
 	bIsRunning = false;
 	return 0; // return 0 to indicate that the thread has ended
@@ -1774,6 +1680,11 @@ void FProcessSimulationDataRunnable::Stop()
 }
 void FProcessSimulationDataRunnable::Exit()
 {
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapExitStart = FMobiusMemSnapshot::Take(TEXT("Exit_Start"));
+	SnapExitStart.LogAbsolute();
+#endif
+
 	// as the runnable contains multiple properties that are not handled by garbage collection,
 	// we need to ensure that we clean up properly
 
@@ -1816,6 +1727,10 @@ void FProcessSimulationDataRunnable::Exit()
 	NumOfAgentsPerTimeStep.Shrink();
 
 	bReadyToDelete = true; // Set the flag to true to indicate that the runnable is ready to be deleted
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("Exit_Complete")).LogDelta(SnapExitStart);
+#endif
 }
 
 TArray<FSimMovementSample> FProcessSimulationDataRunnable::GetMovementSamples(int32 AgentID)
