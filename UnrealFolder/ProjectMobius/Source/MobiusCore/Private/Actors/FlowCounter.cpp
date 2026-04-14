@@ -7,7 +7,6 @@
 #include "Components/DeformableQuadComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/StatisticActorManagementSubsystem.h"
-#include "Subsystems/StatisticSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
@@ -453,6 +452,9 @@ void AFlowCounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		{
 			Time->OnNewCurrentTime.RemoveDynamic(this, &AFlowCounter::NewSimTime);
 		}
+
+		// Cancel pending colour-reset timer so it can't fire on a destroyed actor
+		World->GetTimerManager().ClearTimer(FlowColorResetHandle);
 	}
 
 	// 2) Drain any internal queues so Tick (or anyone) won’t commit after teardown
@@ -476,13 +478,6 @@ void AFlowCounter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// FBuckectTempData BucketData;
-	// // Dequeue any bucket data
-	// while (ThreadSafeNewAgentDataQueue.Dequeue(BucketData))
-	// {
-	// 	AssignAgentToBucketUsingThreshold(BucketData.AgentID, BucketData.IntersectionThreshold);
-	// }
-	
 	if (bIsFlowCounterActive)
 	{
 		FFlowCrossingResult R;
@@ -610,9 +605,11 @@ void AFlowCounter::UpdateFlowCounterTriggerBoxLocation(const FVector& NewLocatio
 
 void AFlowCounter::UpdateFlowCounterTriggerBox()
 {
-	if (FlowCounterTriggerBox == nullptr)
+	if (FlowCounterTriggerBox == nullptr ||
+		FlowCounterPillarMesh1 == nullptr ||
+		FlowCounterPillarMesh2 == nullptr)
 	{
-		return;// Early exit if the trigger box is not valid
+		return;// Early exit if any required component is missing
 	}
 	// Update the FlowCounterLineStartLocation and FlowCounterLineEndLocation based on the pillar locations
 	FlowCounterLineStartLocation = FlowCounterPillarMesh1->GetComponentLocation();
@@ -687,9 +684,9 @@ void AFlowCounter::UpdateFlowCounterTriggerBox()
 bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 {
 	if (bTearingDown.Load()) return false;
-	TWeakObjectPtr<AFlowCounter> WeakThis(this); 
-	AFlowCounter* FlowCounter = WeakThis.Get();
-	if (FlowCounter == nullptr) { return false; }
+
+	TWeakObjectPtr<AFlowCounter> WeakThis(this); // captured by AsyncTask lambdas further down
+	AFlowCounter* FlowCounter = this;
 
 	if (!FlowCounter->bIsFlowCounterActive)
 	{
@@ -701,7 +698,12 @@ bool AFlowCounter::ProcessAgentFlowCrossing(const FFlowCounterData& Data)
 
 	// We need to store the current sim time when we start processing agents - as this could change while processing
 	float ProcessTime = FlowCounter->CurrentSimTime;
-	
+
+	if (FlowCounter->FlowCounterTriggerBox == nullptr)
+	{
+		return false;
+	}
+
 	// Get the flow counter trigger box so we can check if the agent is within the box
 	UE::Math::TBox FlowCounterBox = FlowCounter->FlowCounterTriggerBox->Bounds.GetBox();
 
@@ -1047,11 +1049,13 @@ void AFlowCounter::FlashBarrierColor()
 	// schedule revert to BLUE after 0.3s (restart if already running)
 	FTimerManager& TM = GetWorldTimerManager();
 	TM.ClearTimer(FlowColorResetHandle);
-	TM.SetTimer(FlowColorResetHandle, [this]()
+	TWeakObjectPtr<AFlowCounter> WeakSelf(this);
+	TM.SetTimer(FlowColorResetHandle, [WeakSelf]()
 	{
-		if (IsValid(CounterBarrierVisualMID))
+		AFlowCounter* Self = WeakSelf.Get();
+		if (Self && IsValid(Self->CounterBarrierVisualMID))
 		{
-			CounterBarrierVisualMID->SetVectorParameterValue(FlowColorParam, FLinearColor::Blue);
+			Self->CounterBarrierVisualMID->SetVectorParameterValue(Self->FlowColorParam, FLinearColor::Blue);
 		}
 	}, 0.3f, false);
 }
@@ -1066,7 +1070,9 @@ void AFlowCounter::AssignAgentsToBuckets(TArray<int32> AllAgents)
 
 void AFlowCounter::AssignAgentToBuckets(int32 AgentID)
 {
-	// Get the agent's intersection location from the AgentsPassedThroughCounter map
+	// GT-only: reads AgentsPassedThroughCounter without AgentsMapRW lock. All current
+	// callers run on the game thread (Tick, NewSimTime, BlueprintCallable). Add locking
+	// if this ever grows a non-GT caller.
 	FFlowCounterCountedAgentData* AgentData = AgentsPassedThroughCounter.Find(AgentID);
 		
 	// is the data ptr valid ?
@@ -1077,9 +1083,7 @@ void AFlowCounter::AssignAgentToBuckets(int32 AgentID)
 		{
 			// we need to check if the agent's intersection location is within the bucket segment or on the start/end point of the segment
 			// TODO: Review this logic with Pete to ensure this is how we should be checking
-				
-			FFlowCounterBucketData BucketData = FlowCounterBucketData[i];
-				
+
 			// if (IsPointOnLineSegment(BucketData.SegmentStart, BucketData.SegmentEnd, AgentData->IntersectionLocation))
 			// {
 			// 	// Add the agent to the bucket
@@ -1154,7 +1158,8 @@ void AFlowCounter::RemoveAgentFromBuckets(int32 AgentID)
 
 void AFlowCounter::UpdateFlowBucketsWithCurrentAgentsFromTimeChange()
 {
-	// Get all the Agent IDs from the AgentsPassedThroughCounter map
+	// GT-only: reads AgentsPassedThroughCounter without AgentsMapRW lock. Called from
+	// NewSimTime on the game thread; if this ever grows a non-GT caller, add locking.
 	TArray<int32> AllAgents;
 	AgentsPassedThroughCounter.GetKeys(AllAgents);
 

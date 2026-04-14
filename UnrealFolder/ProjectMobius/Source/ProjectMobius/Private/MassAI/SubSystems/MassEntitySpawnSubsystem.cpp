@@ -137,8 +137,15 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
         {
                 if (auto StatSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>())
                 {
+#if !UE_BUILD_SHIPPING
+                        FMobiusMemSnapshot SnapFlowBefore = FMobiusMemSnapshot::Take(TEXT("FlowReset_Before"));
+                        SnapFlowBefore.LogAbsolute();
+#endif
                         StatSubsystem->ResetFlowCounters();
                         bHasResetFlowCounters = true;
+#if !UE_BUILD_SHIPPING
+                        FMobiusMemSnapshot::Take(TEXT("FlowReset_After")).LogDelta(SnapFlowBefore);
+#endif
                 }
         }
 
@@ -322,15 +329,16 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	// prevent the ~900MB of TMap/TArray memory from being reclaimed.
 	if (FSimulationFragment* Frag = SharedSimulationFragment.GetPtr<FSimulationFragment>())
 	{
-		for (auto& Pair : Frag->SimulationData)
-		{
-			Pair.Value.Empty();
-			Pair.Value.Shrink();
-		}
-		Frag->SimulationData.Empty();
-		Frag->SimulationData.Shrink();
+		// Reset the TSharedPtr — frees the 4 GB TMap independently of the Mass archetype
+		// that permanently holds the FSimulationFragment struct.
+		Frag->SimulationData.Reset();
 	}
 	SharedSimulationFragment = FSharedStruct();
+
+	// Second GC pass now that template + SimulationData are both released.
+	// The first pass (above) ran before DestroyTemplate, so the archetype still held refs then.
+	// This pass lets the allocator reclaim pages sooner after the 4 GB drop.
+	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSharedFragReset")).LogDelta(SnapSwitchStart);
@@ -442,6 +450,7 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		// PedestrianInitializeMOP fires after SpawnMaxPedestrians destroys the runnable,
 		// so SetEntityInfoByIndex / SetEntityRenderingByIndex must read from here instead.
 		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
+		AgentDataSubsystem->CachedEntityData.Shrink();
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));

@@ -12,6 +12,7 @@ public class ProjectMobiusTests : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"AutomationController",
 			"ProjectMobius",
 			"Hdf5DataPlugin",
 			"MassEntity",

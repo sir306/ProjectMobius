@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -106,7 +106,7 @@ void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	// Get the Game Instance 
+	// Get the Game Instance
 	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
 	{
 		// Bind the required Game Instance Delegates
@@ -117,7 +117,7 @@ void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		// Get the Current Data File set on the instance
 		// JSONDataFile = GameInst->GetPedestrianDataFilePath();
 		// GetJSONDataFile(JSONDataFile);
-		
+
 	}
 	else
 	{
@@ -139,7 +139,7 @@ void UAgentDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		// 	CalculateMaxEntitiesPermitted();
 		// }
 	}
-	
+
 }
 
 void UAgentDataSubsystem::Deinitialize()
@@ -156,17 +156,17 @@ void UAgentDataSubsystem::Deinitialize()
 void UAgentDataSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	
+
 	while (ProgressQueue.Dequeue(LoadProgress))
 	{
 		OnLoadSimulationDataProgress.Broadcast(LoadProgress);
 	}
-	
+
 	while (MaxAgentsQueue.Dequeue(MaxAgents))
 	{
 		OnMaxAgentCount.Broadcast(MaxAgents);
 	}
-	
+
 	// This temp fix but as we only should be changing loading text at a few key points this should be ok for now
 	while (LoadingTaskQueue.Dequeue(CurrentLoadingTask))
 	{
@@ -366,8 +366,8 @@ FProcessSimulationDataRunnable::FProcessSimulationDataRunnable(FString InJsonDat
 		return;
 	}
 
-	
-	
+
+
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
 	Thread = FRunnableThread::Create(this, TEXT("FProcessSimulationDataRunnable"), 0, TPri_Normal);
 }
@@ -404,10 +404,10 @@ bool FProcessSimulationDataRunnable::LoadFileAndDeserialize()
 		bShouldStop = true;
 		return false;
 	}
-	
+
 	// Ensure the simulation file type is set to unknown before loading - successful loading and deserializing will set this to the corresponding file type
 	SimulationFileType = ESimulationFileType::ESFT_Unknown;
-	//TODO: should really be doing equal not compare 
+	//TODO: should really be doing equal not compare
 	// check what the extension of the file is: JSON ? HDF5
 	if (FPaths::GetExtension(SimulationDataFilePath).Compare(FString("json"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
 	{
@@ -446,7 +446,7 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeJSONFile()
 	TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(SimulationDataFile);
 
 	JSONObject.Reset();
-	
+
 	// Deserialize JSON Data
 	bool bDeserializeSuccess = FJsonSerializer::Deserialize(JsonReader, JSONObject);
 
@@ -460,7 +460,7 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeJSONFile()
 		bShouldStop = true;
 		return false;
 	}
-	
+
 	// if successful we can set the simulation file type
 	SimulationFileType = ESimulationFileType::ESFT_JSON;
 
@@ -513,6 +513,10 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
 		}
 
 		// Convert to Mobius format
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot SnapJuelichBeforeConvert = FMobiusMemSnapshot::Take(TEXT("HDF5_Juelich_BeforeConvert"));
+		SnapJuelichBeforeConvert.LogAbsolute();
+#endif
 		if (!FHdf5SimulationReader::ConvertJuelichToMobiusFormat(
 			JuelichMeta, Trajectories,
 			Hdf5Data.Meta, Hdf5Data.Entities, Hdf5Data.Samples))
@@ -526,6 +530,9 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
 			return false;
 		}
 
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot::Take(TEXT("HDF5_Juelich_AfterConvert")).LogDelta(SnapJuelichBeforeConvert);
+#endif
 		UE_LOG(LogTemp, Log, TEXT("Loaded Juelich format HDF5 file: %d entities, %d samples"),
 			Hdf5Data.Entities.Num(), Hdf5Data.Samples.Num());
 	}
@@ -539,9 +546,16 @@ bool FProcessSimulationDataRunnable::LoadAndDeserializeHDF5File()
 		// Samples read - also detect if rotation and speed fields exist
 		bool bHasRotationField = true;
 		bool bHasSpeedField = true;
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot SnapHdf5BeforeRead = FMobiusMemSnapshot::Take(TEXT("HDF5_BeforeReadAllSamples"));
+		SnapHdf5BeforeRead.LogAbsolute();
+#endif
 		HDF5SimulationReader.ReadAllSamples(Hdf5Data.Samples, &bHasRotationField, &bHasSpeedField);
 		Hdf5Data.Meta.bHasRotationData = bHasRotationField;
 		Hdf5Data.Meta.bHasSpeedData = bHasSpeedField;
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot::Take(TEXT("HDF5_AfterReadAllSamples")).LogDelta(SnapHdf5BeforeRead);
+#endif
 
 		UE_LOG(LogTemp, Log, TEXT("Loaded Mobius format HDF5 file: %d entities, %d samples, has rotation: %s, has speed: %s"),
 			Hdf5Data.Entities.Num(), Hdf5Data.Samples.Num(),
@@ -572,7 +586,7 @@ void FProcessSimulationDataRunnable::ProcessMetadata(bool& bCalculateTimeBetween
 {
 	bCalculateTimeBetweenSteps = true;
 	bCalculateMaxTime = true;
-	
+
 	// Check what file we are working with
 	switch (SimulationFileType)
 	{
@@ -689,7 +703,7 @@ void FProcessSimulationDataRunnable::ReadHDF5MetadataValues(bool& bCalculateTime
 		// so that FinalizeProgress() still runs and charts render an empty state
 		return;
 	}
-	
+
 	// Did the HDF5 data contain metadata
 	if (Hdf5Data.Meta != FHdf5SimulationMetadata())//TODO: need to improve this equality check logic
 	{
@@ -708,10 +722,10 @@ void FProcessSimulationDataRunnable::ReadHDF5MetadataValues(bool& bCalculateTime
 			AgentMovementInfoData.MaxTime = Hdf5Data.Meta.Duration;
 			// get the sampling rate of the simulation from the metadata
 			TimeBetweenSteps = Hdf5Data.Meta.SamplingRate;
-			
+
 			// Calculate the number of samples
 			TargetDataCount = AgentMovementInfoData.MaxTime / TimeBetweenSteps;
-			
+
 			// don't calculate the time between steps
 			bCalculateTimeBetweenSteps = false;
 
@@ -730,18 +744,18 @@ void FProcessSimulationDataRunnable::ReadHDF5MetadataValues(bool& bCalculateTime
 				// get the simulation metadata
 				AgentMovementInfoData.MaxTime = Hdf5Data.Meta.Duration;
 			}
-			
+
 			// Set the target count to the simulation array count - as we know there is simulation data
 			TargetDataCount = Hdf5Data.Samples.Num();
 		}
-		
+
 	}
 	else
 	{
 		// Set the entity count from count of entities in the hdf5 Entities array if the metadata fields are not present or blank
 		MaxAgents = Hdf5Data.Entities.Num();
 	}
-	
+
 }
 
 void FProcessSimulationDataRunnable::RunSimulationDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime)
@@ -837,7 +851,7 @@ void FProcessSimulationDataRunnable::RunJsonSimDataGatheringLoop(bool bCalculate
 
 		// get the sample array for this
 		TArray<TSharedPtr<FJsonValue>> JSONSampleArray = JSONSimDataObject->GetArrayField(StringCast<TCHAR>("samples"));
-		
+
 		// the number of samples should technically be how many entities there are for this time step
 		NumOfAgentsPerTimeStep.Add(JSONSampleArray.Num());
 
@@ -993,7 +1007,7 @@ void FProcessSimulationDataRunnable::RunJsonSimDataGatheringLoop(bool bCalculate
 			AgentDataArray[EntityID].MovementData.Push(FMovementPreProcessData(Position));
 		}
 
-		AgentMovementInfoData.SimulationData.Add(CurrentDataCount, MovementSamples);
+		AgentMovementInfoData.SimulationData->Add(CurrentDataCount, MovementSamples);
 
 		// Calculate the current percentage of the data loaded
 		float CurrentPercentage = (float)CurrentDataCount / (float)TargetDataCount;
@@ -1066,7 +1080,7 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 		{
 			// Empty timestep - add empty array and continue
 			NumOfAgentsPerTimeStep.Add(0);
-			AgentMovementInfoData.SimulationData.Add(TimestepIdx, TArray<FSimMovementSample>());
+			AgentMovementInfoData.SimulationData->Add(TimestepIdx, TArray<FSimMovementSample>());
 			continue;
 		}
 
@@ -1222,7 +1236,7 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 		}
 
 		// Store movement samples for this timestep
-		AgentMovementInfoData.SimulationData.Add(TimestepIdx, MovementSamples);
+		AgentMovementInfoData.SimulationData->Add(TimestepIdx, MovementSamples);
 
 		// Calculate and report progress
 		float CurrentPercentage = (float)CurrentDataCount / (float)TargetDataCount;
@@ -1300,7 +1314,7 @@ void FProcessSimulationDataRunnable::CalculateRotationFromMovement()
 		// We store (timestep index, position) pairs for later sorting
 		TArray<TPair<int32, FVector>> EntityPositions;
 
-		for (auto& Pair : AgentMovementInfoData.SimulationData)
+		for (auto& Pair : *AgentMovementInfoData.SimulationData)
 		{
 			for (const FSimMovementSample& Sample : Pair.Value)
 			{
@@ -1357,7 +1371,7 @@ void FProcessSimulationDataRunnable::CalculateRotationFromMovement()
 
 			// Step 4: Update the rotation value in the actual simulation data
 			int32 Timestep = EntityPositions[i].Key;
-			for (FSimMovementSample& Sample : AgentMovementInfoData.SimulationData[Timestep])
+			for (FSimMovementSample& Sample : (*AgentMovementInfoData.SimulationData)[Timestep])
 			{
 				if (Sample.EntityID == EntityIdx)
 				{
@@ -1418,7 +1432,7 @@ void FProcessSimulationDataRunnable::CalculateSpeedFromMovement()
 		// We store (timestep index, position) pairs for later sorting
 		TArray<TPair<int32, FVector>> EntityPositions;
 
-		for (auto& Pair : AgentMovementInfoData.SimulationData)
+		for (auto& Pair : *AgentMovementInfoData.SimulationData)
 		{
 			for (const FSimMovementSample& Sample : Pair.Value)
 			{
@@ -1463,7 +1477,7 @@ void FProcessSimulationDataRunnable::CalculateSpeedFromMovement()
 
 			// Step 4: Update the speed value in the actual simulation data
 			int32 Timestep = EntityPositions[i].Key;
-			for (FSimMovementSample& Sample : AgentMovementInfoData.SimulationData[Timestep])
+			for (FSimMovementSample& Sample : (*AgentMovementInfoData.SimulationData)[Timestep])
 			{
 				if (Sample.EntityID == EntityIdx)
 				{
@@ -1495,7 +1509,7 @@ void FProcessSimulationDataRunnable::FinalizeProgress()
 		return;
 	}
 	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get();
-	
+
 	// Perform Animation Preprocessing data here
 	// Broadcast the current percentage of the data loaded
 	if (Subsys)
@@ -1512,7 +1526,7 @@ void FProcessSimulationDataRunnable::FinalizeProgress()
 	{
 		Subsys->LoadingTaskQueue.Enqueue(TEXT("Calculating Smoothed Step Movement Brackets..."));
 	}
-	
+
 	CalcSmoothedStepMovementBrackets(AgentDataArray);
 
 	// let the thread sleep for 0.5 second
@@ -1570,14 +1584,14 @@ uint32 FProcessSimulationDataRunnable:: Run()
 
 	bool bCalculateTimeBetweenSteps = true;
 	bool bCalculateMaxTime = true;
-	
+
 	if (Subsys)
 	{
 		Subsys->LoadingTaskQueue.Enqueue(TEXT("Processing Simulation Metadata..."));
 	}
 
 	ProcessMetadata(bCalculateTimeBetweenSteps, bCalculateMaxTime);
-	
+
 	if (Subsys)
 	{
 		Subsys->MaxAgentsQueue.Enqueue(MaxAgents);
@@ -1662,6 +1676,7 @@ uint32 FProcessSimulationDataRunnable:: Run()
 #if !UE_BUILD_SHIPPING
 		FMobiusMemSnapshot::Take(TEXT("Run_AfterSamplesFree")).LogDelta(SnapRunStart);
 #endif
+		FMemory::Trim();  // hint allocator to return freed JSON pages to OS
 	}
 
 	// Send the final progress and completion events
@@ -1704,15 +1719,9 @@ void FProcessSimulationDataRunnable::Exit()
 	Hdf5Data.Meta = FHdf5SimulationMetadata();
 	SimulationFileType = ESimulationFileType::ESFT_Unknown;
 
-	for (auto& Pair : AgentMovementInfoData.SimulationData)
-	{
-		Pair.Value.Empty();   // frees any extra capacity in each TArray
-		Pair.Value.Shrink();   // frees any extra capacity in each TArray
-	}
-
-	// Optionally clear large TArrays now to free memory immediately
-	AgentMovementInfoData.SimulationData.Empty();
-	AgentMovementInfoData.SimulationData.Shrink();
+	// Drop the TSharedPtr — frees the TMap and all TArrays it owns.
+	// If SimulationData was already MoveTemp'd to a FSharedStruct, this is a no-op (ptr is null).
+	AgentMovementInfoData.SimulationData.Reset();
 
 	AgentDataArray.Empty();
 	AgentDataArray.Shrink();
@@ -1738,18 +1747,18 @@ TArray<FSimMovementSample> FProcessSimulationDataRunnable::GetMovementSamples(in
 	TArray<FSimMovementSample> MovementSamples;
 
 	// check if the agent id exceeds the max agents
-	if (AgentID >= AgentMovementInfoData.SimulationData.Num())
+	if (!AgentMovementInfoData.SimulationData.IsValid() || AgentID >= AgentMovementInfoData.SimulationData->Num())
 	{
 		// throw error message
 	}
 	else
 	{
 		// loop through the simulation data and get the movement samples
-		for (int32 i = 0; i < AgentMovementInfoData.SimulationData.Num(); i++)
+		for (int32 i = 0; i < AgentMovementInfoData.SimulationData->Num(); i++)
 		{
 			if (bShouldStop) break;
 			// loop through the movement samples for this time step
-			for (FSimMovementSample MovementSample : AgentMovementInfoData.SimulationData[i])
+			for (FSimMovementSample MovementSample : (*AgentMovementInfoData.SimulationData)[i])
 			{
 				if (bShouldStop) break;
 				if (MovementSample.EntityID == AgentID)
@@ -1768,8 +1777,8 @@ void FProcessSimulationDataRunnable::CalcSmoothedStepMovementBrackets(const TArr
 	// Build O(1) lookup: SampleIndex[timestep][entityID] -> FSimMovementSample*
 	// This replaces the O(S) linear scan per SetAnimPt call with O(1) hash lookup
 	TMap<int32, TMap<int32, FSimMovementSample*>> SampleIndex;
-	SampleIndex.Reserve(AgentMovementInfoData.SimulationData.Num());
-	for (auto& Pair : AgentMovementInfoData.SimulationData)
+	SampleIndex.Reserve(AgentMovementInfoData.SimulationData->Num());
+	for (auto& Pair : *AgentMovementInfoData.SimulationData)
 	{
 		if (bShouldStop) break;
 		TMap<int32, FSimMovementSample*>& IndexMap = SampleIndex.Add(Pair.Key);
@@ -1889,13 +1898,13 @@ EPedestrianMovementBracket FProcessSimulationDataRunnable::CalculateStepAnimatio
 {
 	FVatMovementFrames Band = AvatarGaitSpeedBands[5]; // Default to the last band
 	// Fast loop through the GaitSpeedBands, testing CurrentSpeed against the HighVal, in ascending order, to assign the MovementBracket
-	// We have assumed that these gait parameters apply to avatars of 1.72m height 
+	// We have assumed that these gait parameters apply to avatars of 1.72m height
 	int iBracket = 0;
 	for (; iBracket < (sizeof(AvatarGaitSpeedBands) / sizeof(FVatMovementFrames) - 1); iBracket++) {
 		if (CurrentSpeed < AvatarGaitSpeedBands[iBracket].HighSpeed) {
 			break;
 		}
-	} 
+	}
 
 	StepsPerSecond = AvatarGaitSpeedBands[iBracket].AnimatedStepLength / CurrentSpeed;
 

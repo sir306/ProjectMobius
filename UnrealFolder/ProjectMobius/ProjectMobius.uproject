@@ -61,7 +61,7 @@
 		},
 		{
 			"Name": "ProjectMobiusTests",
-			"Type": "Developer",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}
 	],
