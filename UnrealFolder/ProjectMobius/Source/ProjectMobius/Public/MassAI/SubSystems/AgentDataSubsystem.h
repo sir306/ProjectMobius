@@ -117,7 +117,15 @@ virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UAg
 	 */
 	UFUNCTION()
 	void UpdateMaxAgentCount(int32 NewMaxAgentCount);
-	
+
+	/**
+	 * Drop cached-per-file state on file switch: CachedEntityData, ProgressQueue,
+	 * MaxAgentsQueue, LoadingTaskQueue. Called from MassEntitySpawnSubsystem at the
+	 * start of CreatePedestrianTemplateData so prior file residue isn't held through
+	 * the next load.
+	 */
+	void ClearPerFileState();
+
 protected:
 	/**
 	* Check File Path Exists 

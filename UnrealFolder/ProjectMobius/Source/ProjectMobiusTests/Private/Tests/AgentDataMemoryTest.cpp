@@ -15,7 +15,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "HAL/PlatformMemory.h"
-#include "MassAI/SubSystems/MemoryTraceHelper.h"
+#include "Util/MemoryTraceHelper.h"
 
 // ---------------------------------------------------------------------------
 // Helpers

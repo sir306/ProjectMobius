@@ -388,11 +388,14 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	// Make sure no residual data of the procedural mesh comp exists
 	ResetMeshCollisionAndPhysics();
 
+	// Reuse the anchor across loads. Destroying + respawning defers the old
+	// SceneImporter's teardown past the next LoadFile, so its AssetElementMapping
+	// still holds TObjectPtrs to the prior scene's RuntimeMesh/BodySetup objects
+	// when GC runs — 837+ transient UObjects survive every switch. Reset() clears
+	// those maps synchronously before LoadFile repopulates them.
 	if (RuntimeDatasmithAnchor)
 	{
-		auto ActorToDestroy = RuntimeDatasmithAnchor;
-		ActorToDestroy->Destroy();
-		RuntimeDatasmithAnchor = nullptr;
+		RuntimeDatasmithAnchor->Reset();
 	}
 
 	// Double-flush queues in case async work enqueued new items during teardown
@@ -424,8 +427,12 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 		// set the flag to indicate this is a datasmith file
 		bIsDatasmithAsset = true;
 
-		// spawn a runtime datasmtih actor to load the mesh
-		RuntimeDatasmithAnchor = GetWorld()->SpawnActor<ADatasmithRuntimeActor>();
+		// Spawn only on first load; subsequent loads reuse the same actor so the
+		// plugin's SceneImporter teardown runs before the next scene populates.
+		if (RuntimeDatasmithAnchor == nullptr)
+		{
+			RuntimeDatasmithAnchor = GetWorld()->SpawnActor<ADatasmithRuntimeActor>();
+		}
 
 		if(MeshFileName.Contains(".udatasmith"))
 		{
@@ -457,31 +464,36 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			// import the mesh data into the anchor
 			RuntimeDatasmithAnchor->LoadFile(MeshFileName);
 
-			// Async task to check if the scene is loaded
-			Async(EAsyncExecution::ThreadPool, [this]()
+			// Async task to check if the scene is loaded.
+			// Poll on thread pool, then marshal material setup back to GT — use
+			// TWeakObjectPtr so the actor being torn down during the poll doesn't
+			// leave the worker / GT lambdas dereferencing a destroyed this.
+			TWeakObjectPtr<ARuntimeMeshBuilder> WeakThis(this);
+			Async(EAsyncExecution::ThreadPool, [WeakThis]()
 			      {
 				      FPlatformProcess::Sleep(5.0f);
-				      // log building and receiving
-				      UE_LOG(LogTemp, Warning, TEXT("1Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
-				      while (RuntimeDatasmithAnchor->bBuilding || RuntimeDatasmithAnchor->IsReceiving())
+				      ARuntimeMeshBuilder* Self = WeakThis.Get();
+				      if (!Self || !Self->RuntimeDatasmithAnchor) return;
+				      UE_LOG(LogTemp, Warning, TEXT("1Building: %d, Receiving: %d"), Self->RuntimeDatasmithAnchor->bBuilding, Self->RuntimeDatasmithAnchor->IsReceiving());
+				      while (Self->RuntimeDatasmithAnchor->bBuilding || Self->RuntimeDatasmithAnchor->IsReceiving())
 				      {
-					      // log building and receiving
-					      UE_LOG(LogTemp, Warning, TEXT("2Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
-					      // sleep for 0.05 seconds
+					      UE_LOG(LogTemp, Warning, TEXT("2Building: %d, Receiving: %d"), Self->RuntimeDatasmithAnchor->bBuilding, Self->RuntimeDatasmithAnchor->IsReceiving());
 					      FPlatformProcess::Sleep(0.05f);
+					      Self = WeakThis.Get();
+					      if (!Self || !Self->RuntimeDatasmithAnchor) return;
 				      }
-				      // log building and receiving
-				      UE_LOG(LogTemp, Warning, TEXT("3Building: %d, Receiving: %d"), RuntimeDatasmithAnchor->bBuilding, RuntimeDatasmithAnchor->IsReceiving());
+				      UE_LOG(LogTemp, Warning, TEXT("3Building: %d, Receiving: %d"), Self->RuntimeDatasmithAnchor->bBuilding, Self->RuntimeDatasmithAnchor->IsReceiving());
 
-			      }, [this]()
+			      }, [WeakThis]()
 			      {
-
-				      AsyncTask(ENamedThreads::GameThread,[this] {
-					      CreateDatasmithMaterials();
-					      // lights imported by datasmith can cause performance issues, so may need to disable cast shadows or reduce
-					      // the size of point light radius and intensitys
-
-					      bIsResettingForNewLoad = false;
+				      AsyncTask(ENamedThreads::GameThread, [WeakThis] {
+					      if (ARuntimeMeshBuilder* Self = WeakThis.Get())
+					      {
+						      Self->CreateDatasmithMaterials();
+						      // lights imported by datasmith can cause performance issues, so may need to disable cast shadows or reduce
+						      // the size of point light radius and intensitys
+						      Self->bIsResettingForNewLoad = false;
+					      }
 				      });
 
 			      });
@@ -574,9 +586,10 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 		ExistingRunnable->Stop();
 		ExistingRunnable->Exit();
 
-		AsyncTask(ENamedThreads::GameThread, [&ExistingRunnable]
+		// Capture by value — ExistingRunnable is a stack-local pointer and goes
+		// out of scope when this function returns, before the GT task runs.
+		AsyncTask(ENamedThreads::GameThread, [ExistingRunnable]
 		{
-			// Delete the existing runnable on the game thread
 			delete ExistingRunnable;
 		});
 	}
@@ -662,9 +675,10 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 		ExistingRunnable->Stop();
 		ExistingRunnable->Exit();
 
-		AsyncTask(ENamedThreads::GameThread, [&ExistingRunnable]
+		// Capture by value — ExistingRunnable is a stack-local pointer and goes
+		// out of scope when this function returns, before the GT task runs.
+		AsyncTask(ENamedThreads::GameThread, [ExistingRunnable]
 		{
-			// Delete the existing runnable on the game thread
 			delete ExistingRunnable;
 		});
 	}

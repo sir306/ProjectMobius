@@ -5,6 +5,7 @@
 
 #include "Actors/FlowCounter.h"
 #include "Subsystems/StatisticActorManagementSubsystem.h"
+#include "Util/MemoryTraceHelper.h"
 
 UStatisticSubsystem::UStatisticSubsystem()
 {
@@ -27,6 +28,12 @@ void UStatisticSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UStatisticSubsystem::Deinitialize()
 {
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapDeinit = FMobiusMemSnapshot::Take(
+		FString::Printf(TEXT("StatSub_Deinit_Start[flow=%d,active=%d,agents=%d]"),
+			FlowCounters.Num(), ActiveFlowCounters.Num(), PedestrianAgentData.Num()));
+#endif
+
 	Super::Deinitialize();
 
 	// unbind to the flow counters changed delegate
@@ -34,6 +41,10 @@ void UStatisticSubsystem::Deinitialize()
 	{
 		StatisticActorManagementSubsystem->OnFlowCountersChanged.Unbind();
 	}
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("StatSub_Deinit_End")).LogDelta(SnapDeinit);
+#endif
 }
 
 void UStatisticSubsystem::OnWorldBeginPlay(UWorld& InWorld)
@@ -91,8 +102,10 @@ void UStatisticSubsystem::UpdateFlowCounters()
 
 	if (StatisticActorManagementSubsystem)
 	{
-		// TODO: not really efficient to clear and re-add the flow counters every time this is called but for now it is fine
-		FlowCounters.Empty();
+		// Copy-assign is enough — TArray::operator= replaces contents. Previous code
+		// also called Empty() first which triggered an extra allocator trip on every
+		// FlowCounter Add/Remove broadcast (O(N²) churn at startup with 100 counters).
+		// TODO: switch to delta add/remove instead of full-array rebroadcast.
 		FlowCounters = StatisticActorManagementSubsystem->FlowCounters;
 	}
 }
@@ -183,6 +196,11 @@ void UStatisticSubsystem::SendDataToFlowCounter(const FFlowCounterData& FlowData
 
 void UStatisticSubsystem::ResetFlowCounters()
 {
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapResetAll = FMobiusMemSnapshot::Take(
+		FString::Printf(TEXT("StatSub_ResetAll_Start[flow=%d]"), FlowCounters.Num()));
+#endif
+
 	for (AFlowCounter* FlowCounter : FlowCounters)
 	{
 		if (FlowCounter)
@@ -194,6 +212,10 @@ void UStatisticSubsystem::ResetFlowCounters()
 			UE_LOG(LogTemp, Warning, TEXT("FlowCounter is null"));
 		}
 	}
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("StatSub_ResetAll_End")).LogDelta(SnapResetAll);
+#endif
 }
 
 void UStatisticSubsystem::AddRemoveActiveFlowCounter(AFlowCounter* FlowCounter, bool bAddToActiveCounters)

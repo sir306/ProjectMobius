@@ -50,7 +50,7 @@
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
-#include "MassAI/SubSystems/MemoryTraceHelper.h"
+#include "Util/MemoryTraceHelper.h"
 #include "Subsystems/StatisticSubsystem.h"
 
 class UTimeDilationSubSystem;
@@ -207,9 +207,32 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 	auto* ExistingActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
 	if (ExistingActor)
 	{
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot NiaPrev = FMobiusMemSnapshot::Take(TEXT("Niagara_BeforeClearSimCache"));
+#endif
 		ExistingActor->GetNiagaraComponent()->ClearSimCache(true);
+#if !UE_BUILD_SHIPPING
+		{
+			FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("Niagara_AfterClearSimCache"));
+			S.LogDelta(NiaPrev);
+			NiaPrev = S;
+		}
+#endif
 		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
+#if !UE_BUILD_SHIPPING
+		{
+			FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("Niagara_AfterDeactivate"));
+			S.LogDelta(NiaPrev);
+			NiaPrev = S;
+		}
+#endif
 		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
+#if !UE_BUILD_SHIPPING
+		{
+			FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("Niagara_AfterDestroyInstance"));
+			S.LogDelta(NiaPrev);
+		}
+#endif
 	}
 }
 
@@ -284,6 +307,23 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot SnapSwitchStart = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterRunnableCleanup"));
 	SnapSwitchStart.LogAbsolute();
+	FMobiusMemSnapshot SnapPrev = SnapSwitchStart;
+#endif
+
+	// Drop per-file caches (CachedEntityData + subsystem TQueues) BEFORE we destroy
+	// entities and the template. Those caches are never reached by GC and were
+	// observed to hold prior-file residue across switches.
+	if (AgentDataSubsystem)
+	{
+		AgentDataSubsystem->ClearPerFileState();
+	}
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterClearPerFileState"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
 #endif
 
 	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
@@ -297,9 +337,34 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		}
 	}
 
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterCapsuleDestroy"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	// Destroy any existing spawned pedestrians and clear the Niagara simulation
 	DestroyAllSpawnedPedestrians();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterDestroyAllSpawned"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	ClearNiagaraSim();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterClearNiagara"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
 
 	// Empty out the handles array
 	SpawnedEntityPedestrianHandles.Empty();
@@ -309,7 +374,11 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
 #if !UE_BUILD_SHIPPING
-	FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterDestroyAllAndGC")).LogDelta(SnapSwitchStart);
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterFirstGC"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
 #endif
 
 	// Destroy old template entry in the registry — FindOrAddTemplate never replaces existing
@@ -319,8 +388,24 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	TemplateRegistryInstance.DestroyTemplate(RegisteredPedestrianTemplateID);
 	RegisteredPedestrianTemplateID.Invalidate();
 
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterDestroyTemplate"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	// Reset the template data
 	PedestrianTemplateData = FMassEntityTemplateData();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterTemplateDataReset"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
 
 	// Drop our ref to the old simulation fragment so it can be freed now that the
 	// TemplateRegistryInstance has also released its ref.
@@ -333,7 +418,24 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		// that permanently holds the FSimulationFragment struct.
 		Frag->SimulationData.Reset();
 	}
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSimDataReset"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	SharedSimulationFragment = FSharedStruct();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSharedStructCleared"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
 
 	// Second GC pass now that template + SimulationData are both released.
 	// The first pass (above) ran before DestroyTemplate, so the archetype still held refs then.
@@ -341,7 +443,76 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
 #if !UE_BUILD_SHIPPING
-	FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSharedFragReset")).LogDelta(SnapSwitchStart);
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSecondGC"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+	// Hint the allocator to return freed pages to the OS. App-level frees without
+	// Trim often keep pages in the process's working set, masking whether the
+	// earlier steps actually released memory.
+	FMemory::Trim();
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapAfterTrim = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterMemTrim"));
+	SnapAfterTrim.LogDelta(SnapPrev);
+	// Cumulative drop vs the start of the switch, for quick scanning.
+	SnapAfterTrim.LogDelta(SnapSwitchStart);
+
+	// Diagnostic probe A: MemReport -full. Writes Saved/Profiling/MemReports/
+	// <timestamp>.memreport + .memreportgpu with the full allocator / UObject / RHI
+	// breakdown. One file per switch — diff them to see what's retained. This is
+	// temporary instrumentation; revert before committing to main.
+	if (GEngine && GetWorld())
+	{
+		GEngine->Exec(GetWorld(), TEXT("MemReport -full"));
+	}
+
+	// Diagnostic probe B: poll memory every 500ms for 5s after the switch kicks
+	// off. Tells us whether Phys drops on its own (allocator is lazy) vs. stays
+	// flat (genuine retention). The next file's async load will start inflating
+	// Phys partway through the poll window — read the first 1-2 samples for the
+	// steady-state cleanup signal.
+	if (UWorld* World = GetWorld())
+	{
+		struct FPollState
+		{
+			FMobiusMemSnapshot Baseline;
+			FMobiusMemSnapshot Prev;
+			int32              Count = 0;
+			FTimerHandle       Handle;
+		};
+		TSharedRef<FPollState> State = MakeShared<FPollState>();
+		State->Baseline = FMobiusMemSnapshot::Take(TEXT("FileSwitch_PollBaseline"));
+		State->Prev     = State->Baseline;
+
+		TWeakObjectPtr<UMassEntitySpawnSubsystem> WeakThis(this);
+		World->GetTimerManager().SetTimer(State->Handle, FTimerDelegate::CreateLambda(
+			[State, WeakThis]()
+			{
+				if (!WeakThis.IsValid()) { return; }
+				++State->Count;
+				FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(
+					FString::Printf(TEXT("FileSwitch_Poll[%d]"), State->Count));
+				S.LogDelta(State->Baseline);   // vs. cleanup-end baseline
+				S.LogDelta(State->Prev);       // vs. previous 500ms sample
+				State->Prev = S;
+
+				if (State->Count >= 10)
+				{
+					if (UMassEntitySpawnSubsystem* Self = WeakThis.Get())
+					{
+						if (UWorld* W = Self->GetWorld())
+						{
+							W->GetTimerManager().ClearTimer(State->Handle);
+						}
+					}
+				}
+			}),
+			0.5f, /*bLoop=*/true);
+	}
 #endif
 
 	LoadPedestrianData();

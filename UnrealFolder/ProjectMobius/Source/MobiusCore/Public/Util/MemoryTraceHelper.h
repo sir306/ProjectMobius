@@ -22,7 +22,7 @@
 #include "HAL/PlatformTime.h"
 #include "Logging/LogMacros.h"
 
-PROJECTMOBIUS_API DECLARE_LOG_CATEGORY_EXTERN(LogMobiusMemory, Log, All);
+MOBIUSCORE_API DECLARE_LOG_CATEGORY_EXTERN(LogMobiusMemory, Log, All);
 
 struct FMobiusMemSnapshot
 {

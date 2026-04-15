@@ -542,34 +542,38 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(
 	const TArray<FVector>& FallbackLocations)
 {
 	//TRACE_CPUPROFILER_EVENT_SCOPE("RunAsyncHeatmapUpdate_Mpmc");
-	TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
-	Async(EAsyncExecution::Thread, [WeakSelf, ValidLocations, FallbackLocations]()
-	{
-		if (!WeakSelf.IsValid()) return;
-		UHeatmapSubsystem* Self = WeakSelf.Get();
-		//TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+	// Snapshot Heatmaps on GT as weak ptrs so the worker iterates a stable array
+	// and can re-validate each element before use. Direct iteration of the live
+	// TArray races with GT add/remove and actor GC.
+	TArray<TWeakObjectPtr<AHeatmapPixelTextureVisualizer>> HeatmapsSnapshot;
+	HeatmapsSnapshot.Reserve(Heatmaps.Num());
+	for (AHeatmapPixelTextureVisualizer* HM : Heatmaps) { HeatmapsSnapshot.Add(HM); }
 
-		ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
+	Async(EAsyncExecution::Thread, [HeatmapsSnapshot, ValidLocations, FallbackLocations]()
+	{
+		//TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+		ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
 		{
-			if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
+			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
+			if (!HM || !IsValid(HM)) return;
+			if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
 			{
-				Self->Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
+				HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
 			}
-			else if (Self->Heatmaps[i])
+			else
 			{
-				Self->Heatmaps[i]->UpdateHeatmapAgentCount(FallbackLocations);
+				HM->UpdateHeatmapAgentCount(FallbackLocations);
 			}
 		});
 	},
-	[WeakSelf]()
+	[HeatmapsSnapshot]()
 	{
-		if (!WeakSelf.IsValid()) return;
-		UHeatmapSubsystem* Self = WeakSelf.Get();
-		ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
+		ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
 		{
-			if (Self->Heatmaps[i])
+			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
+			if (HM && IsValid(HM))
 			{
-				Self->Heatmaps[i]->UpdateHeatmapTextureRender();
+				HM->UpdateHeatmapTextureRender();
 			}
 		});
 	});
@@ -580,37 +584,38 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArr
                                               const TArray<TArray<FVector>>& ValidLocations)
 {
 	///TRACE_CPUPROFILER_EVENT_SCOPE("RunAsyncHeatmapUpdate");
-        TWeakObjectPtr<UHeatmapSubsystem> WeakSelf(this);
-        Async(EAsyncExecution::Thread, [WeakSelf, LocationArray, ValidLocations]()
-              {
-                      if (!WeakSelf.IsValid())
-                              return;
-                      UHeatmapSubsystem* Self = WeakSelf.Get();
-                      //TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
-        	
-                      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
-                      {
-                              if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
-                              {
-                                      Self->Heatmaps[i]->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
-                              }
-                              else if (Self->Heatmaps[i])
-                              {
-                                      Self->Heatmaps[i]->UpdateHeatmapAgentCount(LocationArray);
-                              }
-                      });
-              },
-              [WeakSelf]()
-              {
-                      if (!WeakSelf.IsValid())
-                              return;
-                      UHeatmapSubsystem* Self = WeakSelf.Get();
-                      ParallelFor(Self->Heatmaps.Num(), [&](int32 i)
-                      {
-                              if (Self->Heatmaps[i] && !Self->Heatmaps[i]->IsHidden())
-                              {
-                                      Self->Heatmaps[i]->UpdateHeatmapTextureRender();
-                              }
-                      });
-              });
+	// Snapshot Heatmaps on GT as weak ptrs so the worker iterates a stable array
+	// and can re-validate each element before use.
+	TArray<TWeakObjectPtr<AHeatmapPixelTextureVisualizer>> HeatmapsSnapshot;
+	HeatmapsSnapshot.Reserve(Heatmaps.Num());
+	for (AHeatmapPixelTextureVisualizer* HM : Heatmaps) { HeatmapsSnapshot.Add(HM); }
+
+	Async(EAsyncExecution::Thread, [HeatmapsSnapshot, LocationArray, ValidLocations]()
+	      {
+	              //TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
+	              ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
+	              {
+	                      AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
+	                      if (!HM || !IsValid(HM)) return;
+	                      if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
+	                      {
+	                              HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
+	                      }
+	                      else
+	                      {
+	                              HM->UpdateHeatmapAgentCount(LocationArray);
+	                      }
+	              });
+	      },
+	      [HeatmapsSnapshot]()
+	      {
+	              ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
+	              {
+	                      AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
+	                      if (HM && IsValid(HM) && !HM->IsHidden())
+	                      {
+	                              HM->UpdateHeatmapTextureRender();
+	                      }
+	              });
+	      });
 }

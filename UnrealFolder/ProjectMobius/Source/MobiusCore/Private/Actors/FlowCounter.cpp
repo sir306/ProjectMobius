@@ -9,6 +9,7 @@
 #include "Subsystems/StatisticActorManagementSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Util/MemoryTraceHelper.h"
 
 // Shared base material for all FlowCounters (loaded once, reused).
 static TWeakObjectPtr<UMaterialInterface> GFlowCounterBaseMaterial;
@@ -441,6 +442,12 @@ void AFlowCounter::BeginPlay()
 
 void AFlowCounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapFcEndStart = FMobiusMemSnapshot::Take(
+		FString::Printf(TEXT("FC_EndPlay_Start[%s:%d/%d]"),
+			*GetName(), AgentsPassedThroughCounter.Num(), PreviousTrackedAgentLocations.Num()));
+#endif
+
 	bTearingDown.Store(true);   // visible to all threads
 
 	// 1) Unregister from subsystems so no NEW calls are scheduled
@@ -469,6 +476,10 @@ void AFlowCounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		FWriteScopeLock _(TrackedPrevMapRW);
 		PreviousTrackedAgentLocations.Empty();
 	}
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(FString::Printf(TEXT("FC_EndPlay_End[%s]"), *GetName())).LogDelta(SnapFcEndStart);
+#endif
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -932,6 +943,23 @@ void AFlowCounter::RemoveFlowCounterToSubsystem()
 
 void AFlowCounter::ResetFlowCounterTrackingData()
 {
+#if !UE_BUILD_SHIPPING
+	// Skip the probe log when there's nothing to reset. At spawn this method fires
+	// four times per counter (from MoveGatePillar → UpdateFlowCounterTriggerBox
+	// path x2 pillars) with empty maps, spamming the log. Only probe when real
+	// data is being cleared.
+	const bool bHadData = AgentsPassedThroughCounter.Num() > 0
+		|| PreviousTrackedAgentLocations.Num() > 0
+		|| FlowCounterCount.load() > 0;
+	TOptional<FMobiusMemSnapshot> SnapResetStart;
+	if (bHadData)
+	{
+		SnapResetStart = FMobiusMemSnapshot::Take(
+			FString::Printf(TEXT("FC_Reset_Start[%s:passed=%d,tracked=%d,buckets=%d]"),
+				*GetName(), AgentsPassedThroughCounter.Num(), PreviousTrackedAgentLocations.Num(), FlowCounterBucketData.Num()));
+	}
+#endif
+
 	// Reset the flow counter count to 0
 	FlowCounterCount.exchange(0);
 	// Clear the previous tracked agent locations
@@ -953,6 +981,13 @@ void AFlowCounter::ResetFlowCounterTrackingData()
 		Bucket.AgentIDs.Empty();
 		Bucket.AgentCount = 0;
 	}
+
+#if !UE_BUILD_SHIPPING
+	if (SnapResetStart.IsSet())
+	{
+		FMobiusMemSnapshot::Take(FString::Printf(TEXT("FC_Reset_End[%s]"), *GetName())).LogDelta(SnapResetStart.GetValue());
+	}
+#endif
 }
 
 void AFlowCounter::NewSimTime(float UpdatedTime)

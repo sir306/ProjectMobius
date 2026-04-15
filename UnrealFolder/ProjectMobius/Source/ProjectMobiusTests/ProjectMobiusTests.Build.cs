@@ -21,6 +21,7 @@ public class ProjectMobiusTests : ModuleRules
 			"MassSpawner",
 			"Json",
 			"JsonUtilities",
+			"MobiusCore",
 		});
 	}
 }

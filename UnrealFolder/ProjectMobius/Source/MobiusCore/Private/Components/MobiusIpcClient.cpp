@@ -1,4 +1,5 @@
 ﻿#include "Components/MobiusIpcClient.h"
+#include "Async/Async.h"
 #include "HAL/PlatformProcess.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
@@ -175,9 +176,19 @@ uint32 FMobiusIpcClient::Run()
                     break;
                 }
 
+                // Delegate listeners (e.g. IpcSubsystem::OnIpcMessage) touch UObject
+                // state — marshal to GT and re-validate the client is still alive.
                 if (OnMessage.IsBound())
                 {
-                    OnMessage.Execute(Buf);
+                    TWeakPtr<FMobiusIpcClient> WeakSelf = AsShared();
+                    AsyncTask(ENamedThreads::GameThread,
+                        [WeakSelf, Payload = MoveTemp(Buf)]()
+                        {
+                            if (TSharedPtr<FMobiusIpcClient> Self = WeakSelf.Pin())
+                            {
+                                Self->OnMessage.ExecuteIfBound(Payload);
+                            }
+                        });
                 }
             }
 #elif PLATFORM_MAC
@@ -219,9 +230,19 @@ uint32 FMobiusIpcClient::Run()
                     break;
                 }
 
+                // Delegate listeners (e.g. IpcSubsystem::OnIpcMessage) touch UObject
+                // state — marshal to GT and re-validate the client is still alive.
                 if (OnMessage.IsBound())
                 {
-                    OnMessage.Execute(Buf);
+                    TWeakPtr<FMobiusIpcClient> WeakSelf = AsShared();
+                    AsyncTask(ENamedThreads::GameThread,
+                        [WeakSelf, Payload = MoveTemp(Buf)]()
+                        {
+                            if (TSharedPtr<FMobiusIpcClient> Self = WeakSelf.Pin())
+                            {
+                                Self->OnMessage.ExecuteIfBound(Payload);
+                            }
+                        });
                 }
             }
             else

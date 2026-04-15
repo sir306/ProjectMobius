@@ -42,11 +42,7 @@
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
-#include "MassAI/SubSystems/MemoryTraceHelper.h"
-
-#if !UE_BUILD_SHIPPING
-DEFINE_LOG_CATEGORY(LogMobiusMemory);
-#endif
+#include "Util/MemoryTraceHelper.h"
 
 namespace
 {
@@ -312,6 +308,27 @@ void UAgentDataSubsystem::UpdateMaxAgentCount(int32 NewMaxAgentCount)
 
 	// log the new max agent count
 	UE_LOG(LogTemp, Warning, TEXT("New Max Agent Count: %d"), MaxAgents);
+}
+
+void UAgentDataSubsystem::ClearPerFileState()
+{
+	// CachedEntityData holds the previous file's FHdf5EntityData array. It was
+	// only ever overwritten when the next file's BuildFrag ran, so between
+	// switches the prior payload stayed live. Drop it now.
+	CachedEntityData.Empty();
+	CachedEntityData.Shrink();
+
+	// Drain the Tick-fed queues so they don't retain slot capacity from the
+	// prior file. TQueue has no Shrink; dequeue loop is cheapest.
+	{
+		float  Tmp = 0.f;   while (ProgressQueue.Dequeue(Tmp))     { }
+	}
+	{
+		int32  Tmp = 0;     while (MaxAgentsQueue.Dequeue(Tmp))    { }
+	}
+	{
+		FString Tmp;        while (LoadingTaskQueue.Dequeue(Tmp))  { }
+	}
 }
 
 bool UAgentDataSubsystem::CheckFilePathExists(FString FilePath)
@@ -1711,6 +1728,10 @@ void FProcessSimulationDataRunnable::Exit()
 	if (HDF5SimulationReader.IsOpen())
 	{
 		HDF5SimulationReader.CloseFile();
+		// TODO: add a GarbageCollect() wrapper on FHdf5SimulationReader that calls
+		// H5garbage_collect() — libhdf5 retains per-property-list caches across
+		// CloseFile and they're typically 10-30MB per file. Requires exposing
+		// the HDF5 C API header through the plugin's public include path first.
 	}
 	Hdf5Data.Entities.Empty();
 	Hdf5Data.Entities.Shrink();
