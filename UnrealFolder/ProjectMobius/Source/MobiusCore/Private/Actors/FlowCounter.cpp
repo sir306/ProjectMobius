@@ -477,6 +477,11 @@ void AFlowCounter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		PreviousTrackedAgentLocations.Empty();
 	}
 
+	// Drop the dynamic material instance reference. UE actor destruction reclaims
+	// declared subobjects but not MIDs created via CreateDynamicMaterialInstance,
+	// which otherwise remain rooted via this UPROPERTY across simulation switches.
+	CounterBarrierVisualMID = nullptr;
+
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot::Take(FString::Printf(TEXT("FC_EndPlay_End[%s]"), *GetName())).LogDelta(SnapFcEndStart);
 #endif

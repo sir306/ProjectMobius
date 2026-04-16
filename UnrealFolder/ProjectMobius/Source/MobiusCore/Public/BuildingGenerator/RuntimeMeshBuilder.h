@@ -131,6 +131,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MeshGenerator|UpdateMethods")
 	void UpdateMeshFileName();
 
+private:
+	/**
+	 * Continuation of UpdateMeshFileName that runs after the DatasmithRuntime
+	 * SceneImporter has processed its ResetScene task (one game-thread tick
+	 * after Reset()). Dispatches to the .udatasmith/.ifc or fbx loader using
+	 * the member MeshFileName. Called directly on first load, via
+	 * DeferredLoadTimerHandle otherwise.
+	 */
+	void ContinueLoadAfterPurge();
+
+	/** Pending one-shot timer for the deferred continuation. Cleared/replaced
+	 *  on every new UpdateMeshFileName so rapid switches don't stack callbacks. */
+	FTimerHandle DeferredLoadTimerHandle;
+
+public:
+
 	/**
 	 * Function to update the Mesh Data via the Async Assimp 
 	 * 

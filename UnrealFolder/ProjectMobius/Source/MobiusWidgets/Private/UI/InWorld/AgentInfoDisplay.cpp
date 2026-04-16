@@ -60,6 +60,19 @@ void UAgentInfoDisplay::ReleaseSlateResources(bool bReleaseChildren)
 	FollowIndicatorWidget.Reset();
 }
 
+void UAgentInfoDisplay::BeginDestroy()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
+		{
+			StatSub->OnSelectedAgentInfoChanged.RemoveAll(this);
+		}
+	}
+
+	Super::BeginDestroy();
+}
+
 TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
 {
 	// Create the children

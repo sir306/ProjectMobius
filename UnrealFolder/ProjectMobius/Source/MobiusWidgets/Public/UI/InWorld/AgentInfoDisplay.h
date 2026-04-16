@@ -61,6 +61,7 @@ protected:
 	virtual void SynchronizeProperties() override;
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void BeginDestroy() override;
 
 	TSharedPtr<SAgentFollowIndicator> HoverWidget;
 	TSharedPtr<SAgentFollowIndicator> FollowIndicatorWidget;

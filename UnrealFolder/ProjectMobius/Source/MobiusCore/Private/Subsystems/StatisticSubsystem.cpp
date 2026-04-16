@@ -218,6 +218,25 @@ void UStatisticSubsystem::ResetFlowCounters()
 #endif
 }
 
+void UStatisticSubsystem::ResetForFileSwitch()
+{
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapStart = FMobiusMemSnapshot::Take(
+		FString::Printf(TEXT("StatSub_ResetForFileSwitch_Start[agents=%d]"),
+			PedestrianAgentData.Num()));
+#endif
+
+	PedestrianAgentData.Empty();
+	SelectedAgentData = FAgentMeshViewer();
+	HoveredAgentData = FAgentMeshViewer();
+
+	OnSelectedAgentInfoChanged.Broadcast();
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("StatSub_ResetForFileSwitch_End")).LogDelta(SnapStart);
+#endif
+}
+
 void UStatisticSubsystem::AddRemoveActiveFlowCounter(AFlowCounter* FlowCounter, bool bAddToActiveCounters)
 {
 	if (bAddToActiveCounters && FlowCounter)

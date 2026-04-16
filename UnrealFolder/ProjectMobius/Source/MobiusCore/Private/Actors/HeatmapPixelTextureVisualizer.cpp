@@ -760,13 +760,19 @@ void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSiz
 	MeshUVs.Empty();
 	MeshTriangles.Empty();
 
-	// Because grid mesh building is a heavy task we need to do it off the game thread
-	AsyncTask(ENamedThreads::AnyThread, [this, NumTriangles, MeshSize, bIsStandardHeatmap]()
+	// Because grid mesh building is a heavy task we need to do it off the game thread.
+	// Capture via TWeakObjectPtr so a destroyed actor (e.g. file switch mid-build)
+	// doesn't leave the worker dereferencing freed members.
+	TWeakObjectPtr<AHeatmapPixelTextureVisualizer> WeakThis(this);
+	AsyncTask(ENamedThreads::AnyThread, [WeakThis, NumTriangles, MeshSize, bIsStandardHeatmap]()
 	{
-		UKismetProceduralMeshLibrary::CreateGridMeshWelded(NumTriangles.X, NumTriangles.Y, MeshTriangles, MeshVertices, MeshUVs, 25);
+		AHeatmapPixelTextureVisualizer* Self = WeakThis.Get();
+		if (!Self || !IsValid(Self->RuntimeHeatmapMeshComponent)) return;
+
+		UKismetProceduralMeshLibrary::CreateGridMeshWelded(NumTriangles.X, NumTriangles.Y, Self->MeshTriangles, Self->MeshVertices, Self->MeshUVs, 25);
 
 		// Update the mesh
-		RuntimeHeatmapMeshComponent->CreateMeshSection(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+		Self->RuntimeHeatmapMeshComponent->CreateMeshSection(0, Self->MeshVertices, Self->MeshTriangles, TArray<FVector>(), Self->MeshUVs, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
 	});
 	
 }
@@ -1037,37 +1043,41 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 		return;
 	}
 
-	if(MeshVertices.Num() > 0 || MeshUVs.Num() > 0)
+	if(MeshVertices.Num() > 0 || MeshUVs.Num() > 0 || MeshTriangles.Num() > 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("GenerateMeshVerticesUVsAndTriangles: Clearing pre-existing mesh data"));
 		MeshVertices.Empty();
 		MeshUVs.Empty();
+		MeshTriangles.Empty();
 	}
 
 	
-	Async(EAsyncExecution::ThreadPool, [this, NumTriangles, CellSize, MeshBuilder]()
+	// Capture via TWeakObjectPtr so a destroyed actor doesn't leave the
+	// worker / GT continuation dereferencing freed members during a file switch.
+	TWeakObjectPtr<AHeatmapPixelTextureVisualizer> WeakThis(this);
+	Async(EAsyncExecution::ThreadPool, [WeakThis, NumTriangles, CellSize, MeshBuilder]()
 	      {
-		      // Input validation performed before dispatching this task
-		
+		      AHeatmapPixelTextureVisualizer* Self = WeakThis.Get();
+		      if (!Self) return;
+
 		      // Generate the quads to restrict the triangle generation to areas needed
-		      TArray<FBox3d> Quads = FindAllQuads(MeshBuilder);
-	
+		      TArray<FBox3d> Quads = Self->FindAllQuads(MeshBuilder);
+
 		      // Generate the vertices and UVs
-		      CreateMeshVertexsAndUVs(NumTriangles, CellSize);
-	
+		      Self->CreateMeshVertexsAndUVs(NumTriangles, CellSize);
+
 		      // Generate the Triangles for this square
-		      GenerateMeshTrianglesInQuadMapping(NumTriangles, Quads);
-	
-	
+		      Self->GenerateMeshTrianglesInQuadMapping(NumTriangles, Quads);
 	      },
-	      [this]
+	      [WeakThis]
 	      {
-		      AsyncTask(ENamedThreads::GameThread, [this]()
+		      AsyncTask(ENamedThreads::GameThread, [WeakThis]()
 		      {
-		      	
+			      AHeatmapPixelTextureVisualizer* Self = WeakThis.Get();
+			      if (!Self || !IsValid(Self->RuntimeHeatmapMeshComponent)) return;
+
 			      // Generate the mesh section
-			      RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
-		      	
+			      Self->RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, Self->MeshVertices, Self->MeshTriangles, TArray<FVector>(), Self->MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
 		      });
 	      });
 	

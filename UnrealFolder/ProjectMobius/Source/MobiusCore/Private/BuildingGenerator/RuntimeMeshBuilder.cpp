@@ -388,16 +388,6 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	// Make sure no residual data of the procedural mesh comp exists
 	ResetMeshCollisionAndPhysics();
 
-	// Reuse the anchor across loads. Destroying + respawning defers the old
-	// SceneImporter's teardown past the next LoadFile, so its AssetElementMapping
-	// still holds TObjectPtrs to the prior scene's RuntimeMesh/BodySetup objects
-	// when GC runs — 837+ transient UObjects survive every switch. Reset() clears
-	// those maps synchronously before LoadFile repopulates them.
-	if (RuntimeDatasmithAnchor)
-	{
-		RuntimeDatasmithAnchor->Reset();
-	}
-
 	// Double-flush queues in case async work enqueued new items during teardown
 	PendingCollisionEnable.Reset();
 	PendingDatasmithMeshes.Reset();
@@ -408,6 +398,67 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	// Remove any flow counters, as the mesh is changing
 	FlowCounterSpawnerComponent->RemoveAllFlowCounters();
 
+	// Cancel any previous deferred continuation so rapid switches don't stack.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeferredLoadTimerHandle);
+	}
+
+	// If we have a live DatasmithRuntime anchor from a prior load, queue its
+	// SceneImporter to purge AssetDataList / AssetElementMapping on the next
+	// tick. The plugin's Reset() only sets TasksToComplete=ResetScene; the
+	// actual DeleteData() + AssetRegistry::CleanUp() + internal CollectGarbage
+	// run inside FSceneImporter::Tick. We must not call LoadFile (or spin up
+	// the fbx pipeline) until that tick completes, otherwise StartImport
+	// overwrites TasksToComplete and the prior scene's ~837 RuntimeMesh +
+	// ~840 BodySetup UObjects survive. Applies regardless of the new file's
+	// extension — switching datasmith -> fbx also needs the anchor purged.
+	if (RuntimeDatasmithAnchor)
+	{
+		RuntimeDatasmithAnchor->Reset();
+
+		if (UWorld* World = GetWorld())
+		{
+			// Two-tick defer: within a single frame FTimerManager fires before
+			// the actor's Tick, so a single next-tick delay lets our LoadFile
+			// run (and overwrite TasksToComplete=CollectSceneData) before the
+			// SceneImporter's ResetScene branch ever executes. Chaining two
+			// next-tick timers guarantees at least one full ADatasmithRuntime
+			// Tick runs between Reset() and LoadFile, so DeleteData() +
+			// AssetRegistry::CleanUp() + the plugin's internal CollectGarbage
+			// finish before the next scene populates AssetDataList.
+			TWeakObjectPtr<ARuntimeMeshBuilder> WeakThis(this);
+			World->GetTimerManager().SetTimerForNextTick(
+				FTimerDelegate::CreateLambda([WeakThis]()
+				{
+					ARuntimeMeshBuilder* Self = WeakThis.Get();
+					if (!Self) return;
+					UWorld* InnerWorld = Self->GetWorld();
+					if (!InnerWorld) return;
+					InnerWorld->GetTimerManager().SetTimerForNextTick(
+						FTimerDelegate::CreateLambda([WeakThis]()
+						{
+							if (ARuntimeMeshBuilder* Inner = WeakThis.Get())
+							{
+								Inner->ContinueLoadAfterPurge();
+							}
+						}));
+				}));
+			return;
+		}
+	}
+
+	// No anchor (first load, or fbx->fbx) — nothing to purge, run immediately.
+	ContinueLoadAfterPurge();
+}
+
+void ARuntimeMeshBuilder::ContinueLoadAfterPurge()
+{
+	// The 2-tick defer let the plugin's ResetScene tick unreference all prior-
+	// scene RuntimeMesh/BodySetup objects, but they're still PendingKill in the
+	// UObject array. Sweep them now so the next LoadFile doesn't double the
+	// resident set before engine GC runs.
+	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, true);
 	// As we are now able to use Datasmith assets we need to check if the file is a .udatasmith file
 	if(MeshFileName.Contains(".udatasmith") || MeshFileName.Contains(".ifc"))
 	{
@@ -497,13 +548,6 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 				      });
 
 			      });
-
-
-
-
-			// wait for the scene to be loaded for now delay for 5 seconds
-			//FTimerHandle TimerHandle;
-			//GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &ARuntimeMeshBuilder::TestDatasmithMaterialSetup, 15.0f, false);
 		}
 		else
 		{
@@ -513,32 +557,15 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 			//ImportOptions.TessellationOptions.bUseCADKernel = true;
 
 			RuntimeDatasmithAnchor->ImportOptions = ImportOptions;
-
-			// // construct new object UDatasmithSceneElement
-			// UDatasmithSceneElement* DatasmithSceneElement = NewObject<UDatasmithSceneElement>();
-			//
-			// UDatasmithSceneElement* ConstructedScene = DatasmithSceneElement->ConstructDatasmithSceneFromFile(MeshFileName);
-			//
-			// auto Imported = ConstructedScene->ImportScene("/Game/");
-			//
-			// auto CreatedScene = FDatasmithSceneFactory::CreateScene(*Imported.Scene.GetName());
-			//
-			// RuntimeDatasmithAnchor->SetScene(CreatedScene);
-			// RuntimeDatasmithAnchor->ApplyNewScene();
-			// RuntimeDatasmithAnchor->MarkComponentsRenderStateDirty();
 		}
-
-
 	}
-	// not a datasmith file so we can load the mesh as normal
+	// not a datasmith file so we can load the mesh as normal. Anchor (if any)
+	// has had its prior scene purged by the ResetScene tick and stays idle.
 	else
 	{
-		//GetMeshDataFromFile(FRotator(0.0f, 0.0f, 90.0f));
 		AsyncUpdateMesh(MeshFileName);
 		bIsResettingForNewLoad = false;
 	}
-
-
 }
 
 void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
@@ -585,6 +612,15 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 		// Stop the existing runnable
 		ExistingRunnable->Stop();
 		ExistingRunnable->Exit();
+
+		// Free the CPU-side mesh buffers immediately. Without this, the runnable
+		// sits in the deferred GT delete lambda holding hundreds of MB until the
+		// game thread services the queue.
+		ExistingRunnable->Vertices.Empty();
+		ExistingRunnable->Faces.Empty();
+		ExistingRunnable->Normals.Empty();
+		ExistingRunnable->UV.Empty();
+		ExistingRunnable->Tangents.Empty();
 
 		// Capture by value — ExistingRunnable is a stack-local pointer and goes
 		// out of scope when this function returns, before the GT task runs.
@@ -644,11 +680,30 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	                                                             TArray<FProcMeshTangent>(),
 	                                                             true/*set to true so we can use collisions - at a small cost of performance*/);
 
-	// The loader is no longer needed so we can stop the thread
-	AsyncAssimpLoader->MeshLoaderRunnable->Stop();
+	// The loader is no longer needed. Properly stop, drop the CPU-side mesh
+	// buffers, and delete the runnable. The previous code path nulled
+	// MeshLoaderRunnable without deleting it, leaking the runnable plus
+	// hundreds of MB of Vertices/Faces/Normals/UV/Tangents per load.
+	if (auto* ExistingRunnable = AsyncAssimpLoader->MeshLoaderRunnable)
+	{
+		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
 
-	// nullptr the runnable to free up memory
-	AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
+		ExistingRunnable->Stop();
+		ExistingRunnable->Exit();
+
+		// CreateMeshSection_LinearColor above copies the arrays into the
+		// procedural mesh; the runnable's copies are dead weight from here on.
+		ExistingRunnable->Vertices.Empty();
+		ExistingRunnable->Faces.Empty();
+		ExistingRunnable->Normals.Empty();
+		ExistingRunnable->UV.Empty();
+		ExistingRunnable->Tangents.Empty();
+
+		AsyncTask(ENamedThreads::GameThread, [ExistingRunnable]
+		{
+			delete ExistingRunnable;
+		});
+	}
 
 	// if the material property is set then we want to apply our material to the mesh
 	if(MobiusMaterialInstanceDynamic != nullptr)
@@ -666,22 +721,6 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	// Broadcast that the mesh has been built
 	OnMeshBuilt.Broadcast(HeatmapOrigin, MobiusProceduralMeshComponent->Bounds.BoxExtent);
 
-	// check if runnable is null and if not then delete it
-	if (auto* ExistingRunnable = AsyncAssimpLoader->MeshLoaderRunnable)
-	{
-		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
-
-		// Stop the existing runnable
-		ExistingRunnable->Stop();
-		ExistingRunnable->Exit();
-
-		// Capture by value — ExistingRunnable is a stack-local pointer and goes
-		// out of scope when this function returns, before the GT task runs.
-		AsyncTask(ENamedThreads::GameThread, [ExistingRunnable]
-		{
-			delete ExistingRunnable;
-		});
-	}
 	EndLoadingWidget();
 }
 

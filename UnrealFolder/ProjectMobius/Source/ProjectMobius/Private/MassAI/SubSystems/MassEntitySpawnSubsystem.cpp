@@ -34,6 +34,8 @@
 // Other Subsystems we want to use
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
+#include "Subsystems/StatisticSubsystem.h"
+#include "Core/MobiusWidgetSubsystem.h"
 // GameInstance
 #include "SkeletalMeshAttributes.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
@@ -361,6 +363,31 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 #if !UE_BUILD_SHIPPING
 	{
 		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterClearNiagara"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+	// Drop per-simulation state held by world subsystems before the GC pass.
+	// These outlive an individual file load (subsystems are world-scoped and
+	// PIE world only ends on stop), so without an explicit reset they keep
+	// the prior simulation's agent data + widget tree (MIDs, shader maps)
+	// rooted across switches.
+	if (UWorld* World = GetWorld())
+	{
+		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
+		{
+			StatSub->ResetForFileSwitch();
+		}
+		if (UMobiusWidgetSubsystem* WidgetSub = World->GetSubsystem<UMobiusWidgetSubsystem>())
+		{
+			WidgetSub->ResetForFileSwitch();
+		}
+	}
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSubsystemReset"));
 		S.LogDelta(SnapPrev);
 		SnapPrev = S;
 	}
