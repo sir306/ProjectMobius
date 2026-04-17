@@ -45,6 +45,10 @@
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/ScopeExit.h"
+#include "Engine/StaticMesh.h"
+#include "RenderingThread.h"
+
+TMap<UMaterial*, EDatasmithMasterType> ARuntimeMeshBuilder::MasterTypeCache;
 
 // Sets default values
 ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
@@ -146,11 +150,110 @@ void ARuntimeMeshBuilder::BeginPlay()
 	}
 }
 
+void ARuntimeMeshBuilder::ReleaseDatasmithSceneResources()
+{
+	if (!RuntimeDatasmithAnchor || RuntimeDatasmithAnchor->IsActorBeingDestroyed())
+	{
+		return;
+	}
+
+	// Render resources must be released from the game thread with rendering
+	// commands already flushed, otherwise the render proxy may reference freed
+	// vertex/index buffers for one more frame.
+	FlushRenderingCommands();
+
+	TSet<UStaticMesh*> ReleasedMeshes;
+
+	const TSet<UActorComponent*>& DataComps = RuntimeDatasmithAnchor->GetComponents();
+	for (UActorComponent* DataComp : DataComps)
+	{
+		USceneComponent* SceneComp = Cast<USceneComponent>(DataComp);
+		if (!SceneComp)
+		{
+			continue;
+		}
+
+		TArray<USceneComponent*> ChildrenComps;
+		SceneComp->GetChildrenComponents(true, ChildrenComps);
+
+		for (USceneComponent* ChildComp : ChildrenComps)
+		{
+			UStaticMeshComponent* MeshComp = Cast<UStaticMeshComponent>(ChildComp);
+			if (!MeshComp || MeshComp->IsBeingDestroyed())
+			{
+				continue;
+			}
+
+			// Drop our custom MID override refs on the component so the MIDs
+			// can be GC'd.
+			MeshComp->EmptyOverrideMaterials();
+
+			UStaticMesh* Mesh = MeshComp->GetStaticMesh();
+			if (!Mesh)
+			{
+				continue;
+			}
+
+			// Detach from component first so the component's detach path
+			// doesn't try to read the render proxy after we free it.
+			MeshComp->SetStaticMesh(nullptr);
+
+			// Each RuntimeMesh may be referenced by multiple components; only
+			// release its resources once.
+			bool bAlreadyReleased = false;
+			ReleasedMeshes.Add(Mesh, &bAlreadyReleased);
+			if (bAlreadyReleased)
+			{
+				continue;
+			}
+
+			if (UBodySetup* BS = Mesh->GetBodySetup())
+			{
+				BS->ClearPhysicsMeshes();
+				BS->InvalidatePhysicsData();
+			}
+
+			Mesh->ReleaseResources();
+		}
+	}
+
+	// Wait for the render thread to finish releasing the resources before
+	// EndPlay continues and the UObject shells get handed to GC.
+	for (UStaticMesh* Mesh : ReleasedMeshes)
+	{
+		if (Mesh)
+		{
+			Mesh->ReleaseResourcesFence.Wait();
+		}
+	}
+}
+
 void ARuntimeMeshBuilder::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	// Clear any pending items
 	PendingCollisionEnable.Reset();
 	PendingDatasmithMeshes.Reset();
+
+	// Drop our custom MID refs held per-mesh so the MIDs can be GC'd once the
+	// components detach below.
+	DatasmithMaterialsMap.Empty();
+
+	// Free the DatasmithRuntime scene's heavy render/collision data. The
+	// plugin's static FAssetRegistry::RegistrationMap keeps the UObject shells
+	// alive across PIE stop, but the ~500MB of vertex/index/collision buffers
+	// those shells own can be released here.
+	if (RuntimeDatasmithAnchor && !RuntimeDatasmithAnchor->IsActorBeingDestroyed())
+	{
+		ReleaseDatasmithSceneResources();
+
+		RuntimeDatasmithAnchor->Destroy();
+		RuntimeDatasmithAnchor = nullptr;
+	}
+
+	// MasterTypeCache holds raw UMaterial* that become stale after PIE stop.
+	// Empty it so the next PIE session starts with a clean classification cache
+	// and doesn't dereference freed pointers.
+	MasterTypeCache.Empty();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -1477,8 +1580,8 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
 		return;
 	}
 
-	// Cache to avoid repeated string comparisons on master materials
-	static TMap<UMaterial*, EDatasmithMasterType> MasterTypeCache;
+	// MasterTypeCache is now a class-level static (see header) so EndPlay can
+	// empty it; UMaterial* entries become stale across PIE sessions otherwise.
 
 	FDatasmithMaterials DatasmithMaterials;
 
