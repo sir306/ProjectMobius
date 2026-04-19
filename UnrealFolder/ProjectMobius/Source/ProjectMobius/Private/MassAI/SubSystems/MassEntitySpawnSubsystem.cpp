@@ -103,7 +103,10 @@ void UMassEntitySpawnSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UMassEntitySpawnSubsystem::Deinitialize()
 {
-	// If we have delegates we can unbind them here before super
+	if (UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
+	{
+		GameInst->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &UMassEntitySpawnSubsystem::CreatePedestrianTemplateData);
+	}
 	Super::Deinitialize();
 }
 
