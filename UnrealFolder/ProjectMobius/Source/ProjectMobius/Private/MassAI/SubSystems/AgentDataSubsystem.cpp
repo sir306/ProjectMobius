@@ -143,7 +143,8 @@ void UAgentDataSubsystem::Deinitialize()
 	if (JsonDataRunnable)
 	{
 		JsonDataRunnable->Stop();
-		JsonDataRunnable->Exit();
+		// Do not call Exit() manually — the destructor calls WaitForCompletion() then
+		// UE calls Exit() once cleanly after Run() returns.
 		JsonDataRunnable.Reset();
 	}
 	Super::Deinitialize();
@@ -312,6 +313,10 @@ void UAgentDataSubsystem::UpdateMaxAgentCount(int32 NewMaxAgentCount)
 
 void UAgentDataSubsystem::ClearPerFileState()
 {
+	// Prevent a stale completion flag from the previous run firing BuildPedestrianMovementFragmentData
+	// with the new (not-yet-loaded) runnable's empty data on the next Tick.
+	bIsDataLoaded = false;
+
 	// CachedEntityData holds the previous file's FHdf5EntityData array. It was
 	// only ever overwritten when the next file's BuildFrag ran, so between
 	// switches the prior payload stayed live. Drop it now.
@@ -1733,16 +1738,17 @@ void FProcessSimulationDataRunnable::Exit()
 		// CloseFile and they're typically 10-30MB per file. Requires exposing
 		// the HDF5 C API header through the plugin's public include path first.
 	}
-	Hdf5Data.Entities.Empty();
-	Hdf5Data.Entities.Shrink();
+	// Hdf5Data.Entities, AgentMovementInfoData.SimulationData and NumOfAgentsPerTimeStep
+	// are consumed by the game thread in BuildPedestrianMovementFragmentData after the
+	// OnLoadSimulationDataComplete broadcast. UE calls Exit() on the worker thread right
+	// after Run() returns, which can race ahead of a GT stall (e.g. FBX mesh build on
+	// CreateMeshSection_LinearColor) — freeing them here would null the shared fragment
+	// and leave PedestrianInitializeMOP stuck on "CurrentTimeStep not valid". The TUniquePtr
+	// destructor in AgentDataRunnableCleanup releases everything naturally on the next load.
 	Hdf5Data.Samples.Empty();
 	Hdf5Data.Samples.Shrink();
 	Hdf5Data.Meta = FHdf5SimulationMetadata();
 	SimulationFileType = ESimulationFileType::ESFT_Unknown;
-
-	// Drop the TSharedPtr — frees the TMap and all TArrays it owns.
-	// If SimulationData was already MoveTemp'd to a FSharedStruct, this is a no-op (ptr is null).
-	AgentMovementInfoData.SimulationData.Reset();
 
 	AgentDataArray.Empty();
 	AgentDataArray.Shrink();
@@ -1752,9 +1758,6 @@ void FProcessSimulationDataRunnable::Exit()
 
 	StepVectors.Empty();
 	StepVectors.Shrink();
-
-	NumOfAgentsPerTimeStep.Empty();
-	NumOfAgentsPerTimeStep.Shrink();
 
 	bReadyToDelete = true; // Set the flag to true to indicate that the runnable is ready to be deleted
 

@@ -140,11 +140,14 @@ FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh,
 
 FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 {
-	// if the thread is still running, stop it
+	// Block until Run() returns naturally so the stack-allocated Assimp::Importer gets its
+	// destructor. Kill(true) hard-terminates mid-import and leaks Assimp-internal state,
+	// which can trip subsequent HDF5 reads that reuse the same worker path.
 	if (Thread != nullptr)
 	{
-		Thread->Kill(true);
+		Thread->WaitForCompletion();
 		delete Thread;
+		Thread = nullptr;
 	}
 }
 

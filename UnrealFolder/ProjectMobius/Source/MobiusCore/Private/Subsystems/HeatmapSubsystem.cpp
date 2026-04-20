@@ -387,15 +387,19 @@ void UHeatmapSubsystem::ProcessHeatmapGeneration()
 	}
 
 	// Spawn new
-	ParallelFor(Heights.Num(), [this, XY, &Heights](int32 Index)
+	TWeakObjectPtr<UHeatmapSubsystem> WeakThis(this);
+	ParallelFor(Heights.Num(), [WeakThis, XY, &Heights](int32 Index)
 	{
 		// (1) Compute the world position off the game thread
 		const FVector Pos(XY.X, XY.Y, Heights[Index]);
 
 		// (2) Schedule the actual spawn back on the Game Thread
-		AsyncTask(ENamedThreads::GameThread, [this, Pos, Index]()
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Pos, Index]()
 		{
-			CreateHeatmap(Pos, Index);
+			if (UHeatmapSubsystem* Self = WeakThis.Get())
+			{
+				Self->CreateHeatmap(Pos, Index);
+			}
 		});
 	});
 	

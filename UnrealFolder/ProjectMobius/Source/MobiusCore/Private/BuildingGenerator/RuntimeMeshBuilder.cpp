@@ -712,9 +712,13 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 	{
 		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
 
-		// Stop the existing runnable
+		// Drop the broadcast binding first so a late completion from the old runnable
+		// can't invoke GetTheAsyncMeshData on already-stale state.
+		ExistingRunnable->OnLoadMeshDataComplete.RemoveAll(this);
+
+		// Signal stop; destructor (via the deferred GT delete) WaitForCompletion-joins
+		// the thread, which lets UE call Exit() once cleanly after Run() returns.
 		ExistingRunnable->Stop();
-		ExistingRunnable->Exit();
 
 		// Free the CPU-side mesh buffers immediately. Without this, the runnable
 		// sits in the deferred GT delete lambda holding hundreds of MB until the
@@ -791,8 +795,12 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	{
 		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
 
+		// Drop the completion binding before stopping so any late broadcast is a no-op.
+		ExistingRunnable->OnLoadMeshDataComplete.RemoveAll(this);
+
+		// Destructor WaitForCompletion-joins the thread and UE calls Exit() once cleanly
+		// after Run() returns — no manual Exit() from the game thread.
 		ExistingRunnable->Stop();
-		ExistingRunnable->Exit();
 
 		// CreateMeshSection_LinearColor above copies the arrays into the
 		// procedural mesh; the runnable's copies are dead weight from here on.

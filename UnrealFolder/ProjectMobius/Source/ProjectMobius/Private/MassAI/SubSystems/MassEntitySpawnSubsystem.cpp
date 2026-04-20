@@ -250,21 +250,26 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimu
 	SnapCleanupStart.LogAbsolute();
 #endif
 
-	// 1) Stop on calling thread
-	ToKill->Stop();
-
-	// 2) Join/Exit on calling thread (don’t bounce to GT). Ensure the runnable sets a “finished” flag.
-	ToKill->Exit();
-
-	// 3) Now it’s safe to unbind dynamic delegates on the subsystem (they’re not being used by the worker anymore)
+	// 1) Remove delegates first — no stale broadcast can reach us even if thread finishes during stop/join
 	if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>()) {
 		AgentDataSubsystem->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
 	}
 	AgentDataSubsystem->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	//AgentDataSubsystem->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
-        // 4) Delete
-        ToKill.Reset();
+	// 2) Signal the thread to stop
+	ToKill->Stop();
+
+	// 3) Join via destructor — WaitForCompletion() is called inside ~FProcessSimulationDataRunnable,
+	//    then UE calls Exit() once cleanly after Run() returns. Do NOT call Exit() manually here;
+	//    that races with the background thread still accessing AgentDataArray / Hdf5Data.
+	ToKill.Reset();
+
+	// 4) Clear any stale completion flag now the thread is fully joined
+	if (AgentDataSubsystem)
+	{
+		AgentDataSubsystem->bIsDataLoaded = false;
+	}
 
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot::Take(TEXT("RunnableCleanup_AfterReset")).LogDelta(SnapCleanupStart);
@@ -590,9 +595,11 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	// Cleanup any existing runnable to avoid memory leaks
 	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
-	// Get the JSON Data File using the FRunnable class to get the data asynchronously
-        AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
+	// Bind delegate BEFORE creating the runnable so we never miss a completion if the thread is very fast
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
+
+	// Get the JSON Data File using the FRunnable class to get the data asynchronously
+	AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
 	//AgentDataSubsystem->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
 	// check if the widget subsystem is valid

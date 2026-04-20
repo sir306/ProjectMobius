@@ -12,14 +12,6 @@ UAgentInfoDisplay::UAgentInfoDisplay():
 	HoverWidgetMeshViewerID(0),
 	SelectedFollowWidgetMeshViewerID(0)
 {
-	if (auto World = GetWorld())
-	{
-		if (auto StatSub = World->GetSubsystem<UStatisticSubsystem>())
-		{
-			// Bind delegates to trigger an update when the agent data changes
-			World->GetSubsystem<UStatisticSubsystem>()->OnSelectedAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
-		}
-	}
 }
 
 void UAgentInfoDisplay::UpdateAgentInfoMeshData()
@@ -54,14 +46,6 @@ void UAgentInfoDisplay::SynchronizeProperties()
 
 void UAgentInfoDisplay::ReleaseSlateResources(bool bReleaseChildren)
 {
-	Super::ReleaseSlateResources(bReleaseChildren);
-
-	HoverWidget.Reset();
-	FollowIndicatorWidget.Reset();
-}
-
-void UAgentInfoDisplay::BeginDestroy()
-{
 	if (UWorld* World = GetWorld())
 	{
 		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
@@ -70,8 +54,12 @@ void UAgentInfoDisplay::BeginDestroy()
 		}
 	}
 
-	Super::BeginDestroy();
+	HoverWidget.Reset();
+	FollowIndicatorWidget.Reset();
+
+	Super::ReleaseSlateResources(bReleaseChildren);
 }
+
 
 TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
 {
@@ -81,7 +69,7 @@ TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
 
 	FollowIndicatorWidget = SNew(SAgentFollowIndicator, *this);
 
-	
+
 
 	// Create the overlay
 	TSharedRef<SOverlay> Overlay = SNew(SOverlay)
@@ -95,6 +83,15 @@ TSharedRef<SWidget> UAgentInfoDisplay::RebuildWidget()
 	[
 		FollowIndicatorWidget.ToSharedRef()
 	];
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
+		{
+			StatSub->OnSelectedAgentInfoChanged.RemoveAll(this);
+			StatSub->OnSelectedAgentInfoChanged.AddUObject(this, &UAgentInfoDisplay::UpdateAgentInfoMeshData);
+		}
+	}
 
 	return Overlay;
 	//return FollowIndicatorWidget.ToSharedRef();
