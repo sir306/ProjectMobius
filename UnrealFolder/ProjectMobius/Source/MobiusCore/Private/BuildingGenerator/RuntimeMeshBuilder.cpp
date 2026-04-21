@@ -67,7 +67,10 @@ ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
 	RootComponent = MobiusProceduralMeshComponent;
 
 	MobiusProceduralMeshComponent->bRenderInMainPass = true;
-	MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+	// Async cooking spreads N-section collision cooks across worker threads instead of blocking the
+	// game thread. First clicks after load may briefly miss until the last section cook completes —
+	// acceptable: the loading widget covers the window.
+	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
 	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = false;
 	MobiusProceduralMeshComponent->bSelectable = true;
 	MobiusProceduralMeshComponent->Mobility = EComponentMobility::Movable;
@@ -230,9 +233,20 @@ void ARuntimeMeshBuilder::ReleaseDatasmithSceneResources()
 
 void ARuntimeMeshBuilder::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Kill the staggered emit pump before the actor goes away — the ticker holds a UObject
+	// binding to `this` and would fire again post-teardown otherwise.
+	if (ChunkEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ChunkEmitTickerHandle);
+		ChunkEmitTickerHandle.Reset();
+	}
+	PendingMeshChunks.Empty();
+	PendingChunkEmitIndex = 0;
+
 	// Clear any pending items
 	PendingCollisionEnable.Reset();
 	PendingDatasmithMeshes.Reset();
+	bHeatmapBroadcastPending = false;
 
 	// Drop our custom MID refs held per-mesh so the MIDs can be GC'd once the
 	// components detach below.
@@ -307,7 +321,39 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 
 	ResetMeshCollisionAndPhysics();
 
-	MobiusProceduralMeshComponent->CreateMeshSection(0, InVertices, InTriangles, InNormals, TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+	FAssimpSubmeshBuffers Input;
+	Input.Vertices = MoveTemp(InVertices);
+	Input.Faces    = MoveTemp(InTriangles);
+	Input.Normals  = MoveTemp(InNormals);
+
+	TArray<FAssimpSubmeshBuffers> Chunks;
+	SplitSubmeshByTriCap(Input, MaxTrisPerSection, Chunks);
+
+	static const TArray<FVector2D>        EmptyUVs;
+	static const TArray<FColor>           EmptyColors;
+	static const TArray<FProcMeshTangent> EmptyTangents;
+	for (int32 ChunkIdx = 0; ChunkIdx < Chunks.Num(); ++ChunkIdx)
+	{
+		const FAssimpSubmeshBuffers& Chunk = Chunks[ChunkIdx];
+		MobiusProceduralMeshComponent->CreateMeshSection(
+			ChunkIdx,
+			Chunk.Vertices,
+			Chunk.Faces,
+			Chunk.Normals,
+			EmptyUVs,
+			EmptyColors,
+			EmptyTangents,
+			false);
+	}
+
+	if (MobiusMaterialInstanceDynamic != nullptr)
+	{
+		const int32 NumSections = MobiusProceduralMeshComponent->GetNumSections();
+		for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
+		{
+			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
+		}
+	}
 }
 
 void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
@@ -421,8 +467,9 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 
 void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 {
-	// 1. Turn off async cooking for deterministic behavior here (optional but recommended), ensures it will update
-	MobiusProceduralMeshComponent->bUseAsyncCooking = false;
+	// 1. Keep async cooking on — see constructor comment. Disabling here would force a blocking cook
+	//    against the empty body setup we're about to hand off, wasting the async worker path.
+	MobiusProceduralMeshComponent->bUseAsyncCooking = true;
 
 	// 2. Clear all generated geometry + convex collision
 	MobiusProceduralMeshComponent->ClearAllMeshSections();          // Empties sections + UpdateCollision()
@@ -463,6 +510,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	// Drop any queued work that still references old components
 	PendingCollisionEnable.Reset();
 	PendingDatasmithMeshes.Reset();
+	bHeatmapBroadcastPending = false;
 	MaterialCache.Reset();
 
 	// Get the game instance
@@ -777,15 +825,9 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	MobiusProceduralMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
 	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
 
-
-	// A mesh section should only be created if successful
-	MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, AsyncAssimpLoader->MeshLoaderRunnable->Vertices,
-	                                                             AsyncAssimpLoader->MeshLoaderRunnable->Faces,
-	                                                             AsyncAssimpLoader->MeshLoaderRunnable->Normals,
-	                                                             AsyncAssimpLoader->MeshLoaderRunnable->UV,
-	                                                             TArray<FLinearColor>(),
-	                                                             TArray<FProcMeshTangent>(),
-	                                                             true/*set to true so we can use collisions - at a small cost of performance*/);
+	// Move the per-submesh buffers out of the runnable so we can tear down the loader before the
+	// (potentially slow) emit loop. Runnable retains empty TArrays — cheap to delete.
+	TArray<FAssimpSubmeshBuffers> LocalSubmeshes = MoveTemp(AsyncAssimpLoader->MeshLoaderRunnable->Submeshes);
 
 	// The loader is no longer needed. Properly stop, drop the CPU-side mesh
 	// buffers, and delete the runnable. The previous code path nulled
@@ -802,8 +844,8 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 		// after Run() returns — no manual Exit() from the game thread.
 		ExistingRunnable->Stop();
 
-		// CreateMeshSection_LinearColor above copies the arrays into the
-		// procedural mesh; the runnable's copies are dead weight from here on.
+		// Per-submesh buffers already moved out above. Clear the transitional flat mirrors so the
+		// runnable drops the last references before deletion.
 		ExistingRunnable->Vertices.Empty();
 		ExistingRunnable->Faces.Empty();
 		ExistingRunnable->Normals.Empty();
@@ -816,20 +858,182 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 		});
 	}
 
-	// if the material property is set then we want to apply our material to the mesh
-	if(MobiusMaterialInstanceDynamic != nullptr)
+	// Partition each submesh into triangle-capped chunks. Small submeshes pass through unchanged.
+	// Rollback: when bEnableMultiSectionBatching is false, concatenate everything into a single chunk
+	// that reproduces the legacy single-section-0 behaviour (with index remap for vertex offsets).
+	TArray<FAssimpSubmeshBuffers> Chunks;
+	if (bEnableMultiSectionBatching)
 	{
-		MobiusProceduralMeshComponent->SetMaterial(0, MobiusMaterialInstanceDynamic);
+		Chunks.Reserve(LocalSubmeshes.Num());
+		for (const FAssimpSubmeshBuffers& Sub : LocalSubmeshes)
+		{
+			SplitSubmeshByTriCap(Sub, MaxTrisPerSection, Chunks);
+		}
+	}
+	else
+	{
+		int32 TotalVerts = 0;
+		int32 TotalFaces = 0;
+		for (const FAssimpSubmeshBuffers& Sub : LocalSubmeshes)
+		{
+			TotalVerts += Sub.Vertices.Num();
+			TotalFaces += Sub.Faces.Num();
+		}
+		FAssimpSubmeshBuffers Flat;
+		Flat.Vertices.Reserve(TotalVerts);
+		Flat.Faces.Reserve(TotalFaces);
+		Flat.Normals.Reserve(TotalVerts);
+		Flat.UV.Reserve(TotalVerts);
+		for (const FAssimpSubmeshBuffers& Sub : LocalSubmeshes)
+		{
+			const int32 VertexBase = Flat.Vertices.Num();
+			Flat.Vertices.Append(Sub.Vertices);
+			Flat.Normals.Append(Sub.Normals);
+			Flat.UV.Append(Sub.UV);
+			Flat.Faces.Reserve(Flat.Faces.Num() + Sub.Faces.Num());
+			for (int32 Index : Sub.Faces)
+			{
+				Flat.Faces.Add(Index + VertexBase);
+			}
+		}
+		Chunks.Add(MoveTemp(Flat));
 	}
 
-	// Mesh has been built so we can set the flag to false
+	if (StartupLogger)
+	{
+		int32 TotalVerts = 0;
+		int32 TotalTris  = 0;
+		for (const FAssimpSubmeshBuffers& Chunk : Chunks)
+		{
+			TotalVerts += Chunk.Vertices.Num();
+			TotalTris  += Chunk.Faces.Num() / 3;
+		}
+		StartupLogger->EnqueueLogMessage(FString::Printf(
+			TEXT("RuntimeMeshBuilder::GetTheAsyncMeshData sections=%d verts=%d tris=%d"),
+			Chunks.Num(), TotalVerts, TotalTris));
+	}
+
+	// Hand the chunks off to the staggered emit pump. Emitting all sections in one tick spikes
+	// FScene_AddPrimitive on the game thread (~300ms for 8 sections on the test asset); spreading
+	// them across frames keeps the per-frame cost bounded. Finalize (broadcast + EndLoadingWidget
+	// + bMeshBeingBuilt=false) runs after the last chunk is pushed, so listeners see a fully
+	// populated bounds. Component-level collision is NoCollision (ctor line 78) so per-section
+	// bCreateCollision stays false in the pump.
+	PendingMeshChunks = MoveTemp(Chunks);
+	PendingChunkEmitIndex = 0;
+	ChunkEmitStartTime = FPlatformTime::Seconds();
+
+	if (ChunkEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ChunkEmitTickerHandle);
+		ChunkEmitTickerHandle.Reset();
+	}
+
+	if (PendingMeshChunks.Num() == 0)
+	{
+		// Nothing to emit — still run finalize so bMeshBeingBuilt/loading widget clear.
+		FinalizeMeshEmit();
+		return;
+	}
+
+	ChunkEmitTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &ARuntimeMeshBuilder::EmitNextChunkSection),
+		0.0f);
+}
+
+bool ARuntimeMeshBuilder::EmitNextChunkSection(float /*DeltaTime*/)
+{
+	if (!IsValid(MobiusProceduralMeshComponent))
+	{
+		PendingMeshChunks.Empty();
+		PendingChunkEmitIndex = 0;
+		ChunkEmitTickerHandle.Reset();
+		return false;
+	}
+
+	static const TArray<FLinearColor>     EmptyColors;
+	static const TArray<FProcMeshTangent> EmptyTangents;
+
+	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
+	const int32 ChunksThisTick = FMath::Max(1, SectionsEmittedPerTick);
+	for (int32 Pushed = 0; Pushed < ChunksThisTick && PendingChunkEmitIndex < PendingMeshChunks.Num(); ++Pushed)
+	{
+		const int32 SectionIdx = PendingChunkEmitIndex++;
+		FAssimpSubmeshBuffers& Chunk = PendingMeshChunks[SectionIdx];
+
+		const int32 ChunkVerts = Chunk.Vertices.Num();
+		const int32 ChunkTris  = Chunk.Faces.Num() / 3;
+		const double PushStart = FPlatformTime::Seconds();
+
+		MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(
+			SectionIdx,
+			Chunk.Vertices,
+			Chunk.Faces,
+			Chunk.Normals,
+			Chunk.UV,
+			EmptyColors,
+			EmptyTangents,
+			/*bCreateCollision*/ false);
+
+		if (MobiusMaterialInstanceDynamic)
+		{
+			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
+		}
+
+		const double PushDurationMs = (FPlatformTime::Seconds() - PushStart) * 1000.0;
+		if (StartupLogger)
+		{
+			StartupLogger->EnqueueLogMessage(FString::Printf(
+				TEXT("[Building %s] CreateMeshSection section=%d verts=%d tris=%d in %.2f ms"),
+				*GetName(), SectionIdx, ChunkVerts, ChunkTris, PushDurationMs));
+		}
+		UE_LOG(LogTemp, Log,
+			TEXT("[Building %s] CreateMeshSection section=%d verts=%d tris=%d in %.2f ms"),
+			*GetName(), SectionIdx, ChunkVerts, ChunkTris, PushDurationMs);
+
+		// Free the CPU buffers for this chunk now that the component owns the data.
+		Chunk.Vertices.Empty();
+		Chunk.Faces.Empty();
+		Chunk.Normals.Empty();
+		Chunk.UV.Empty();
+	}
+
+	if (PendingChunkEmitIndex >= PendingMeshChunks.Num())
+	{
+		FinalizeMeshEmit();
+		return false;
+	}
+
+	return true;
+}
+
+void ARuntimeMeshBuilder::FinalizeMeshEmit()
+{
+	const int32 EmittedSections = PendingMeshChunks.Num();
+
+	PendingMeshChunks.Empty();
+	PendingChunkEmitIndex = 0;
+	ChunkEmitTickerHandle.Reset();
+
 	bMeshBeingBuilt = false;
 
-	// The origin we want to broadcast is the smallest location of the mesh bounds as the mesh generator for the heatmap
-	// works from left to right and bottom to top
-	FVector HeatmapOrigin = MobiusProceduralMeshComponent->Bounds.Origin - MobiusProceduralMeshComponent->Bounds.BoxExtent;
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger())
+	{
+		const double DurationMs = (FPlatformTime::Seconds() - ChunkEmitStartTime) * 1000.0;
+		StartupLogger->EnqueueLogMessage(FString::Printf(
+			TEXT("RuntimeMeshBuilder::StaggeredEmit completed sections=%d in %.2f ms"),
+			EmittedSections, DurationMs));
+	}
 
-	// Broadcast that the mesh has been built
+	if (!IsValid(MobiusProceduralMeshComponent))
+	{
+		EndLoadingWidget();
+		return;
+	}
+
+	// The origin we want to broadcast is the smallest location of the mesh bounds as the mesh generator
+	// for the heatmap works from left to right and bottom to top.
+	const FVector HeatmapOrigin = MobiusProceduralMeshComponent->Bounds.Origin - MobiusProceduralMeshComponent->Bounds.BoxExtent;
 	OnMeshBuilt.Broadcast(HeatmapOrigin, MobiusProceduralMeshComponent->Bounds.BoxExtent);
 
 	EndLoadingWidget();
@@ -1156,7 +1360,11 @@ void ARuntimeMeshBuilder::SetMaterialOnMesh()
 	// As the mesh may not exist we check if it does
 	if(MobiusProceduralMeshComponent != nullptr)
 	{
-		MobiusProceduralMeshComponent->SetMaterial(0, MobiusMaterialInstanceDynamic);
+		const int32 NumSections = MobiusProceduralMeshComponent->GetNumSections();
+		for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
+		{
+			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
+		}
 	}
 	else
 	{
@@ -1217,6 +1425,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 
 	PendingDatasmithMeshes.Reset();
 	bDatasmithMaterialSetupInProgress = false;
+	bHeatmapBroadcastPending = false;
 
 	if (DataComps.Num() == 0)
 	{
@@ -1281,21 +1490,21 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 		return;
 	}
 
-	// Compute origin/extents for the rest of the system (heatmap etc.)
-	const FVector BoundsCenter = GlobalBounds.GetCenter();
-	const FVector BoundsExtent = GlobalBounds.GetExtent();
+	// Defer OnMeshBuilt until PendingDatasmithMeshes drains (see ProcessPendingDatasmithMeshes).
+	// DatasmithRuntime registers components over multiple frames: at this point some
+	// UStaticMeshComponents may be queued but not yet IsRegistered/IsRenderStateCreated,
+	// which means their Bounds are zero and their render data is empty. The heatmap consumer
+	// walks DataComps on the broadcast, so firing now produces partial heatmaps. Bounds are
+	// recomputed at drain time from a fresh walk.
+	UE_LOG(LogTemp, Warning, TEXT("Datasmith initial GlobalBounds Center: %s Extent: %s (deferring broadcast)"),
+	       *GlobalBounds.GetCenter().ToString(), *GlobalBounds.GetExtent().ToString());
 
-	UE_LOG(LogTemp, Warning, TEXT("Datasmith GlobalBounds Center: %s Extent: %s"),
-	       *BoundsCenter.ToString(), *BoundsExtent.ToString());
-
-	const FVector HeatmapOrigin = BoundsCenter - BoundsExtent;
-
-	OnMeshBuilt.Broadcast(HeatmapOrigin, BoundsExtent);
+	bHeatmapBroadcastPending = true;
 
 	// We now have a queue of meshes to process over multiple frames.
 	bDatasmithMaterialSetupInProgress = true;
 
-	// Do NOT call EndLoadingWidget or BeginSpawning here; we’ll do that when the queue is empty.
+	// Do NOT call EndLoadingWidget or BeginSpawning here; we'll do that when the queue is empty.
 }
 
 TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateMaterialInstances(UMaterialInterface* InMaterial, const FString& MaterialPath)
@@ -1565,8 +1774,62 @@ void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 
 	if (PendingDatasmithMeshes.Num() == 0)
 	{
-		// We’re done – clear the flag and finish up the “import finished” flow.
+		// We're done – clear the flag and finish up the "import finished" flow.
 		bDatasmithMaterialSetupInProgress = false;
+
+		// All meshes have now been visited by BuildDatasmithMaterialsForMesh, which means each
+		// was IsRegistered + IsRenderStateCreated when touched. Safe window to (a) recompute the
+		// aggregate bounds from fully-resolved components and (b) hand off to the heatmap layer.
+		if (bHeatmapBroadcastPending)
+		{
+			FBox FinalBounds(ForceInit);
+			if (RuntimeDatasmithAnchor && !RuntimeDatasmithAnchor->IsActorBeingDestroyed())
+			{
+				auto DataComps = RuntimeDatasmithAnchor->GetComponents();
+				for (auto DataComp : DataComps)
+				{
+					USceneComponent* SceneComp = Cast<USceneComponent>(DataComp);
+					if (!SceneComp) continue;
+
+					TArray<USceneComponent*> FinalChildren;
+					SceneComp->GetChildrenComponents(true, FinalChildren);
+					for (USceneComponent* Child : FinalChildren)
+					{
+						UStaticMeshComponent* MeshComp = Cast<UStaticMeshComponent>(Child);
+						if (!MeshComp || MeshComp->IsBeingDestroyed() || !MeshComp->IsRegistered())
+						{
+							continue;
+						}
+						FinalBounds += MeshComp->Bounds.GetBox();
+					}
+				}
+			}
+
+			bHeatmapBroadcastPending = false;
+
+			if (FinalBounds.IsValid)
+			{
+				const FVector BoundsCenter = FinalBounds.GetCenter();
+				const FVector BoundsExtent = FinalBounds.GetExtent();
+				const FVector HeatmapOrigin = BoundsCenter - BoundsExtent;
+
+				UE_LOG(LogTemp, Warning, TEXT("Datasmith final GlobalBounds Center: %s Extent: %s (broadcast)"),
+				       *BoundsCenter.ToString(), *BoundsExtent.ToString());
+
+				if (UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger())
+				{
+					StartupLogger->EnqueueLogMessage(FString::Printf(
+						TEXT("RuntimeMeshBuilder::Datasmith OnMeshBuilt broadcast origin=%s extent=%s"),
+						*HeatmapOrigin.ToString(), *BoundsExtent.ToString()));
+				}
+
+				OnMeshBuilt.Broadcast(HeatmapOrigin, BoundsExtent);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Datasmith drain completed but no valid bounds; skipping OnMeshBuilt"));
+			}
+		}
 
 		EndLoadingWidget();
 		FlowCounterSpawnerComponent->BeginSpawning();

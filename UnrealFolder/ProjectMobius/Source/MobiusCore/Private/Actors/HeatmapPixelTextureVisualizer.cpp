@@ -34,6 +34,9 @@
 #include "StaticMeshResources.h" // used for accessing vertex buffers on static meshes
 #include "Rendering/PositionVertexBuffer.h" 
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Subsystems/MobiusCustomLoggerSubsystem.h"
+#include "Engine/Engine.h"
+#include "HAL/PlatformTime.h"
 
 
 // Sets default values
@@ -111,10 +114,23 @@ void AHeatmapPixelTextureVisualizer::PostInitializeComponents()
 	//#if WITH_EDITOR
 	CreateMaterialInstances();
 	
-	// check mesh is valid
-	if(RuntimeHeatmapMeshComponent->GetProcMeshSection(0))
-	{		
-		HeatmapMeshSize2D = FVector2D(RuntimeHeatmapMeshComponent->GetProcMeshSection(0)->SectionLocalBox.GetSize().X, RuntimeHeatmapMeshComponent->GetProcMeshSection(0)->SectionLocalBox.GetSize().Y);
+	// Aggregate bounds across every section so the dense tiled path (N sections) reports whole-mesh size,
+	// not a single tile's bounds.
+	if (RuntimeHeatmapMeshComponent->GetNumSections() > 0)
+	{
+		FBox Agg(ForceInit);
+		const int32 NumSections = RuntimeHeatmapMeshComponent->GetNumSections();
+		for (int32 i = 0; i < NumSections; ++i)
+		{
+			if (const FProcMeshSection* Sec = RuntimeHeatmapMeshComponent->GetProcMeshSection(i))
+			{
+				Agg += Sec->SectionLocalBox;
+			}
+		}
+		if (Agg.IsValid)
+		{
+			HeatmapMeshSize2D = FVector2D(Agg.GetSize().X, Agg.GetSize().Y);
+		}
 	}
 	
 	// Assign the Material Instance to the mesh depending on the heatmap type
@@ -134,37 +150,24 @@ void AHeatmapPixelTextureVisualizer::AssignMaterialInstanceToMesh() const
 	{
 		return;
 	}
-	if(HeatmapType)
+	UMaterialInstanceDynamic* Target = HeatmapType ? HeatmapMaterialInstance.Get() : VoronoiMaterialInstance.Get();
+	if (!Target)
 	{
-		if (!HeatmapMaterialInstance)
+		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
 		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
-			{
-				Feedback->ReportError(
-					FText::FromString("Heatmap Setup Error"),
-					FText::FromString("Heatmap material missing"),
-					FText::FromString("Heatmap material instance is not available."),
-					FText::FromString("HeatmapPixelTextureVisualizer"));
-			}
-			return;
+			Feedback->ReportError(
+				FText::FromString("Heatmap Setup Error"),
+				FText::FromString(HeatmapType ? "Heatmap material missing" : "Voronoi material missing"),
+				FText::FromString(HeatmapType ? "Heatmap material instance is not available." : "Voronoi material instance is not available."),
+				FText::FromString("HeatmapPixelTextureVisualizer"));
 		}
-		RuntimeHeatmapMeshComponent->SetMaterial(0, HeatmapMaterialInstance);
+		return;
 	}
-	else
+	// Tiled dense path emits N sections; apply MID to every one so batched draws share the same instance.
+	const int32 NumSections = RuntimeHeatmapMeshComponent->GetNumSections();
+	for (int32 i = 0; i < NumSections; ++i)
 	{
-		if (!VoronoiMaterialInstance)
-		{
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
-			{
-				Feedback->ReportError(
-					FText::FromString("Heatmap Setup Error"),
-					FText::FromString("Voronoi material missing"),
-					FText::FromString("Voronoi material instance is not available."),
-					FText::FromString("HeatmapPixelTextureVisualizer"));
-			}
-			return;
-		}
-		RuntimeHeatmapMeshComponent->SetMaterial(0, VoronoiMaterialInstance);
+		RuntimeHeatmapMeshComponent->SetMaterial(i, Target);
 	}
 }
 
@@ -321,8 +324,8 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture() const
 		UE_LOG(LogTemp, Warning, TEXT("DynamicTexture is not valid"));
 		return;
 	}
-	// check static mesh and material instance is valid
-	if(!RuntimeHeatmapMeshComponent || !RuntimeHeatmapMeshComponent->GetProcMeshSection(0) || !HeatmapMaterialInstance || !VoronoiMaterialInstance)
+	// check static mesh and material instance is valid (any section will do — dense path may emit N)
+	if(!RuntimeHeatmapMeshComponent || RuntimeHeatmapMeshComponent->GetNumSections() == 0 || !HeatmapMaterialInstance || !VoronoiMaterialInstance)
 	{
 		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
 		{
@@ -674,12 +677,12 @@ void AHeatmapPixelTextureVisualizer::ClearTexture()
 
 void AHeatmapPixelTextureVisualizer::UpdateMeshSize(const FVector2D& NewMeshSize)
 {
-	// check if the mesh is valid
-	if(!RuntimeHeatmapMeshComponent->GetProcMeshSection(0))
+	// check if the mesh is valid (any section)
+	if (!RuntimeHeatmapMeshComponent || RuntimeHeatmapMeshComponent->GetNumSections() == 0)
 	{
 		return;
 	}
-	
+
 	// update the mesh size
 	HeatmapMeshSize2D = NewMeshSize;
 
@@ -690,8 +693,28 @@ void AHeatmapPixelTextureVisualizer::UpdateMeshSize(const FVector2D& NewMeshSize
 	MeshVertices.Add(FVector(HeatmapMeshSize2D.X, HeatmapMeshSize2D.Y, 0));
 	MeshVertices.Add(FVector(HeatmapMeshSize2D.X, 0, 0));
 
-	// update the mesh
-	RuntimeHeatmapMeshComponent->UpdateMeshSection(0, MeshVertices, TArray<FVector>(), MeshUVs, TArray<FColor>(), TArray<FProcMeshTangent>());
+	// Drop any tiled sections and rebuild as a single 4-vert plane. This path only runs for the simple
+	// (non-dense) case; dense heatmaps should retrigger GenerateMeshVerticesUVsAndTriangles instead.
+	if (TileEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TileEmitTickerHandle);
+		TileEmitTickerHandle.Reset();
+	}
+	RuntimeHeatmapMeshComponent->ClearAllMeshSections();
+	Tiles.Reset();
+	PendingTileEmitIndex = 0;
+
+	const double PushStart = FPlatformTime::Seconds();
+	RuntimeHeatmapMeshComponent->CreateMeshSection(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs,
+	                                               TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+	const double PushDurationMs = (FPlatformTime::Seconds() - PushStart) * 1000.0;
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(
+			TEXT("[Heatmap %s floor=%d] UpdateMeshSize single-section rebuild verts=%d tris=%d in %.2f ms"),
+			*ActorName, FloorID, MeshVertices.Num(), MeshTriangles.Num() / 3, PushDurationMs));
+	}
+	AssignMaterialInstanceToMesh();
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapType(bool bIsStandardHeatmap, bool bIsLiveTrackingNeeded)
@@ -744,8 +767,15 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapMeshBounds()
 
 void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSize, bool bIsStandardHeatmap)
 {
-	// Clear mesh section
-	RuntimeHeatmapMeshComponent->ClearMeshSection(0);
+	// Drop every section (dense path may have emitted N). Simple BuildGridMeshPlane only ever produces one.
+	if (TileEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TileEmitTickerHandle);
+		TileEmitTickerHandle.Reset();
+	}
+	RuntimeHeatmapMeshComponent->ClearAllMeshSections();
+	Tiles.Reset();
+	PendingTileEmitIndex = 0;
 
 	FIntPoint NumTriangles = FIntPoint(2);// if the heatmap is standard we only need 2 triangles (till we get to clipping)
 
@@ -754,7 +784,7 @@ void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSiz
 		// Calculate the number of triangles
 		NumTriangles = FIntPoint(MeshSize.X / 25, MeshSize.Y / 25);
 	}
-	
+
 	// Clear any existing vertices, UVs and triangles
 	MeshVertices.Empty();
 	MeshUVs.Empty();
@@ -772,9 +802,18 @@ void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSiz
 		UKismetProceduralMeshLibrary::CreateGridMeshWelded(NumTriangles.X, NumTriangles.Y, Self->MeshTriangles, Self->MeshVertices, Self->MeshUVs, 25);
 
 		// Update the mesh
+		const double PushStart = FPlatformTime::Seconds();
 		Self->RuntimeHeatmapMeshComponent->CreateMeshSection(0, Self->MeshVertices, Self->MeshTriangles, TArray<FVector>(), Self->MeshUVs, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+		const double PushDurationMs = (FPlatformTime::Seconds() - PushStart) * 1000.0;
+		if (UMobiusCustomLoggerSubsystem* BuildLog = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+		{
+			BuildLog->EnqueueLogMessage(FString::Printf(
+				TEXT("[Heatmap %s floor=%d] BuildGridMeshPlane CreateMeshSection verts=%d tris=%d in %.2f ms (off-GT)"),
+				*Self->ActorName, Self->FloorID, Self->MeshVertices.Num(), Self->MeshTriangles.Num() / 3, PushDurationMs));
+		}
+		Self->AssignMaterialInstanceToMesh();
 	});
-	
+
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapCVDSettings(EColorVisionDeficiency ColourDeficiency,
@@ -862,114 +901,89 @@ FIntPoint AHeatmapPixelTextureVisualizer::CalculateNumberOfTriangles(const FVect
 	return NumTriangles;
 }
 
-void AHeatmapPixelTextureVisualizer::CreateMeshVertexsAndUVs(const FIntPoint NumTriangles, const FVector2D CellSize)
+void AHeatmapPixelTextureVisualizer::BuildTileBuffers(int32 TileX0, int32 TileY0, int32 TileX1, int32 TileY1,
+                                                      const FIntPoint& NumTriangles, const FVector2D& CellSize,
+                                                      const TArray<FBox3d>& Quads, FHeatmapTile& Out) const
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Generate Mesh Vertices and UVs");
-	// Clear any existing vertices and UVs
-	MeshVertices.Empty();
-	MeshUVs.Empty();
+	// UV aspect correction matches the legacy CreateMeshVertexsAndUVs derivation so world-space UV math
+	// remains unchanged across the tile boundaries — no seams in the dynamic-texture sampling.
+	const bool bAdjustY = HeatmapMeshSize2D.X >= HeatmapMeshSize2D.Y;
+	const float AspectRatio = bAdjustY ? (HeatmapMeshSize2D.Y / HeatmapMeshSize2D.X)
+	                                   : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
 
-	// Clear any existing vertices and UVs
-	// Assume the texture is square. If the mesh is wider than tall, adjust the Y UVs.
-	bool bAdjustY = HeatmapMeshSize2D.X >= HeatmapMeshSize2D.Y;
-	// The aspect ratio here is the ratio of the smaller dimension to the larger.
-	float AspectRatio = bAdjustY ? (HeatmapMeshSize2D.Y / HeatmapMeshSize2D.X) : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
-	
-	// Generate vertices and UVs
-	for (int32 y = 0; y < NumTriangles.Y; y++)
+	// Global-grid-index -> local-tile-vert-index. Only verts referenced by kept quads are materialised.
+	TMap<int32, int32> GlobalToLocal;
+	GlobalToLocal.Reserve((TileX1 - TileX0 + 1) * (TileY1 - TileY0 + 1));
+
+	auto AddOrGetVert = [&](int32 gx, int32 gy) -> int32
 	{
-		for (int32 x = 0; x < NumTriangles.X; x++)
+		const int32 GlobalIdx = gx + gy * NumTriangles.X;
+		if (const int32* Existing = GlobalToLocal.Find(GlobalIdx))
 		{
-			// Create vertex position (Z is fixed to 0.1)
-			FVector Vertex = FVector(x * CellSize.X, y * CellSize.Y, 0.1f);
-            
-			// Base UV coordinates mapped over the full [0,1] range
-			float UVx = static_cast<float>(x) / (NumTriangles.X - 1);
-			float UVy = static_cast<float>(y) / (NumTriangles.Y - 1);
-
-			// Adjust the UVs to account for non-square mesh dimensions:
-			if (bAdjustY)
-			{
-				// For a wider-than-tall mesh, scale the Y component.
-				// This makes the effective vertical UV range equal to the mesh's aspect ratio.
-				// The offset centers the texture vertically.
-				UVy = UVy * AspectRatio + (1.0f - AspectRatio) * 0.5f;
-			}
-			else
-			{
-				// For a taller-than-wide mesh, you could similarly adjust UVx:
-				UVx = UVx * AspectRatio + (1.0f - AspectRatio) * 0.5f;
-			}
-			
-			FVector2d UV(UVx, UVy);
-			MeshVertices.Add(Vertex);
-			MeshUVs.Add(UV);
+			return *Existing;
 		}
-	}
-}
 
-void AHeatmapPixelTextureVisualizer::GenerateMeshTrianglesInQuadMapping(const FIntPoint NumTriangles, TArray<FBox3d> Quads)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE_STR("Generate Triangles in Quad Mapping");
-	// Clear any existing triangles
-	MeshTriangles.Empty();
-	
-	for (int32 y = 0; y < NumTriangles.Y - 1; y++)
-	{
-		for (int32 x = 0; x < NumTriangles.X - 1; x++)
+		FVector Vertex(gx * CellSize.X, gy * CellSize.Y, 0.1f);
+		float UVx = static_cast<float>(gx) / (NumTriangles.X - 1);
+		float UVy = static_cast<float>(gy) / (NumTriangles.Y - 1);
+		if (bAdjustY)
 		{
-			// Calculate the 6 indices for the 2 triangles
-			int32 Index0 = x + y * NumTriangles.X;
-			int32 Index1 = Index0 + NumTriangles.X;
-			int32 Index2 = Index0 + 1;
-			int32 Index3 = Index1;
-			int32 Index4 = Index1 + 1;
-			int32 Index5 = Index2;
+			UVy = UVy * AspectRatio + (1.0f - AspectRatio) * 0.5f;
+		}
+		else
+		{
+			UVx = UVx * AspectRatio + (1.0f - AspectRatio) * 0.5f;
+		}
 
-			
-			if(Quads.Num()>0)
+		const int32 LocalIdx = Out.Verts.Add(Vertex);
+		Out.UVs.Add(FVector2D(UVx, UVy));
+		GlobalToLocal.Add(GlobalIdx, LocalIdx);
+		return LocalIdx;
+	};
+
+	// Walk every quad cell in the tile range. Preserve the quad-intersect filter so ignored regions
+	// (outside the building footprint) still produce zero geometry.
+	for (int32 y = TileY0; y < TileY1; ++y)
+	{
+		for (int32 x = TileX0; x < TileX1; ++x)
+		{
+			bool bKeep = Quads.Num() == 0;
+			if (!bKeep)
 			{
-				// loop over the quads and see if the triangle is within the quad
-				for(FBox3d Quad : Quads)
+				const FVector V0 = FVector(x * CellSize.X, y * CellSize.Y, 0.1f) + MeshOriginLocation;
+				const FVector V1 = FVector(x * CellSize.X, (y + 1) * CellSize.Y, 0.1f) + MeshOriginLocation;
+				const FVector V2 = FVector((x + 1) * CellSize.X, y * CellSize.Y, 0.1f) + MeshOriginLocation;
+				const FVector V3 = FVector((x + 1) * CellSize.X, (y + 1) * CellSize.Y, 0.1f) + MeshOriginLocation;
+				for (const FBox3d& Quad : Quads)
 				{
-					// as the vertices are in local space we need to convert to global space
-					FVector Vert_0 = MeshVertices[Index0] + MeshOriginLocation;
-					FVector Vert_1 = MeshVertices[Index1] + MeshOriginLocation;
-					FVector Vert_2 = MeshVertices[Index2] + MeshOriginLocation;
-					FVector Vert_3 = MeshVertices[Index3] + MeshOriginLocation;
-					
-					// check if triangle vertices are within or on the quad bounds
-					if(Quad.IsInsideOrOn(Vert_0) || Quad.IsInsideOrOn(Vert_1) ||
-						Quad.IsInsideOrOn(Vert_2) || Quad.IsInsideOrOn(Vert_3))
+					if (Quad.IsInsideOrOn(V0) || Quad.IsInsideOrOn(V1) ||
+					    Quad.IsInsideOrOn(V2) || Quad.IsInsideOrOn(V3))
 					{
-						// Add the triangle indices - As we want uniform boxes we will say that the quad is valid
-						MeshTriangles.Add(Index0);
-						MeshTriangles.Add(Index1);
-						MeshTriangles.Add(Index2);
-						MeshTriangles.Add(Index3);
-						MeshTriangles.Add(Index4);
-						MeshTriangles.Add(Index5);
-						break; // found a valid quad so break
+						bKeep = true;
+						break;
 					}
 				}
 			}
-			else
+			if (!bKeep)
 			{
-				// Should have a valid quad but for now we will just add the triangles
-
-				// Add the triangle indices
-				MeshTriangles.Add(Index0);
-				MeshTriangles.Add(Index1);
-				MeshTriangles.Add(Index2);
-				MeshTriangles.Add(Index3);
-				MeshTriangles.Add(Index4);
-				MeshTriangles.Add(Index5);
+				continue;
 			}
-			
+
+			// Matches legacy index pattern: (Idx0,Idx1,Idx2) + (Idx1,Idx4,Idx2) where
+			// Idx0=(x,y), Idx1=(x,y+1), Idx2=(x+1,y), Idx4=(x+1,y+1).
+			const int32 L0 = AddOrGetVert(x, y);
+			const int32 L1 = AddOrGetVert(x, y + 1);
+			const int32 L2 = AddOrGetVert(x + 1, y);
+			const int32 L3 = AddOrGetVert(x + 1, y + 1);
+
+			Out.Tris.Add(L0);
+			Out.Tris.Add(L1);
+			Out.Tris.Add(L2);
+			Out.Tris.Add(L1);
+			Out.Tris.Add(L3);
+			Out.Tris.Add(L2);
 		}
 	}
-	// Log the number of triangles
-	UE_LOG(LogTemp, Warning, TEXT("Number of Triangles: %d"), MeshTriangles.Num());
 }
 
 void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const FVector2D& MeshSize,
@@ -977,9 +991,19 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 {
 	// Update the mesh size
 	HeatmapMeshSize2D = MeshSize;
-	
-	// clear the previous mesh section
-	RuntimeHeatmapMeshComponent->ClearMeshSection(0);
+
+	// Do NOT ClearAllMeshSections here: SetupDynamicTexture runs synchronously right after this call
+	// and gates on GetNumSections() > 0. Dropping the default constructor-emitted section 0 would make
+	// the dynamic texture bail with "Heatmap resources missing". Clearing is deferred to the GT emit
+	// continuation just before the tiles are pushed, so the old sections remain live until replaced.
+	// Cancel any in-flight emit from a previous call so its stale tiles don't stomp this generation.
+	if (TileEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TileEmitTickerHandle);
+		TileEmitTickerHandle.Reset();
+	}
+	Tiles.Reset();
+	PendingTileEmitIndex = 0;
 
 	// Number of required triangles
 	FIntPoint NumTriangles = FIntPoint(MeshSize.X / 250, MeshSize.Y / 250);
@@ -1051,23 +1075,63 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 		MeshTriangles.Empty();
 	}
 
-	
+	// Snap tile size to >=4 cells; user-visible UPROPERTY clamps at 4 already but a direct member poke could slip through.
+	const int32 LocalTileSize = FMath::Max(4, GridTileSize);
+
 	// Capture via TWeakObjectPtr so a destroyed actor doesn't leave the
 	// worker / GT continuation dereferencing freed members during a file switch.
 	TWeakObjectPtr<AHeatmapPixelTextureVisualizer> WeakThis(this);
-	Async(EAsyncExecution::ThreadPool, [WeakThis, NumTriangles, CellSize, MeshBuilder]()
+	Async(EAsyncExecution::ThreadPool, [WeakThis, NumTriangles, CellSize, MeshBuilder, LocalTileSize]()
 	      {
 		      AHeatmapPixelTextureVisualizer* Self = WeakThis.Get();
 		      if (!Self) return;
 
 		      // Generate the quads to restrict the triangle generation to areas needed
-		      TArray<FBox3d> Quads = Self->FindAllQuads(MeshBuilder);
+		      const TArray<FBox3d> Quads = Self->FindAllQuads(MeshBuilder);
 
-		      // Generate the vertices and UVs
-		      Self->CreateMeshVertexsAndUVs(NumTriangles, CellSize);
+		      // Number of quad cells (vertex grid is NumTriangles.X x NumTriangles.Y).
+		      const int32 QuadsX = FMath::Max(0, NumTriangles.X - 1);
+		      const int32 QuadsY = FMath::Max(0, NumTriangles.Y - 1);
 
-		      // Generate the Triangles for this square
-		      Self->GenerateMeshTrianglesInQuadMapping(NumTriangles, Quads);
+		      TArray<FHeatmapTile> LocalTiles;
+		      if (Self->bEnableMultiSectionBatching && LocalTileSize > 0)
+		      {
+			      // Tile the quad grid; tiles with zero kept triangles are discarded so empty regions cost nothing.
+			      const int32 NumTileCols = FMath::DivideAndRoundUp(QuadsX, LocalTileSize);
+			      const int32 NumTileRows = FMath::DivideAndRoundUp(QuadsY, LocalTileSize);
+			      LocalTiles.Reserve(NumTileCols * NumTileRows);
+
+			      for (int32 y0 = 0; y0 < QuadsY; y0 += LocalTileSize)
+			      {
+				      const int32 y1 = FMath::Min(y0 + LocalTileSize, QuadsY);
+				      for (int32 x0 = 0; x0 < QuadsX; x0 += LocalTileSize)
+				      {
+					      const int32 x1 = FMath::Min(x0 + LocalTileSize, QuadsX);
+					      FHeatmapTile Tile;
+					      Self->BuildTileBuffers(x0, y0, x1, y1, NumTriangles, CellSize, Quads, Tile);
+					      if (Tile.Tris.Num() > 0)
+					      {
+						      LocalTiles.Emplace(MoveTemp(Tile));
+					      }
+				      }
+			      }
+		      }
+		      else
+		      {
+			      // Legacy single-section fallback for the rollback flag.
+			      FHeatmapTile Whole;
+			      Self->BuildTileBuffers(0, 0, QuadsX, QuadsY, NumTriangles, CellSize, Quads, Whole);
+			      if (Whole.Tris.Num() > 0)
+			      {
+				      LocalTiles.Emplace(MoveTemp(Whole));
+			      }
+		      }
+
+		      // Hand the built tiles over to the actor for the GT emit stage.
+		      if (AHeatmapPixelTextureVisualizer* Alive = WeakThis.Get())
+		      {
+			      Alive->Tiles = MoveTemp(LocalTiles);
+		      }
 	      },
 	      [WeakThis]
 	      {
@@ -1076,8 +1140,36 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 			      AHeatmapPixelTextureVisualizer* Self = WeakThis.Get();
 			      if (!Self || !IsValid(Self->RuntimeHeatmapMeshComponent)) return;
 
-			      // Generate the mesh section
-			      Self->RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, Self->MeshVertices, Self->MeshTriangles, TArray<FVector>(), Self->MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
+			      // Clear existing sections then hand tile emit to the staggered pump. Emitting every
+			      // tile in one tick burns FScene_AddPrimitive on the GT (bigger grids = bigger hitch);
+			      // the pump spreads the cost across frames. Material apply runs once in FinalizeTileEmit
+			      // so tiles picked up before the final flush may render unlit for a frame or two —
+			      // acceptable trade for eliminating the spike.
+			      if (UMobiusCustomLoggerSubsystem* KickoffLog = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+			      {
+				      KickoffLog->EnqueueLogMessage(FString::Printf(
+					      TEXT("[Heatmap %s floor=%d] Tile emit kickoff tiles=%d"),
+					      *Self->ActorName, Self->FloorID, Self->Tiles.Num()));
+			      }
+			      Self->RuntimeHeatmapMeshComponent->ClearAllMeshSections();
+			      Self->PendingTileEmitIndex = 0;
+			      Self->TileEmitStartTime = FPlatformTime::Seconds();
+
+			      if (Self->TileEmitTickerHandle.IsValid())
+			      {
+				      FTSTicker::GetCoreTicker().RemoveTicker(Self->TileEmitTickerHandle);
+				      Self->TileEmitTickerHandle.Reset();
+			      }
+
+			      if (Self->Tiles.Num() == 0)
+			      {
+				      Self->FinalizeTileEmit();
+				      return;
+			      }
+
+			      Self->TileEmitTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				      FTickerDelegate::CreateUObject(Self, &AHeatmapPixelTextureVisualizer::EmitNextTileSection),
+				      0.0f);
 		      });
 	      });
 	
@@ -1095,7 +1187,108 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	//
 	// // Generate the mesh section
 	// RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(0, MeshVertices, MeshTriangles, TArray<FVector>(), MeshUVs,  TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
-	
+
+}
+
+bool AHeatmapPixelTextureVisualizer::EmitNextTileSection(float /*DeltaTime*/)
+{
+	if (!IsValid(RuntimeHeatmapMeshComponent))
+	{
+		Tiles.Empty();
+		PendingTileEmitIndex = 0;
+		TileEmitTickerHandle.Reset();
+		return false;
+	}
+
+	// Pick the material up-front so we can set it per section as each tile goes live, rather than
+	// shipping tiles with default material until FinalizeTileEmit runs one pass at the end.
+	UMaterialInstanceDynamic* TargetMaterial = HeatmapType ? HeatmapMaterialInstance.Get() : VoronoiMaterialInstance.Get();
+
+	UMobiusCustomLoggerSubsystem* StartupLogger =
+		GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
+
+	const int32 TilesThisTick = FMath::Max(1, SectionsEmittedPerTick);
+	for (int32 Pushed = 0; Pushed < TilesThisTick && PendingTileEmitIndex < Tiles.Num(); ++Pushed)
+	{
+		const int32 SectionIdx = PendingTileEmitIndex++;
+		FHeatmapTile& T = Tiles[SectionIdx];
+
+		const int32 TileVerts = T.Verts.Num();
+		const int32 TileTris  = T.Tris.Num() / 3;
+		const double PushStart = FPlatformTime::Seconds();
+
+		RuntimeHeatmapMeshComponent->CreateMeshSection_LinearColor(
+			SectionIdx, T.Verts, T.Tris, TArray<FVector>(), T.UVs,
+			TArray<FLinearColor>(), TArray<FProcMeshTangent>(), false);
+
+		if (TargetMaterial)
+		{
+			RuntimeHeatmapMeshComponent->SetMaterial(SectionIdx, TargetMaterial);
+		}
+
+		const double PushDurationMs = (FPlatformTime::Seconds() - PushStart) * 1000.0;
+		if (StartupLogger)
+		{
+			StartupLogger->EnqueueLogMessage(FString::Printf(
+				TEXT("[Heatmap %s floor=%d] CreateMeshSection section=%d verts=%d tris=%d in %.2f ms"),
+				*ActorName, FloorID, SectionIdx, TileVerts, TileTris, PushDurationMs));
+		}
+		UE_LOG(LogTemp, Log,
+			TEXT("[Heatmap %s floor=%d] CreateMeshSection section=%d verts=%d tris=%d in %.2f ms"),
+			*ActorName, FloorID, SectionIdx, TileVerts, TileTris, PushDurationMs);
+
+		// Free the per-tile CPU buffers now that the component owns the data.
+		T.Verts.Empty();
+		T.Tris.Empty();
+		T.UVs.Empty();
+	}
+
+	if (PendingTileEmitIndex >= Tiles.Num())
+	{
+		FinalizeTileEmit();
+		return false;
+	}
+
+	return true;
+}
+
+void AHeatmapPixelTextureVisualizer::FinalizeTileEmit()
+{
+	const int32 EmittedSections = Tiles.Num();
+
+	Tiles.Empty();
+	PendingTileEmitIndex = 0;
+	TileEmitTickerHandle.Reset();
+
+	if (IsValid(RuntimeHeatmapMeshComponent))
+	{
+		AssignMaterialInstanceToMesh();
+	}
+
+	const double DurationMs = (FPlatformTime::Seconds() - TileEmitStartTime) * 1000.0;
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+	{
+		StartupLogger->EnqueueLogMessage(FString::Printf(
+			TEXT("[Heatmap %s floor=%d] Tile emit finished sections=%d in %.2f ms"),
+			*ActorName, FloorID, EmittedSections, DurationMs));
+	}
+	UE_LOG(LogTemp, Log, TEXT("[Heatmap %s floor=%d] Tile emit finished sections=%d in %.2f ms"),
+		*ActorName, FloorID, EmittedSections, DurationMs);
+}
+
+void AHeatmapPixelTextureVisualizer::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Kill the tile emit pump before the actor goes away — the ticker holds a UObject binding
+	// to `this` and would fire again post-teardown otherwise.
+	if (TileEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TileEmitTickerHandle);
+		TileEmitTickerHandle.Reset();
+	}
+	Tiles.Empty();
+	PendingTileEmitIndex = 0;
+
+	Super::EndPlay(EndPlayReason);
 }
 
 TArray<FBox3d> AHeatmapPixelTextureVisualizer::FindAllQuads(ARuntimeMeshBuilder* MeshBuilder) const
@@ -1176,13 +1369,22 @@ TArray<FBox3d> AHeatmapPixelTextureVisualizer::FindAllQuads(ARuntimeMeshBuilder*
 		}
 		else // is a procedural mesh
 		{
-			// loop over the mesh vertices
-			for(FProcMeshVertex VertexStruct : MeshBuilder->MobiusProceduralMeshComponent->GetProcMeshSection(0)->ProcVertexBuffer)
+			// Building mesh is now batched into N sections; walk every one so quad detection sees the full mesh.
+			UProceduralMeshComponent* BuildingComp = MeshBuilder->MobiusProceduralMeshComponent;
+			if (BuildingComp)
 			{
-				// while working out the algorithm to work out the mesh perimeter we will just loop over vertices that have a z value of 0 +/- 100
-				if(VertexStruct.Position.Z <= StartPos.Z + StepSize && VertexStruct.Position.Z >= StartPos.Z - StepSize)
+				const int32 NumSections = BuildingComp->GetNumSections();
+				for (int32 s = 0; s < NumSections; ++s)
 				{
-					ValidVertices.Add(VertexStruct.Position);
+					const FProcMeshSection* Sec = BuildingComp->GetProcMeshSection(s);
+					if (!Sec) continue;
+					for (const FProcMeshVertex& VertexStruct : Sec->ProcVertexBuffer)
+					{
+						if (VertexStruct.Position.Z <= StartPos.Z + StepSize && VertexStruct.Position.Z >= StartPos.Z - StepSize)
+						{
+							ValidVertices.Add(VertexStruct.Position);
+						}
+					}
 				}
 			}
 		}

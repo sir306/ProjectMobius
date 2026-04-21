@@ -26,6 +26,8 @@
 
 #include "CoreMinimal.h"
 #include "Actors/FlowCounter.h"
+#include "AsyncAssimpMeshLoader.h"    // FAssimpSubmeshBuffers for staggered emit queue
+#include "Containers/Ticker.h"        // FTSTicker for staggered section emit
 #include "GameFramework/Actor.h"
 #include "Interfaces/AssimpInterface.h"
 #include "Interfaces/ProjectMobiusInterface.h"
@@ -260,6 +262,32 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Component")
 	class UProceduralMeshComponent* MobiusProceduralMeshComponent;
 
+	/**
+	 * Cap per-section triangle count. Submeshes exceeding this are partitioned across extra sections
+	 * with index-remapped vertex buffers (boundary vertices duplicated across adjacent chunks). High
+	 * value keeps most submeshes whole; lowering it spreads game-thread CreateMeshSection cost across
+	 * more sections (more draw calls, less hitch per section).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshGenerator|Component", meta=(ClampMin="1000"))
+	int32 MaxTrisPerSection = 100000;
+
+	/**
+	 * Number of mesh sections pushed to the procedural mesh component per game-thread tick during
+	 * staggered emit. 1 = one section per frame (smoothest, finishes over N frames); higher values
+	 * compress the finish window at the cost of a bigger per-frame FScene_AddPrimitive spike.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshGenerator|Component", meta=(ClampMin="1"))
+	int32 SectionsEmittedPerTick = 1;
+
+	/**
+	 * Rollback knob for the multi-section pipeline. true  = per-submesh chunks (default);
+	 * false = legacy flatten-to-single-section-0 path. Use false to A/B against the old
+	 * behaviour if a regression surfaces; intended to be removed once the tiled path has
+	 * shipped a release.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MeshGenerator|Component")
+	bool bEnableMultiSectionBatching = true;
+
 	/** Flow Counter Spawner - handles spawning flow counters */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MeshGenerator|Component")
 	class UFlowCounterSpawnerComponent* FlowCounterSpawnerComponent;
@@ -336,6 +364,14 @@ protected:
 	/** Are we currently in the middle of batched Datasmith material setup? */
 	bool bDatasmithMaterialSetupInProgress = false;
 
+	/**
+	 * Datasmith registers components across frames — bounds/render state on individual
+	 * UStaticMeshComponents only settle as they register. OnMeshBuilt can't fire until all
+	 * queued comps have been processed or the heatmap consumer walks partial geometry.
+	 * This flag marks "scene import done, queue still draining — fire once drained".
+	 */
+	bool bHeatmapBroadcastPending = false;
+
 private:
 	/** TODO: We eventually want to get the mesh material and apply our materials to it as a mask or material function to it
 	 * Material Instance Dynamic to apply to the Procedural Mesh Component after a mesh has been generated and set with
@@ -355,6 +391,27 @@ private:
 	// Are we currently resetting / swapping out the mesh and Datasmith anchor?
 	UPROPERTY(Transient)
 	bool bIsResettingForNewLoad = false;
+
+	/**
+	 * Mesh sections queued for staggered emit. GetTheAsyncMeshData fills this, then EmitNextChunkSection
+	 * drains it one (or SectionsEmittedPerTick) at a time from the core ticker. Empty when idle.
+	 */
+	TArray<FAssimpSubmeshBuffers> PendingMeshChunks;
+
+	/** Index of the next chunk in PendingMeshChunks to push via CreateMeshSection_LinearColor. */
+	int32 PendingChunkEmitIndex = 0;
+
+	/** Ticker handle for the staggered emit pump. Reset once all chunks are pushed. */
+	FTSTicker::FDelegateHandle ChunkEmitTickerHandle;
+
+	/** FPlatformTime::Seconds() sample taken when the emit pump started — used to log total wall time. */
+	double ChunkEmitStartTime = 0.0;
+
+	/** Pump that pushes up to SectionsEmittedPerTick sections per frame. Returns false once drained. */
+	bool EmitNextChunkSection(float DeltaTime);
+
+	/** Runs once after the final section is emitted: broadcast bounds, close loading widget, clear flags. */
+	void FinalizeMeshEmit();
 
 	/** Report a RuntimeMeshBuilder error through the user feedback subsystem. */
 	void ReportError(UObject* ContextObject, FString ErrorTitleBar, FString ErrorTitle, FString ErrorMessage, FString ErrorLocation);
