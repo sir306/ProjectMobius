@@ -1727,7 +1727,7 @@ uint32 FProcessSimulationDataRunnable:: Run()
 #if !UE_BUILD_SHIPPING
 		FMobiusMemSnapshot::Take(TEXT("Run_AfterSamplesFree")).LogDelta(SnapRunStart);
 #endif
-		FMemory::Trim();  // hint allocator to return freed JSON pages to OS
+
 	}
 
 	// Send the final progress and completion events
