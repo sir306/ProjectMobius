@@ -35,7 +35,6 @@
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
-#include "Core/MobiusWidgetSubsystem.h"
 // GameInstance
 #include "SkeletalMeshAttributes.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
@@ -403,20 +402,13 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	}
 #endif
 
-	// Drop per-simulation state held by world subsystems before the GC pass.
-	// These outlive an individual file load (subsystems are world-scoped and
-	// PIE world only ends on stop), so without an explicit reset they keep
-	// the prior simulation's agent data + widget tree (MIDs, shader maps)
-	// rooted across switches.
+
+	// reset data in stats subsystem in prep for new data
 	if (UWorld* World = GetWorld())
 	{
 		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
 		{
 			StatSub->ResetForFileSwitch();
-		}
-		if (UMobiusWidgetSubsystem* WidgetSub = World->GetSubsystem<UMobiusWidgetSubsystem>())
-		{
-			WidgetSub->ResetForFileSwitch();
 		}
 	}
 

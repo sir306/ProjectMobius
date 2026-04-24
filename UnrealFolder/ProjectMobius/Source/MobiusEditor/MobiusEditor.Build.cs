@@ -9,6 +9,7 @@ public class MobiusEditor : ModuleRules
 		PublicDependencyModuleNames.AddRange(new[]
 		{
 			"Core",
+			"EditorScriptingUtilities",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new[]
@@ -20,7 +21,6 @@ public class MobiusEditor : ModuleRules
 			"MobiusCore",
 			"DatasmithRuntime",
 			"DatasmithContent",
-			"EditorScriptingUtilities",
 			"AssetTools",
 		});
 

@@ -34,11 +34,8 @@
 #include "Serialization/JsonTypes.h"
 #include <MassAI/Fragments/SharedFragments/SimulationFragment.h>
 
-#include "HeatmapVisualization.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Interfaces/ProjectMobiusInterface.h"
-#include "SubSystems/TimeDilationSubSystem.h"
-#include "HeatmapVisualization/Public/QuadTree.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
