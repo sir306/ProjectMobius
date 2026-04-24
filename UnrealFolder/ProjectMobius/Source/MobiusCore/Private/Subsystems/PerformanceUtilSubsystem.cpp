@@ -154,14 +154,10 @@ void UPerformanceUtilSubsystem::ApplyConsoleCommands(const TArray<FString>& Comm
 //algorithm to account for frame drops and spikes.
 void UPerformanceUtilSubsystem::CalculateCurrentFPS(float DeltaTime)
 {
-	// Calculate the current FPS based on DeltaTime
 	if (DeltaTime > 0.0f)
 	{
 		CurrentFPS = 1.0f / DeltaTime;
-	}
-	else
-	{
-		// Avoid division by zero
+		SmoothedFPS = FMath::Lerp(SmoothedFPS, CurrentFPS, 0.1f);
 	}
 }
 

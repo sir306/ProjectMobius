@@ -139,16 +139,16 @@ void UMobiusCustomLoggerSubsystem::FlushToDisk()
 		return;
 	}
 
-	for (const FString& Line : LocalMessages)
-	{
-		LogLineDelegate.Broadcast(Line);
-	}
-
 	bIsFlushing = true;
 	ON_SCOPE_EXIT
 	{
 		bIsFlushing = false;
 	};
+
+	for (const FString& Line : LocalMessages)
+	{
+		LogLineDelegate.Broadcast(Line);
+	}
 
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	TUniquePtr<IFileHandle> Handle(PlatformFile.OpenWrite(*LogFilePath, /*bAppend=*/true));
@@ -186,6 +186,12 @@ FString UMobiusCustomLoggerSubsystem::BuildTimestampedLine(const FString& Messag
 
 void UMobiusCustomLoggerSubsystem::SetLoggingEnabled(bool bEnabled)
 {
+	UE_LOG(LogTemp, Warning, TEXT("MobiusLogger: SetLoggingEnabled(%s)"), bEnabled ? TEXT("true") : TEXT("false"));
+	if (!bEnabled)
+	{
+		EnqueueLogMessage(TEXT("=== Logger disabled ==="));
+		FlushToDisk();
+	}
 	bIsLoggingEnabled = bEnabled;
 }
 

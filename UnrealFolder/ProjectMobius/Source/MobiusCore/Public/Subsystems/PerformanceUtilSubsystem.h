@@ -186,9 +186,13 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
 	TEnumAsByte<EPedestrianScalabilitySettings> CurrentAvatarModelType;
 
-	/** Sores the current FPS */
+	/** Instantaneous FPS, recalculated each tick from DeltaTime. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
-	float CurrentFPS = 120.0f; // Default to 120 FPS, as this is the target for this viewer
+	float CurrentFPS = 120.0f;
+
+	/** Exponential moving average of FPS (α=0.1). Smooths over ~10 frames. Use this for sustained-drop checks. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
+	float SmoothedFPS = 120.0f;
 
 	/** Low FPS threshold, when we hit this threshold we need to start auto triggering optimization techniques */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
@@ -202,5 +206,16 @@ public:
 	/** Returns the current global scalability setting */
 	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
 	FORCEINLINE TEnumAsByte<EGlobalScalabilitySettings> GetGlobalScalabilitySetting() const { return GlobalScalabilitySetting; }
-	
+
+	/** Instantaneous FPS from last tick. */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
+	FORCEINLINE float GetCurrentFPS() const { return CurrentFPS; }
+
+	/** Exponential moving average FPS (~10-frame window). Prefer this for sustained-drop decisions. */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
+	FORCEINLINE float GetSmoothedFPS() const { return SmoothedFPS; }
+
+	/** Low FPS threshold used by auto-optimisation logic. */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
+	FORCEINLINE float GetLowFPSThreshold() const { return LowFPSThreshold; }
 };

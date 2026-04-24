@@ -54,8 +54,25 @@
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "HAL/IConsoleManager.h"
 
 class UTimeDilationSubSystem;
+
+#if !UE_BUILD_SHIPPING
+namespace
+{
+	TAutoConsoleVariable<int32> CVarMobiusAgentDataFileSwitchDiagnostics(
+		TEXT("mobius.AgentData.FileSwitchDiagnostics"),
+		0,
+		TEXT("Enable expensive agent-data file switch diagnostics: extra GC, allocator trim, memreport, and memory polling."),
+		ECVF_Default);
+
+	bool ShouldRunAgentDataFileSwitchDiagnostics()
+	{
+		return CVarMobiusAgentDataFileSwitchDiagnostics.GetValueOnGameThread() != 0;
+	}
+}
+#endif
 
 UMassEntitySpawnSubsystem::UMassEntitySpawnSubsystem() :
         SpawnedEntityPedestrianHandles(TArray<FMassEntityHandle>()),
@@ -156,9 +173,9 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
 
 	//TODO: We dont want to simulate time till this is done, also we need a better way to build shared fragment and update the archetype on data changes
 	EntityManager->BatchCreateEntities(PedestrianArchetypeHandle, ArchetypeSharedFragmentValues, NumberOfPedestriansToSpawn, SpawnedEntityPedestrianHandles);
-
-        // Cleanup any existing runnable to avoid memory leaks
-        AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+	// The runnable data was moved out in BuildPedestrianMovementFragmentData. Keep
+	// the completed runnable object until the next file switch so we do not join
+	// its thread from the spawn/completion path.
 }
 
 void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
@@ -203,6 +220,7 @@ void UMassEntitySpawnSubsystem::DestroyAllSpawnedPedestrians()
                 ExecutionContext.ClearEntityCollection();
                 ExecutionContext.FlushDeferred();
                 EntityManager->FlushCommands();
+                SpawnedEntityPedestrianHandles.Empty();
                 //EntityManager.Reset();
         }
 }
@@ -296,6 +314,15 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
+#if !UE_BUILD_SHIPPING
+	const bool bRunFileSwitchDiagnostics = ShouldRunAgentDataFileSwitchDiagnostics();
+#endif
+	const bool bHadExistingFileState =
+		!PedestrianTemplateData.IsEmpty() ||
+		!SpawnedEntityPedestrianHandles.IsEmpty() ||
+		SharedSimulationFragment.GetPtr<FSimulationFragment>() != nullptr ||
+		(AgentDataSubsystem && AgentDataSubsystem->JsonDataRunnable);
+
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
 
@@ -401,15 +428,12 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	}
 #endif
 
-	// Empty out the handles array
-	SpawnedEntityPedestrianHandles.Empty();
-
-	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
-	// data is created
-	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-
 #if !UE_BUILD_SHIPPING
+	if (bRunFileSwitchDiagnostics)
 	{
+		// Optional early GC diagnostic. Normal switching does one GC after all
+		// strong simulation/template references are released below.
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterFirstGC"));
 		S.LogDelta(SnapPrev);
 		SnapPrev = S;
@@ -449,9 +473,13 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	// prevent the ~900MB of TMap/TArray memory from being reclaimed.
 	if (FSimulationFragment* Frag = SharedSimulationFragment.GetPtr<FSimulationFragment>())
 	{
-		// Reset the TSharedPtr — frees the 4 GB TMap independently of the Mass archetype
-		// that permanently holds the FSimulationFragment struct.
-		Frag->SimulationData.Reset();
+		if (Frag->SimulationData.IsValid())
+		{
+			// Empty the pointed-to map first because this TSharedPtr may have
+			// copies in Mass fragments that outlive this subsystem reference.
+			Frag->SimulationData->Empty();
+			Frag->SimulationData.Reset();
+		}
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -472,25 +500,31 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	}
 #endif
 
-	// Second GC pass now that template + SimulationData are both released.
-	// The first pass (above) ran before DestroyTemplate, so the archetype still held refs then.
-	// This pass lets the allocator reclaim pages sooner after the 4 GB drop.
-	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+	// Force GC once after template + SimulationData references are both released.
+	// Skip it on the initial load path where there was no previous file state to
+	// tear down.
+	if (bHadExistingFileState)
+	{
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+	}
 
 #if !UE_BUILD_SHIPPING
+	if (bHadExistingFileState)
 	{
-		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSecondGC"));
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterGC"));
 		S.LogDelta(SnapPrev);
 		SnapPrev = S;
 	}
 #endif
 
-	// Hint the allocator to return freed pages to the OS. App-level frees without
-	// Trim often keep pages in the process's working set, masking whether the
-	// earlier steps actually released memory.
-	FMemory::Trim();
-
 #if !UE_BUILD_SHIPPING
+	if (bRunFileSwitchDiagnostics)
+	{
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+		// Hint the allocator to return freed pages to the OS. Kept opt-in
+		// because it can cause later page-fault hitches.
+		FMemory::Trim();
+
 	FMobiusMemSnapshot SnapAfterTrim = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterMemTrim"));
 	SnapAfterTrim.LogDelta(SnapPrev);
 	// Cumulative drop vs the start of the switch, for quick scanning.
@@ -499,7 +533,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	// Diagnostic probe A: MemReport -full. Writes Saved/Profiling/MemReports/
 	// <timestamp>.memreport + .memreportgpu with the full allocator / UObject / RHI
 	// breakdown. One file per switch — diff them to see what's retained. This is
-	// temporary instrumentation; revert before committing to main.
+	// opt-in diagnostic; enable only while investigating retention.
 	if (GEngine && GetWorld())
 	{
 		GEngine->Exec(GetWorld(), TEXT("MemReport -full"));
@@ -547,6 +581,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 				}
 			}),
 			0.5f, /*bLoop=*/true);
+	}
 	}
 #endif
 
@@ -599,7 +634,13 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 
 	// Get the JSON Data File using the FRunnable class to get the data asynchronously
+#if !UE_BUILD_SHIPPING
+	const double RunnableCreateStart = FPlatformTime::Seconds();
+#endif
 	AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogTemp, Display, TEXT("Agent data runnable creation took %.3f ms"), (FPlatformTime::Seconds() - RunnableCreateStart) * 1000.0);
+#endif
 	//AgentDataSubsystem->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
 	// check if the widget subsystem is valid
@@ -645,13 +686,11 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	FSimulationFragment SimulationFragment;
 	float TimeBetweenStepsLocal = 0.f;
-	ESimulationFileType LoadedFileType = ESimulationFileType::ESFT_Unknown;
 
 	if (AgentDataSubsystem->JsonDataRunnable)
 	{
 		SimulationFragment    = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
 		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
-		LoadedFileType        = AgentDataSubsystem->JsonDataRunnable->SimulationFileType;
 		NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
 
 		// Cache entity metadata before the runnable is torn down.

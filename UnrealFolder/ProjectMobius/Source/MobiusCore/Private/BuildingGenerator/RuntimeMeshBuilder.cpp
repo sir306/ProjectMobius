@@ -39,11 +39,13 @@
 #include "Materials/MaterialInstanceConstant.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Subsystems/PerformanceUtilSubsystem.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
+#include "HAL/PlatformMemory.h"
 #include "Misc/ScopeExit.h"
 #include "Engine/StaticMesh.h"
 #include "RenderingThread.h"
@@ -297,7 +299,6 @@ void ARuntimeMeshBuilder::OnConstruction(const FTransform& Transform)
 		MobiusProceduralMeshComponent->ClearAllMeshSections();
 	}
 
-
 	// moving the mesh is causing headaches and memory issues
 
 }
@@ -512,6 +513,39 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	PendingDatasmithMeshes.Reset();
 	bHeatmapBroadcastPending = false;
 	MaterialCache.Reset();
+
+	// Cancel any in-flight FBX staggered emit — the ticker runs independently of Tick() and
+	// does not check bIsResettingForNewLoad, so it must be explicitly removed here. Without this,
+	// EmitNextChunkSection continues calling CreateMeshSection_LinearColor after ClearAllMeshSections,
+	// re-adding the old FBX geometry on top of the new Datasmith load.
+	if (ChunkEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ChunkEmitTickerHandle);
+		ChunkEmitTickerHandle.Reset();
+	}
+	PendingMeshChunks.Empty();
+	PendingChunkEmitIndex = 0;
+
+	// Stop any in-flight FBX async runnable so GetTheAsyncMeshData cannot fire late and
+	// set up a new emit ticker during the incoming Datasmith load.
+	if (AsyncAssimpLoader && AsyncAssimpLoader->MeshLoaderRunnable)
+	{
+		AsyncAssimpLoader->MeshLoaderRunnable->OnLoadMeshDataComplete.RemoveAll(this);
+		AsyncAssimpLoader->MeshLoaderRunnable->Stop();
+		AsyncAssimpLoader->MeshLoaderRunnable->Vertices.Empty();
+		AsyncAssimpLoader->MeshLoaderRunnable->Faces.Empty();
+		AsyncAssimpLoader->MeshLoaderRunnable->Normals.Empty();
+		AsyncAssimpLoader->MeshLoaderRunnable->UV.Empty();
+		AsyncAssimpLoader->MeshLoaderRunnable->Tangents.Empty();
+		FAssimpMeshLoaderRunnable* StaleRunnable = AsyncAssimpLoader->MeshLoaderRunnable;
+		AsyncAssimpLoader->MeshLoaderRunnable = nullptr;
+		AsyncTask(ENamedThreads::GameThread, [StaleRunnable] { delete StaleRunnable; });
+	}
+
+	// Discard any queued-but-unspawned door entries from the previous load. The spawner's
+	// TickComponent is independent and would otherwise continue draining the stale queue
+	// after the new mesh replaces the old one.
+	FlowCounterSpawnerComponent->AbortSpawning();
 
 	// Get the game instance
 	UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld());
@@ -792,6 +826,11 @@ void ARuntimeMeshBuilder::AsyncUpdateMesh(const FString PathToMesh)
 
 void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 {
+	// Guard against late completion callbacks fired after a new load already started.
+	// UpdateMeshFileName stops the runnable and removes this binding, but a callback
+	// already dispatched to the game thread queue can still arrive here.
+	if (bIsResettingForNewLoad) { return; }
+
 	const double ReceiveStart = FPlatformTime::Seconds();
 	UMobiusCustomLoggerSubsystem* StartupLogger = GetStartupLogger();
 	if (StartupLogger)
@@ -1389,6 +1428,80 @@ void ARuntimeMeshBuilder::EndLoadingWidget()
 	}
 }
 
+void ARuntimeMeshBuilder::DecideAndExecuteSpawnStrategy()
+{
+	// PerformanceUtilSubsystem owns all FPS tracking — read from there rather than duplicating logic
+	UPerformanceUtilSubsystem* PerfUtil = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>();
+	const float InstantFPS = PerfUtil ? PerfUtil->GetCurrentFPS()  : 9999.0f;
+	const float AverageFPS = PerfUtil ? PerfUtil->GetSmoothedFPS() : 9999.0f;
+
+	// Lightweight memory heuristic — single struct read, no allocations, safe on game thread
+	const FPlatformMemoryStats MemStats = FPlatformMemory::GetStats();
+	const float MemFreeRatio = MemStats.TotalPhysical > 0
+		? (float)MemStats.AvailablePhysical / (float)MemStats.TotalPhysical
+		: 1.0f;
+	const bool bMemoryConstrained = MemFreeRatio < MemFreeThreshold;
+
+	// Flush immediately only if avg FPS is above threshold, instant FPS is not
+	// borderline (within ±10 of threshold), and memory is not constrained
+	const bool bAvgTooLow  = AverageFPS  < SpawnFPSThreshold;
+	const bool bInstantLow = InstantFPS  <= (SpawnFPSThreshold + 10.0f);
+	const bool bUseBatched = bAvgTooLow || bInstantLow || bMemoryConstrained;
+
+	if (!bUseBatched)
+	{
+		FlowCounterSpawnerComponent->FlushRemainingSpawns();
+		return;
+	}
+
+	// Batched fallback — tick queue handles spawning naturally, build reason string for popup
+	TArray<FString> Reasons;
+	if (bMemoryConstrained)
+	{
+		Reasons.Add(FString::Printf(TEXT("available memory is low (%.0f%% free)"),
+			MemFreeRatio * 100.0f));
+	}
+	if (bAvgTooLow)
+	{
+		Reasons.Add(FString::Printf(TEXT("average FPS (%.0f) is below target (%.0f)"),
+			AverageFPS, SpawnFPSThreshold));
+	}
+	else if (bInstantLow)
+	{
+		Reasons.Add(FString::Printf(TEXT("current FPS (%.0f) is near target (%.0f)"),
+			InstantFPS, SpawnFPSThreshold));
+	}
+
+	const FString ReasonStr = Reasons.Num() > 0
+		? FString::Join(Reasons, TEXT(" and "))
+		: TEXT("performance conditions are not met");
+
+	const FString Body = FString::Printf(
+		TEXT("Door flow counters are using batched spawn because %s. ")
+		TEXT("Doors will appear progressively over the next several seconds.\n\n")
+		TEXT("Note: auto door spawning will be configurable in a future update. ")
+		TEXT("If instability persists, consider reducing or removing tagged doors in the source model."),
+		*ReasonStr);
+
+	if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+	{
+		Feedback->ReportError(
+			FText::FromString(TEXT("Performance Notice")),
+			FText::FromString(TEXT("Door Spawning: Batched Mode Active")),
+			FText::FromString(Body),
+			FText::GetEmpty(),
+			EMobiusErrorSeverity::Warning,
+			/*bShowPrompt=*/true);
+	}
+
+	if (UMobiusCustomLoggerSubsystem* Logger = GetStartupLogger())
+	{
+		Logger->EnqueueLogMessage(FString::Printf(
+			TEXT("FlowCounter spawn strategy: batched (avg=%.1f inst=%.1f threshold=%.1f memFree=%.1f%%)"),
+			AverageFPS, InstantFPS, SpawnFPSThreshold, MemFreeRatio * 100.0f));
+	}
+}
+
 void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 {
 	const double DatasmithStart = FPlatformTime::Seconds();
@@ -1833,6 +1946,7 @@ void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 
 		EndLoadingWidget();
 		FlowCounterSpawnerComponent->BeginSpawning();
+		DecideAndExecuteSpawnStrategy();
 	}
 }
 

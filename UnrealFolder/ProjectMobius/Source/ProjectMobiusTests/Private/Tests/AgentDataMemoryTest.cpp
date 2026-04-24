@@ -30,6 +30,42 @@ static uint64 GetUsedPhysicalMB()
 static constexpr int64 kLeakToleranceMB = 10;
 
 // ---------------------------------------------------------------------------
+// Test 0: shared simulation backing map clear
+//
+// FSimulationFragment::SimulationData is a TSharedPtr to a backing map copied
+// through Mass shared-fragment storage. Resetting only one TSharedPtr copy does
+// not release that map while another copy still exists, so file-switch cleanup
+// must empty the pointed-to map first.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimulationFragmentSharedBackingClearTest,
+	"ProjectMobius.Memory.SimulationFragment.SharedBackingClear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FSimulationFragmentSharedBackingClearTest::RunTest(const FString& Parameters)
+{
+	TSharedPtr<TMap<int32, TArray<FVector>>> Original = MakeShared<TMap<int32, TArray<FVector>>>();
+	TSharedPtr<TMap<int32, TArray<FVector>>> SharedCopy = Original;
+
+	TArray<FVector> Samples;
+	Samples.AddDefaulted(2);
+	Original->Add(0, MoveTemp(Samples));
+
+	TestTrue(TEXT("Shared copy should point at the same populated backing map"),
+		SharedCopy.IsValid() && SharedCopy->Num() == 1);
+
+	Original->Empty();
+	Original.Reset();
+
+	TestFalse(TEXT("Original pointer was reset"), Original.IsValid());
+	TestTrue(TEXT("Other shared pointer remains valid"), SharedCopy.IsValid());
+	TestEqual(TEXT("Clearing backing map is visible through other shared pointer"),
+		SharedCopy->Num(), 0);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Test 1: Simulation data map load/teardown
 //
 // Allocates a TMap<int32, TArray<FVector>> mirroring the layout of

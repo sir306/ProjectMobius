@@ -69,6 +69,10 @@ public:
 protected:
 	/** Create a new flow counter section widget, simple method performs no checks, so make sure to nullptr check after calling this method */
 	UFlowSectionCounter* CreateNewFlowSectionCounterWidget();
+
+private:
+	/** Internal implementation — takes explicit geometry so NativeTick can pass MyGeometry instead of stale CachedGeometry. Returns true when style was fully applied. */
+	bool UpdateFlowSectionCountersStyleInternal(const FGeometry& WidgetGeometry);
 	
 #pragma endregion METHODS
 

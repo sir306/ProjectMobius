@@ -36,6 +36,12 @@ public:
 	// called by owner when all doors discovered
 	void BeginSpawning();
 
+	// bypass frame-budget throttle — call after load spikes to finish remaining spawns immediately
+	void FlushRemainingSpawns();
+
+	// cancel in-progress spawning and discard all queued doors — call before a new load replaces the mesh
+	void AbortSpawning();
+
 	UPROPERTY(EditAnywhere)
 	int32 MaxPerBatch = 5;
 

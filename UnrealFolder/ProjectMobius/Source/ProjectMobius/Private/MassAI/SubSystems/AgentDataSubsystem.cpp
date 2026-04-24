@@ -43,6 +43,7 @@
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
+#include "HAL/PlatformTime.h"
 
 namespace
 {
@@ -391,7 +392,13 @@ FProcessSimulationDataRunnable::FProcessSimulationDataRunnable(FString InJsonDat
 
 
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
+#if !UE_BUILD_SHIPPING
+	const double ThreadCreateStart = FPlatformTime::Seconds();
+#endif
 	Thread = FRunnableThread::Create(this, TEXT("FProcessSimulationDataRunnable"), 0, TPri_Normal);
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogTemp, Display, TEXT("FProcessSimulationDataRunnable thread create took %.3f ms"), (FPlatformTime::Seconds() - ThreadCreateStart) * 1000.0);
+#endif
 }
 
 FProcessSimulationDataRunnable::~FProcessSimulationDataRunnable()
@@ -431,13 +438,34 @@ bool FProcessSimulationDataRunnable::LoadFileAndDeserialize()
 	SimulationFileType = ESimulationFileType::ESFT_Unknown;
 	//TODO: should really be doing equal not compare
 	// check what the extension of the file is: JSON ? HDF5
-	if (FPaths::GetExtension(SimulationDataFilePath).Compare(FString("json"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
+	const FString Extension = FPaths::GetExtension(SimulationDataFilePath);
+	if (Extension.Compare(FString("json"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
 	{
-		return LoadAndDeserializeJSONFile();
+#if !UE_BUILD_SHIPPING
+		const double DeserializeStart = FPlatformTime::Seconds();
+		UE_LOG(LogTemp, Display, TEXT("Agent data deserialize start: JSON"));
+#endif
+		const bool bResult = LoadAndDeserializeJSONFile();
+#if !UE_BUILD_SHIPPING
+		UE_LOG(LogTemp, Display, TEXT("Agent data deserialize finish: JSON result=%s %.3f ms"),
+			bResult ? TEXT("true") : TEXT("false"),
+			(FPlatformTime::Seconds() - DeserializeStart) * 1000.0);
+#endif
+		return bResult;
 	}
-	if (FPaths::GetExtension(SimulationDataFilePath).Compare(FString("h5"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
+	if (Extension.Compare(FString("h5"), ESearchCase::Type::IgnoreCase) == 0) // FPaths::GetExtension().Compare() returns 0 if equal!
 	{
-		return LoadAndDeserializeHDF5File();
+#if !UE_BUILD_SHIPPING
+		const double DeserializeStart = FPlatformTime::Seconds();
+		UE_LOG(LogTemp, Display, TEXT("Agent data deserialize start: HDF5"));
+#endif
+		const bool bResult = LoadAndDeserializeHDF5File();
+#if !UE_BUILD_SHIPPING
+		UE_LOG(LogTemp, Display, TEXT("Agent data deserialize finish: HDF5 result=%s %.3f ms"),
+			bResult ? TEXT("true") : TEXT("false"),
+			(FPlatformTime::Seconds() - DeserializeStart) * 1000.0);
+#endif
+		return bResult;
 	}
 	else
 	{
@@ -1551,9 +1579,6 @@ void FProcessSimulationDataRunnable::FinalizeProgress()
 
 	CalcSmoothedStepMovementBrackets(AgentDataArray);
 
-	// let the thread sleep for 0.5 second
-	FPlatformProcess::Sleep(0.5f);
-
 	if (bShouldStop)
 	{
 		return;
@@ -1569,9 +1594,6 @@ void FProcessSimulationDataRunnable::FinalizeProgress()
 		Subsys->ProgressQueue.Enqueue(1.0f);
 		Subsys->bIsDataLoaded = true; // Set the flag to indicate that the data has been loaded
 	}
-
-	// let the thread sleep for 0.5 second
-	FPlatformProcess::Sleep(0.5f);
 }
 
 uint32 FProcessSimulationDataRunnable:: Run()
@@ -1637,7 +1659,14 @@ uint32 FProcessSimulationDataRunnable:: Run()
 	}
 
 	// Run the main simulation loop
+#if !UE_BUILD_SHIPPING
+	const double GatherLoopStart = FPlatformTime::Seconds();
+	UE_LOG(LogTemp, Display, TEXT("Agent data gather loop start"));
+#endif
 	RunSimulationDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogTemp, Display, TEXT("Agent data gather loop finish %.3f ms"), (FPlatformTime::Seconds() - GatherLoopStart) * 1000.0);
+#endif
 
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot::Take(TEXT("Run_AfterGatherLoop")).LogDelta(SnapRunStart);

@@ -254,6 +254,9 @@ private:
 	void ProcessPendingDatasmithMeshes(float DeltaSeconds);
 	void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
 
+	/** Evaluate whether to flush all door spawns immediately or fall back to batched tick. Reports a warning popup when batched mode is chosen. */
+	void DecideAndExecuteSpawnStrategy();
+
 #pragma endregion PRIVATE_METHODS
 
 #pragma region PUBLIC_PROPERTIES_AND_COMPONENTS
@@ -346,6 +349,15 @@ protected:
 	/** How many flow counters to spawn per tick to smooth out hitches. */
 	UPROPERTY(EditAnywhere, Category="Flow Counters")
 	int32 MaxFlowCountersPerTick = 5;
+
+	/** FPS must be above this value for immediate flush spawning after Datasmith load. Below or within ±10, batched tick is used instead. */
+	UPROPERTY(EditAnywhere, Category="Flow Counters", meta=(ClampMin="10", ClampMax="120"))
+	float SpawnFPSThreshold = 30.0f;
+
+	/** Free physical memory ratio below which batched spawning is preferred (0.15 = 15% free). */
+	UPROPERTY(EditAnywhere, Category="Flow Counters", meta=(ClampMin="0.05", ClampMax="0.5"))
+	float MemFreeThreshold = 0.15f;
+
 
 	/** Are we currently processing the pending door queue? */
 	bool bIsSpawningFlowCounters = false;
