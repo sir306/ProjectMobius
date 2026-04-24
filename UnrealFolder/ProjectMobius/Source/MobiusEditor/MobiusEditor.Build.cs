@@ -9,7 +9,6 @@ public class MobiusEditor : ModuleRules
 		PublicDependencyModuleNames.AddRange(new[]
 		{
 			"Core",
-			"EditorScriptingUtilities",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new[]

@@ -3,7 +3,6 @@
 
 #include "Modules/ModuleManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "EditorAssetLibrary.h"
 #include "Commandlets/GenerateDatasmithMaterialsCommandlet.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMobiusEditor, Log, All);
@@ -34,8 +33,13 @@ private:
 		static const FString TwinmotionTestAsset = TEXT("/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/MI_DatasmithOpaqueMasked");
 		const FString TwinmotionContentDir = FPaths::ProjectContentDir() / TEXT("Twinmotion");
 
-		const bool bRuntimeExists = UEditorAssetLibrary::DoesAssetExist(RuntimeTestAsset);
-		const bool bTwinmotionNeeded = FPaths::DirectoryExists(TwinmotionContentDir) && !UEditorAssetLibrary::DoesAssetExist(TwinmotionTestAsset);
+		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+		TArray<FAssetData> FoundAssets;
+		AssetRegistry.GetAssetsByPackageName(FName(*RuntimeTestAsset), FoundAssets);
+		const bool bRuntimeExists = FoundAssets.Num() > 0;
+		FoundAssets.Reset();
+		AssetRegistry.GetAssetsByPackageName(FName(*TwinmotionTestAsset), FoundAssets);
+		const bool bTwinmotionNeeded = FPaths::DirectoryExists(TwinmotionContentDir) && FoundAssets.Num() == 0;
 
 		if (bRuntimeExists && !bTwinmotionNeeded)
 		{

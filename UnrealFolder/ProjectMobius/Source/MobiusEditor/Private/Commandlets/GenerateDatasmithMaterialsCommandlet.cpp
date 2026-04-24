@@ -3,8 +3,10 @@
 #include "Commandlets/GenerateDatasmithMaterialsCommandlet.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "EditorAssetLibrary.h"
+#include "AssetToolsModule.h"
 #include "Factories/MaterialInstanceConstantFactoryNew.h"
+#include "IAssetTools.h"
+#include "ObjectTools.h"
 #include "MaterialEditingLibrary.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionFunctionInput.h"
@@ -15,6 +17,39 @@
 #include "UObject/SavePackage.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGenDatasmithMats, Log, All);
+
+// ── Asset helpers (replaces UEditorAssetLibrary without the EditorScriptingUtilities plugin dep) ──
+
+static bool AssetExists(const FString& PackagePath)
+{
+	IAssetRegistry& AR = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	TArray<FAssetData> Found;
+	AR.GetAssetsByPackageName(FName(*PackagePath), Found);
+	return Found.Num() > 0;
+}
+
+static void DeleteAssetAtPath(const FString& PackagePath)
+{
+	const FString ObjectPath = PackagePath + TEXT(".") + FPackageName::GetShortName(PackagePath);
+	UObject* Asset = LoadObject<UObject>(nullptr, *ObjectPath);
+	if (Asset)
+	{
+		TArray<UObject*> ToDelete = { Asset };
+		ObjectTools::ForceDeleteObjects(ToDelete, /*bShowConfirmation=*/false);
+	}
+}
+
+static UObject* DuplicateAssetToPath(const FString& SourcePackagePath, const FString& DestPackagePath)
+{
+	const FString SourceObjectPath = SourcePackagePath + TEXT(".") + FPackageName::GetShortName(SourcePackagePath);
+	UObject* Source = LoadObject<UObject>(nullptr, *SourceObjectPath);
+	if (!Source)
+	{
+		return nullptr;
+	}
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	return AssetTools.DuplicateAsset(FPackageName::GetShortName(DestPackagePath), FPackageName::GetLongPackagePath(DestPackagePath), Source);
+}
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
 
@@ -137,14 +172,14 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMasterMaterial(const FMateri
 	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating: %s -> %s"), *SourcePath, *Entry.DestPath);
 
 	// Delete any existing asset at the destination so we start clean
-	if (UEditorAssetLibrary::DoesAssetExist(Entry.DestPath))
+	if (AssetExists(Entry.DestPath))
 	{
 		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing asset at %s"), *Entry.DestPath);
-		UEditorAssetLibrary::DeleteAsset(Entry.DestPath);
+		DeleteAssetAtPath(Entry.DestPath);
 	}
 
 	// Step 1: Duplicate engine material to target path
-	UObject* Duplicated = UEditorAssetLibrary::DuplicateAsset(SourcePath, Entry.DestPath);
+	UObject* Duplicated = DuplicateAssetToPath(SourcePath, Entry.DestPath);
 	if (!Duplicated)
 	{
 		UE_LOG(LogGenDatasmithMats, Error, TEXT("  FAILED to duplicate %s to %s"), *SourcePath, *Entry.DestPath);
@@ -285,10 +320,10 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMaterialInstance(const FMate
 	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating MI: %s (parent: %s)"), *Entry.DestPath, *Entry.ParentPath);
 
 	// Delete any existing asset at the destination
-	if (UEditorAssetLibrary::DoesAssetExist(Entry.DestPath))
+	if (AssetExists(Entry.DestPath))
 	{
 		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing MI at %s"), *Entry.DestPath);
-		UEditorAssetLibrary::DeleteAsset(Entry.DestPath);
+		DeleteAssetAtPath(Entry.DestPath);
 	}
 
 	// Load the parent material
@@ -358,14 +393,14 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateTwinmotionMasterMaterial(con
 	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating Twinmotion: %s -> %s"), *Entry.SourcePath, *Entry.DestPath);
 
 	// Delete any existing asset at the destination so we start clean
-	if (UEditorAssetLibrary::DoesAssetExist(Entry.DestPath))
+	if (AssetExists(Entry.DestPath))
 	{
 		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing asset at %s"), *Entry.DestPath);
-		UEditorAssetLibrary::DeleteAsset(Entry.DestPath);
+		DeleteAssetAtPath(Entry.DestPath);
 	}
 
 	// Step 1: Duplicate Twinmotion material to target path
-	UObject* Duplicated = UEditorAssetLibrary::DuplicateAsset(Entry.SourcePath, Entry.DestPath);
+	UObject* Duplicated = DuplicateAssetToPath(Entry.SourcePath, Entry.DestPath);
 	if (!Duplicated)
 	{
 		UE_LOG(LogGenDatasmithMats, Error, TEXT("  FAILED to duplicate %s to %s"), *Entry.SourcePath, *Entry.DestPath);
@@ -561,7 +596,7 @@ bool UGenerateDatasmithMaterialsCommandlet::ValidateGeneratedAssets()
 	bool bAllExist = true;
 	for (const FString& Path : ExpectedAssets)
 	{
-		if (!UEditorAssetLibrary::DoesAssetExist(Path))
+		if (!AssetExists(Path))
 		{
 			UE_LOG(LogGenDatasmithMats, Error, TEXT("  Validation FAILED — missing: %s"), *Path);
 			bAllExist = false;
