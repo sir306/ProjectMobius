@@ -93,12 +93,10 @@ void AMobiusController::BeginPlay()
 
 void AMobiusController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	if (GetWorld())
+	if (CachedGameInstance.IsValid())
 	{
-		if (UProjectMobiusGameInstance* MobiusGameInstance = Cast<UProjectMobiusGameInstance>(GetWorld()->GetGameInstance()))
-		{
-			MobiusGameInstance->OnPedestrianVectorFileChanged.RemoveDynamic(this, &AMobiusController::UpdatePedestrianVectorFilePath);
-		}
+		CachedGameInstance->OnPedestrianVectorFileChanged.RemoveDynamic(this, &AMobiusController::UpdatePedestrianVectorFilePath);
+		CachedGameInstance = nullptr;
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -126,6 +124,7 @@ void AMobiusController::GetScreenshotRequiredSubsystemsAndData()
 			// cast to mobius instance
 			if (UProjectMobiusGameInstance* MobiusGameInstance = Cast<UProjectMobiusGameInstance>(GameInst))
 			{
+				CachedGameInstance = MobiusGameInstance;
 				// bind the file update delegate
 				MobiusGameInstance->OnPedestrianVectorFileChanged.AddDynamic(this, &AMobiusController::UpdatePedestrianVectorFilePath);
 			}

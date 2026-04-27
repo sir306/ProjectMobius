@@ -80,8 +80,11 @@ struct PROJECTMOBIUS_API FSimulationFragment : public FMassSharedFragment
 public:
 	// TODO: Add buffer method and not store all data in this struct
 	// TODO: This Map logic needs improving as it is not efficient with large data sets and looping over all data is poor
-	/** TMap for data the key is time and value is struct array of FSimMovementSample */
-	TMap<int32, TArray<FSimMovementSample>> SimulationData = TMap<int32, TArray<FSimMovementSample>>();
+	/** TMap for data the key is time and value is struct array of FSimMovementSample.
+	 *  Heap-allocated via TSharedPtr so the 4 GB data block can be freed independently
+	 *  of the Mass archetype that permanently holds this struct. Call SimulationData.Reset()
+	 *  on file switch to release the allocation without waiting for archetype destruction. */
+	TSharedPtr<TMap<int32, TArray<FSimMovementSample>>> SimulationData = MakeShared<TMap<int32, TArray<FSimMovementSample>>>();
 
 	UPROPERTY()
 	float MaxTime = 0.0f;

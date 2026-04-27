@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -34,6 +34,7 @@
 // Other Subsystems we want to use
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
+#include "Subsystems/StatisticSubsystem.h"
 // GameInstance
 #include "SkeletalMeshAttributes.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
@@ -50,9 +51,27 @@
 #include "MassAI/Fragments/EntityTags/PedestrianCollisionTags.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
+#include "Util/MemoryTraceHelper.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "HAL/IConsoleManager.h"
 
 class UTimeDilationSubSystem;
+
+#if !UE_BUILD_SHIPPING
+namespace
+{
+	TAutoConsoleVariable<int32> CVarMobiusAgentDataFileSwitchDiagnostics(
+		TEXT("mobius.AgentData.FileSwitchDiagnostics"),
+		0,
+		TEXT("Enable expensive agent-data file switch diagnostics: extra GC, allocator trim, memreport, and memory polling."),
+		ECVF_Default);
+
+	bool ShouldRunAgentDataFileSwitchDiagnostics()
+	{
+		return CVarMobiusAgentDataFileSwitchDiagnostics.GetValueOnGameThread() != 0;
+	}
+}
+#endif
 
 UMassEntitySpawnSubsystem::UMassEntitySpawnSubsystem() :
         SpawnedEntityPedestrianHandles(TArray<FMassEntityHandle>()),
@@ -67,14 +86,14 @@ void UMassEntitySpawnSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// Add the AgentDataSubsystem to the collection Dependency
 	AgentDataSubsystem = Collection.InitializeDependency<UAgentDataSubsystem>();
-	
+
 	// Get the entity manager from the MassSubsystem
 	//EntityManager = GetWorld()->GetSubsystem<UMassEntitySubsystem>()->GetMutableEntityManager().AsShared();
 
 	// If we have other subsystems that we depend on we can initialize them here before super
 	Super::Initialize(Collection);
 
-	// Get the Game Instance 
+	// Get the Game Instance
 	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
 	{
 		// Bind the required Game Instance Delegates
@@ -100,14 +119,17 @@ void UMassEntitySpawnSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UMassEntitySpawnSubsystem::Deinitialize()
 {
-	// If we have delegates we can unbind them here before super
+	if (UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
+	{
+		GameInst->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &UMassEntitySpawnSubsystem::CreatePedestrianTemplateData);
+	}
 	Super::Deinitialize();
 }
 
 void UMassEntitySpawnSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
-	
+
 	// Ensure rep actor exists BEFORE Mass creates entities
 	if (UWorld* World = GetWorld())
 	{
@@ -124,7 +146,7 @@ void UMassEntitySpawnSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestriansToSpawn, FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
 {
         auto PedestrianArchetypeHandle = CreatePedestrianArchetype();
-	
+
 	// check shared fragment values are sorted and sort if not
 	// -- this has been debugged and is redundant but in place as a safety measure
 	if (!ArchetypeSharedFragmentValues.IsSorted())
@@ -136,16 +158,23 @@ void UMassEntitySpawnSubsystem::SpawnMassEntityPedestrians(int32 NumberOfPedestr
         {
                 if (auto StatSubsystem = GetWorld()->GetSubsystem<UStatisticSubsystem>())
                 {
+#if !UE_BUILD_SHIPPING
+                        FMobiusMemSnapshot SnapFlowBefore = FMobiusMemSnapshot::Take(TEXT("FlowReset_Before"));
+                        SnapFlowBefore.LogAbsolute();
+#endif
                         StatSubsystem->ResetFlowCounters();
                         bHasResetFlowCounters = true;
+#if !UE_BUILD_SHIPPING
+                        FMobiusMemSnapshot::Take(TEXT("FlowReset_After")).LogDelta(SnapFlowBefore);
+#endif
                 }
         }
 
 	//TODO: We dont want to simulate time till this is done, also we need a better way to build shared fragment and update the archetype on data changes
 	EntityManager->BatchCreateEntities(PedestrianArchetypeHandle, ArchetypeSharedFragmentValues, NumberOfPedestriansToSpawn, SpawnedEntityPedestrianHandles);
-
-        // Cleanup any existing runnable to avoid memory leaks
-        AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+	// The runnable data was moved out in BuildPedestrianMovementFragmentData. Keep
+	// the completed runnable object until the next file switch so we do not join
+	// its thread from the spawn/completion path.
 }
 
 void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragmentValues ArchetypeSharedFragmentValues)
@@ -160,7 +189,7 @@ void UMassEntitySpawnSubsystem::SpawnMaxPedestrians(FMassArchetypeSharedFragment
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Max Pedestrians is less than 0, likely a bad data file."));
 	}
-	
+
 }
 
 void UMassEntitySpawnSubsystem::DestroySpawnedPedestrians(TConstArrayView<FMassEntityHandle> EntitiesToDestroy)
@@ -190,6 +219,7 @@ void UMassEntitySpawnSubsystem::DestroyAllSpawnedPedestrians()
                 ExecutionContext.ClearEntityCollection();
                 ExecutionContext.FlushDeferred();
                 EntityManager->FlushCommands();
+                SpawnedEntityPedestrianHandles.Empty();
                 //EntityManager.Reset();
         }
 }
@@ -199,9 +229,32 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 	auto* ExistingActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
 	if (ExistingActor)
 	{
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot NiaPrev = FMobiusMemSnapshot::Take(TEXT("Niagara_BeforeClearSimCache"));
+#endif
 		ExistingActor->GetNiagaraComponent()->ClearSimCache(true);
+#if !UE_BUILD_SHIPPING
+		{
+			FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("Niagara_AfterClearSimCache"));
+			S.LogDelta(NiaPrev);
+			NiaPrev = S;
+		}
+#endif
 		ExistingActor->GetNiagaraComponent()->DeactivateImmediate();
+#if !UE_BUILD_SHIPPING
+		{
+			FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("Niagara_AfterDeactivate"));
+			S.LogDelta(NiaPrev);
+			NiaPrev = S;
+		}
+#endif
 		ExistingActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
+#if !UE_BUILD_SHIPPING
+		{
+			FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("Niagara_AfterDestroyInstance"));
+			S.LogDelta(NiaPrev);
+		}
+#endif
 	}
 }
 
@@ -209,21 +262,35 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimu
 {
         if (!ToKill) return;
 
-	// 1) Stop on calling thread
-	ToKill->Stop();
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapCleanupStart = FMobiusMemSnapshot::Take(TEXT("RunnableCleanup_Start"));
+	SnapCleanupStart.LogAbsolute();
+#endif
 
-	// 2) Join/Exit on calling thread (don’t bounce to GT). Ensure the runnable sets a “finished” flag.
-	ToKill->Exit();
-
-	// 3) Now it’s safe to unbind dynamic delegates on the subsystem (they’re not being used by the worker anymore)
+	// 1) Remove delegates first — no stale broadcast can reach us even if thread finishes during stop/join
 	if (auto* LS = GetWorld()->GetSubsystem<ULoadingSubsystem>()) {
 		AgentDataSubsystem->OnLoadSimulationDataProgress.RemoveDynamic(LS, &ULoadingSubsystem::BroadcastNewLoadPercent);
 	}
 	AgentDataSubsystem->OnLoadSimulationDataComplete.RemoveDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
 	//AgentDataSubsystem->OnMaxAgentCount.RemoveDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
-        // 4) Delete
-        ToKill.Reset();
+	// 2) Signal the thread to stop
+	ToKill->Stop();
+
+	// 3) Join via destructor — WaitForCompletion() is called inside ~FProcessSimulationDataRunnable,
+	//    then UE calls Exit() once cleanly after Run() returns. Do NOT call Exit() manually here;
+	//    that races with the background thread still accessing AgentDataArray / Hdf5Data.
+	ToKill.Reset();
+
+	// 4) Clear any stale completion flag now the thread is fully joined
+	if (AgentDataSubsystem)
+	{
+		AgentDataSubsystem->bIsDataLoaded = false;
+	}
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("RunnableCleanup_AfterReset")).LogDelta(SnapCleanupStart);
+#endif
 }
 
 FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
@@ -233,9 +300,12 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 	// Get this traits template id
 	FMassEntityTemplateID DebugEntityLocationTraitID = PedestrianLocationTraitBuildContext.GetTemplateID();
-	
+
+	// Remember the ID so CreatePedestrianTemplateData can call DestroyTemplate on file switch
+	RegisteredPedestrianTemplateID = DebugEntityLocationTraitID;
+
 	TemplateRegistryInstance.FindOrAddTemplate(DebugEntityLocationTraitID, MoveTemp(PedestrianTemplateData));
-	
+
 	auto PedestrianArchetypeHandle = EntityManager->CreateArchetype(PedestrianTemplateData.GetCompositionDescriptor());
 
 	return PedestrianArchetypeHandle;
@@ -243,24 +313,55 @@ FMassArchetypeHandle UMassEntitySpawnSubsystem::CreatePedestrianArchetype()
 
 void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 {
+#if !UE_BUILD_SHIPPING
+	const bool bRunFileSwitchDiagnostics = ShouldRunAgentDataFileSwitchDiagnostics();
+#endif
+	const bool bHadExistingFileState =
+		!PedestrianTemplateData.IsEmpty() ||
+		!SpawnedEntityPedestrianHandles.IsEmpty() ||
+		SharedSimulationFragment.GetPtr<FSimulationFragment>() != nullptr ||
+		(AgentDataSubsystem && AgentDataSubsystem->JsonDataRunnable);
+
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-	
+
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 
 		FString LoadingText = FString::Printf(TEXT("Clearing Old Data..."));
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
-	
+
         // Cleanup any existing runnable to avoid memory leaks
         AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
         bHasResetFlowCounters = false;
-	
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapSwitchStart = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterRunnableCleanup"));
+	SnapSwitchStart.LogAbsolute();
+	FMobiusMemSnapshot SnapPrev = SnapSwitchStart;
+#endif
+
+	// Drop per-file caches (CachedEntityData + subsystem TQueues) BEFORE we destroy
+	// entities and the template. Those caches are never reached by GC and were
+	// observed to hold prior-file residue across switches.
+	if (AgentDataSubsystem)
+	{
+		AgentDataSubsystem->ClearPerFileState();
+	}
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterClearPerFileState"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	// as our capsule objects are bound to the world and the world is never destroyed, we need to ensure that the
 	// capsule components are cleared and marked for destruction so that we don't have memory leaks
 	for (auto& EntityHandle : SpawnedEntityPedestrianHandles)
@@ -271,21 +372,211 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 			Fragment.Capsule->DestroyComponent();
 		}
 	}
-	
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterCapsuleDestroy"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	// Destroy any existing spawned pedestrians and clear the Niagara simulation
 	DestroyAllSpawnedPedestrians();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterDestroyAllSpawned"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
 	ClearNiagaraSim();
 
-	// Empty out the handles array
-	SpawnedEntityPedestrianHandles.Empty();
-	
-	// We have to force a garbage collection here to ensure that the old data is cleared from memory before new
-	// data is created
-	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterClearNiagara"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+
+	// reset data in stats subsystem in prep for new data
+	if (UWorld* World = GetWorld())
+	{
+		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
+		{
+			StatSub->ResetForFileSwitch();
+		}
+	}
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSubsystemReset"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+#if !UE_BUILD_SHIPPING
+	if (bRunFileSwitchDiagnostics)
+	{
+		// Optional early GC diagnostic. Normal switching does one GC after all
+		// strong simulation/template references are released below.
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterFirstGC"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+	// Destroy old template entry in the registry — FindOrAddTemplate never replaces existing
+	// entries (UE5 returns the old one and silently discards new data), so we must explicitly
+	// remove it. This drops the registry's FSharedStruct ref to the old FSimulationFragment.
+	// Safe because all entities using this template have already been destroyed above.
+	TemplateRegistryInstance.DestroyTemplate(RegisteredPedestrianTemplateID);
+	RegisteredPedestrianTemplateID.Invalidate();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterDestroyTemplate"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
 
 	// Reset the template data
 	PedestrianTemplateData = FMassEntityTemplateData();
-	
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterTemplateDataReset"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+	// Drop our ref to the old simulation fragment so it can be freed now that the
+	// TemplateRegistryInstance has also released its ref.
+	// We aggressively clear the data map first because Mass AI may still hold
+	// references to the fragment in lingering chunks, which would otherwise
+	// prevent the ~900MB of TMap/TArray memory from being reclaimed.
+	if (FSimulationFragment* Frag = SharedSimulationFragment.GetPtr<FSimulationFragment>())
+	{
+		if (Frag->SimulationData.IsValid())
+		{
+			// Empty the pointed-to map first because this TSharedPtr may have
+			// copies in Mass fragments that outlive this subsystem reference.
+			Frag->SimulationData->Empty();
+			Frag->SimulationData.Reset();
+		}
+	}
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSimDataReset"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+	SharedSimulationFragment = FSharedStruct();
+
+#if !UE_BUILD_SHIPPING
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterSharedStructCleared"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+	// Force GC once after template + SimulationData references are both released.
+	// Skip it on the initial load path where there was no previous file state to
+	// tear down.
+	if (bHadExistingFileState)
+	{
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+	}
+
+#if !UE_BUILD_SHIPPING
+	if (bHadExistingFileState)
+	{
+		FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterGC"));
+		S.LogDelta(SnapPrev);
+		SnapPrev = S;
+	}
+#endif
+
+#if !UE_BUILD_SHIPPING
+	if (bRunFileSwitchDiagnostics)
+	{
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+		// Hint the allocator to return freed pages to the OS. Kept opt-in
+		// because it can cause later page-fault hitches.
+		FMemory::Trim();
+
+	FMobiusMemSnapshot SnapAfterTrim = FMobiusMemSnapshot::Take(TEXT("FileSwitch_AfterMemTrim"));
+	SnapAfterTrim.LogDelta(SnapPrev);
+	// Cumulative drop vs the start of the switch, for quick scanning.
+	SnapAfterTrim.LogDelta(SnapSwitchStart);
+
+	// Diagnostic probe A: MemReport -full. Writes Saved/Profiling/MemReports/
+	// <timestamp>.memreport + .memreportgpu with the full allocator / UObject / RHI
+	// breakdown. One file per switch — diff them to see what's retained. This is
+	// opt-in diagnostic; enable only while investigating retention.
+	if (GEngine && GetWorld())
+	{
+		GEngine->Exec(GetWorld(), TEXT("MemReport -full"));
+	}
+
+	// Diagnostic probe B: poll memory every 500ms for 5s after the switch kicks
+	// off. Tells us whether Phys drops on its own (allocator is lazy) vs. stays
+	// flat (genuine retention). The next file's async load will start inflating
+	// Phys partway through the poll window — read the first 1-2 samples for the
+	// steady-state cleanup signal.
+	if (UWorld* World = GetWorld())
+	{
+		struct FPollState
+		{
+			FMobiusMemSnapshot Baseline;
+			FMobiusMemSnapshot Prev;
+			int32              Count = 0;
+			FTimerHandle       Handle;
+		};
+		TSharedRef<FPollState> State = MakeShared<FPollState>();
+		State->Baseline = FMobiusMemSnapshot::Take(TEXT("FileSwitch_PollBaseline"));
+		State->Prev     = State->Baseline;
+
+		TWeakObjectPtr<UMassEntitySpawnSubsystem> WeakThis(this);
+		World->GetTimerManager().SetTimer(State->Handle, FTimerDelegate::CreateLambda(
+			[State, WeakThis]()
+			{
+				if (!WeakThis.IsValid()) { return; }
+				++State->Count;
+				FMobiusMemSnapshot S = FMobiusMemSnapshot::Take(
+					FString::Printf(TEXT("FileSwitch_Poll[%d]"), State->Count));
+				S.LogDelta(State->Baseline);   // vs. cleanup-end baseline
+				S.LogDelta(State->Prev);       // vs. previous 500ms sample
+				State->Prev = S;
+
+				if (State->Count >= 10)
+				{
+					if (UMassEntitySpawnSubsystem* Self = WeakThis.Get())
+					{
+						if (UWorld* W = Self->GetWorld())
+						{
+							W->GetTimerManager().ClearTimer(State->Handle);
+						}
+					}
+				}
+			}),
+			0.5f, /*bLoop=*/true);
+	}
+	}
+#endif
+
 	LoadPedestrianData();
 }
 
@@ -293,25 +584,25 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 {
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-	
+
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 
 		FString LoadingText = FString::Printf(TEXT("Fetching Pedestrian Data File..."));
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
-	
+
 	FString JSONDataFile = "";
-	// Get the Game Instance 
+	// Get the Game Instance
 	if(UProjectMobiusGameInstance* GameInst = GetMobiusGameInstance(GetWorld()))
 	{
 		// do we have a file to use from the game instance
 		JSONDataFile = GameInst->GetPedestrianDataFilePath();
 	}
-	
+
 	// Check Agent Data Subsystem is valid
 	if (!AgentDataSubsystem)
 	{
@@ -331,9 +622,17 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	// Cleanup any existing runnable to avoid memory leaks
 	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
 
-	// Get the JSON Data File using the FRunnable class to get the data asynchronously
-        AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
+	// Bind delegate BEFORE creating the runnable so we never miss a completion if the thread is very fast
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
+
+	// Get the JSON Data File using the FRunnable class to get the data asynchronously
+#if !UE_BUILD_SHIPPING
+	const double RunnableCreateStart = FPlatformTime::Seconds();
+#endif
+	AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
+#if !UE_BUILD_SHIPPING
+	UE_LOG(LogTemp, Display, TEXT("Agent data runnable creation took %.3f ms"), (FPlatformTime::Seconds() - RunnableCreateStart) * 1000.0);
+#endif
 	//AgentDataSubsystem->OnMaxAgentCount.AddDynamic(AgentDataSubsystem, &UAgentDataSubsystem::UpdateMaxAgentCount);
 
 	// check if the widget subsystem is valid
@@ -346,43 +645,51 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 		FString FileName = FPaths::GetCleanFilename(JSONDataFile);
 
 		FString LoadingText = FString::Printf(TEXT("Loading File: %s"), *FileName);
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 	}
 
-	
+
 }
 
 void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
-	
+
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot SnapBuildStart = FMobiusMemSnapshot::Take(TEXT("BuildFrag_Start"));
+	SnapBuildStart.LogAbsolute();
+#endif
+
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
-	
+
 	// check if the widget subsystem is valid
 	if (LoadingSubsystem)
 	{
 
 		FString LoadingText = FString::Printf(TEXT("Building Pedestrian Movement AI Data..."));
-		
+
 		// Set the loading text and title
 		LoadingSubsystem->SetLoadingText(true, LoadingText);
 		LoadingSubsystem->BroadcastNewLoadPercent(0.0f);
 	}
 
 	FSimulationFragment SimulationFragment;
-	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> JSONObjectLocal;
 	float TimeBetweenStepsLocal = 0.f;
-	ESimulationFileType LoadedFileType = ESimulationFileType::ESFT_Unknown;
 
 	if (AgentDataSubsystem->JsonDataRunnable)
 	{
-		SimulationFragment   = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
-		JSONObjectLocal      = MoveTemp(AgentDataSubsystem->JsonDataRunnable->JSONObject);
+		SimulationFragment    = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
 		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
-		LoadedFileType = AgentDataSubsystem->JsonDataRunnable->SimulationFileType;
+		NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
+
+		// Cache entity metadata before the runnable is torn down.
+		// PedestrianInitializeMOP fires after SpawnMaxPedestrians destroys the runnable,
+		// so SetEntityInfoByIndex / SetEntityRenderingByIndex must read from here instead.
+		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
+		AgentDataSubsystem->CachedEntityData.Shrink();
 	}
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
@@ -394,18 +701,10 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// Add the tag to prevent collision updates
 	PedestrianTemplateData.AddTag<FPedestrianCollisionsDisabled>();
 
-	NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
-
 	if (NumOfAgentsPerTimeStep.IsValidIndex(0))
 	{
 		// log i 0 for the number of agents per time step
 		UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
-	}
-
-	// Set the json object on the agent data subsystem only if we loaded a JSON file
-	if (LoadedFileType == ESimulationFileType::ESFT_JSON)
-	{
-		AgentDataSubsystem->JSONObject = JSONObjectLocal;
 	}
 
 	// Get Time Dilation from the ProjectMobius Game Instance
@@ -417,16 +716,16 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
 	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
 
-        auto SharedSimulationFragmentData = FSharedStruct::Make(SimulationFragment);
+        auto SharedSimulationFragmentData = FSharedStruct::Make(MoveTemp(SimulationFragment));
 
         SharedSimulationFragment = SharedSimulationFragmentData;
 
 	// Add the shared fragment to the build context
         PedestrianTemplateData.AddSharedFragment(SharedSimulationFragmentData);
-	
+
 	// Create the Pedestrian Representation Fragment Data
 	BuildPedestrianRepresentationFragmentData();
-		
+
 	auto ArchetypeSharedFragmentValues = PedestrianTemplateData.GetSharedFragmentValues();
 
 	// check shared fragment values are sorted and sort if not
@@ -437,9 +736,15 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 
 	// Broadcast that the pedestrian data is ready to spawn
 	OnPedestrianDataReadyToSpawn.Broadcast();
-	
+
 	// At this point data should be ready to spawn
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("BuildFrag_PreSpawn")).LogDelta(SnapBuildStart);
+#endif
 	SpawnMaxPedestrians(ArchetypeSharedFragmentValues);
+#if !UE_BUILD_SHIPPING
+	FMobiusMemSnapshot::Take(TEXT("BuildFrag_AfterSpawn")).LogDelta(SnapBuildStart);
+#endif
 }
 
 const FSimulationFragment* UMassEntitySpawnSubsystem::GetSimulationFragment() const
@@ -468,5 +773,5 @@ void UMassEntitySpawnSubsystem::BuildPedestrianRepresentationFragmentData()
 		// Add the shared fragment to the build context
 		PedestrianTemplateData.AddSharedFragment(NiagaraSharedDataFrag);
 	}
-	
+
 }

@@ -59,6 +59,30 @@ struct FPolygonWithHoles
 	TArray<TArray<FVector2D>> Holes;
 };
 
+/** Per-submesh buffers produced by the Assimp loader. Indices are submesh-local (no offset remap). */
+struct FAssimpSubmeshBuffers
+{
+	TArray<FVector>   Vertices;
+	TArray<int32>     Faces;
+	TArray<FVector>   Normals;
+	TArray<FVector2D> UV;
+};
+
+/**
+ * Split a submesh into chunks each capped at MaxTris triangles.
+ *
+ * Small submeshes pass through unchanged (single Out entry, zero vertex duplication).
+ * Oversized submeshes are partitioned in triangle order; each chunk copies only the
+ * vertices referenced by its own triangles, with indices remapped to the chunk-local
+ * vertex table. Only boundary vertices (referenced from triangles in multiple chunks)
+ * are duplicated across chunks.
+ *
+ * @param In       Source submesh. Untouched.
+ * @param MaxTris  Triangle cap per output chunk. Values <= 0 disable splitting.
+ * @param Out      Chunks are appended (existing entries preserved).
+ */
+void SplitSubmeshByTriCap(const FAssimpSubmeshBuffers& In, int32 MaxTris, TArray<FAssimpSubmeshBuffers>& Out);
+
 
 /**
  * 
@@ -102,11 +126,27 @@ public:
 	FString PathToMesh;
 	int32 SectionCount;
 	FString ErrorMessageCode;
+
+	/** Per-submesh buffers. One entry per aiMesh in the source scene. Consumers iterate this to emit one ProcMesh section per submesh. */
+	TArray<FAssimpSubmeshBuffers> Submeshes;
+
+	/** Flattened aggregate buffers. Retained for transitional callers that still expect monolithic data; will be removed once all callers consume Submeshes. */
 	TArray<FVector> Vertices;
 	TArray<int32> Faces;
 	TArray<FVector> Normals;
 	TArray<FVector2D> UV;
 	TArray<FVector> Tangents;
+
+	/** Sum of per-submesh vertex counts. Useful for memory stats and parity checks against the flat buffer. */
+	int32 GetTotalVertexCount() const
+	{
+		int32 Total = 0;
+		for (const FAssimpSubmeshBuffers& Sub : Submeshes)
+		{
+			Total += Sub.Vertices.Num();
+		}
+		return Total;
+	}
 #pragma endregion MESH_PROPERTIES
 	/** is the file path actually an obj string */
 	bool bIsWktExtension = false;
