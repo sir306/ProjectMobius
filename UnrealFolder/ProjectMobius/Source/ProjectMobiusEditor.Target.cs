@@ -18,6 +18,6 @@ public class ProjectMobiusEditorTarget : TargetRules
 
 	private void RegisterModulesCreatedByRider()
 	{
-		ExtraModuleNames.AddRange(new string[] { "MobiusWidgets", "Visualization", "MobiusCore", "MobiusEditor" });
+		ExtraModuleNames.AddRange(new string[] { "MobiusWidgets", "Visualization", "MobiusCore", "MobiusEditor", "ProjectMobiusTests" });
 	}
 }

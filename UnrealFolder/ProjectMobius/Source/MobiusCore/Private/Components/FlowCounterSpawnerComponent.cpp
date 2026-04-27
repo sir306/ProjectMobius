@@ -89,6 +89,51 @@ void UFlowCounterSpawnerComponent::BeginSpawning()
 	UE_LOG(LogTemp, Log, TEXT("Deferred FlowCounter spawning started. Pending doors: %d"), PendingDoorMeshes.Num());
 }
 
+void UFlowCounterSpawnerComponent::FlushRemainingSpawns()
+{
+	if (!bSpawning || PendingDoorMeshes.Num() == 0) return;
+
+	LogToCustomLogger(FString::Printf(TEXT("FlushRemainingSpawns: spawning %d remaining doors immediately"), PendingDoorMeshes.Num()));
+
+	while (PendingDoorMeshes.Num() > 0)
+	{
+		const FPendingDoorEntry PendingDoor = PendingDoorMeshes[0];
+		PendingDoorMeshes.RemoveAtSwap(0);
+
+		if (PendingDoor.DoorMesh.IsValid())
+		{
+			GenerateFlowCounterForDoor(PendingDoor.DoorMesh.Get(), PendingDoor.DoorId);
+		}
+		else
+		{
+			LogToCustomLogger(FString::Printf(TEXT("FlushRemainingSpawns: skipped door %d — mesh no longer valid"), PendingDoor.DoorId));
+		}
+	}
+
+	bSpawning = false;
+	LogToCustomLogger(TEXT("FlushRemainingSpawns complete"));
+
+	if (auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>())
+	{
+		LoadingSubsystem->SetLoadingUnknownDuration(false, TEXT(""));
+	}
+}
+
+void UFlowCounterSpawnerComponent::AbortSpawning()
+{
+	const int32 Discarded = PendingDoorMeshes.Num();
+	PendingDoorMeshes.Empty();
+	NextDoorSpawnId = 1;
+	bSpawning = false;
+
+	LogToCustomLogger(FString::Printf(TEXT("AbortSpawning: discarded %d queued doors"), Discarded));
+
+	if (auto LoadingSubsystem = GetWorld() ? GetWorld()->GetSubsystem<ULoadingSubsystem>() : nullptr)
+	{
+		LoadingSubsystem->SetLoadingUnknownDuration(false, TEXT(""));
+	}
+}
+
 // Called every frame
 void UFlowCounterSpawnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
                                                  FActorComponentTickFunction* ThisTickFunction)

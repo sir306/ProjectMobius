@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -39,7 +39,7 @@ enum class EMobiusLogWindowCommand : uint8;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLogWindowClosedBP);
 
 /**
- * 
+ *
  */
 UCLASS()
 class MOBIUSWIDGETS_API UMobiusWidgetSubsystem : public UTickableWorldSubsystem
@@ -147,7 +147,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LoadingNotifyWidget")
 	UImprovedLoadingNotifyWidget* GetLoadingWidget() const;
-	
+
 	/**
 	 * Update Load percent value used for binding with external delegates
 	 *
@@ -173,6 +173,15 @@ public:
 	 */
 	UFUNCTION()
 	void UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText);
+
+	/**
+	 * Drop transient per-simulation widget references (ErrorWidget,
+	 * LoadingNotifyWidget) so they don't root the prior simulation's widget
+	 * tree across a file switch. The subsystem itself is a world subsystem
+	 * and survives the switch; these UPROPERTYs would otherwise stay alive
+	 * with all the MIDs / shader maps they reference.
+	 */
+	void ResetForFileSwitch();
 
 private:
         /**
@@ -229,11 +238,13 @@ private:
 	 * @return Center Position of the Widget
 	 */
 	FVector2D GetCenterPosForWidgetPanel(class UPanelWidget* WidgetPanel);
-	
+
 	void LogWindowIsClosing();
 
+
+
 #pragma endregion METHODS
-	
+
 #pragma region PROPERTIES
 public:
 	// Error Widget
@@ -243,10 +254,10 @@ public:
 	// Loading Notify Widget
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LoadingNotifyWidget")
         UImprovedLoadingNotifyWidget* LoadingNotifyWidget;
-	
+
 	// Log Window Closed Delegate
 	FOnLogWindowClosed OnLogWindowClosedNative;
-	
+
 	UPROPERTY(BlueprintAssignable, Category = "Logging")
 	FOnLogWindowClosedBP OnLogWindowClosedBP;
 #pragma endregion PROPERTIES

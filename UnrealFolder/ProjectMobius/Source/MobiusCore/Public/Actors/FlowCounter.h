@@ -9,7 +9,6 @@
 
 // Forward declarations
 class UDeformableQuadComponent;
-class UStatisticSubsystem;
 class UBoxComponent;
 
 // Delegates
@@ -18,12 +17,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
 	FOnFlowCounterSecond, int32, SimSecond, int32, RollingTotal, const TArray<int32>&, PerBucketTotals);
 
 // Structs used internally for bucketing agents -> TODO: Move it to the FlowCounterStructs.h file as we may want to use it elsewhere
-struct FBuckectTempData
-{
-	int32 AgentID = 0;
-	float IntersectionThreshold = 0.0f;
-};
-
 struct FFlowCrossingResult
 {
 	
@@ -277,15 +270,6 @@ protected:
 	float PassageFlowIncrement = 50.0f;
 
 	/**
-	 * A reference to the statistic subsystem that facilitates communication and integration
-	 * with the broader system managing statistical data within the game or application.
-	 * This subsystem is used to track, update, and register specific statistical elements
-	 * relevant to this class, such as flow counter data or related metrics.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
-	TObjectPtr<UStatisticSubsystem> StatisticSubsystem;
-
-	/**
 	 * If the flow counter is active and tracking agents passing through it then we need to allow door tracking
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlowCounter|Properties")
@@ -316,8 +300,6 @@ private:
 	mutable FRWLock AgentsMapRW;        // protects AgentsPassedThroughCounter
 	mutable FRWLock TrackedPrevMapRW;   // protects PreviousTrackedAgentLocations
 	TAtomic<bool> bTearingDown{false};
-	/** A thread-safe queue to handle bucket data due to the possibility of bucket mutations on the game thread */
-	TQueue<FBuckectTempData, EQueueMode::Mpsc> ThreadSafeNewAgentDataQueue = TQueue<FBuckectTempData, EQueueMode::Mpsc>();
 
 	/** */
 	TQueue<FFlowCrossingResult, EQueueMode::Mpsc> ThreadSafeResults;

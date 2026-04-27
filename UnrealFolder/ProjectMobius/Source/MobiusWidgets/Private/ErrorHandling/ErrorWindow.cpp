@@ -129,7 +129,7 @@ void SErrorWindowWidget::OpenErrorWindow()
                 .SupportsMinimize(false)
                 .IsTopmostWindow(true)
                 .SizingRule(ESizingRule::UserSized)
-                .ClientSize(FVector2D(420.0f, 200.0f))
+                .ClientSize(FVector2D(520.0f, 300.0f))
                 .AutoCenter(EAutoCenter::PreferredWorkArea)
                 .HasCloseButton(true)
                 .WindowPanelContent(WindowPanel);

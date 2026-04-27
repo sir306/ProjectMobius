@@ -20,7 +20,6 @@ public class MobiusEditor : ModuleRules
 			"MobiusCore",
 			"DatasmithRuntime",
 			"DatasmithContent",
-			"EditorScriptingUtilities",
 			"AssetTools",
 		});
 

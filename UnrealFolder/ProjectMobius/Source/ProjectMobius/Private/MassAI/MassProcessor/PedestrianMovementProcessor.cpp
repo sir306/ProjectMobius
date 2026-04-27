@@ -119,8 +119,8 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			const auto& SimulationFragment = Context.GetSharedFragment<FSimulationFragment>();
 
 			// Use FindChecked if you're confident the key exists (or add checks otherwise)
-			const TArray<FSimMovementSample>* CurrentSamplesPtr = SimulationFragment.SimulationData.Find(CurrentTimeStep);
-			const TArray<FSimMovementSample>* NextSamplesPtr = SimulationFragment.SimulationData.Find(CurrentTimeStep + 1);
+			const TArray<FSimMovementSample>* CurrentSamplesPtr = SimulationFragment.SimulationData->Find(CurrentTimeStep);
+			const TArray<FSimMovementSample>* NextSamplesPtr = SimulationFragment.SimulationData->Find(CurrentTimeStep + 1);
 
 			if (!CurrentSamplesPtr)
 			{
@@ -323,17 +323,20 @@ bool UPedestrianMovementProcessor::IsThereDataToProcess(const FMassExecutionCont
 {
 	// TODO: This one should be at the start to only check once per call not per loop iteration per call
 	// Check if the shared fragment is empty or not need more methodology to handle this and not check every time executed
-	if (ExecutionContext.GetSharedFragment<FSimulationFragment>().SimulationData.IsEmpty())
+	const TSharedPtr<TMap<int32, TArray<FSimMovementSample>>>& SimData =
+		ExecutionContext.GetSharedFragment<FSimulationFragment>().SimulationData;
+	if (!SimData.IsValid() || SimData->IsEmpty())
 	{
 		return false;
 	}
-	
-	if (CurrentTimeStep >= ExecutionContext.GetSharedFragment<FSimulationFragment>().SimulationData.Num())
+
+	if (CurrentTimeStep >= SimData->Num())
 	{
 		return false;
 	}
-	
-	if (ExecutionContext.GetSharedFragment<FSimulationFragment>().SimulationData[CurrentTimeStep].IsEmpty())
+
+	const TArray<FSimMovementSample>* StepSamples = SimData->Find(CurrentTimeStep);
+	if (!StepSamples || StepSamples->IsEmpty())
 	{
 		return false;
 	}

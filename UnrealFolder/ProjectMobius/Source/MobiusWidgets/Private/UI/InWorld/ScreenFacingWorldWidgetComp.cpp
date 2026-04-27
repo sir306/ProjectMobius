@@ -57,6 +57,17 @@ void UScreenFacingWorldWidgetComp::BeginPlay()
 }
 
 
+void UScreenFacingWorldWidgetComp::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(UpdateWidgetRotationTimerHandle);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+
 // Called every frame
 void UScreenFacingWorldWidgetComp::TickComponent(float DeltaTime, ELevelTick TickType,
                                                  FActorComponentTickFunction* ThisTickFunction)

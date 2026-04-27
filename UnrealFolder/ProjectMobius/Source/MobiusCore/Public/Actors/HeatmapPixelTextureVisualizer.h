@@ -25,11 +25,26 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"         // FTSTicker for staggered tile emit
 #include "GameFramework/Actor.h"
 #include "HeatmapPixelTextureVisualizer.generated.h"
 
 
 class UProceduralMeshComponent;
+
+/**
+ * Per-section buffers for a tiled heatmap grid. Each tile owns its own vertex table and emits
+ * its own ProcMesh section so the game-thread cost is split across frames and sections can be
+ * filtered independently. Boundary verts on adjacent tiles are duplicated; the grid is small
+ * enough that duplication cost is negligible compared to the hitch it replaces.
+ */
+struct FHeatmapTile
+{
+	TArray<FVector>   Verts;
+	TArray<int32>     Tris;
+	TArray<FVector2D> UVs;
+};
+
 /**
  * Enum to determine the type of heatmap to render
  */
@@ -60,6 +75,8 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:	
 	// Called every frame
@@ -302,7 +319,25 @@ public:
 	/** Floor ID of the heatmap */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	int32 FloorID = 0;
-	
+
+	/** Cells per tile edge. Each tile becomes one ProcMesh section. Smaller = more sections, smaller per-section cost, more boundary-vert duplication. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures", meta = (ClampMin = "4"))
+	int32 GridTileSize = 32;
+
+	/** Emit tiled grid as multiple sections (true) or legacy single section 0 (false). Rollback knob. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
+	bool bEnableMultiSectionBatching = true;
+
+	/**
+	 * Tile sections pushed per tick during staggered emit. 1 = smoothest (finishes over N frames);
+	 * higher = faster finish at the cost of bigger per-frame FScene_AddPrimitive spike.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures", meta = (ClampMin = "1"))
+	int32 SectionsEmittedPerTick = 1;
+
+	/** Cached tile buffers built off the GT and drained into ProcMesh sections on the GT. */
+	TArray<FHeatmapTile> Tiles;
+
 #pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 
 private:
@@ -324,8 +359,14 @@ private:
 	 * @return[FIntPoint] The number of triangles needed for the mesh in the X and Y direction
 	 */
 	static FIntPoint CalculateNumberOfTriangles(const FVector2D& MeshSize, const FIntPoint& TextureSize);
-	void CreateMeshVertexsAndUVs(FIntPoint NumTriangles, FVector2D CellSize);
-	void GenerateMeshTrianglesInQuadMapping(FIntPoint NumTriangles, TArray<FBox3d> Quads);
+	/**
+	 * Build a single tile's verts / tris / UVs for the cell range [TileX0, TileX1) x [TileY0, TileY1).
+	 * Only verts referenced by kept quads are added to the tile; empty tiles return with Tris.Num()==0.
+	 * Quad-intersect filter matches the legacy GenerateMeshTrianglesInQuadMapping behaviour.
+	 */
+	void BuildTileBuffers(int32 TileX0, int32 TileY0, int32 TileX1, int32 TileY1,
+	                      const FIntPoint& NumTriangles, const FVector2D& CellSize,
+	                      const TArray<FBox3d>& Quads, FHeatmapTile& Out) const;
        /**
         * Method to generate the mesh vertices, UVs and triangles for the heatmap mesh.
         * The method performs sanity checks on the input data before spawning any
@@ -342,6 +383,21 @@ private:
 	 * Helper method to find all the quads that will be valid for mesh building the heatmap
 	 */
 	TArray<FBox3d> FindAllQuads(class ARuntimeMeshBuilder* MeshBuilder = nullptr) const;
+
+	/** Ticker pump that pushes up to SectionsEmittedPerTick tile sections per frame. Returns false when drained. */
+	bool EmitNextTileSection(float DeltaTime);
+
+	/** Runs once after the final tile is emitted — applies material across all sections and clears the timer handle. */
+	void FinalizeTileEmit();
+
+	/** Index of the next tile in Tiles[] to push via CreateMeshSection_LinearColor. */
+	int32 PendingTileEmitIndex = 0;
+
+	/** Ticker handle for the staggered tile emit pump. Reset once all tiles are pushed. */
+	FTSTicker::FDelegateHandle TileEmitTickerHandle;
+
+	/** FPlatformTime::Seconds() sample taken when the tile emit pump started — used to log total wall time. */
+	double TileEmitStartTime = 0.0;
 
 #pragma endregion PRIVATE_METHODS
 

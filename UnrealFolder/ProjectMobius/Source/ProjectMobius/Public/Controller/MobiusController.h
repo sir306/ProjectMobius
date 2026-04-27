@@ -119,6 +119,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties|CameraSave")
 	FString CameraSavePointsFileName = TEXT("MobiusCamSavePoints.json");
 
+	TWeakObjectPtr<class UProjectMobiusGameInstance> CachedGameInstance;
+
 	/** Stores pre-existing saves from camera save file into an array that can be used for moving the user */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties|CameraSave")
 	TArray<FTransform> LoadedCameraTransforms;
