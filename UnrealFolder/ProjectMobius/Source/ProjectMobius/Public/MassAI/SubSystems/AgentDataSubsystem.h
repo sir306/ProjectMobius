@@ -24,7 +24,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Hdf5SimulationReader.h"
+#include "MobiusAgentDataImporter.h"
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Serialization/JsonReader.h"
@@ -38,7 +38,7 @@
 
 
 struct FVatMovementFrames;
-class FProcessSimulationDataRunnable;
+class FProcessAgentSimulationDataRunnable;
 /**
  * Delegates for the Agent Data Subsystem
  */
@@ -87,11 +87,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UAgentDataSubsystem, STATGROUP_Tickables); }
 
-	/**
-	 * Helper used to parse entity info fields from a JSON object into an EntityInfoFragment.
-	 * Called by PedestrianInitializeMOP when the JSON path is active.
-	 */
-	static void ParseEntityInfo(const TSharedPtr<FJsonObject>& JsonObject, FEntityInfoFragment& OutInfo);
+	/** Helper used to copy imported entity metadata into an EntityInfoFragment. */
+	static void ParseEntityInfo(const FMobiusAgentEntityData& Entity, FEntityInfoFragment& OutInfo);
 
 	/**
 	 * Set the Entity Info fragment by Index from the JSON data
@@ -150,16 +147,16 @@ protected:
 
 #pragma region PROPERTIES
 public:
-        /** Pointer to the FRunnable JSON Parser */
-        TUniquePtr<FProcessSimulationDataRunnable> JsonDataRunnable;
+        /** Pointer to the FRunnable agent data processor */
+        TUniquePtr<FProcessAgentSimulationDataRunnable> AgentDataRunnable;
 
 	/**
 	 * Entity metadata cached before the runnable is torn down.
 	 * Populated in BuildPedestrianMovementFragmentData() so that
 	 * PedestrianInitializeMOP can access entity info after AgentDataRunnableCleanup
-	 * has already destroyed JsonDataRunnable.
+	 * has already destroyed AgentDataRunnable.
 	 */
-	TArray<FHdf5EntityData> CachedEntityData;
+	TArray<FMobiusAgentEntityData> CachedEntityData;
 
 	/** Delegate to broadcast when the simulation data has finished loading */
 	UPROPERTY()
@@ -238,27 +235,10 @@ struct FVatAnimDataMB
 };
 //#pragma pack(pop)   // Restore previous alignment
 
-/** Enum to help with identifying which file type the simulation data is */
-enum ESimulationFileType
-{
-	ESFT_Unknown = 0,
-	ESFT_JSON    = 1,
-	ESFT_HDF5    = 2,
-	ESFT_MAX     = 3
-};
-
-/** Struct to hold hdf5 data */
-struct FHdf5SimulationData
-{
-	FHdf5SimulationMetadata Meta = FHdf5SimulationMetadata();
-	TArray<FHdf5EntityData> Entities = TArray<FHdf5EntityData>();
-	TArray<FHdf5SampleData> Samples = TArray<FHdf5SampleData>();
-};
-
 /**
  * Runnable class to process simulation data in a separate thread
  */
-class FProcessSimulationDataRunnable : public FRunnable
+class FProcessAgentSimulationDataRunnable : public FRunnable
 {
 public:
 	/**
@@ -267,10 +247,10 @@ public:
 	 *
 	 * @param[FString] InJsonDataFile: The JSON data file to load
 	 */
-	explicit FProcessSimulationDataRunnable(FString InJsonDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner);
+	explicit FProcessAgentSimulationDataRunnable(FString InAgentDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner);
 
 	/** Destructor */
-	virtual ~FProcessSimulationDataRunnable() override;
+	virtual ~FProcessAgentSimulationDataRunnable() override;
 	
 	// The FRunnable interface functions
 	virtual uint32 Run() override;
@@ -286,8 +266,8 @@ public:
 	/**
 	 * @brief Calculates rotation from movement direction when the HDF5 source data lacks rotation information.
 	 *
-	 * This method is called when Hdf5Data.Meta.bHasRotationData is false, indicating that the source
-	 * HDF5 file (typically Juelich format) did not contain rotation/heading data for entities.
+	 * This method is called when AgentSimulationData.Metadata.bHasRotationData is false, indicating that
+	 * the source file did not contain rotation/heading data for entities.
 	 *
 	 * @par Algorithm:
 	 * For each entity:
@@ -305,16 +285,15 @@ public:
 	 * @note This provides a reasonable approximation but may not match real-world heading
 	 *       for entities that move sideways or backwards
 	 *
-	 * @see Hdf5Data.Meta.bHasRotationData - Flag that triggers this calculation
-	 * @see FHdf5SimulationReader::ReadAllSamples() - Where rotation field detection occurs
+	 * @see AgentSimulationData.Metadata.bHasRotationData - Flag that triggers this calculation
 	 */
 	void CalculateRotationFromMovement();
 
 	/**
 	 * @brief Calculates speed from position deltas when the HDF5 source data lacks speed information.
 	 *
-	 * This method is called when Hdf5Data.Meta.bHasSpeedData is false, indicating that the source
-	 * HDF5 file did not contain speed data for entities.
+	 * This method is called when AgentSimulationData.Metadata.bHasSpeedData is false, indicating that
+	 * the source file did not contain speed data for entities.
 	 *
 	 * @par Algorithm:
 	 * For each entity:
@@ -338,8 +317,7 @@ public:
 	 *          - Entities appearing in only a single timestep (skipped due to Num() < 2 check)
 	 *          - Floating point precision issues with very small movements
 	 *
-	 * @see Hdf5Data.Meta.bHasSpeedData - Flag that triggers this calculation
-	 * @see FHdf5SimulationReader::ReadAllSamples() - Where speed field detection occurs
+	 * @see AgentSimulationData.Metadata.bHasSpeedData - Flag that triggers this calculation
 	 */
 	void CalculateSpeedFromMovement();
 
@@ -365,9 +343,6 @@ public:
 
 	float TimeBetweenSteps = 0.0f;
 
-	/** JSON Object */
-	TSharedPtr<FJsonObject, ESPMode::ThreadSafe> JSONObject;
-
 	int32 CurrentAgentAnimSmoothing = 0; // Current agent getting movement smoothed
 	// Peter Thompsons Smoothed Step Motion Animation Movement Variables
 	double minimumStepDuration = 0.5; // Minimum step duration in seconds, to assess suitable animation
@@ -386,13 +361,10 @@ public:
 	TArray<int32> NumOfAgentsPerTimeStep = TArray<int32>();
 
 	/** The type of simulation file being processed */
-	ESimulationFileType SimulationFileType = ESimulationFileType::ESFT_Unknown;
+	EMobiusAgentFileFormat AgentFileFormat = EMobiusAgentFileFormat::Unknown;
 
-	/** HDF5 Simulation Data (public for subsystem access) */
-	FHdf5SimulationData Hdf5Data = FHdf5SimulationData();
-	
-	/** Detected HDF5 Format Type */
-	EHdf5FormatType Hdf5Format = EHdf5FormatType::Unknown;
+	/** Imported agent simulation data (public for subsystem access) */
+	FMobiusAgentSimulationData AgentSimulationData = FMobiusAgentSimulationData();
 
 protected:
 	/** Pointer to a thread */
@@ -413,32 +385,15 @@ protected:
 	/** Bool to tell when the thread should stop */
 	FThreadSafeBool bShouldStop = false;
 
-	/** HDF5 Simulation Reader */
-	FHdf5SimulationReader HDF5SimulationReader;
-
 private:
-	/** Load the JSON file and deserialize it into the JSONObject */
+	/** Load the agent file through the importer facade */
 	bool LoadFileAndDeserialize();
-	
-	/** Handles the loading of JSON files and deserializes it into a JSONObject */
-	bool LoadAndDeserializeJSONFile();
-	
-	/** Handles the loading of HDF5 file and deserializes it into a #add object type# */
-	bool LoadAndDeserializeHDF5File();
 
-	/** Read metadata values from the JSON */
+	/** Read metadata values from the imported data */
 	void ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
-	
-	/** Read JSON Metadata Values */
-	void ReadJSONMetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
-	
-	/** Read HDF5 Metadata Values */
-	void ReadHDF5MetadataValues(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
 
 	/** Main simulation processing loop */
 	void RunSimulationDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
-	void RunJsonSimDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
-	void RunHdf5SimDataGatheringLoop(bool bCalculateTimeBetweenSteps, bool bCalculateMaxTime);
 
 	/** Send the final progress and completion events */
 	void FinalizeProgress();

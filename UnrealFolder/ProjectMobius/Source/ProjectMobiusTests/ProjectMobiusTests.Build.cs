@@ -14,7 +14,7 @@ public class ProjectMobiusTests : ModuleRules
 			"Engine",
 			"AutomationController",
 			"ProjectMobius",
-			"Hdf5DataPlugin",
+			"MobiusDataImporter",
 			"MassEntity",
 			"StructUtils",
 			"MassCommon",

@@ -7,7 +7,7 @@ cmake --build _superbuild --config Release --parallel
   cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64 `
     -DSUPERBUILD_ENABLE_UE_GENBUILD=ON `
     -DUE_BUILD_EXE="D:/UE_Engines/UE_5.5/Engine/Build/BatchFiles/Build.bat" `
-    -DUE_BUILD_ARGS="ProjectMobiusEditor Win64 Development -Project=E:/00_Work/ProjectMobius/UnrealFolder/ProjectMobius/ProjectMobius.uproject -WaitMutex -architecture=x64"
+    -DUE_BUILD_ARGS="ProjectMobiusEditor Win64 Development -Project=ProjectMobius.uproject -WaitMutex -architecture=x64"
 
   # Build
   cmake --build _superbuild --config Release

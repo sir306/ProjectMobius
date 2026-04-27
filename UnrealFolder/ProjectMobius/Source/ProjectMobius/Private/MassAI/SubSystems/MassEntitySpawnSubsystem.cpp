@@ -258,7 +258,7 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 	}
 }
 
-void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimulationDataRunnable>& ToKill)
+void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessAgentSimulationDataRunnable>& ToKill)
 {
         if (!ToKill) return;
 
@@ -277,9 +277,9 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimu
 	// 2) Signal the thread to stop
 	ToKill->Stop();
 
-	// 3) Join via destructor — WaitForCompletion() is called inside ~FProcessSimulationDataRunnable,
+	// 3) Join via destructor — WaitForCompletion() is called inside ~FProcessAgentSimulationDataRunnable,
 	//    then UE calls Exit() once cleanly after Run() returns. Do NOT call Exit() manually here;
-	//    that races with the background thread still accessing AgentDataArray / Hdf5Data.
+	//    that races with the background thread still accessing AgentDataArray / AgentSimulationData.
 	ToKill.Reset();
 
 	// 4) Clear any stale completion flag now the thread is fully joined
@@ -320,7 +320,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		!PedestrianTemplateData.IsEmpty() ||
 		!SpawnedEntityPedestrianHandles.IsEmpty() ||
 		SharedSimulationFragment.GetPtr<FSimulationFragment>() != nullptr ||
-		(AgentDataSubsystem && AgentDataSubsystem->JsonDataRunnable);
+		(AgentDataSubsystem && AgentDataSubsystem->AgentDataRunnable);
 
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
@@ -336,7 +336,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	}
 
         // Cleanup any existing runnable to avoid memory leaks
-        AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+        AgentDataRunnableCleanup(AgentDataSubsystem->AgentDataRunnable);
 
         bHasResetFlowCounters = false;
 
@@ -620,7 +620,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	}
 
 	// Cleanup any existing runnable to avoid memory leaks
-	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+	AgentDataRunnableCleanup(AgentDataSubsystem->AgentDataRunnable);
 
 	// Bind delegate BEFORE creating the runnable so we never miss a completion if the thread is very fast
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
@@ -629,7 +629,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 #if !UE_BUILD_SHIPPING
 	const double RunnableCreateStart = FPlatformTime::Seconds();
 #endif
-	AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
+	AgentDataSubsystem->AgentDataRunnable = MakeUnique<FProcessAgentSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogTemp, Display, TEXT("Agent data runnable creation took %.3f ms"), (FPlatformTime::Seconds() - RunnableCreateStart) * 1000.0);
 #endif
@@ -679,16 +679,16 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	FSimulationFragment SimulationFragment;
 	float TimeBetweenStepsLocal = 0.f;
 
-	if (AgentDataSubsystem->JsonDataRunnable)
+	if (AgentDataSubsystem->AgentDataRunnable)
 	{
-		SimulationFragment    = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
-		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
-		NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
+		SimulationFragment    = MoveTemp(AgentDataSubsystem->AgentDataRunnable->AgentMovementInfoData);
+		TimeBetweenStepsLocal = AgentDataSubsystem->AgentDataRunnable->TimeBetweenSteps;
+		NumOfAgentsPerTimeStep = AgentDataSubsystem->AgentDataRunnable->NumOfAgentsPerTimeStep;
 
 		// Cache entity metadata before the runnable is torn down.
 		// PedestrianInitializeMOP fires after SpawnMaxPedestrians destroys the runnable,
 		// so SetEntityInfoByIndex / SetEntityRenderingByIndex must read from here instead.
-		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
+		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->AgentDataRunnable->AgentSimulationData.Entities);
 		AgentDataSubsystem->CachedEntityData.Shrink();
 	}
 

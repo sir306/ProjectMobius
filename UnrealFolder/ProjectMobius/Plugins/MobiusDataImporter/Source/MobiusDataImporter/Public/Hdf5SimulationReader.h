@@ -64,7 +64,7 @@ struct FHdf5SimulationMetadata
 	 * @brief Indicates whether rotation data is present in the source HDF5 file.
 	 *
 	 * When false, rotation must be calculated from movement direction using
-	 * FProcessSimulationDataRunnable::CalculateRotationFromMovement().
+	 * FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement().
 	 * This is typically the case for Juelich format files which only contain position data.
 	 */
 	bool bHasRotationData = true;
@@ -73,7 +73,7 @@ struct FHdf5SimulationMetadata
 	 * @brief Indicates whether speed data is present in the source HDF5 file.
 	 *
 	 * When false, speed must be calculated from position deltas using
-	 * FProcessSimulationDataRunnable::CalculateSpeedFromMovement().
+	 * FProcessAgentSimulationDataRunnable::CalculateSpeedFromMovement().
 	 * This is typically the case for Juelich format files which only contain position data.
 	 */
 	bool bHasSpeedData = true;
@@ -164,7 +164,7 @@ struct FHdf5JuelichMetadata
 	 *
 	 * Detected at file load time using H5Tget_member_index(). When false, rotation values
 	 * must be calculated from movement direction after data loading.
-	 * @see FProcessSimulationDataRunnable::CalculateRotationFromMovement()
+	 * @see FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement()
 	 */
 	bool bHasRotationField = false;
 
@@ -173,7 +173,7 @@ struct FHdf5JuelichMetadata
 	 *
 	 * Detected at file load time using H5Tget_member_index(). When false, speed values
 	 * must be calculated from position deltas after data loading.
-	 * @see FProcessSimulationDataRunnable::CalculateSpeedFromMovement()
+	 * @see FProcessAgentSimulationDataRunnable::CalculateSpeedFromMovement()
 	 */
 	bool bHasSpeedField = false;
 };
@@ -194,7 +194,7 @@ struct FHdf5JuelichMetadata
  *
  * Uses the HDF5 C API for maximum portability.
  */
-class HDF5DATAPLUGIN_API FHdf5SimulationReader
+class MOBIUSDATAIMPORTER_API FHdf5SimulationReader
 {
 public:
 	FHdf5SimulationReader();
@@ -268,8 +268,8 @@ public:
 	 *        When non-null, set to true if speed data was read from file, false if it needs calculation.
 	 * @return true if samples were read successfully, false on HDF5 read error
 	 *
-	 * @see FProcessSimulationDataRunnable::CalculateRotationFromMovement() for rotation calculation
-	 * @see FProcessSimulationDataRunnable::CalculateSpeedFromMovement() for speed calculation
+	 * @see FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement() for rotation calculation
+	 * @see FProcessAgentSimulationDataRunnable::CalculateSpeedFromMovement() for speed calculation
 	 */
 	bool ReadAllSamples(TArray<FHdf5SampleData>& OutSamples, bool* OutHasRotationField = nullptr, bool* OutHasSpeedField = nullptr);
 

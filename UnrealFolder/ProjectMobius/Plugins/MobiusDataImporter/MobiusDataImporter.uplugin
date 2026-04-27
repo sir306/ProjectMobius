@@ -2,8 +2,8 @@
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0",
-	"FriendlyName": "HDF5 Data Plugin",
-	"Description": "Provides HDF5 file reading capabilities for simulation data. Supports both Mobius internal format and Juelich trajectory format, with automatic format detection and conversion to a unified data structure for downstream processing.",
+	"FriendlyName": "Mobius Data Importer",
+	"Description": "Shared Project Mobius agent and simulation data importer for JSON, Mobius HDF5, Juelich HDF5, and future agent data formats.",
 	"Category": "Data",
 	"CreatedBy": "Nicholas Richard Harding",
 	"CreatedByURL": "",
@@ -15,7 +15,7 @@
 	"Installed": false,
 	"Modules": [
 		{
-			"Name": "Hdf5DataPlugin",
+			"Name": "MobiusDataImporter",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		}

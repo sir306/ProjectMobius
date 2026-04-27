@@ -33,7 +33,7 @@
 #include "Templates/UniquePtr.h"
 #include "MassEntitySpawnSubsystem.generated.h"
 
-class FProcessSimulationDataRunnable;
+class FProcessAgentSimulationDataRunnable;
 class UAgentDataSubsystem;
 
 // Delegate to broadcast when the pedestrian data is loaded and processed
@@ -99,11 +99,11 @@ public:
 	void ClearNiagaraSim();
 
 	/**
-	 * Clean up method to kill the FProcessSimulationDataRunnable and clean up resources associated with it
+	 * Clean up method to kill the FProcessAgentSimulationDataRunnable and clean up resources associated with it
 	 *
-         * @param ToKill The FJsonDataRunnable to kill and clean up resources associated with it
+         * @param ToKill The FAgentDataRunnable to kill and clean up resources associated with it
          */
-        void AgentDataRunnableCleanup(TUniquePtr<FProcessSimulationDataRunnable>& ToKill);
+        void AgentDataRunnableCleanup(TUniquePtr<FProcessAgentSimulationDataRunnable>& ToKill);
 	
 	/**
 	* Create the archetype for the pedestrian entity

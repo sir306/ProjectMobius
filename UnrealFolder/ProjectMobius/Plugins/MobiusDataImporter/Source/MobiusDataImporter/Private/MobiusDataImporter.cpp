@@ -1,12 +1,12 @@
 ﻿// Copyright (c) 2025 ProjectMobius contributors. Licensed under MIT.
 
-#include "Hdf5DataPlugin.h"
+#include "MobiusDataImporter.h"
 #include "Hdf5DataExampleTest.h"
 #include "Modules/ModuleManager.h"
 
-#define LOCTEXT_NAMESPACE "FHdf5DataPluginModule"
+#define LOCTEXT_NAMESPACE "FMobiusDataImporterModule"
 
-void FHdf5DataPluginModule::StartupModule()
+void FMobiusDataImporterModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 
@@ -17,7 +17,7 @@ void FHdf5DataPluginModule::StartupModule()
 	FHdf5DataExampleTest::TestSimulationReader();
 }
 
-void FHdf5DataPluginModule::ShutdownModule()
+void FMobiusDataImporterModule::ShutdownModule()
 {
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
@@ -25,4 +25,4 @@ void FHdf5DataPluginModule::ShutdownModule()
 
 #undef LOCTEXT_NAMESPACE
 	
-IMPLEMENT_MODULE(FHdf5DataPluginModule, Hdf5DataPlugin)
+IMPLEMENT_MODULE(FMobiusDataImporterModule, MobiusDataImporter)

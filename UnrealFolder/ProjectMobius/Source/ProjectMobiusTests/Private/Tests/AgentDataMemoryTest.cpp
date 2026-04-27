@@ -202,7 +202,7 @@ bool FSimulationFragmentReloadCycleTest::RunTest(const FString& Parameters)
 //
 // Exercises the CachedEntityData array pattern used in AgentDataSubsystem
 // (move-in on HDF5 load, Empty+Shrink on JSON load) and checks for leaks.
-// Uses a self-contained struct so this module does not depend on Hdf5DataPlugin
+// Uses a self-contained struct so this module does not depend on MobiusDataImporter
 // headers that may have their own transitive includes.
 // ---------------------------------------------------------------------------
 

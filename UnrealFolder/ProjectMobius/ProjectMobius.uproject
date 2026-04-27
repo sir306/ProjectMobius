@@ -176,7 +176,7 @@
 			"Enabled": true
 		},
 		{
-			"Name": "Hdf5DataPlugin",
+			"Name": "MobiusDataImporter",
 			"Enabled": true
 		}
 	],

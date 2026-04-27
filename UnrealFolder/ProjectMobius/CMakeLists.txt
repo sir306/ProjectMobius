@@ -55,7 +55,8 @@ set(BUILD_DOCS_DIR "${UE_ROOT}/BuildDocs")
 set(BUILD_DOCS_MIRROR_DIR "${BUILD_DOCS_DIR}/Docs")
 set(BUILD_DOCS_SYNC_SCRIPT "${CMAKE_BINARY_DIR}/SyncBuildDocs.cmake")
 set(ASSIMP_SRC      "${UE_ROOT}/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp")
-set(HDF5_SRC        "${UE_ROOT}/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0")
+set(MOBIUS_DATA_IMPORTER_PLUGIN_DIR "${UE_ROOT}/Plugins/MobiusDataImporter")
+set(HDF5_SRC        "${MOBIUS_DATA_IMPORTER_PLUGIN_DIR}/Source/ThirdParty/hdf5-2.0.0")
 
 configure_file(
   "${UE_ROOT}/cmake/SyncBuildDocs.cmake.in"
@@ -213,6 +214,7 @@ set(_hdf5_cmake_args
   -DHDF5_BUILD_FORTRAN=OFF
   -DHDF5_BUILD_JAVA=OFF
   -DHDF5_BUILD_HL_LIB=ON
+  -DCMAKE_C_FLAGS=/D__STDC_NO_COMPLEX__
   # Enable zlib/deflate compression support (downloads and builds zlib 1.3.1)
   -DHDF5_ENABLE_ZLIB_SUPPORT=ON
   -DHDF5_ALLOW_EXTERNAL_SUPPORT=TGZ
@@ -272,6 +274,18 @@ if(SUPERBUILD_ENABLE_TESTS)
   add_path_exists_test(builddocs_build_and_run "${BUILD_DOCS_MIRROR_DIR}/BUILD-AND-RUN.md")
   add_path_exists_test(builddocs_agent_sample_data "${BUILD_DOCS_MIRROR_DIR}/AGENT-SAMPLE-DATA.md")
   add_path_exists_test(builddocs_research "${BUILD_DOCS_MIRROR_DIR}/RESEARCH.md")
+  add_path_exists_test(hdf5_include_dir "${HDF5_INST}/include")
+  add_path_exists_test(hdf5_lib_dir "${HDF5_INST}/lib")
+
+  if(WIN32)
+    add_path_exists_test(hdf5_static_lib_core "${HDF5_INST}/lib/libhdf5.lib")
+    add_path_exists_test(hdf5_static_lib_hl "${HDF5_INST}/lib/libhdf5_hl.lib")
+    add_path_exists_test(hdf5_static_lib_zlib "${HDF5_INST}/lib/zlib-static.lib")
+  elseif(APPLE)
+    add_path_exists_test(hdf5_static_lib_core "${HDF5_INST}/lib/libhdf5.a")
+    add_path_exists_test(hdf5_static_lib_hl "${HDF5_INST}/lib/libhdf5_hl.a")
+    add_path_exists_test(hdf5_static_lib_zlib "${HDF5_INST}/lib/libzlib-static.a")
+  endif()
 
   # Optional Unreal automation and GenerateProjectFiles/build checks
   if(SUPERBUILD_ENABLE_UE_AUTOMATION AND NOT UE_AUTOMATION_EXE STREQUAL "")

@@ -312,13 +312,13 @@ void UPedestrianInitializeMOP::InitializeEntityInfoAgent(int32 InEntityID, FEnti
 
 void UPedestrianInitializeMOP::InitializeEntityInfoAgent(FEntityInfoFragment& EntityInfoToAssign, int32 InEntityID, FString InEntityName, FString InEntitySimTimeS, float InEntityMaxSpeed, FString InEntityM_Plane, int32 InEntityMap)
 {
-	TSharedPtr<FJsonObject> TempObj = MakeShared<FJsonObject>();
-	TempObj->SetNumberField(TEXT("id"), InEntityID);
-	TempObj->SetStringField(TEXT("name"), InEntityName);
-	TempObj->SetStringField(TEXT("simTimeS"), InEntitySimTimeS);
-	TempObj->SetNumberField(TEXT("max_speed"), InEntityMaxSpeed);
-	TempObj->SetStringField(TEXT("m_plane"), InEntityM_Plane);
-	TempObj->SetNumberField(TEXT("map"), InEntityMap);
+	FMobiusAgentEntityData Entity;
+	Entity.Id = InEntityID;
+	Entity.Name = MoveTemp(InEntityName);
+	Entity.SimTimeS = FCString::Atof(*InEntitySimTimeS);
+	Entity.MaxSpeed = InEntityMaxSpeed;
+	Entity.MPlane = MoveTemp(InEntityM_Plane);
+	Entity.Map = InEntityMap;
 
-	UAgentDataSubsystem::ParseEntityInfo(TempObj, EntityInfoToAssign);
+	UAgentDataSubsystem::ParseEntityInfo(Entity, EntityInfoToAssign);
 }

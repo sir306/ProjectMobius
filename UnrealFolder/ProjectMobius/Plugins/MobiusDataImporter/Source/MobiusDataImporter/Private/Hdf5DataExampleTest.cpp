@@ -22,10 +22,10 @@ namespace
 
 void FHdf5DataExampleTest::RunExampleFile()
 {
-	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("Hdf5DataPlugin"));
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("MobiusDataImporter"));
 	if (!Plugin.IsValid())
 	{
-		UE_LOG(LogHdf5DataExampleTest, Error, TEXT("Hdf5DataPlugin not found."));
+		UE_LOG(LogHdf5DataExampleTest, Error, TEXT("MobiusDataImporter not found."));
 		return;
 	}
 
@@ -74,10 +74,10 @@ void FHdf5DataExampleTest::TestSimulationReader()
 {
 	UE_LOG(LogHdf5DataExampleTest, Log, TEXT("=== Testing FHdf5SimulationReader ==="));
 
-	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("Hdf5DataPlugin"));
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("MobiusDataImporter"));
 	if (!Plugin.IsValid())
 	{
-		UE_LOG(LogHdf5DataExampleTest, Error, TEXT("Hdf5DataPlugin not found."));
+		UE_LOG(LogHdf5DataExampleTest, Error, TEXT("MobiusDataImporter not found."));
 		return;
 	}
 

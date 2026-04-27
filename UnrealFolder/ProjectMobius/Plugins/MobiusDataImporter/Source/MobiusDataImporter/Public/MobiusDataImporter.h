@@ -4,7 +4,7 @@
 
 #include "Modules/ModuleManager.h"
 
-class FHdf5DataPluginModule : public IModuleInterface
+class FMobiusDataImporterModule : public IModuleInterface
 {
 public:
 

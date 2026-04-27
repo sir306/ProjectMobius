@@ -2,9 +2,9 @@
 
 using UnrealBuildTool;
 
-public class Hdf5DataPlugin : ModuleRules
+public class MobiusDataImporter : ModuleRules
 {
-	public Hdf5DataPlugin(ReadOnlyTargetRules Target) : base(Target)
+	public MobiusDataImporter(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
@@ -26,6 +26,7 @@ public class Hdf5DataPlugin : ModuleRules
 			new string[]
 			{
 				"Core",
+				"Json",
 				"UeHdf5Library",
 				"Projects"
 				// ... add other public dependencies that you statically link with here ...
