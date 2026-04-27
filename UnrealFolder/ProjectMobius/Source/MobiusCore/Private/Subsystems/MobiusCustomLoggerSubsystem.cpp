@@ -32,10 +32,16 @@ void UMobiusCustomLoggerSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 {
 	Super::Initialize(Collection);
 
-	const FString LaunchDir = FPaths::ConvertRelativePathToFull(FPaths::LaunchDir());
-	LogFilePath = FPaths::Combine(LaunchDir, TEXT("MobiusCustomLog.txt"));
+#if WITH_EDITOR
+	// Editor launches from Engine/Binaries/Win64 (often read-only under Program Files);
+	// route to the project's Saved/Logs directory which is always writable.
+	const FString LogDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Logs"));
+#else
+	// Packaged builds (including Mac .app bundles) expect the log next to the launched executable.
+	const FString LogDir = FPaths::ConvertRelativePathToFull(FPaths::LaunchDir());
+#endif
+	LogFilePath = FPaths::Combine(LogDir, TEXT("MobiusCustomLog.txt"));
 
-	// Ensure the directory exists in case LaunchDir is relative during testing.
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	PlatformFile.CreateDirectoryTree(*FPaths::GetPath(LogFilePath));
 
@@ -43,6 +49,7 @@ void UMobiusCustomLoggerSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 		FTickerDelegate::CreateUObject(this, &UMobiusCustomLoggerSubsystem::PumpLogs),
 		0.25f); // flush 4x per second to keep overhead tiny
 
+	UE_LOG(LogTemp, Display, TEXT("MobiusCustomLogger initialised. Writing to %s"), *LogFilePath);
 	EnqueueLogMessage(FString::Printf(TEXT("Custom logger initialised. Writing to %s"), *LogFilePath));
 }
 
@@ -132,22 +139,24 @@ void UMobiusCustomLoggerSubsystem::FlushToDisk()
 		return;
 	}
 
-	for (const FString& Line : LocalMessages)
-	{
-		LogLineDelegate.Broadcast(Line);
-	}
-
 	bIsFlushing = true;
 	ON_SCOPE_EXIT
 	{
 		bIsFlushing = false;
 	};
 
+	for (const FString& Line : LocalMessages)
+	{
+		LogLineDelegate.Broadcast(Line);
+	}
+
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	TUniquePtr<IFileHandle> Handle(PlatformFile.OpenWrite(*LogFilePath, /*bAppend=*/true));
 
 	if (!Handle)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("MobiusCustomLogger: failed to open %s for writing; %d messages dropped"),
+			*LogFilePath, LocalMessages.Num());
 		return;
 	}
 
@@ -177,6 +186,12 @@ FString UMobiusCustomLoggerSubsystem::BuildTimestampedLine(const FString& Messag
 
 void UMobiusCustomLoggerSubsystem::SetLoggingEnabled(bool bEnabled)
 {
+	UE_LOG(LogTemp, Warning, TEXT("MobiusLogger: SetLoggingEnabled(%s)"), bEnabled ? TEXT("true") : TEXT("false"));
+	if (!bEnabled)
+	{
+		EnqueueLogMessage(TEXT("=== Logger disabled ==="));
+		FlushToDisk();
+	}
 	bIsLoggingEnabled = bEnabled;
 }
 

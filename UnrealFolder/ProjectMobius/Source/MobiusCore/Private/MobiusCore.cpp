@@ -23,6 +23,11 @@
 #include "MobiusCore.h"
 #include "IMobiusErrorReporter.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Util/MemoryTraceHelper.h"
+
+#if !UE_BUILD_SHIPPING
+DEFINE_LOG_CATEGORY(LogMobiusMemory);
+#endif
 
 #define LOCTEXT_NAMESPACE "FMobiusCoreModule"
 

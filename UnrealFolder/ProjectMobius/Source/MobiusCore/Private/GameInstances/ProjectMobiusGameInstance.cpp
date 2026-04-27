@@ -178,13 +178,9 @@ void UProjectMobiusGameInstance::SetLogWindowEnabled(bool bEnabled)
 
 void UProjectMobiusGameInstance::SetPedestrianDataFilePath(const FString& NewPedestrianDataFilePath)
 {
-	// We only need to update and broadcast if the file path has changed
-	if(PedestrianDataFileName != NewPedestrianDataFilePath)
-	{
-		PedestrianDataFilePath = NewPedestrianDataFilePath;
-		OnPedestrianVectorFileChanged.Broadcast(NewPedestrianDataFilePath); // Broadcast the new pedestrian vector file
-		OnPedestrianVectorFileUpdated.Broadcast();
-	}
+	PedestrianDataFilePath = NewPedestrianDataFilePath;
+	OnPedestrianVectorFileChanged.Broadcast(NewPedestrianDataFilePath);
+	OnPedestrianVectorFileUpdated.Broadcast();
 }
 
 void UProjectMobiusGameInstance::SetPedestrianDataFileName(const FString& NewPedestrianDataFileName)

@@ -484,7 +484,12 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                 return;
         }
 
-        const int32 NumSteps = SimulationFragment->SimulationData.Num();
+        if (!SimulationFragment->SimulationData.IsValid())
+        {
+                SendImPlotChartData();
+                return;
+        }
+        const int32 NumSteps = SimulationFragment->SimulationData->Num();
         if (NumSteps == 0)
         {
                 SendImPlotChartData();
@@ -493,7 +498,7 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
 
         // Get sorted keys from the TMap to handle non-sequential timestep indices
         TArray<int32> SortedKeys;
-        SimulationFragment->SimulationData.GetKeys(SortedKeys);
+        SimulationFragment->SimulationData->GetKeys(SortedKeys);
         SortedKeys.Sort();
 
         TArray<int32> SampleCounts;
@@ -505,7 +510,7 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
         for (int32 i = 0; i < SortedKeys.Num(); ++i)
         {
                 int32 StepCount = 0;
-                if (const TArray<FSimMovementSample>* Samples = SimulationFragment->SimulationData.Find(SortedKeys[i]))
+                if (const TArray<FSimMovementSample>* Samples = SimulationFragment->SimulationData->Find(SortedKeys[i]))
                 {
                         for (const FSimMovementSample& Sample : *Samples)
                         {

@@ -141,6 +141,14 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void ResetFlowCounters();
 
+	/**
+	 * Drop per-file agent data (PedestrianAgentData / SelectedAgentData /
+	 * HoveredAgentData) so widgets observing OnSelectedAgentInfoChanged see
+	 * empty state on the next switch instead of stale entries from the
+	 * previous simulation. Hooked into the FileSwitch teardown sequence.
+	 */
+	void ResetForFileSwitch();
+
 	/** */
 	UFUNCTION(BlueprintCallable)
 	void AddRemoveActiveFlowCounter(AFlowCounter* FlowCounter, bool bAddToActiveCounters);

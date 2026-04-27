@@ -9,7 +9,8 @@ on:
     - cron: '30 6 * * 1'
   workflow_dispatch:
   push:
-    branches: [main]
+    branches-ignore:
+      - main
     paths:
       - 'UnrealFolder/ProjectMobius/Source/**/*.h'
       - 'UnrealFolder/ProjectMobius/Source/**/*.cpp'
@@ -18,6 +19,7 @@ jobs:
   track-todos:
     name: Scan TODOs
     runs-on: ubuntu-latest
+    if: github.ref_name != github.event.repository.default_branch
     permissions:
       contents: write
 

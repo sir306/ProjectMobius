@@ -140,7 +140,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 
 		// check timestep index is valid
-		if (SharedAgentMovement.SimulationData.Num() - 1 < CurrentTimeStep)
+		if (!SharedAgentMovement.SimulationData.IsValid() || SharedAgentMovement.SimulationData->Num() - 1 < CurrentTimeStep)
 		{
 			// log
 			UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute CurrentTimeStep not valid"));
@@ -148,10 +148,10 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		}
 
 		// Get the size of the data
-		//int32 DataSize = SharedAgentMovement.SimulationData[CurrentTimeStep].Num();
+		//int32 DataSize = SharedAgentMovement.SimulationData->operator[](CurrentTimeStep).Num();
 
 		// Get the first Shared Movement Sample for all entities
-		TArray<FSimMovementSample> AllAgentMovementSamples = SharedAgentMovement.SimulationData[CurrentTimeStep];
+		TArray<FSimMovementSample> AllAgentMovementSamples = (*SharedAgentMovement.SimulationData)[CurrentTimeStep];
 
 		auto Entities = Context.GetEntities();
 		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
@@ -189,7 +189,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			}
 			else
 			{
-				for (auto Sample :SharedAgentMovement.SimulationData)
+				for (auto Sample : *SharedAgentMovement.SimulationData)
 				{
 					if (AllAgentMovementSamples.IsValidIndex(EntityIndexOffset))
 					{

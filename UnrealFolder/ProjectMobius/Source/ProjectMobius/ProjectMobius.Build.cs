@@ -6,7 +6,7 @@ public class ProjectMobius : ModuleRules
 	public ProjectMobius(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-	
+
 		PublicDependencyModuleNames.AddRange(new string[] {
             "Core",
             "CoreUObject",
@@ -22,7 +22,7 @@ public class ProjectMobius : ModuleRules
             // Physics -- following modules are required for PhysicsParallelFor
             "Chaos",
             "MassSignals",
-            "MobiusLogging", 
+            "MobiusLogging",
             "Hdf5DataPlugin",
         });
 
@@ -41,16 +41,16 @@ public class ProjectMobius : ModuleRules
             "MassReplication",
             "MassNavigation",
             // Needed for creating a custom Niagara Actor
-            "Niagara", 
+            "Niagara",
             // External Modules needed for this project that have been made to decouple functionality
-            "HeatmapVisualization", 
+            "HeatmapVisualization",
             "Slate",
             "SlateCore",
             "RenderCore",
             // for JSOn handling and our web sockets
-            "Json", 
-            "JsonUtilities", 
-            "MobiusCore", 
+            "Json",
+            "JsonUtilities",
+            "MobiusCore",
             "XRBase",
         });
 

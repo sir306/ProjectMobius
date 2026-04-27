@@ -106,6 +106,66 @@ TArray<FIntVector> UAsyncAssimpMeshLoader::TriangulateWktPolygon(const TArray<FV
 	return Triangles;
 }
 
+void SplitSubmeshByTriCap(const FAssimpSubmeshBuffers& In, int32 MaxTris, TArray<FAssimpSubmeshBuffers>& Out)
+{
+	const int32 TotalTris = In.Faces.Num() / 3;
+	if (TotalTris == 0)
+	{
+		return;
+	}
+
+	if (MaxTris <= 0 || TotalTris <= MaxTris)
+	{
+		Out.Add(In);
+		return;
+	}
+
+	const bool bHasUV = (In.UV.Num() == In.Vertices.Num());
+	const bool bHasNormals = (In.Normals.Num() == In.Vertices.Num());
+
+	TMap<int32, int32> OldToNew;
+	OldToNew.Reserve(MaxTris * 3);
+
+	int32 TriCursor = 0;
+	while (TriCursor < TotalTris)
+	{
+		const int32 ChunkTriCount = FMath::Min(MaxTris, TotalTris - TriCursor);
+
+		FAssimpSubmeshBuffers& Chunk = Out.AddDefaulted_GetRef();
+		Chunk.Vertices.Reserve(ChunkTriCount * 3);
+		Chunk.Faces.Reserve(ChunkTriCount * 3);
+		if (bHasNormals) { Chunk.Normals.Reserve(ChunkTriCount * 3); }
+		if (bHasUV)      { Chunk.UV.Reserve(ChunkTriCount * 3); }
+
+		OldToNew.Reset();
+
+		for (int32 T = 0; T < ChunkTriCount; ++T)
+		{
+			for (int32 Corner = 0; Corner < 3; ++Corner)
+			{
+				const int32 OldIdx = In.Faces[(TriCursor + T) * 3 + Corner];
+				int32* Existing = OldToNew.Find(OldIdx);
+				int32 NewIdx;
+				if (Existing)
+				{
+					NewIdx = *Existing;
+				}
+				else
+				{
+					NewIdx = Chunk.Vertices.Num();
+					Chunk.Vertices.Add(In.Vertices[OldIdx]);
+					if (bHasNormals) { Chunk.Normals.Add(In.Normals[OldIdx]); }
+					if (bHasUV)      { Chunk.UV.Add(In.UV[OldIdx]); }
+					OldToNew.Add(OldIdx, NewIdx);
+				}
+				Chunk.Faces.Add(NewIdx);
+			}
+		}
+
+		TriCursor += ChunkTriCount;
+	}
+}
+
 FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh, TWeakObjectPtr<UObject> InWorldContextObject)
 	: WorldContextObject(InWorldContextObject)
 {
@@ -140,11 +200,14 @@ FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh,
 
 FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 {
-	// if the thread is still running, stop it
+	// Block until Run() returns naturally so the stack-allocated Assimp::Importer gets its
+	// destructor. Kill(true) hard-terminates mid-import and leaks Assimp-internal state,
+	// which can trip subsequent HDF5 reads that reuse the same worker path.
 	if (Thread != nullptr)
 	{
-		Thread->Kill(true);
+		Thread->WaitForCompletion();
 		delete Thread;
+		Thread = nullptr;
 	}
 }
 
@@ -901,6 +964,9 @@ void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 
 	FRotator Rotation = GetMeshRotation(AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
 
+	Submeshes.Reset();
+	Submeshes.Reserve(Scene->mNumMeshes);
+
 	Vertices.Empty();
 	Faces.Empty();
 	Normals.Empty();
@@ -908,7 +974,10 @@ void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 	for (uint32 MIndex = 0; MIndex < Scene->mNumMeshes; ++MIndex)
 	{
 		const aiMesh* Mesh = Scene->mMeshes[MIndex];
-		int32 VertexBase = Vertices.Num();
+		FAssimpSubmeshBuffers& Sub = Submeshes.AddDefaulted_GetRef();
+		Sub.Vertices.Reserve(Mesh->mNumVertices);
+		Sub.Normals.Reserve(Mesh->mNumVertices);
+		Sub.Faces.Reserve(Mesh->mNumFaces * 3);
 
 		for (uint32 NumVertices = 0; NumVertices < Mesh->mNumVertices; ++NumVertices)
 		{
@@ -919,7 +988,7 @@ void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 			{
 				TransformMeshMatrix(Vertex, AxisUpOrientation, AxisUpSign, AxisForwardOrientation, AxisForwardSign);
 			}
-			Vertices.Add(Vertex);
+			Sub.Vertices.Add(Vertex);
 
 			if (Mesh->HasNormals())
 			{
@@ -940,11 +1009,11 @@ void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 					Normal *= -1.0f; // WKT normals are inverted
 				}
 
-				Normals.Add(Normal.GetSafeNormal());
+				Sub.Normals.Add(Normal.GetSafeNormal());
 			}
 			else
 			{
-				Normals.Add(FVector::ZeroVector);
+				Sub.Normals.Add(FVector::ZeroVector);
 			}
 		}
 
@@ -953,10 +1022,20 @@ void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 			const aiFace& Face = Mesh->mFaces[FaceIndex];
 			if (Face.mNumIndices == 3)
 			{
-				Faces.Add(VertexBase + Face.mIndices[0]);
-				Faces.Add(VertexBase + Face.mIndices[1]);
-				Faces.Add(VertexBase + Face.mIndices[2]);
+				Sub.Faces.Add(static_cast<int32>(Face.mIndices[0]));
+				Sub.Faces.Add(static_cast<int32>(Face.mIndices[1]));
+				Sub.Faces.Add(static_cast<int32>(Face.mIndices[2]));
 			}
+		}
+
+		// Mirror into flat aggregate buffers for transitional callers still consuming monolithic data.
+		const int32 VertexBase = Vertices.Num();
+		Vertices.Append(Sub.Vertices);
+		Normals.Append(Sub.Normals);
+		Faces.Reserve(Faces.Num() + Sub.Faces.Num());
+		for (int32 Idx : Sub.Faces)
+		{
+			Faces.Add(VertexBase + Idx);
 		}
 	}
 }

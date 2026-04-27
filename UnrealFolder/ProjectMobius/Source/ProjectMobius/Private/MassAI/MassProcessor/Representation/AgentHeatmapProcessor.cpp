@@ -105,6 +105,12 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 		}
 	}
 
+	if (!HeatmapSubsystem)
+	{
+		bRegisteredProperties = false;
+		return;
+	}
+
 	if (HeatmapSubsystem->GetHeatmapCount() != ActiveHeatmapCount)
 	{
 		ActiveHeatmapCount = HeatmapSubsystem->GetHeatmapCount();
@@ -157,6 +163,7 @@ bool UAgentHeatmapProcessor::EnsureTimeSubsystem(FMassExecutionContext& Context)
 void UAgentHeatmapProcessor::UpdateTimeStepAndPause()
 {
 	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_UpdateTimeStepAndPause);
+	if (!TimeDilationSubSystem) return;
 	const float NewTimeStep = TimeDilationSubSystem->CurrentTimeStep;
 	const bool NewPauseState = TimeDilationSubSystem->bIsPaused;
 
@@ -172,6 +179,7 @@ void UAgentHeatmapProcessor::UpdateTimeStepAndPause()
 void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 {
 	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_UpdateHeatmapInterval);
+	if (!TimeDilationSubSystem) return;
 	const float CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
 	
 	if (CurrentSimTime < LastUpdatedCurrentTime)
@@ -246,6 +254,7 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 {
 	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_ApplyHeatmapUpdates);
+	if (!HeatmapSubsystem) return;
 	if (!HeatmapLocations.IsEmpty())
 	{
 		HeatmapSubsystem->BroadcastTotalAgentCount(HeatmapLocations.Num());

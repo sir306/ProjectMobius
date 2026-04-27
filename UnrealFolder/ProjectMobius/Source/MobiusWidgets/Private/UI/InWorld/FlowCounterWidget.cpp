@@ -51,16 +51,16 @@ void UFlowCounterWidget::SynchronizeProperties()
 void UFlowCounterWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
-	
+
 	if (!bNeedsSectionStyleUpdate)
 		return;
-	
-	// ensure geometry has been computed
-	if (GetCachedGeometry().GetLocalSize().IsNearlyZero() ) {return;}
-	
-	UpdateFlowSectionCountersStyle();
-	
-	bNeedsSectionStyleUpdate = false;
+
+	// MyGeometry is the allotted geometry from Slate's layout pass — valid before first paint,
+	// unlike GetCachedGeometry() which is zero until after the first paint completes.
+	if (MyGeometry.GetLocalSize().IsNearlyZero()) { return; }
+
+	if (UpdateFlowSectionCountersStyleInternal(MyGeometry))
+		bNeedsSectionStyleUpdate = false;
 }
 
 int32 UFlowCounterWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
@@ -136,40 +136,34 @@ void UFlowCounterWidget::RemoveFlowSectionCounter()
 
 void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 {
-	// Defensive: ensure we have the uniform grid panel to add to
-	if (FlowDataUniformGridPanel == nullptr) { return; }
+	// Blueprint-callable wrapper — uses CachedGeometry for manual/Blueprint calls.
+	// NativeTick calls UpdateFlowSectionCountersStyleInternal directly with MyGeometry.
+	UpdateFlowSectionCountersStyleInternal(GetCachedGeometry());
+}
 
-	// Defensive: ensure we have a valid section counter widget class to spawn
-	if (!FlowSectionCounterWidgetClass) { return; }
+bool UFlowCounterWidget::UpdateFlowSectionCountersStyleInternal(const FGeometry& WidgetGeometry)
+{
+	if (FlowDataUniformGridPanel == nullptr) { return false; }
+	if (!FlowSectionCounterWidgetClass) { return false; }
+	if (WidgetGeometry.GetLocalSize().IsNearlyZero()) { return false; }
+	if (CurrentFlowDataSections <= 0) { return false; }
 
-	// ensure geometry has been computed
-	if (GetCachedGeometry().GetLocalSize().IsNearlyZero() ) {return;}
-	
-	// get the current number of children in the grid panel
 	const int32 CurrentChildren = FlowDataUniformGridPanel->GetChildrenCount();
-
-	// get the difference between current children and desired sections
 	int32 Difference = CurrentChildren - CurrentFlowDataSections;
 
 	// TODO: may need to assess if the ptr array count matches the uniform grid children count
 
-	// if the same number of children as sections, we can return early
-	if (Difference == 0) { return; }
+	if (Difference == 0) { return true; }
 
-	// if we have more children than sections, we need to remove some
 	if (Difference > 0)
 	{
-		
+		// removal not yet implemented
 	}
-	else // we have fewer children than sections, we need to add some
+	else
 	{
-		// Reserve space in the array for the new widgets
 		FlowSectionCounters.Reserve(CurrentFlowDataSections);
-
-		// convert difference to positive value - we know it's negative here and this just makes the loop clearer
 		Difference = FMath::Abs(Difference);
-		
-		// create and add the new widgets
+
 		for (int32 i = 0; i < Difference; i++)
 		{
 			UFlowSectionCounter* NewSectionCounter = CreateNewFlowSectionCounterWidget();
@@ -177,21 +171,18 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 			{
 				int32 Column = FlowSectionCounters.Add(NewSectionCounter);
 
-				// configure text before adding to the grid
 				NewSectionCounter->SectionHeaderText = FText::FromString(FString::Printf(TEXT("Section %d Count:"), Column + 1));
 				NewSectionCounter->SectionHeaderAgentCountText = FText::FromString("0");
 				NewSectionCounter->FlowTypeTitleText = FText::FromString("Section Flow Rate:");
 				NewSectionCounter->FlowValueText = FText::FromString("0.00m/s");
-				
+
 				FlowDataUniformGridPanel->AddChildToUniformGrid(NewSectionCounter, 0, Column);
 
 				NewSectionCounter->SectionHeaderFieldAndTextWidget->SetUpdateTitleText(NewSectionCounter->SectionHeaderText);
 				NewSectionCounter->SectionHeaderFieldAndTextWidget->SetUpdateFieldText(NewSectionCounter->SectionHeaderAgentCountText);
-				
 				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetUpdateTitleText(NewSectionCounter->FlowTypeTitleText);
 				NewSectionCounter->FlowTypeAndValueFieldAndTextWidget->SetUpdateFieldText(NewSectionCounter->FlowValueText);
-				
-				// Ensure the new widget fills its cell
+
 				UWidgetUtilHelpers::UniformGridFillCell(NewSectionCounter);
 			}
 			else
@@ -203,36 +194,20 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 
 	// TODO: implement scroll logic
 
-	// Recompute the uniform grid layout
+	// Use geometry passed from NativeTick (always valid) instead of stale PaintSpaceGeometry
+	FVector2D DrawSize = WidgetGeometry.GetLocalSize();
 
-	// Get the current draw size of the grid panel
-	FVector2D DrawSize = RootUniformGridPanel->GetPaintSpaceGeometry().GetAbsoluteSize();
-
-	// Fallback to render bounding rect size if absolute size is zero
-	if (DrawSize == FVector2D::ZeroVector)
-	{
-		DrawSize = RootUniformGridPanel->GetPaintSpaceGeometry().GetRenderBoundingRect().GetSize();
-	}
-
-	// Compute the layout
-	float CellWidth = DrawSize.X / CurrentFlowDataSections;
-
-	FVector2D TextSize = FVector2D::ZeroVector;
-
-	// log the count of section counters
 	UE_LOG(LogTemp, Warning, TEXT("FlowSectionCounters count: %d"), FlowSectionCounters.Num());
-	// difference count
 	UE_LOG(LogTemp, Warning, TEXT("Difference count: %d"), Difference);
-	// current flow data sections
 	UE_LOG(LogTemp, Warning, TEXT("CurrentFlowDataSections: %d"), CurrentFlowDataSections);
-	// draw size
 	UE_LOG(LogTemp, Warning, TEXT("DrawSize: %s"), *DrawSize.ToString());
-	// cell width
+
+	float CellWidth = DrawSize.X / CurrentFlowDataSections;
 	UE_LOG(LogTemp, Warning, TEXT("CellWidth: %f"), CellWidth);
 
-	float CurrentFontSize = 14.0f; // default font size
-	
-	// loop through all the title field widgets and get the largest text measurement size
+	FVector2D TextSize = FVector2D::ZeroVector;
+	float CurrentFontSize = 14.0f;
+
 	for (UFlowSectionCounter* Widget : FlowSectionCounters)
 	{
 		if (Widget)
@@ -244,31 +219,21 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 		}
 	}
 
-	// if the text size is zero, we can't compute a font size
-	if (TextSize == FVector2D::ZeroVector) { return; }
+	// Child widgets not yet measured — retry next tick
+	if (TextSize == FVector2D::ZeroVector) { return false; }
 
-	// log font size and text size
 	UE_LOG(LogTemp, Warning, TEXT("CurrentFontSize: %f"), CurrentFontSize);
 	UE_LOG(LogTemp, Warning, TEXT("TextSize: %s"), *TextSize.ToString());
 
-	// need to calculate the margins and padding, so have to account for that in the cell width
+	CellWidth *= 0.8f;
 
-	// TODO: get the padding correctly etc
-	CellWidth *= 0.8f; // assume 20% padding/margin for now
-	
-	// calculate the font size that will fit in the cell width	
-	// Compute scale factor to fit in box (maintain aspect ratio) this way we can scale the font size appropriately
-	float ScaleX = (CellWidth / TextSize.X) ? CellWidth / TextSize.X : 0.0f; // Avoid division by zero
-	float ScaleY = (DrawSize.Y / TextSize.Y) ? DrawSize.Y / TextSize.Y : 0.0f; // Avoid division by zero
-	float UniformScale = FMath::Min( FMath::Clamp(ScaleX, 0, ScaleX),  FMath::Clamp(ScaleY, 0, ScaleY)); // Ensure scale is non-negative and min val of 0
-	
-	// Adjust font size
-	float FinalFontSize = FMath::Clamp((CurrentFontSize * UniformScale), 1, 14); // Text should never be allowed to be bigger than 14
+	float ScaleX = (CellWidth / TextSize.X) ? CellWidth / TextSize.X : 0.0f;
+	float ScaleY = (DrawSize.Y / TextSize.Y) ? DrawSize.Y / TextSize.Y : 0.0f;
+	float UniformScale = FMath::Min(FMath::Clamp(ScaleX, 0, ScaleX), FMath::Clamp(ScaleY, 0, ScaleY));
 
-	// the font should only be a max of 1 decimal place
+	float FinalFontSize = FMath::Clamp((CurrentFontSize * UniformScale), 1, 14);
 	FinalFontSize = FMath::RoundToFloat(FinalFontSize * 10.0f) / 10.0f;
-	
-	// Apply the new layout to the grid and its children
+
 	for (int32 i = 0; i < CurrentFlowDataSections; i++)
 	{
 		if (FlowSectionCounters[i] == nullptr) { continue; }
@@ -276,9 +241,10 @@ void UFlowCounterWidget::UpdateFlowSectionCountersStyle()
 		FlowSectionCounters[i]->FlowTypeAndValueFieldAndTextWidget->SetFontSize(FinalFontSize);
 	}
 
-	// log final font size and the text size and uniform scale
 	UE_LOG(LogTemp, Warning, TEXT("FinalFontSize: %f"), FinalFontSize);
 	UE_LOG(LogTemp, Warning, TEXT("UniformScale: %f"), UniformScale);
+
+	return true;
 }
 
 UFlowSectionCounter* UFlowCounterWidget::CreateNewFlowSectionCounterWidget()

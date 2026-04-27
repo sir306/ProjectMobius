@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -85,20 +85,20 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 
 	// Time Dilation Subsystem
 	ProcessorRequirements.AddSubsystemRequirement<UTimeDilationSubSystem>(EMassFragmentAccess::ReadOnly);
-	
+
 }
 
 void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext)
 {
 	//TODO: Make flag for this so no constant gets etc
 
-	if (!NiagaraAgentRepActor->IsValidLowLevelFast())
+	if (!IsValid(NiagaraAgentRepActor))
 	{
-			
+
 		// Get the agent representation actor //TODO: this works but it could be better
 		NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass()));
 	}
-	
+
 	if (TimeDilationSubSystem == nullptr || RepresentationSubsystem == nullptr)
 	{
 		// Get the Time Dilation Subsystem
@@ -107,14 +107,14 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		// Get the representation subsystem
 		RepresentationSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
 	}
-	
+
 	// check we got the subsystems -> if not then we need to return
 	if (TimeDilationSubSystem == nullptr || RepresentationSubsystem == nullptr ||
 		NiagaraAgentRepActor == nullptr)
 	{
 		return;
 	}
-	
+
 	//EntityQuery.ParallelForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context)
 	{
@@ -132,7 +132,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		{
 			// reset the registered properties bool
 			bRegisteredProperties = false;
-			
+
 			// attempt registering the properties again
 			RegisterProperties(Context);
 		}
@@ -140,7 +140,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		{
 			// Check we using correct Niagara System based on the current scalability setting
 			CheckAndUpdateNiagaraRenderSpec(Context);
-			
+
 			// We only want to update the pause state if it has changed
 			if (bLastPauseLoop != TimeDilationSubSystem->bIsPaused)
 			{
@@ -149,7 +149,7 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 			}
 			ExtractAgentData(Context);
 		}
-		
+
 	}));
 	UNiagaraComponent* NiagaraComp = NiagaraAgentRepActor ? NiagaraAgentRepActor->GetNiagaraComponent() : nullptr;
 
@@ -168,7 +168,7 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
 
 	auto Entities = Context.GetEntities();
-		
+
 	for (int i = 0; i < Entities.Num(); i++)
 	{
 		auto EntityMovement = EntityMovementFragment[i];
@@ -193,7 +193,7 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 			{
 				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 			}
-			
+
 		}
 		else // entity is an adult
 		{
@@ -206,7 +206,7 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 			}
 		}
-	}	
+	}
 }
 
 void UNiagaraAgentRepProcessor::SetAgentData(int32 Index, const FEntityMovementFragment EntityMovementFragment, FEntityRenderingFragment& EntityRenderingFragment, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates)
@@ -280,7 +280,7 @@ void UNiagaraAgentRepProcessor::RegisterProperties(FMassExecutionContext& Contex
 
 	// Get the elderly female locations and scales
 	ElderlyFemaleAdultAgentLocationAndScales = AgentNiagaraRepSharedFrag.ElderlyFemaleAdultAgentLocationAndScales;
-	
+
 	// Get the elderly female rotations
 	ElderlyFemaleAdultAgentRotations = AgentNiagaraRepSharedFrag.ElderlyFemaleAdultAgentRotations;
 
@@ -309,7 +309,7 @@ void UNiagaraAgentRepProcessor::PauseResumeAnimations(bool bPause) const
 	{
 		return;
 	}
-	
+
 	// Set the pause state in the Niagara component
 	NiagaraAgentRepActor->GetNiagaraComponent()->SetVariableFloat(TEXT("PauseResumeAnimations"), bPause ? 0.0f : 1.0f);
 }
@@ -339,7 +339,7 @@ bool UNiagaraAgentRepProcessor::CheckAgentCountArraySize(const FNiagaraStatsFrag
 		// if any of the checks fail then we need to return false
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -349,7 +349,7 @@ bool UNiagaraAgentRepProcessor::CheckAgentArraySize(int32 Index, int32 ArraySize
 	{
 		return NumberOfAgentsArray[Index] == ArraySize;
 	}
-	
+
 	// if the index is not valid then we need to return false
 	return false;
 }
@@ -363,19 +363,19 @@ void UNiagaraAgentRepProcessor::SetNiagaraAgentData(UNiagaraComponent* NiagaraCo
     FName Location = *(BaseName + TEXT("LocationAndScale"));
 	FName Rotation = *(BaseName + TEXT("QuatRotations"));
 	FName AnimationState = *(BaseName + TEXT("AnimationStates"));
-	
-	
+
+
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(NiagaraComp, Location, Locations);
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat(NiagaraComp, Rotation, Rotations);
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32(NiagaraComp, AnimationState, AnimationStates);
 }
 
-//TODO: FIX THIS - when going low spec to high the animations remain paused and only resume when we pause and unpause 
+//TODO: FIX THIS - when going low spec to high the animations remain paused and only resume when we pause and unpause
 void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionContext& Context)
 {
 	AgentNiagaraRepSharedFrag = Context.GetMutableSharedFragment<FAgentNiagaraDataFrag>();
 	auto& AgentNiagaraStatsSharedFrag = Context.GetMutableSharedFragment<FNiagaraStatsFragment>();
-	
+
 	// if RepresentationSubsystem is null then we need to return
 	if (RepresentationSubsystem == nullptr)
 	{
@@ -397,9 +397,14 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect = RepresentationSubsystem->IsCurrentPedestrianAvatarTypeLowSpec();
 
 	// deactivate and destroy instance
+	if (!IsValid(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor.Get()) ||
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent() == nullptr)
+	{
+		return;
+	}
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DestroyInstanceNotComponent();
-	
+
 
 	// Create the new system
 	UNiagaraSystem* NiagaraSystem = RepresentationSubsystem->LoadNiagaraAgentSystem(AgentNiagaraStatsSharedFrag.bUseLowSpecAgentRenderEffect);
@@ -421,17 +426,17 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 
 	// Set the Niagara System
 	NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
-			
+
 	// Set the shared actor component in the shared fragment
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor = NiagaraAgentRepActor;
-			
+
 
 	// once created we need to pass in the shared niagara data before we activate it
 
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->ClearSimCache();
 
 	// get the niagara variables for number of agents
-	
+
 
 	// Set the number of agents in the system
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("MaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfMaleAdults);

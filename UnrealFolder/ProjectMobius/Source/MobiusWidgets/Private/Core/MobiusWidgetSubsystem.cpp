@@ -161,6 +161,18 @@ void UMobiusWidgetSubsystem::Deinitialize()
         Super::Deinitialize();
 }
 
+void UMobiusWidgetSubsystem::ResetForFileSwitch()
+{
+	// ErrorWidget and LoadingNotifyWidget are persistent infrastructure widgets
+	// the subsystem owns for the lifetime of the world. They are bound to live
+	// LoadingSubsystem delegates and the next file load broadcasts to them
+	// immediately, so nulling them mid-switch crashes the next SetLoadingText.
+	// They are NOT the per-simulation MID/shader-map root we suspected.
+	// This hook is intentionally a no-op for now and kept as the call site for
+	// future per-switch widget resets (e.g. floor-stats panels) without having
+	// to re-thread the subsystem reset through MassEntitySpawnSubsystem.
+}
+
 void UMobiusWidgetSubsystem::Tick(float DeltaTime)
 {
         Super::Tick(DeltaTime);

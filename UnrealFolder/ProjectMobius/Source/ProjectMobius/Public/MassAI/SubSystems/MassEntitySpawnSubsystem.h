@@ -161,4 +161,7 @@ public:
 private:
         /** Cached shared simulation fragment for plot access. */
         FSharedStruct SharedSimulationFragment;
+
+        /** Template ID registered with TemplateRegistryInstance, used to call DestroyTemplate on file switch. */
+        FMassEntityTemplateID RegisteredPedestrianTemplateID;
 };
