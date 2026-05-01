@@ -10,14 +10,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -60,7 +60,7 @@ namespace
 			|| Extension == TEXT("obj")
 			|| Extension == TEXT("udatasmith")
 			|| Extension == TEXT("ifc")
-			|| Extension == TEXT("wkt") 
+			|| Extension == TEXT("wkt")
 			|| (Extension == "h5");
 	}
 }
@@ -129,6 +129,16 @@ void UNativeFileDialogSubsystem::RequestAgentFileDialog(FOnFileSelectedDelegate 
 void UNativeFileDialogSubsystem::RequestMeshFileDialog(FOnFileSelectedDelegate OnFileSelectedCallback)
 {
 	StartDialog(EDialogType::MeshFile, OnFileSelectedCallback);
+}
+
+void UNativeFileDialogSubsystem::RequestBRiskFileDialog(FOnBRiskFileSelectedDelegate OnFileSelectedCallback)
+{
+	// Store the B-Risk-specific delegate and instruct StartDialog to open a
+	// .smv-filtered picker.  A dummy FOnFileSelectedDelegate is passed because
+	// StartDialog's signature requires it, but it will not be executed for
+	// BRiskFile dialogs – OnBRiskFileSelected is used instead.
+	OnBRiskFileSelected = OnFileSelectedCallback;
+	StartDialog(EDialogType::BRiskFile, FOnFileSelectedDelegate());
 }
 
 void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSelectedDelegate OnFileSelectedCallback)
@@ -202,6 +212,11 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 				[AllowedTypes addObject:@"json"];
 				[AllowedTypes addObject:@"public.json"];
 				[AllowedTypes addObject:@"h5"];
+			}
+			else if (DialogTypeCopy == EDialogType::BRiskFile)
+			{
+				[Panel setMessage:@"Select B-Risk Scenario File"];
+				[AllowedTypes addObject:@"smv"];
 			}
 			else
 			{
@@ -363,7 +378,7 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	// ==========================================================
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
 	const std::string InitialDirUtf8(TCHAR_TO_UTF8(*InitialDir));
-	
+
 	// log InitialDirUtf8
 	UE_LOG(LogNativeFileDialog, Log, TEXT("Starting Windows/Linux file dialog. Type: %s, InitialDir: %s"),
 		DialogType == EDialogType::AgentFile ? TEXT("AgentFile") : TEXT("MeshFile"),
@@ -374,6 +389,11 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	{
 		Filters = { "Agent Data", "*.json *.h5", "JSON Files", "*.json", "HDF5 Files", "*.h5" };
 		ActiveDialog = MakeUnique<pfd::open_file>("Select Agent Data File", InitialDirUtf8, Filters, pfd::opt::none);
+	}
+	else if (DialogType == EDialogType::BRiskFile)
+	{
+		Filters = { "B-Risk Scenario", "*.smv", "SMV Files", "*.smv" };
+		ActiveDialog = MakeUnique<pfd::open_file>("Select B-Risk Scenario File", InitialDirUtf8, Filters, pfd::opt::none);
 	}
 	else
 	{
@@ -487,23 +507,41 @@ void UNativeFileDialogSubsystem::PollDialog()
 
 void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& SelectedFiles)
 {
-	if (!OnFileSelected.IsBound()) return;
-
-	FString AgentPath;
-	FString MeshPath;
-	bool bAgentSuccess = false;
-	bool bMeshSuccess = false;
-
 	if (SelectedFiles.Num() > 0)
 	{
 		const FString& SelectedPath = SelectedFiles[0];
 		UpdateLastDialogDirectory(SelectedPath);
-		
+
+		// ------------------------------------------------------------------
+		// B-Risk SMV dialog – fire the dedicated B-Risk delegate.
+		// ------------------------------------------------------------------
+		if (ActiveDialogType == EDialogType::BRiskFile)
+		{
+			const bool bSuccess =
+				FPaths::GetExtension(SelectedPath).ToLower() == TEXT("smv");
+
+			if (OnBRiskFileSelected.IsBound())
+			{
+				OnBRiskFileSelected.Execute(SelectedPath, bSuccess);
+			}
+			return;
+		}
+
+		// ------------------------------------------------------------------
+		// Agent / Mesh dialogs – fire the shared FOnFileSelectedDelegate.
+		// ------------------------------------------------------------------
+		if (!OnFileSelected.IsBound()) return;
+
+		FString AgentPath;
+		FString MeshPath;
+		bool bAgentSuccess = false;
+		bool bMeshSuccess  = false;
+
         // Simple logic: If we asked for Agent, result is Agent.
         // We can double check extension if we want.
 		if (ActiveDialogType == EDialogType::AgentFile)
 		{
-			AgentPath = SelectedPath;
+			AgentPath    = SelectedPath;
 			bAgentSuccess = AgentPath.EndsWith(".json") || AgentPath.EndsWith(".txt") || AgentPath.EndsWith(".h5");
 		}
 		else
@@ -513,9 +551,24 @@ void UNativeFileDialogSubsystem::HandleDialogResult(const TArray<FString>& Selec
             FString Ext = FPaths::GetExtension(MeshPath).ToLower();
 			bMeshSuccess = (Ext == "fbx" || Ext == "obj" || Ext == "udatasmith" || Ext == "ifc" || Ext == "wkt") || (Ext == "h5");
 		}
-	}
 
-	OnFileSelected.Execute(AgentPath, MeshPath, bAgentSuccess, bMeshSuccess);
+		OnFileSelected.Execute(AgentPath, MeshPath, bAgentSuccess, bMeshSuccess);
+	}
+	else
+	{
+		// No file selected (user cancelled).
+		if (ActiveDialogType == EDialogType::BRiskFile)
+		{
+			if (OnBRiskFileSelected.IsBound())
+			{
+				OnBRiskFileSelected.Execute(FString(), false);
+			}
+		}
+		else if (OnFileSelected.IsBound())
+		{
+			OnFileSelected.Execute(FString(), FString(), false, false);
+		}
+	}
 }
 
 void UNativeFileDialogSubsystem::ReportDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
@@ -544,6 +597,7 @@ void UNativeFileDialogSubsystem::ResetDialogState()
 {
 	bSelectionInProgress = false;
 	OnFileSelected.Unbind();
+	OnBRiskFileSelected.Unbind();
 	OnDialogError.Unbind();
 
 #if PLATFORM_WINDOWS || PLATFORM_LINUX

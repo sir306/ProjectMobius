@@ -320,7 +320,37 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 		return;
 	}
 
+	bIsResettingForNewLoad = true;
+	PendingCollisionEnable.Reset();
+	PendingDatasmithMeshes.Reset();
+	bHeatmapBroadcastPending = false;
+	MaterialCache.Reset();
+
+	if (ChunkEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ChunkEmitTickerHandle);
+		ChunkEmitTickerHandle.Reset();
+	}
+	PendingMeshChunks.Empty();
+	PendingChunkEmitIndex = 0;
+
+	if (FlowCounterSpawnerComponent)
+	{
+		FlowCounterSpawnerComponent->AbortSpawning();
+		FlowCounterSpawnerComponent->RemoveAllFlowCounters();
+	}
+
+	if (RuntimeDatasmithAnchor && !RuntimeDatasmithAnchor->IsActorBeingDestroyed())
+	{
+		ReleaseDatasmithSceneResources();
+		RuntimeDatasmithAnchor->Reset();
+	}
+
+	DatasmithMaterialsMap.Empty();
+	bIsDatasmithAsset = false;
 	ResetMeshCollisionAndPhysics();
+
+	const FBox MeshBounds(InVertices);
 
 	FAssimpSubmeshBuffers Input;
 	Input.Vertices = MoveTemp(InVertices);
@@ -354,6 +384,21 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 		{
 			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
 		}
+	}
+
+	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = true;
+	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	MobiusProceduralMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
+	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
+
+	bMeshBeingBuilt = false;
+	bIsResettingForNewLoad = false;
+
+	if (MeshBounds.IsValid)
+	{
+		const FVector BoundsCenter = MeshBounds.GetCenter();
+		const FVector BoundsExtent = MeshBounds.GetExtent();
+		OnMeshBuilt.Broadcast(BoundsCenter - BoundsExtent, BoundsExtent);
 	}
 }
 

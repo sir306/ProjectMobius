@@ -9,8 +9,7 @@ enum class EMobiusAgentFileFormat : uint8
 	Unknown,
 	Json,
 	MobiusHdf5,
-	JuelichHdf5,
-	BRisk
+	JuelichHdf5
 };
 
 struct MOBIUSDATAIMPORTER_API FMobiusAgentSimulationMetadata

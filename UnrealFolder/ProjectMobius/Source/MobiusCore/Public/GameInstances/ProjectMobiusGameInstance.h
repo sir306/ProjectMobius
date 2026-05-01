@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -33,7 +33,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTimeDilationScaleFactorChanged); // To broadcast time dilation scale changes
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPedestrianVectorFileChanged, FString, PedestrianVectorFile); // To broadcast simulation data file changes with file
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPedestrianVectorFileUpdated); // Simple signal to say the file has changed
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMeshFileChanged); // To broadcast mesh data file changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMeshFileChanged);   // To broadcast mesh data file changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBRiskFileChanged);  // To broadcast when the B-Risk SMV file path changes
 // simulations and meshes come in different units, so we need to broadcast when the scale changes and update
 // the simulations and meshes so they are in the correct units and scale and are consistent
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMeshScaleChanged); // To broadcast when a different mesh scale is selected
@@ -51,7 +52,7 @@ UCLASS()
 class MOBIUSCORE_API UProjectMobiusGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
-	
+
 public:
 #pragma region PUBLIC_METHODS
 	/** Constructor */
@@ -130,6 +131,16 @@ public:
 	void SetSimulationMeshFileName(const FString& NewSimulationMeshFileName);
 
 	/**
+	 * Set the B-Risk SMV scenario file path.
+	 * Stores the path, derives the file name, then broadcasts OnBRiskFileChanged
+	 * so UBRiskDataSubsystem (and any other listeners) auto-trigger a load.
+	 *
+	 * @param NewBRiskSmvFilePath - Absolute path to the .smv manifest.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Simulation Settings")
+	void SetBRiskSmvFilePath(const FString& NewBRiskSmvFilePath);
+
+	/**
 	 * Set the Time Dilation Scale Factor
 	 *
 	 * @param NewTimeDilationScaleFactor - The new time dilation scale factor to set
@@ -196,7 +207,11 @@ public:
 	/** Delegate to broadcast Mesh file has changed */
 	UPROPERTY(BlueprintAssignable, Category = "Delegates")
 	FOnMeshFileChanged OnMeshFileChanged;
-	
+
+	/** Delegate to broadcast that the B-Risk SMV file path has changed */
+	UPROPERTY(BlueprintAssignable, Category = "Delegates")
+	FOnBRiskFileChanged OnBRiskFileChanged;
+
 	/** Delegate that can broadcast mesh scale changes */
 	UPROPERTY(BlueprintAssignable, Category = "Delegates")
 	FOnMeshScaleChanged OnMeshScaleChanged;
@@ -249,6 +264,14 @@ private:
 	/** Simulation Mesh File Name -- The name of the file */
 	UPROPERTY()
 	FString SimulationMeshFileName;
+
+	/** B-Risk SMV scenario file path -- The complete file path */
+	UPROPERTY()
+	FString BRiskSmvFilePath;
+
+	/** B-Risk SMV file name -- base name only, derived from BRiskSmvFilePath */
+	UPROPERTY()
+	FString BRiskSmvFileName;
 
 	//TODO: we will bring datatables back as it makes it to manage and requires less memory allocation
 	// /** DataTable that holds the different types of meshes for the agents */
@@ -312,6 +335,12 @@ public:
 	/** Get the Simulation Mesh File Name */
 	FString GetSimulationMeshFileName() const { return SimulationMeshFileName; }
 
+	/** Get the B-Risk SMV scenario file path */
+	FString GetBRiskSmvFilePath() const { return BRiskSmvFilePath; }
+
+	/** Get the B-Risk SMV file name (base name only) */
+	FString GetBRiskSmvFileName() const { return BRiskSmvFileName; }
+
 	/** Get the Time Dilation Scale Factor */
 	float GetTimeDilationScaleFactor() const { return TimeDilationScaleFactor; }
 
@@ -354,6 +383,6 @@ public:
 	FORCEINLINE void SetSelectedChildrenEyesMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedChildrenEyesMaterialInstance = NewMaterialInstance; }
 
 
-	
+
 #pragma endregion SETTERS
 };

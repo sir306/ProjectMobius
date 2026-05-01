@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -33,7 +33,7 @@
 	#ifndef _WIN32
 	#define _WIN32 0
 	#endif
-    
+
 	#ifndef _WIN64
 	#define _WIN64 0
 	#endif
@@ -62,7 +62,13 @@ DECLARE_DYNAMIC_DELEGATE_FourParams(FOnFileSelectedDelegate, const FString&, Age
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnDialogErrorDelegate, const FString&, ErrorTitle, const FString&, ErrorMessage);
 
 /**
- * 
+ * Dedicated delegate for the B-Risk SMV file dialog.
+ * Simpler than FOnFileSelectedDelegate since only a single file path is needed.
+ */
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnBRiskFileSelectedDelegate, const FString&, SmvFilePath, bool, bSuccess);
+
+/**
+ *
  */
 UCLASS()
 class MOBIUSCORE_API UNativeFileDialogSubsystem : public UWorldSubsystem
@@ -98,8 +104,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "File Dialog")
 	void RequestMeshFileDialog(FOnFileSelectedDelegate OnFileSelectedCallback);
 
+	/**
+	 * Request a file dialog filtered to B-Risk SMV manifests (*.smv).
+	 * The callback receives the absolute path and a success flag.
+	 * Typical usage:
+	 *   FOnBRiskFileSelectedDelegate Del;
+	 *   Del.BindDynamic(this, &UMyWidget::OnBRiskFileChosen);
+	 *   FileDialogSubsystem->RequestBRiskFileDialog(Del);
+	 *
+	 * @param OnFileSelectedCallback Callback executed when the dialog completes.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "File Dialog")
+	void RequestBRiskFileDialog(FOnBRiskFileSelectedDelegate OnFileSelectedCallback);
+
 	UPROPERTY()
 	FOnFileSelectedDelegate OnFileSelected;
+
+	/** Dedicated B-Risk file-selected callback. */
+	UPROPERTY()
+	FOnBRiskFileSelectedDelegate OnBRiskFileSelected;
 
 	/** Delegate invoked when the dialog fails to open or encounters an error. */
 	UPROPERTY()
@@ -123,7 +146,8 @@ private:
 	enum class EDialogType : uint8
 	{
 		AgentFile,
-		MeshFile
+		MeshFile,
+		BRiskFile    ///< B-Risk SMV manifest (.smv)
 	};
 
 	/**
@@ -172,7 +196,7 @@ private:
 
 	FString LastDialogDirectory;
 
-	// Only use PFD dialog pointer on Windows/Linux 
+	// Only use PFD dialog pointer on Windows/Linux
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
 	/** */
 	TUniquePtr<pfd::open_file> ActiveDialog;

@@ -1,0 +1,432 @@
+// Copyright (c) 2025 ProjectMobius contributors. Licensed under MIT.
+
+#include "BRiskDataImporter.h"
+
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogBRiskDataImporter, Log, All);
+
+namespace
+{
+	void SetImportError(FString* OutError, const FString& Message)
+	{
+		if (OutError)
+		{
+			*OutError = Message;
+		}
+	}
+
+	FString TrimCell(const FString& InCell)
+	{
+		FString Result = InCell;
+		Result.TrimStartAndEndInline();
+		return Result;
+	}
+
+	bool TryParseDouble(const FString& InValue, double& OutValue)
+	{
+		const FString Trimmed = TrimCell(InValue);
+		if (Trimmed.IsEmpty())
+		{
+			return false;
+		}
+		return LexTryParseString(OutValue, *Trimmed);
+	}
+
+	TArray<FString> SplitWhitespace(const FString& InLine)
+	{
+		TArray<FString> Tokens;
+		InLine.ParseIntoArrayWS(Tokens);
+		for (FString& Token : Tokens)
+		{
+			Token = TrimCell(Token);
+		}
+		return Tokens;
+	}
+
+	void SplitCsvRow(const FString& InLine, TArray<FString>& OutCells)
+	{
+		OutCells.Reset();
+		InLine.ParseIntoArray(OutCells, TEXT(","), false);
+		for (FString& Cell : OutCells)
+		{
+			Cell = TrimCell(Cell);
+		}
+
+		while (OutCells.Num() > 0 && OutCells.Last().IsEmpty())
+		{
+			OutCells.Pop();
+		}
+	}
+
+	int32 FindNextDataLine(const TArray<FString>& Lines, int32 StartIndex)
+	{
+		for (int32 LineIndex = StartIndex; LineIndex < Lines.Num(); ++LineIndex)
+		{
+			if (!TrimCell(Lines[LineIndex]).IsEmpty())
+			{
+				return LineIndex;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	bool TryParseRoom(const TArray<FString>& Lines, int32& InOutIndex, FBRiskRoomGeometry& OutRoom)
+	{
+		const TArray<FString> RoomTokens = SplitWhitespace(TrimCell(Lines[InOutIndex]));
+		if (RoomTokens.Num() < 2)
+		{
+			return false;
+		}
+
+		OutRoom = FBRiskRoomGeometry();
+		OutRoom.RoomId = FCString::Atoi(*RoomTokens[1]);
+
+		const int32 DimsIndex = FindNextDataLine(Lines, InOutIndex + 1);
+		const int32 OriginIndex = DimsIndex != INDEX_NONE ? FindNextDataLine(Lines, DimsIndex + 1) : INDEX_NONE;
+		if (DimsIndex == INDEX_NONE || OriginIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		const TArray<FString> DimTokens = SplitWhitespace(TrimCell(Lines[DimsIndex]));
+		const TArray<FString> OriginTokens = SplitWhitespace(TrimCell(Lines[OriginIndex]));
+		if (DimTokens.Num() < 3 || OriginTokens.Num() < 3)
+		{
+			return false;
+		}
+
+		double Value = 0.0;
+		if (TryParseDouble(DimTokens[0], Value)) OutRoom.Size.X = Value;
+		if (TryParseDouble(DimTokens[1], Value)) OutRoom.Size.Y = Value;
+		if (TryParseDouble(DimTokens[2], Value)) OutRoom.Size.Z = Value;
+
+		if (TryParseDouble(OriginTokens[0], Value)) OutRoom.Origin.X = Value;
+		if (TryParseDouble(OriginTokens[1], Value)) OutRoom.Origin.Y = Value;
+		if (TryParseDouble(OriginTokens[2], Value)) OutRoom.Origin.Z = Value;
+
+		InOutIndex = OriginIndex;
+		return true;
+	}
+
+	bool TryParseFire(const TArray<FString>& Lines, int32& InOutIndex, FBRiskFireGeometry& OutFire)
+	{
+		const int32 DataIndex = FindNextDataLine(Lines, InOutIndex + 1);
+		if (DataIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		const TArray<FString> Tokens = SplitWhitespace(TrimCell(Lines[DataIndex]));
+		if (Tokens.Num() < 4)
+		{
+			return false;
+		}
+
+		OutFire = FBRiskFireGeometry();
+		OutFire.RoomId = FCString::Atoi(*Tokens[0]);
+
+		double Value = 0.0;
+		if (TryParseDouble(Tokens[1], Value)) OutFire.Location.X = Value;
+		if (TryParseDouble(Tokens[2], Value)) OutFire.Location.Y = Value;
+		if (TryParseDouble(Tokens[3], Value)) OutFire.Location.Z = Value;
+
+		InOutIndex = DataIndex;
+		return true;
+	}
+
+	bool TryParseVentGeom(const TArray<FString>& Lines, int32& InOutIndex, FBRiskVentGeometry& OutVent)
+	{
+		const int32 DataIndex = FindNextDataLine(Lines, InOutIndex + 1);
+		if (DataIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		const TArray<FString> Tokens = SplitWhitespace(TrimCell(Lines[DataIndex]));
+		if (Tokens.Num() < 7)
+		{
+			return false;
+		}
+
+		OutVent = FBRiskVentGeometry();
+		OutVent.FromRoomId = FCString::Atoi(*Tokens[0]);
+		OutVent.ToRoomId = FCString::Atoi(*Tokens[1]);
+		OutVent.Face = FCString::Atoi(*Tokens[2]);
+
+		double Value = 0.0;
+		if (TryParseDouble(Tokens[3], Value)) OutVent.Width = Value;
+		if (TryParseDouble(Tokens[4], Value)) OutVent.Offset = Value;
+		if (TryParseDouble(Tokens[5], Value)) OutVent.SillHeight = Value;
+		if (TryParseDouble(Tokens[6], Value)) OutVent.Height = Value;
+
+		InOutIndex = DataIndex;
+		return true;
+	}
+
+	bool ParseZoneCsv(const FString& CsvPath, FBRiskZoneTable& OutTable, FString* OutError)
+	{
+		TArray<FString> Lines;
+		if (!FFileHelper::LoadFileToStringArray(Lines, *CsvPath))
+		{
+			SetImportError(OutError, FString::Printf(TEXT("Unable to read B-Risk zone CSV: %s"), *CsvPath));
+			return false;
+		}
+		if (Lines.Num() < 2)
+		{
+			SetImportError(OutError, FString::Printf(
+				TEXT("Invalid B-Risk zone CSV (expected at least 2 header lines): %s"), *CsvPath));
+			return false;
+		}
+
+		OutTable = FBRiskZoneTable();
+		OutTable.SourceCsvPath = CsvPath;
+
+		TArray<FString> Units;
+		TArray<FString> Headers;
+		SplitCsvRow(Lines[0], Units);
+		SplitCsvRow(Lines[1], Headers);
+
+		if (Headers.Num() == 0)
+		{
+			SetImportError(OutError, FString::Printf(TEXT("Invalid B-Risk zone CSV headers: %s"), *CsvPath));
+			return false;
+		}
+
+		int32 TimeColumnIndex = INDEX_NONE;
+		for (int32 HeaderIndex = 0; HeaderIndex < Headers.Num(); ++HeaderIndex)
+		{
+			if (Headers[HeaderIndex].Equals(TEXT("Time"), ESearchCase::IgnoreCase))
+			{
+				TimeColumnIndex = HeaderIndex;
+				break;
+			}
+		}
+		if (TimeColumnIndex == INDEX_NONE)
+		{
+			SetImportError(OutError, FString::Printf(
+				TEXT("B-Risk zone CSV is missing required Time column: %s"), *CsvPath));
+			return false;
+		}
+
+		TArray<int32> ColumnToSeries;
+		ColumnToSeries.Init(INDEX_NONE, Headers.Num());
+		for (int32 HeaderIndex = 0; HeaderIndex < Headers.Num(); ++HeaderIndex)
+		{
+			if (HeaderIndex == TimeColumnIndex || Headers[HeaderIndex].IsEmpty())
+			{
+				continue;
+			}
+
+			FBRiskSeries& Series = OutTable.Series.AddDefaulted_GetRef();
+			Series.Name = Headers[HeaderIndex];
+			Series.Unit = Units.IsValidIndex(HeaderIndex) ? Units[HeaderIndex] : FString();
+			ColumnToSeries[HeaderIndex] = OutTable.Series.Num() - 1;
+		}
+		if (OutTable.Series.Num() == 0)
+		{
+			SetImportError(OutError, FString::Printf(
+				TEXT("B-Risk zone CSV has no non-Time data series: %s"), *CsvPath));
+			return false;
+		}
+
+		for (int32 LineIndex = 2; LineIndex < Lines.Num(); ++LineIndex)
+		{
+			const FString TrimmedLine = TrimCell(Lines[LineIndex]);
+			if (TrimmedLine.IsEmpty())
+			{
+				continue;
+			}
+
+			TArray<FString> Cells;
+			SplitCsvRow(TrimmedLine, Cells);
+			if (Cells.Num() == 0)
+			{
+				continue;
+			}
+
+			double TimeValue = 0.0;
+			if (!Cells.IsValidIndex(TimeColumnIndex) || !TryParseDouble(Cells[TimeColumnIndex], TimeValue))
+			{
+				SetImportError(OutError, FString::Printf(
+					TEXT("Malformed Time value in B-Risk zone CSV %s at row %d"),
+					*CsvPath, LineIndex + 1));
+				return false;
+			}
+			OutTable.TimeSeconds.Add(TimeValue);
+
+			for (int32 HeaderIndex = 0; HeaderIndex < ColumnToSeries.Num(); ++HeaderIndex)
+			{
+				const int32 SeriesIndex = ColumnToSeries[HeaderIndex];
+				if (SeriesIndex == INDEX_NONE)
+				{
+					continue;
+				}
+
+				double Value = 0.0;
+				if (!Cells.IsValidIndex(HeaderIndex) || !TryParseDouble(Cells[HeaderIndex], Value))
+				{
+					SetImportError(OutError, FString::Printf(
+						TEXT("Malformed numeric value for column '%s' in B-Risk zone CSV %s at row %d"),
+						*Headers[HeaderIndex], *CsvPath, LineIndex + 1));
+					return false;
+				}
+				OutTable.Series[SeriesIndex].Values.Add(Value);
+			}
+		}
+
+		if (OutTable.TimeSeconds.Num() == 0)
+		{
+			SetImportError(OutError, FString::Printf(
+				TEXT("B-Risk zone CSV has no data rows: %s"), *CsvPath));
+			return false;
+		}
+
+		for (const FBRiskSeries& Series : OutTable.Series)
+		{
+			if (Series.Values.Num() != OutTable.TimeSeconds.Num())
+			{
+				SetImportError(OutError, FString::Printf(
+					TEXT("B-Risk zone CSV series '%s' has %d samples but Time has %d samples: %s"),
+					*Series.Name, Series.Values.Num(), OutTable.TimeSeconds.Num(), *CsvPath));
+				return false;
+			}
+		}
+
+		return true;
+	}
+}
+
+bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRiskScenarioData& OutData, FString* OutError)
+{
+	if (SmvFilePath.IsEmpty() || !FPaths::FileExists(SmvFilePath))
+	{
+		SetImportError(OutError, FString::Printf(TEXT("SMV file path does not exist: %s"), *SmvFilePath));
+		return false;
+	}
+
+	const FString Extension = FPaths::GetExtension(SmvFilePath).ToLower();
+	if (Extension != TEXT("smv"))
+	{
+		SetImportError(OutError, FString::Printf(TEXT("B-Risk importer expects a .smv file: %s"), *SmvFilePath));
+		return false;
+	}
+
+	TArray<FString> Lines;
+	if (!FFileHelper::LoadFileToStringArray(Lines, *SmvFilePath))
+	{
+		SetImportError(OutError, FString::Printf(TEXT("Unable to read B-Risk SMV file: %s"), *SmvFilePath));
+		return false;
+	}
+
+	OutData = FBRiskScenarioData();
+	OutData.SourceSmvPath = SmvFilePath;
+
+	const FString SmvDirectory = FPaths::GetPath(SmvFilePath);
+	TArray<FString> ZoneCsvRelativePaths;
+	int32 LastRoomIndex = INDEX_NONE;
+
+	for (int32 LineIndex = 0; LineIndex < Lines.Num(); ++LineIndex)
+	{
+		const FString Line = TrimCell(Lines[LineIndex]);
+		if (Line.IsEmpty())
+		{
+			continue;
+		}
+
+		if (Line.Equals(TEXT("ZONE"), ESearchCase::IgnoreCase))
+		{
+			const int32 NextIndex = FindNextDataLine(Lines, LineIndex + 1);
+			if (NextIndex != INDEX_NONE)
+			{
+				const FString ZoneFile = TrimCell(Lines[NextIndex]);
+				if (!ZoneFile.IsEmpty())
+				{
+					ZoneCsvRelativePaths.AddUnique(ZoneFile);
+					OutData.ReferencedFiles.AddUnique(
+						FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, ZoneFile)));
+				}
+				LineIndex = NextIndex;
+			}
+			continue;
+		}
+
+		if (Line.StartsWith(TEXT("ROOM"), ESearchCase::IgnoreCase))
+		{
+			FBRiskRoomGeometry ParsedRoom;
+			if (TryParseRoom(Lines, LineIndex, ParsedRoom))
+			{
+				LastRoomIndex = OutData.Rooms.Add(ParsedRoom);
+			}
+			continue;
+		}
+
+		if (Line.Equals(TEXT("LABEL"), ESearchCase::IgnoreCase))
+		{
+			if (LastRoomIndex != INDEX_NONE && OutData.Rooms.IsValidIndex(LastRoomIndex))
+			{
+				const int32 OffsetLineIndex = FindNextDataLine(Lines, LineIndex + 1);
+				const int32 LabelLineIndex = OffsetLineIndex != INDEX_NONE
+					? FindNextDataLine(Lines, OffsetLineIndex + 1)
+					: INDEX_NONE;
+
+				if (LabelLineIndex != INDEX_NONE)
+				{
+					OutData.Rooms[LastRoomIndex].Label = TrimCell(Lines[LabelLineIndex]);
+					LineIndex = LabelLineIndex;
+				}
+			}
+			continue;
+		}
+
+		if (Line.Equals(TEXT("FIRE"), ESearchCase::IgnoreCase))
+		{
+			FBRiskFireGeometry ParsedFire;
+			if (TryParseFire(Lines, LineIndex, ParsedFire))
+			{
+				OutData.Fires.Add(ParsedFire);
+			}
+			continue;
+		}
+
+		if (Line.Equals(TEXT("VENTGEOM"), ESearchCase::IgnoreCase))
+		{
+			FBRiskVentGeometry ParsedVent;
+			if (TryParseVentGeom(Lines, LineIndex, ParsedVent))
+			{
+				OutData.Vents.Add(ParsedVent);
+			}
+		}
+	}
+
+	if (ZoneCsvRelativePaths.Num() == 0)
+	{
+		SetImportError(OutError, FString::Printf(
+			TEXT("No ZONE references found in B-Risk SMV file: %s"), *SmvFilePath));
+		return false;
+	}
+
+	for (const FString& RelativeZonePath : ZoneCsvRelativePaths)
+	{
+		const FString AbsoluteZonePath =
+			FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, RelativeZonePath));
+
+		FBRiskZoneTable ZoneTable;
+		if (!ParseZoneCsv(AbsoluteZonePath, ZoneTable, OutError))
+		{
+			return false;
+		}
+		OutData.ZoneTables.Add(MoveTemp(ZoneTable));
+	}
+
+	UE_LOG(LogBRiskDataImporter, Log,
+		TEXT("Imported B-Risk scenario: %s  (rooms=%d  fires=%d  vents=%d  zoneTables=%d)"),
+		*SmvFilePath,
+		OutData.Rooms.Num(),
+		OutData.Fires.Num(),
+		OutData.Vents.Num(),
+		OutData.ZoneTables.Num());
+
+	return true;
+}

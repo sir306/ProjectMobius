@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -42,7 +42,9 @@ UProjectMobiusGameInstance::UProjectMobiusGameInstance():
 	PedestrianDataFilePath(TEXT("Click Browse to choose file")),
 	PedestrianDataFileName(TEXT("Click Browse to choose file")),
 	SimulationMeshFilePath(TEXT("Click Browse to choose file")),
-	SimulationMeshFileName(TEXT("Click Browse to choose file"))
+	SimulationMeshFileName(TEXT("Click Browse to choose file")),
+	BRiskSmvFilePath(TEXT("Click Browse to choose file")),
+	BRiskSmvFileName(TEXT("Click Browse to choose file"))
 {
 }
 
@@ -197,8 +199,22 @@ void UProjectMobiusGameInstance::SetSimulationMeshFilePath(const FString& NewSim
 		// Update SimulationMeshFileName
 		SimulationMeshFileName = FPaths::GetCleanFilename(NewSimulationMeshFilePath);
 
-		// Broadcast that the mesh file has changed		
+		// Broadcast that the mesh file has changed
 		OnMeshFileChanged.Broadcast();
+	}
+}
+
+void UProjectMobiusGameInstance::SetBRiskSmvFilePath(const FString& NewBRiskSmvFilePath)
+{
+	if (BRiskSmvFilePath != NewBRiskSmvFilePath)
+	{
+		BRiskSmvFilePath = NewBRiskSmvFilePath;
+
+		// Derive the display name from the full path.
+		BRiskSmvFileName = FPaths::GetCleanFilename(NewBRiskSmvFilePath);
+
+		// Notify UBRiskDataSubsystem (and any other listeners) so they auto-load.
+		OnBRiskFileChanged.Broadcast();
 	}
 }
 
