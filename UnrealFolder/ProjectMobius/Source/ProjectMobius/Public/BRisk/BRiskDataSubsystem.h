@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BRiskDataImporter.h"
+#include "BRisk/BRiskSmokeVisualState.h"
 #include "BRiskDataSubsystem.generated.h"
 
 /**
@@ -254,6 +255,14 @@ public:
 
 	/** Convert a B-Risk smoke layer height and room height into the material's RoomSmoke scalar. */
 	static float ComputeRoomSmokeScalar(double LayerHeight, double RoomHeight);
+
+	/** Convert B-Risk CSV smoke channels into the runtime material visual state. */
+	static FBRiskSmokeVisualState ComputeSmokeVisualState(
+		double LayerHeight,
+		double RoomHeight,
+		double UpperOpticalDensity,
+		double UpperTemperatureC,
+		double LowerTemperatureC);
 
 private:
 	UFUNCTION()

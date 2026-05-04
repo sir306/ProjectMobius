@@ -221,6 +221,39 @@ bool FBRiskSmokeMappingTest::RunTest(const FString& Parameters)
 		UBRiskDataSubsystem::ComputeRoomSmokeScalar(1.0, 0.0),
 		1.0f);
 
+	const FBRiskSmokeVisualState ClearState = UBRiskDataSubsystem::ComputeSmokeVisualState(
+		2.59974,
+		2.6,
+		0.00045,
+		24.0,
+		23.0);
+	TestTrue(TEXT("Near-full layer height should be nearly clear"),
+		FMath::IsNearlyEqual(ClearState.RoomSmoke, 0.9999f, 0.0002f));
+	TestTrue(TEXT("Tiny ULOD_1 should produce near-zero density"),
+		ClearState.SmokeDensity < 0.001f);
+	TestEqual(TEXT("Ambient upper temperature should produce no heat tint"),
+		ClearState.SmokeHeat,
+		0.0f);
+
+	const FBRiskSmokeVisualState MidState = UBRiskDataSubsystem::ComputeSmokeVisualState(
+		1.3883,
+		2.6,
+		4.45,
+		222.0,
+		80.0);
+	TestTrue(TEXT("100s layer height should map to expected RoomSmoke"),
+		FMath::IsNearlyEqual(MidState.RoomSmoke, 0.534f, 0.001f));
+	TestTrue(TEXT("High ULOD_1 should produce high visual density"),
+		MidState.SmokeDensity > 0.78f);
+	TestTrue(TEXT("Upper temperature near 222C should produce near-full heat tint"),
+		FMath::IsNearlyEqual(MidState.SmokeHeat, 0.99f, 0.001f));
+	TestEqual(TEXT("Upper optical density should be preserved in state"),
+		MidState.UpperOpticalDensity,
+		4.45f);
+	TestEqual(TEXT("Lower-layer temperature should be preserved in state"),
+		MidState.LowerTemperatureC,
+		80.0f);
+
 	return true;
 }
 

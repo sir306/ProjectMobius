@@ -7,6 +7,8 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "NiagaraComponent.h"
+#include "NiagaraSystem.h"
 #include "UObject/ConstructorHelpers.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskSmokeVisualizer, Log, All);
@@ -31,6 +33,13 @@ ABRiskSmokeVisualizer::ABRiskSmokeVisualizer()
 	{
 		SmokeMaterial = SmokeMaterialFinder.Object;
 	}
+
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SmokeNiagaraSystemFinder(
+		TEXT("/Game/B-Risk/Niagara/NS_B-RiskSmoke.NS_B-RiskSmoke"));
+	if (SmokeNiagaraSystemFinder.Succeeded())
+	{
+		SmokeNiagaraSystem = SmokeNiagaraSystemFinder.Object;
+	}
 }
 
 bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>& Rooms, float Scale)
@@ -49,16 +58,11 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			TEXT("/Game/B-Risk/Materials/M_SimpleBoxFireTest.M_SimpleBoxFireTest"));
 	}
 
-	if (!CubeMesh)
+	if (!SmokeNiagaraSystem)
 	{
-		UE_LOG(LogBRiskSmokeVisualizer, Warning, TEXT("Cannot create B-Risk smoke volumes: cube mesh is missing."));
-		return false;
-	}
-
-	if (!SmokeMaterial)
-	{
-		UE_LOG(LogBRiskSmokeVisualizer, Warning, TEXT("Cannot create B-Risk smoke volumes: smoke material is missing."));
-		return false;
+		SmokeNiagaraSystem = LoadObject<UNiagaraSystem>(
+			nullptr,
+			TEXT("/Game/B-Risk/Niagara/NS_B-RiskSmoke.NS_B-RiskSmoke"));
 	}
 
 	if (Rooms.Num() == 0 || Scale <= 0.0f)
@@ -68,10 +72,15 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 
 	SmokeVolumeComponents.Reserve(Rooms.Num());
 	SmokeMaterialInstances.Reserve(Rooms.Num());
+	SmokeNiagaraComponents.Reserve(Rooms.Num());
+	SmokeRoomSizesCm.Reserve(Rooms.Num());
 	SmokeVolumeComponents.SetNum(Rooms.Num());
 	SmokeMaterialInstances.SetNum(Rooms.Num());
+	SmokeNiagaraComponents.SetNum(Rooms.Num());
+	SmokeRoomSizesCm.SetNum(Rooms.Num());
 
 	int32 CreatedVolumeCount = 0;
+	int32 CreatedNiagaraCount = 0;
 
 	for (int32 RoomIndex = 0; RoomIndex < Rooms.Num(); ++RoomIndex)
 	{
@@ -85,40 +94,77 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			continue;
 		}
 
-		UStaticMeshComponent* SmokeComponent = NewObject<UStaticMeshComponent>(
-			this,
-			*FString::Printf(TEXT("BRiskSmokeVolume_%d"), RoomIndex));
-		SmokeComponent->SetupAttachment(SceneRoot);
-		SmokeComponent->SetStaticMesh(CubeMesh);
-		SmokeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		SmokeComponent->SetCastShadow(false);
-		SmokeComponent->SetReceivesDecals(false);
-		SmokeComponent->SetVisibility(true, true);
-		SmokeComponent->SetHiddenInGame(false);
-		SmokeComponent->SetMobility(EComponentMobility::Movable);
-
 		const FVector OriginCm = Room.Origin * Scale;
 		const FVector SizeCm = Room.Size * Scale;
-		SmokeComponent->SetRelativeLocation(OriginCm + SizeCm * 0.5f);
-		SmokeComponent->SetRelativeScale3D(SizeCm / 100.0f);
+		SmokeRoomSizesCm[RoomIndex] = SizeCm;
 
-		AddInstanceComponent(SmokeComponent);
-		SmokeComponent->OnComponentCreated();
-		SmokeComponent->RegisterComponent();
-
-		UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(SmokeMaterial, this);
-		if (DynamicMaterial)
+		if (SmokeNiagaraSystem)
 		{
-			DynamicMaterial->SetScalarParameterValue(TEXT("RoomSmoke"), 1.0f);
-			SmokeComponent->SetMaterial(0, DynamicMaterial);
+			UNiagaraComponent* NiagaraComponent = NewObject<UNiagaraComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskSmokeNiagara_%d"), RoomIndex));
+			NiagaraComponent->SetupAttachment(SceneRoot);
+			NiagaraComponent->SetAsset(SmokeNiagaraSystem);
+			NiagaraComponent->SetAutoActivate(true);
+			NiagaraComponent->SetRelativeLocation(OriginCm + FVector(SizeCm.X * 0.5f, SizeCm.Y * 0.5f, 0.0f));
+			NiagaraComponent->SetMobility(EComponentMobility::Movable);
+			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SizeCm);
+			NiagaraComponent->SetVariableVec3(TEXT("User.RoomOriginCm"), OriginCm);
+			NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), 1.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), 0.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), 0.0f);
+
+			AddInstanceComponent(NiagaraComponent);
+			NiagaraComponent->OnComponentCreated();
+			NiagaraComponent->RegisterComponent();
+			NiagaraComponent->Activate(true);
+
+			SmokeNiagaraComponents[RoomIndex] = NiagaraComponent;
+			++CreatedNiagaraCount;
+		}
+		else if (CubeMesh && SmokeMaterial)
+		{
+			UStaticMeshComponent* SmokeComponent = NewObject<UStaticMeshComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskSmokeVolume_%d"), RoomIndex));
+			SmokeComponent->SetupAttachment(SceneRoot);
+			SmokeComponent->SetStaticMesh(CubeMesh);
+			SmokeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			SmokeComponent->SetCastShadow(false);
+			SmokeComponent->SetReceivesDecals(false);
+			SmokeComponent->SetVisibility(true, true);
+			SmokeComponent->SetHiddenInGame(false);
+			SmokeComponent->SetMobility(EComponentMobility::Movable);
+			SmokeComponent->SetRelativeLocation(OriginCm + SizeCm * 0.5f);
+			SmokeComponent->SetRelativeScale3D(SizeCm / 100.0f);
+
+			AddInstanceComponent(SmokeComponent);
+			SmokeComponent->OnComponentCreated();
+			SmokeComponent->RegisterComponent();
+
+			UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(SmokeMaterial, this);
+			if (DynamicMaterial)
+			{
+				DynamicMaterial->SetScalarParameterValue(TEXT("RoomSmoke"), 1.0f);
+				DynamicMaterial->SetScalarParameterValue(TEXT("SmokeDensity"), 0.0f);
+				DynamicMaterial->SetScalarParameterValue(TEXT("SmokeHeat"), 0.0f);
+				SmokeComponent->SetMaterial(0, DynamicMaterial);
+			}
+
+			SmokeVolumeComponents[RoomIndex] = SmokeComponent;
+			SmokeMaterialInstances[RoomIndex] = DynamicMaterial;
+			++CreatedVolumeCount;
+		}
+		else
+		{
+			UE_LOG(LogBRiskSmokeVisualizer, Warning,
+				TEXT("Skipping B-Risk smoke visual for room %d: Niagara system is missing and cube fallback is unavailable."),
+				Room.RoomId);
+			continue;
 		}
 
-		SmokeVolumeComponents[RoomIndex] = SmokeComponent;
-		SmokeMaterialInstances[RoomIndex] = DynamicMaterial;
-		++CreatedVolumeCount;
-
 		UE_LOG(LogBRiskSmokeVisualizer, Log,
-			TEXT("Created B-Risk smoke volume: roomIndex=%d roomId=%d origin=%s size=%s scale=%g originCm=%s sizeCm=%s componentTransform=%s"),
+			TEXT("Created B-Risk smoke visual: roomIndex=%d roomId=%d origin=%s size=%s scale=%g originCm=%s sizeCm=%s niagara=%s fallbackCube=%s"),
 			RoomIndex,
 			Room.RoomId,
 			*Room.Origin.ToString(),
@@ -126,17 +172,20 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			Scale,
 			*OriginCm.ToString(),
 			*SizeCm.ToString(),
-			*SmokeComponent->GetComponentTransform().ToHumanReadableString());
+			SmokeNiagaraComponents[RoomIndex] ? TEXT("true") : TEXT("false"),
+			SmokeVolumeComponents[RoomIndex] ? TEXT("true") : TEXT("false"));
 	}
 
 	UE_LOG(LogBRiskSmokeVisualizer, Log,
-		TEXT("Configured B-Risk smoke visualizer volumes: requestedRooms=%d createdVolumes=%d scale=%g material=%s"),
+		TEXT("Configured B-Risk smoke visualizer: requestedRooms=%d createdNiagara=%d createdFallbackVolumes=%d scale=%g niagara=%s material=%s"),
 		Rooms.Num(),
+		CreatedNiagaraCount,
 		CreatedVolumeCount,
 		Scale,
+		*GetNameSafe(SmokeNiagaraSystem),
 		*GetNameSafe(SmokeMaterial));
 
-	return CreatedVolumeCount > 0;
+	return CreatedNiagaraCount > 0 || CreatedVolumeCount > 0;
 }
 
 void ABRiskSmokeVisualizer::ClearSmokeVolumes()
@@ -151,22 +200,71 @@ void ABRiskSmokeVisualizer::ClearSmokeVolumes()
 
 	SmokeVolumeComponents.Reset();
 	SmokeMaterialInstances.Reset();
+
+	for (UNiagaraComponent* NiagaraComponent : SmokeNiagaraComponents)
+	{
+		if (NiagaraComponent)
+		{
+			NiagaraComponent->DeactivateImmediate();
+			NiagaraComponent->DestroyComponent();
+		}
+	}
+
+	SmokeNiagaraComponents.Reset();
+	SmokeRoomSizesCm.Reset();
+}
+
+bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmokeVisualState& SmokeState)
+{
+	const float RoomSmoke = FMath::Clamp(SmokeState.RoomSmoke, 0.0f, 1.0f);
+	const float SmokeDensity = FMath::Clamp(SmokeState.SmokeDensity, 0.0f, 1.0f);
+	const float SmokeHeat = FMath::Clamp(SmokeState.SmokeHeat, 0.0f, 1.0f);
+
+	bool bUpdated = false;
+
+	if (SmokeNiagaraComponents.IsValidIndex(RoomIndex) && SmokeNiagaraComponents[RoomIndex])
+	{
+		UNiagaraComponent* NiagaraComponent = SmokeNiagaraComponents[RoomIndex];
+		NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), RoomSmoke);
+		NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), SmokeDensity);
+		NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), SmokeHeat);
+
+		if (SmokeRoomSizesCm.IsValidIndex(RoomIndex))
+		{
+			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SmokeRoomSizesCm[RoomIndex]);
+		}
+
+		if (SmokeDensity <= UE_KINDA_SMALL_NUMBER)
+		{
+			NiagaraComponent->Deactivate();
+		}
+		else if (!NiagaraComponent->IsActive())
+		{
+			NiagaraComponent->Activate(true);
+		}
+
+		bUpdated = true;
+	}
+
+	if (SmokeVolumeComponents.IsValidIndex(RoomIndex)
+		&& SmokeVolumeComponents[RoomIndex]
+		&& SmokeMaterialInstances.IsValidIndex(RoomIndex)
+		&& SmokeMaterialInstances[RoomIndex])
+	{
+		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("RoomSmoke"), RoomSmoke);
+		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("SmokeDensity"), SmokeDensity);
+		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("SmokeHeat"), SmokeHeat);
+		bUpdated = true;
+	}
+
+	return bUpdated;
 }
 
 bool ABRiskSmokeVisualizer::SetRoomSmokeScalar(int32 RoomIndex, float RoomSmoke)
 {
-	if (!SmokeVolumeComponents.IsValidIndex(RoomIndex)
-		|| !SmokeVolumeComponents[RoomIndex]
-		|| !SmokeMaterialInstances.IsValidIndex(RoomIndex)
-		|| !SmokeMaterialInstances[RoomIndex])
-	{
-		return false;
-	}
-
-	SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(
-		TEXT("RoomSmoke"),
-		FMath::Clamp(RoomSmoke, 0.0f, 1.0f));
-	return true;
+	FBRiskSmokeVisualState SmokeState;
+	SmokeState.RoomSmoke = RoomSmoke;
+	return SetRoomSmokeState(RoomIndex, SmokeState);
 }
 
 int32 ABRiskSmokeVisualizer::GetSmokeVolumeCount() const
@@ -175,6 +273,13 @@ int32 ABRiskSmokeVisualizer::GetSmokeVolumeCount() const
 	for (const UStaticMeshComponent* SmokeComponent : SmokeVolumeComponents)
 	{
 		if (SmokeComponent)
+		{
+			++Count;
+		}
+	}
+	for (const UNiagaraComponent* NiagaraComponent : SmokeNiagaraComponents)
+	{
+		if (NiagaraComponent)
 		{
 			++Count;
 		}

@@ -517,7 +517,7 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 	}
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
-		TEXT("Generated B-Risk smoke volumes: rooms=%d createdVolumes=%d zones=%d series=HGT_1 scale=%g"),
+		TEXT("Generated B-Risk smoke volumes: rooms=%d createdVolumes=%d zones=%d series=HGT_1,ULOD_1,ULT_1 scale=%g"),
 		ScenarioData.Rooms.Num(),
 		SmokeVisualizerActor->GetSmokeVolumeCount(),
 		ScenarioData.ZoneTables.Num(),
@@ -538,30 +538,45 @@ bool UBRiskDataSubsystem::UpdateSmokeAtTime(float TimeSeconds)
 	for (int32 RoomIndex = 0; RoomIndex < ScenarioData.Rooms.Num(); ++RoomIndex)
 	{
 		double LayerHeight = 0.0;
-		float RoomSmoke = 1.0f;
+		double UpperOpticalDensity = 0.0;
+		double UpperTemperatureC = 24.0;
+		double LowerTemperatureC = 24.0;
 		const bool bHasLayerHeight = SampleSeriesAtTime(RoomIndex, TEXT("HGT_1"), TimeSeconds, LayerHeight);
+		const bool bHasUpperOpticalDensity = SampleSeriesAtTime(RoomIndex, TEXT("ULOD_1"), TimeSeconds, UpperOpticalDensity);
+		const bool bHasUpperTemperature = SampleSeriesAtTime(RoomIndex, TEXT("ULT_1"), TimeSeconds, UpperTemperatureC);
+		const bool bHasLowerTemperature = SampleSeriesAtTime(RoomIndex, TEXT("LLT_1"), TimeSeconds, LowerTemperatureC);
 
-		if (bHasLayerHeight)
-		{
-			RoomSmoke = ComputeRoomSmokeScalar(LayerHeight, ScenarioData.Rooms[RoomIndex].Size.Z);
-		}
-		else if (!bHasWarnedMissingSmokeSeries)
+		if ((!bHasLayerHeight || !bHasUpperOpticalDensity || !bHasUpperTemperature) && !bHasWarnedMissingSmokeSeries)
 		{
 			bHasWarnedMissingSmokeSeries = true;
 			UE_LOG(LogBRiskDataSubsystem, Warning,
-				TEXT("B-Risk smoke visualizer could not find HGT_1 for one or more zones; affected rooms remain clear."));
+				TEXT("B-Risk smoke visualizer could not find one or more visual channels (HGT_1, ULOD_1, ULT_1); missing channels use clear/ambient defaults."));
 		}
 
+		const FBRiskSmokeVisualState SmokeState = bHasLayerHeight
+			? ComputeSmokeVisualState(
+				LayerHeight,
+				ScenarioData.Rooms[RoomIndex].Size.Z,
+				bHasUpperOpticalDensity ? UpperOpticalDensity : 0.0,
+				bHasUpperTemperature ? UpperTemperatureC : 24.0,
+				bHasLowerTemperature ? LowerTemperatureC : 24.0)
+			: FBRiskSmokeVisualState();
+
 		UE_LOG(LogBRiskDataSubsystem, Log,
-			TEXT("B-Risk smoke sample: room=%d zone=%d series=HGT_1 time=%g HGT_1=%g roomHeight=%g RoomSmoke=%g"),
+			TEXT("B-Risk smoke sample: room=%d zone=%d time=%g HGT_1=%g ULOD_1=%g ULT_1=%g LLT_1=%g roomHeight=%g RoomSmoke=%g SmokeDensity=%g SmokeHeat=%g"),
 			RoomIndex,
 			RoomIndex,
 			TimeSeconds,
 			bHasLayerHeight ? LayerHeight : -1.0,
+			bHasUpperOpticalDensity ? UpperOpticalDensity : -1.0,
+			bHasUpperTemperature ? UpperTemperatureC : -1.0,
+			bHasLowerTemperature ? LowerTemperatureC : -1.0,
 			ScenarioData.Rooms[RoomIndex].Size.Z,
-			RoomSmoke);
+			SmokeState.RoomSmoke,
+			SmokeState.SmokeDensity,
+			SmokeState.SmokeHeat);
 
-		if (SmokeVisualizerActor->SetRoomSmokeScalar(RoomIndex, RoomSmoke))
+		if (SmokeVisualizerActor->SetRoomSmokeState(RoomIndex, SmokeState))
 		{
 			bUpdatedAny = true;
 		}
@@ -929,6 +944,29 @@ float UBRiskDataSubsystem::ComputeRoomSmokeScalar(double LayerHeight, double Roo
 	}
 
 	return FMath::Clamp(static_cast<float>(LayerHeight / RoomHeight), 0.0f, 1.0f);
+}
+
+FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
+	double LayerHeight,
+	double RoomHeight,
+	double UpperOpticalDensity,
+	double UpperTemperatureC,
+	double LowerTemperatureC)
+{
+	FBRiskSmokeVisualState SmokeState;
+	SmokeState.RoomSmoke = ComputeRoomSmokeScalar(LayerHeight, RoomHeight);
+	SmokeState.UpperOpticalDensity = FMath::Max(static_cast<float>(UpperOpticalDensity), 0.0f);
+	SmokeState.SmokeDensity = FMath::Clamp(
+		static_cast<float>(1.0 - FMath::Exp(-0.35 * FMath::Max(UpperOpticalDensity, 0.0))),
+		0.0f,
+		1.0f);
+	SmokeState.UpperTemperatureC = static_cast<float>(UpperTemperatureC);
+	SmokeState.LowerTemperatureC = static_cast<float>(LowerTemperatureC);
+	SmokeState.SmokeHeat = FMath::Clamp(
+		static_cast<float>((UpperTemperatureC - 24.0) / 200.0),
+		0.0f,
+		1.0f);
+	return SmokeState;
 }
 
 void UBRiskDataSubsystem::HandleNewSimulationTime(float NewCurrentTime)

@@ -4,15 +4,18 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "BRiskDataImporter.h"
+#include "BRisk/BRiskSmokeVisualState.h"
 #include "BRiskSmokeVisualizer.generated.h"
 
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
+class UNiagaraComponent;
+class UNiagaraSystem;
 class USceneComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 
-/** Owns the room-sized B-Risk smoke boxes and their RoomSmoke material parameters. */
+/** Owns the B-Risk room smoke Niagara components and fallback smoke boxes. */
 UCLASS()
 class PROJECTMOBIUS_API ABRiskSmokeVisualizer : public AActor
 {
@@ -27,7 +30,10 @@ public:
 	/** Remove all generated smoke volume components. */
 	void ClearSmokeVolumes();
 
-	/** Set RoomSmoke for one generated smoke volume. */
+	/** Set all smoke material parameters for one generated smoke volume. */
+	bool SetRoomSmokeState(int32 RoomIndex, const FBRiskSmokeVisualState& SmokeState);
+
+	/** Set RoomSmoke for one generated smoke volume. Kept for older callers. */
 	bool SetRoomSmokeScalar(int32 RoomIndex, float RoomSmoke);
 
 	/** Number of generated smoke volume components. */
@@ -44,8 +50,16 @@ private:
 	TObjectPtr<UMaterialInterface> SmokeMaterial;
 
 	UPROPERTY()
+	TObjectPtr<UNiagaraSystem> SmokeNiagaraSystem;
+
+	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> SmokeVolumeComponents;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> SmokeMaterialInstances;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UNiagaraComponent>> SmokeNiagaraComponents;
+
+	TArray<FVector> SmokeRoomSizesCm;
 };
