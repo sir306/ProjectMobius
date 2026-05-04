@@ -35,6 +35,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewMaxTime, float, NewMaxTime);
 /** Delegate to broadcast the current simulation time when it changes */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewCurrentTime, float, NewCurrentTime);
 
+/** Delegate to broadcast simulation pause state changes. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSimulationPauseChanged, bool, bIsPaused);
+
 /** Delegate to broadcast the simulation time between data */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTimeBetweenData, float, NewTimeBetweenData);
 
@@ -123,6 +126,10 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Time Dilation")
 	void OverrideCurrentTime(float NewSimulationTime, uint8 PreviouslyPaused = 1);
+
+	/** Set the simulation paused state and broadcast when it changes. */
+	UFUNCTION(BlueprintCallable, Category = "Time Dilation")
+	void SetSimulationPaused(bool bPaused);
 
 	/**
 	 * This method gives a 0-1 percentage of the current time step, this is used to interpolate between time steps
@@ -232,6 +239,9 @@ public:
 
 	/** Delegate for broadcast time between data */
 	FOnNewTimeBetweenData OnNewTimeBetweenData;
+
+	/** Delegate for simulation pause/resume changes. */
+	FOnSimulationPauseChanged OnSimulationPauseChanged;
 	
 #pragma endregion DELEGATES
 
@@ -244,10 +254,15 @@ private:
 	/** Update our simulation time */
 	void UpdateSimulationTime();
 
+	/** Broadcast pause state changes made by UI or simulation systems. */
+	void BroadcastPauseStateIfChanged();
+
 	/** Get the game elapsed time */
 	UFUNCTION()// as we are binding to a delegate it must be a UFUNCTION
 	float GetGameElapsedTime();
 #pragma endregion PRIVATE_METHODS
+
+	bool bLastBroadcastPauseState = true;
 
 public:
 #pragma region PUBLIC_GETTERS_SETTERS
@@ -285,5 +300,3 @@ private:
 	UE_MT_DECLARE_RW_ACCESS_DETECTOR(AccessDetector);
 	
 };
-
-

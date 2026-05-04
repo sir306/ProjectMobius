@@ -28,7 +28,8 @@ public class MobiusDataImporter : ModuleRules
 				"Core",
 				"Json",
 				"UeHdf5Library",
-				"Projects"
+				"Projects",
+				"XmlParser"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

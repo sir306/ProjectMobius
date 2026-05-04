@@ -4,6 +4,7 @@
 
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "XmlFile.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskDataImporter, Log, All);
 
@@ -296,6 +297,124 @@ namespace
 
 		return true;
 	}
+
+	const FXmlNode* FindFirstChildByTag(const FXmlNode* Parent, const FString& Tag)
+	{
+		if (!Parent)
+		{
+			return nullptr;
+		}
+
+		for (const FXmlNode* Child : Parent->GetChildrenNodes())
+		{
+			if (Child && Child->GetTag().Equals(Tag, ESearchCase::IgnoreCase))
+			{
+				return Child;
+			}
+		}
+
+		return nullptr;
+	}
+
+	FString GetChildContent(const FXmlNode* Parent, const FString& Tag)
+	{
+		if (const FXmlNode* Child = FindFirstChildByTag(Parent, Tag))
+		{
+			return TrimCell(Child->GetContent());
+		}
+
+		return FString();
+	}
+
+	double GetChildDouble(const FXmlNode* Parent, const FString& Tag, double DefaultValue = 0.0)
+	{
+		double Value = DefaultValue;
+		const FString Content = GetChildContent(Parent, Tag);
+		return TryParseDouble(Content, Value) ? Value : DefaultValue;
+	}
+
+	int32 GetChildInt(const FXmlNode* Parent, const FString& Tag, int32 DefaultValue = INDEX_NONE)
+	{
+		const FString Content = GetChildContent(Parent, Tag);
+		return Content.IsEmpty() ? DefaultValue : FCString::Atoi(*Content);
+	}
+
+	double GetSprinklerDistributionValue(const FXmlNode* SprinklerNode, const FString& VarName, double DefaultValue = 0.0)
+	{
+		if (!SprinklerNode)
+		{
+			return DefaultValue;
+		}
+
+		for (const FXmlNode* Child : SprinklerNode->GetChildrenNodes())
+		{
+			if (!Child || !Child->GetTag().Equals(TEXT("sdistribution"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			if (GetChildContent(Child, TEXT("varname")).Equals(VarName, ESearchCase::IgnoreCase))
+			{
+				return GetChildDouble(Child, TEXT("value"), DefaultValue);
+			}
+		}
+
+		return DefaultValue;
+	}
+
+	void ParseSprinklersXml(const FString& XmlPath, const TArray<FBRiskRoomGeometry>& Rooms, TArray<FBRiskSprinklerGeometry>& OutSprinklers)
+	{
+		OutSprinklers.Reset();
+
+		if (!FPaths::FileExists(XmlPath))
+		{
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			UE_LOG(LogBRiskDataImporter, Warning, TEXT("Unable to parse B-Risk sprinklers XML: %s"), *XmlPath);
+			return;
+		}
+
+		const FXmlNode* RootNode = XmlFile.GetRootNode();
+		if (!RootNode)
+		{
+			return;
+		}
+
+		for (const FXmlNode* SprinklerNode : RootNode->GetChildrenNodes())
+		{
+			if (!SprinklerNode || !SprinklerNode->GetTag().Equals(TEXT("Sprinkler"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			FBRiskSprinklerGeometry& Sprinkler = OutSprinklers.AddDefaulted_GetRef();
+			Sprinkler.SprinklerId = GetChildInt(SprinklerNode, TEXT("sprid"));
+			Sprinkler.RoomId = GetChildInt(SprinklerNode, TEXT("room"));
+			Sprinkler.Location.X = GetChildDouble(SprinklerNode, TEXT("sprx"));
+			Sprinkler.Location.Y = GetChildDouble(SprinklerNode, TEXT("spry"));
+			Sprinkler.ActivationTimeSeconds = GetChildDouble(SprinklerNode, TEXT("responsetime"), -1.0);
+			Sprinkler.SprayRadius = GetSprinklerDistributionValue(SprinklerNode, TEXT("sprr"));
+			Sprinkler.SprayDensity = GetSprinklerDistributionValue(SprinklerNode, TEXT("sprdensity"));
+			Sprinkler.ActuationTemperatureC = GetSprinklerDistributionValue(SprinklerNode, TEXT("acttemp"));
+
+			const double CeilingOffset = GetSprinklerDistributionValue(SprinklerNode, TEXT("sprz"));
+			if (const FBRiskRoomGeometry* Room = Rooms.FindByPredicate([&Sprinkler](const FBRiskRoomGeometry& Candidate)
+				{
+					return Candidate.RoomId == Sprinkler.RoomId;
+				}))
+			{
+				Sprinkler.Location.Z = FMath::Max(0.0, static_cast<double>(Room->Size.Z) - CeilingOffset);
+			}
+			else
+			{
+				Sprinkler.Location.Z = FMath::Max(0.0, CeilingOffset);
+			}
+		}
+	}
 }
 
 bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRiskScenarioData& OutData, FString* OutError)
@@ -420,11 +539,19 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 		OutData.ZoneTables.Add(MoveTemp(ZoneTable));
 	}
 
+	const FString SprinklersXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("sprinklers.xml")));
+	ParseSprinklersXml(SprinklersXmlPath, OutData.Rooms, OutData.Sprinklers);
+	if (OutData.Sprinklers.Num() > 0)
+	{
+		OutData.ReferencedFiles.AddUnique(SprinklersXmlPath);
+	}
+
 	UE_LOG(LogBRiskDataImporter, Log,
-		TEXT("Imported B-Risk scenario: %s  (rooms=%d  fires=%d  vents=%d  zoneTables=%d)"),
+		TEXT("Imported B-Risk scenario: %s  (rooms=%d  fires=%d  sprinklers=%d  vents=%d  zoneTables=%d)"),
 		*SmvFilePath,
 		OutData.Rooms.Num(),
 		OutData.Fires.Num(),
+		OutData.Sprinklers.Num(),
 		OutData.Vents.Num(),
 		OutData.ZoneTables.Num());
 

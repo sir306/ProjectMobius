@@ -182,7 +182,7 @@ void USimulationPlayBar::HandleMoveableWindowActivityChanged(bool bIsActive)
                 {
                         bPausedForWindowActivity = true;
                         SimulationPaused = 1;
-                        TimeDilationSubsystem->bIsPaused = true;
+                        TimeDilationSubsystem->SetSimulationPaused(true);
                         SetPlayButtonStyle();
                 }
                 else
@@ -194,7 +194,7 @@ void USimulationPlayBar::HandleMoveableWindowActivityChanged(bool bIsActive)
         {
                 bPausedForWindowActivity = false;
                 SimulationPaused = 0;
-                TimeDilationSubsystem->bIsPaused = false;
+                TimeDilationSubsystem->SetSimulationPaused(false);
                 SetPlayButtonStyle();
         }
 }
@@ -255,7 +255,7 @@ void USimulationPlayBar::OnPlayPauseButtonClicked()
 		PreviouslyPaused = 0;
 
 		// Unpause the simulation
-		TimeDilationSubsystem->bIsPaused = false;
+		TimeDilationSubsystem->SetSimulationPaused(false);
 	}
 	else
 	{
@@ -266,7 +266,7 @@ void USimulationPlayBar::OnPlayPauseButtonClicked()
 		PreviouslyPaused = 1;
 		
 		// Pause the simulation
-		TimeDilationSubsystem->bIsPaused = true;
+		TimeDilationSubsystem->SetSimulationPaused(true);
 	}
 
 	// update the play button style
@@ -519,7 +519,7 @@ void USimulationPlayBar::FileChanging()
 	PreviouslyPaused = 1;
 
 	// Unpause the simulation
-	TimeDilationSubsystem->bIsPaused = true;
+	TimeDilationSubsystem->SetSimulationPaused(true);
 	
 	SetPlayButtonStyle();
 }
@@ -568,7 +568,7 @@ void USimulationPlayBar::UserSelectingAgentFromMousePosition(bool bIsSelecting)
 		if (!SimulationPaused)
 		{
 			// Pause the simulation
-			TimeDilationSubsystem->bIsPaused = true;
+			TimeDilationSubsystem->SetSimulationPaused(true);
 	
 			// Check if the simulation is already paused
 			if(SimulationPaused == 1)
@@ -594,7 +594,7 @@ void USimulationPlayBar::UserSelectingAgentFromMousePosition(bool bIsSelecting)
 		{
 			// Set the simulation paused to false
 			SimulationPaused = 0;
-			TimeDilationSubsystem->bIsPaused = false; // Unpause the simulation
+			TimeDilationSubsystem->SetSimulationPaused(false); // Unpause the simulation
 		}
 		// Enable the play button and playbar
 		PlayPauseButton->SetIsEnabled(true);
@@ -609,7 +609,7 @@ void USimulationPlayBar::PauseSimulationAndUpdateTimeBegin()
 	UGameplayStatics::SetGamePaused(GetWorld(), true);
 	
 	// Pause the simulation
-	TimeDilationSubsystem->bIsPaused = true;
+	TimeDilationSubsystem->SetSimulationPaused(true);
 
 	// Unsubscribe from update current time
 	TimeDilationSubsystem->OnNewCurrentTime.RemoveDynamic(this, &USimulationPlayBar::UpdateCurrentTime);

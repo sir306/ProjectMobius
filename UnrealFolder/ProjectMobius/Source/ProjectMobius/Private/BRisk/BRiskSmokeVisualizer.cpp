@@ -13,6 +13,16 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskSmokeVisualizer, Log, All);
 
+namespace
+{
+	constexpr float SmokeNiagaraActivationDensityThreshold = 0.02f;
+
+	bool ShouldRunSmokeNiagara(const FBRiskSmokeVisualState& SmokeState)
+	{
+		return FMath::Clamp(SmokeState.SmokeDensity, 0.0f, 1.0f) >= SmokeNiagaraActivationDensityThreshold;
+	}
+}
+
 ABRiskSmokeVisualizer::ABRiskSmokeVisualizer()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -74,10 +84,12 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 	SmokeMaterialInstances.Reserve(Rooms.Num());
 	SmokeNiagaraComponents.Reserve(Rooms.Num());
 	SmokeRoomSizesCm.Reserve(Rooms.Num());
+	LastSmokeStates.Reserve(Rooms.Num());
 	SmokeVolumeComponents.SetNum(Rooms.Num());
 	SmokeMaterialInstances.SetNum(Rooms.Num());
 	SmokeNiagaraComponents.SetNum(Rooms.Num());
 	SmokeRoomSizesCm.SetNum(Rooms.Num());
+	LastSmokeStates.SetNum(Rooms.Num());
 
 	int32 CreatedVolumeCount = 0;
 	int32 CreatedNiagaraCount = 0;
@@ -98,31 +110,7 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 		const FVector SizeCm = Room.Size * Scale;
 		SmokeRoomSizesCm[RoomIndex] = SizeCm;
 
-		if (SmokeNiagaraSystem)
-		{
-			UNiagaraComponent* NiagaraComponent = NewObject<UNiagaraComponent>(
-				this,
-				*FString::Printf(TEXT("BRiskSmokeNiagara_%d"), RoomIndex));
-			NiagaraComponent->SetupAttachment(SceneRoot);
-			NiagaraComponent->SetAsset(SmokeNiagaraSystem);
-			NiagaraComponent->SetAutoActivate(true);
-			NiagaraComponent->SetRelativeLocation(OriginCm + FVector(SizeCm.X * 0.5f, SizeCm.Y * 0.5f, 0.0f));
-			NiagaraComponent->SetMobility(EComponentMobility::Movable);
-			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SizeCm);
-			NiagaraComponent->SetVariableVec3(TEXT("User.RoomOriginCm"), OriginCm);
-			NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), 1.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), 0.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), 0.0f);
-
-			AddInstanceComponent(NiagaraComponent);
-			NiagaraComponent->OnComponentCreated();
-			NiagaraComponent->RegisterComponent();
-			NiagaraComponent->Activate(true);
-
-			SmokeNiagaraComponents[RoomIndex] = NiagaraComponent;
-			++CreatedNiagaraCount;
-		}
-		else if (CubeMesh && SmokeMaterial)
+		if (CubeMesh && SmokeMaterial)
 		{
 			UStaticMeshComponent* SmokeComponent = NewObject<UStaticMeshComponent>(
 				this,
@@ -154,6 +142,30 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			SmokeVolumeComponents[RoomIndex] = SmokeComponent;
 			SmokeMaterialInstances[RoomIndex] = DynamicMaterial;
 			++CreatedVolumeCount;
+		}
+		else if (SmokeNiagaraSystem)
+		{
+			UNiagaraComponent* NiagaraComponent = NewObject<UNiagaraComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskSmokeNiagara_%d"), RoomIndex));
+			NiagaraComponent->SetupAttachment(SceneRoot);
+			NiagaraComponent->SetAsset(SmokeNiagaraSystem);
+			NiagaraComponent->SetAutoActivate(false);
+			NiagaraComponent->SetRelativeLocation(OriginCm + FVector(SizeCm.X * 0.5f, SizeCm.Y * 0.5f, 0.0f));
+			NiagaraComponent->SetMobility(EComponentMobility::Movable);
+			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SizeCm);
+			NiagaraComponent->SetVariableVec3(TEXT("User.RoomOriginCm"), OriginCm);
+			NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), 1.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), 0.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), 0.0f);
+
+			AddInstanceComponent(NiagaraComponent);
+			NiagaraComponent->OnComponentCreated();
+			NiagaraComponent->RegisterComponent();
+			NiagaraComponent->DeactivateImmediate();
+
+			SmokeNiagaraComponents[RoomIndex] = NiagaraComponent;
+			++CreatedNiagaraCount;
 		}
 		else
 		{
@@ -212,6 +224,8 @@ void ABRiskSmokeVisualizer::ClearSmokeVolumes()
 
 	SmokeNiagaraComponents.Reset();
 	SmokeRoomSizesCm.Reset();
+	LastSmokeStates.Reset();
+	bSmokeSimulationPaused = true;
 }
 
 bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmokeVisualState& SmokeState)
@@ -221,6 +235,11 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 	const float SmokeHeat = FMath::Clamp(SmokeState.SmokeHeat, 0.0f, 1.0f);
 
 	bool bUpdated = false;
+
+	if (LastSmokeStates.IsValidIndex(RoomIndex))
+	{
+		LastSmokeStates[RoomIndex] = SmokeState;
+	}
 
 	if (SmokeNiagaraComponents.IsValidIndex(RoomIndex) && SmokeNiagaraComponents[RoomIndex])
 	{
@@ -234,13 +253,25 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SmokeRoomSizesCm[RoomIndex]);
 		}
 
-		if (SmokeDensity <= UE_KINDA_SMALL_NUMBER)
+		const bool bShouldRunNiagara = ShouldRunSmokeNiagara(SmokeState);
+		if (!bShouldRunNiagara)
 		{
-			NiagaraComponent->Deactivate();
+			NiagaraComponent->DeactivateImmediate();
 		}
-		else if (!NiagaraComponent->IsActive())
+		else if (bSmokeSimulationPaused)
 		{
-			NiagaraComponent->Activate(true);
+			if (NiagaraComponent->IsActive())
+			{
+				NiagaraComponent->SetPaused(true);
+			}
+		}
+		else
+		{
+			if (!NiagaraComponent->IsActive())
+			{
+				NiagaraComponent->Activate(true);
+			}
+			NiagaraComponent->SetPaused(false);
 		}
 
 		bUpdated = true;
@@ -258,6 +289,49 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 	}
 
 	return bUpdated;
+}
+
+void ABRiskSmokeVisualizer::SetSmokeSimulationPaused(bool bPaused)
+{
+	if (bSmokeSimulationPaused == bPaused)
+	{
+		return;
+	}
+
+	bSmokeSimulationPaused = bPaused;
+
+	for (int32 RoomIndex = 0; RoomIndex < SmokeNiagaraComponents.Num(); ++RoomIndex)
+	{
+		UNiagaraComponent* NiagaraComponent = SmokeNiagaraComponents[RoomIndex];
+		if (!NiagaraComponent)
+		{
+			continue;
+		}
+
+		const bool bShouldRunNiagara = LastSmokeStates.IsValidIndex(RoomIndex)
+			&& ShouldRunSmokeNiagara(LastSmokeStates[RoomIndex]);
+
+		if (!bShouldRunNiagara)
+		{
+			NiagaraComponent->DeactivateImmediate();
+			continue;
+		}
+
+		if (bSmokeSimulationPaused)
+		{
+			if (NiagaraComponent->IsActive())
+			{
+				NiagaraComponent->SetPaused(true);
+			}
+			continue;
+		}
+
+		if (!NiagaraComponent->IsActive())
+		{
+			NiagaraComponent->Activate(true);
+		}
+		NiagaraComponent->SetPaused(false);
+	}
 }
 
 bool ABRiskSmokeVisualizer::SetRoomSmokeScalar(int32 RoomIndex, float RoomSmoke)

@@ -178,6 +178,10 @@
 		{
 			"Name": "MobiusDataImporter",
 			"Enabled": true
+		},
+		{
+			"Name": "NiagaraFluids",
+			"Enabled": true
 		}
 	],
 	"AdditionalPluginDirectories": [

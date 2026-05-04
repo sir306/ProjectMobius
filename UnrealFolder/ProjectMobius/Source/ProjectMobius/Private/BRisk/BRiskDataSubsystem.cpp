@@ -1,6 +1,7 @@
 // Copyright (c) 2025 ProjectMobius contributors. Licensed under MIT.
 
 #include "BRisk/BRiskDataSubsystem.h"
+#include "BRisk/BRiskHazardVisualizer.h"
 #include "BRisk/BRiskSmokeVisualizer.h"
 #include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
@@ -166,6 +167,7 @@ void UBRiskDataSubsystem::Deinitialize()
 {
 	UnbindSmokeTimeDelegate();
 	ClearSmokeVolumes();
+	ClearHazardVisuals();
 
 	if (UWorld* World = GetWorld())
 	{
@@ -182,6 +184,7 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 {
 	const int32 RequestGeneration = ++LoadGeneration;
 	ClearSmokeVolumes();
+	ClearHazardVisuals();
 	ScenarioData = FBRiskScenarioData();
 	LastError.Reset();
 	ActiveSmvPath = SmvFilePath;
@@ -248,6 +251,11 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 				{
 					Self->GenerateAndLoadSmokeVolumes();
 				}
+
+				if (Self->bAutoGenerateHazardVisualsOnLoad)
+				{
+					Self->GenerateAndLoadHazardVisuals();
+				}
 			}
 			else
 			{
@@ -267,6 +275,7 @@ void UBRiskDataSubsystem::ClearScenario()
 {
 	++LoadGeneration;
 	ClearSmokeVolumes();
+	ClearHazardVisuals();
 	ScenarioData = FBRiskScenarioData();
 	LastError.Reset();
 	ActiveSmvPath.Reset();
@@ -514,6 +523,9 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 	{
 		TimeSubsystem->OnNewCurrentTime.RemoveDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);
 		TimeSubsystem->OnNewCurrentTime.AddDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);
+		TimeSubsystem->OnSimulationPauseChanged.RemoveDynamic(this, &UBRiskDataSubsystem::HandleSimulationPauseChanged);
+		TimeSubsystem->OnSimulationPauseChanged.AddDynamic(this, &UBRiskDataSubsystem::HandleSimulationPauseChanged);
+		SmokeVisualizerActor->SetSmokeSimulationPaused(TimeSubsystem->bIsPaused);
 	}
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
@@ -524,6 +536,67 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 		RoomGeometryScale);
 
 	UpdateSmokeAtTime(0.0f);
+	return true;
+}
+
+bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		LastError = TEXT("Cannot generate B-Risk hazard visuals without a valid world.");
+		UE_LOG(LogBRiskDataSubsystem, Warning, TEXT("%s"), *LastError);
+		return false;
+	}
+
+	if (ScenarioData.Fires.Num() == 0 && ScenarioData.Sprinklers.Num() == 0)
+	{
+		return false;
+	}
+
+	if (!HazardVisualizerActor || HazardVisualizerActor->IsActorBeingDestroyed())
+	{
+		FActorSpawnParameters SpawnParameters;
+		SpawnParameters.Name = TEXT("BRiskHazardVisualizer");
+		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		HazardVisualizerActor = World->SpawnActor<ABRiskHazardVisualizer>(
+			ABRiskHazardVisualizer::StaticClass(),
+			FTransform::Identity,
+			SpawnParameters);
+	}
+
+	if (!HazardVisualizerActor)
+	{
+		LastError = TEXT("Failed to spawn B-Risk hazard visualizer actor.");
+		UE_LOG(LogBRiskDataSubsystem, Warning, TEXT("%s"), *LastError);
+		return false;
+	}
+
+	if (!HazardVisualizerActor->ConfigureFromScenario(
+		ScenarioData.Rooms,
+		ScenarioData.Fires,
+		ScenarioData.Sprinklers,
+		RoomGeometryScale))
+	{
+		LastError = TEXT("Failed to configure B-Risk hazard visuals.");
+		UE_LOG(LogBRiskDataSubsystem, Warning, TEXT("%s"), *LastError);
+		return false;
+	}
+
+	if (UTimeDilationSubSystem* TimeSubsystem = GetTimeDilationSubsystem())
+	{
+		TimeSubsystem->OnNewCurrentTime.RemoveDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);
+		TimeSubsystem->OnNewCurrentTime.AddDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);
+	}
+
+	UE_LOG(LogBRiskDataSubsystem, Log,
+		TEXT("Generated B-Risk hazard visuals: fires=%d sprinklers=%d createdComponents=%d scale=%g"),
+		ScenarioData.Fires.Num(),
+		ScenarioData.Sprinklers.Num(),
+		HazardVisualizerActor->GetHazardVisualCount(),
+		RoomGeometryScale);
+
+	UpdateHazardVisualsAtTime(0.0f);
 	return true;
 }
 
@@ -594,6 +667,48 @@ bool UBRiskDataSubsystem::UpdateSmokeAtTime(float TimeSeconds)
 	return bUpdatedAny;
 }
 
+bool UBRiskDataSubsystem::UpdateHazardVisualsAtTime(float TimeSeconds)
+{
+	if (!HazardVisualizerActor)
+	{
+		return false;
+	}
+
+	bool bUpdatedAny = false;
+	for (int32 FireIndex = 0; FireIndex < ScenarioData.Fires.Num(); ++FireIndex)
+	{
+		const FBRiskFireGeometry& Fire = ScenarioData.Fires[FireIndex];
+		const int32 RoomIndex = ScenarioData.Rooms.IndexOfByPredicate([&Fire](const FBRiskRoomGeometry& Room)
+		{
+			return Room.RoomId == Fire.RoomId;
+		});
+
+		double HeatReleaseRateKw = 0.0;
+		double FlameHeightM = 0.0;
+		double FireBaseM = 0.3;
+		const bool bHasHrr = SampleSeriesAtTime(RoomIndex, TEXT("HRR_1"), TimeSeconds, HeatReleaseRateKw);
+		const bool bHasFlameHeight = SampleSeriesAtTime(RoomIndex, TEXT("FLHGT_1"), TimeSeconds, FlameHeightM);
+		const bool bHasFireBase = SampleSeriesAtTime(RoomIndex, TEXT("FBASE_1"), TimeSeconds, FireBaseM);
+
+		if ((!bHasHrr || !bHasFlameHeight) && !bHasWarnedMissingHazardSeries)
+		{
+			bHasWarnedMissingHazardSeries = true;
+			UE_LOG(LogBRiskDataSubsystem, Warning,
+				TEXT("B-Risk hazard visualizer could not find one or more fire channels (HRR_1, FLHGT_1, FBASE_1); missing channels use hidden/default fire visuals."));
+		}
+
+		FBRiskFireVisualState FireState;
+		FireState.HeatReleaseRateKw = bHasHrr ? static_cast<float>(HeatReleaseRateKw) : 0.0f;
+		FireState.FlameHeightM = bHasFlameHeight ? static_cast<float>(FlameHeightM) : 0.0f;
+		FireState.FireBaseM = bHasFireBase ? static_cast<float>(FireBaseM) : 0.3f;
+
+		bUpdatedAny |= HazardVisualizerActor->SetFireState(FireIndex, FireState);
+	}
+
+	HazardVisualizerActor->SetSimulationTime(TimeSeconds);
+	return bUpdatedAny || ScenarioData.Sprinklers.Num() > 0;
+}
+
 void UBRiskDataSubsystem::ClearSmokeVolumes()
 {
 	UnbindSmokeTimeDelegate();
@@ -605,6 +720,16 @@ void UBRiskDataSubsystem::ClearSmokeVolumes()
 	SmokeVisualizerActor = nullptr;
 	bHasWarnedMissingSmokeSeries = false;
 	bHasWarnedMissingSmokeComponent = false;
+}
+
+void UBRiskDataSubsystem::ClearHazardVisuals()
+{
+	if (HazardVisualizerActor && !HazardVisualizerActor->IsActorBeingDestroyed())
+	{
+		HazardVisualizerActor->Destroy();
+	}
+	HazardVisualizerActor = nullptr;
+	bHasWarnedMissingHazardSeries = false;
 }
 
 void UBRiskDataSubsystem::LogScenarioSummary(
@@ -972,6 +1097,15 @@ FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 void UBRiskDataSubsystem::HandleNewSimulationTime(float NewCurrentTime)
 {
 	UpdateSmokeAtTime(NewCurrentTime);
+	UpdateHazardVisualsAtTime(NewCurrentTime);
+}
+
+void UBRiskDataSubsystem::HandleSimulationPauseChanged(bool bPaused)
+{
+	if (SmokeVisualizerActor)
+	{
+		SmokeVisualizerActor->SetSmokeSimulationPaused(bPaused);
+	}
 }
 
 void UBRiskDataSubsystem::ConfigurePlaybackFromScenario()
@@ -1002,7 +1136,7 @@ void UBRiskDataSubsystem::ConfigurePlaybackFromScenario()
 	}
 	TimeSubsystem->UpdateTotalTime(TotalTime);
 	TimeSubsystem->OverrideCurrentTime(0.0f, 1);
-	TimeSubsystem->bIsPaused = true;
+	TimeSubsystem->SetSimulationPaused(true);
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
 		TEXT("Configured B-Risk playback from zone Time column: first=%g last=%g samples=%d TotalTime=%g TimeBetweenSteps=%g CurrentTime=0 paused=true"),
@@ -1023,6 +1157,7 @@ void UBRiskDataSubsystem::UnbindSmokeTimeDelegate()
 	if (UTimeDilationSubSystem* TimeSubsystem = GetTimeDilationSubsystem())
 	{
 		TimeSubsystem->OnNewCurrentTime.RemoveDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);
+		TimeSubsystem->OnSimulationPauseChanged.RemoveDynamic(this, &UBRiskDataSubsystem::HandleSimulationPauseChanged);
 	}
 }
 

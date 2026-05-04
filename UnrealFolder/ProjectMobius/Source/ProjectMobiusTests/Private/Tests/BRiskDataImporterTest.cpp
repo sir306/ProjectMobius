@@ -71,8 +71,25 @@ namespace
 	{
 		OutSmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
 		OutCsvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox_zone.csv"));
+		const FString SprinklersPath = FPaths::Combine(TestDir, TEXT("sprinklers.xml"));
+		const FString SprinklersXml =
+			TEXT("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+			TEXT("<Sprinklers>\n")
+			TEXT("  <Sprinkler>\n")
+			TEXT("    <sprid>1</sprid>\n")
+			TEXT("    <room>1</room>\n")
+			TEXT("    <sprx>1.0</sprx>\n")
+			TEXT("    <spry>2.0</spry>\n")
+			TEXT("    <responsetime>86</responsetime>\n")
+			TEXT("    <sdistribution><varname>sprr</varname><value>3.25</value></sdistribution>\n")
+			TEXT("    <sdistribution><varname>sprdensity</varname><value>4.2</value></sdistribution>\n")
+			TEXT("    <sdistribution><varname>sprz</varname><value>0.025</value></sdistribution>\n")
+			TEXT("    <sdistribution><varname>acttemp</varname><value>57</value></sdistribution>\n")
+			TEXT("  </Sprinkler>\n")
+			TEXT("</Sprinklers>\n");
 		return WriteTextFile(OutSmvPath, MakeSmv())
-			&& WriteTextFile(OutCsvPath, MakeZoneCsv());
+			&& WriteTextFile(OutCsvPath, MakeZoneCsv())
+			&& WriteTextFile(SprinklersPath, SprinklersXml);
 	}
 }
 
@@ -102,6 +119,7 @@ bool FBRiskDataImporterSuccessTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Expected one room"), Data.Rooms.Num(), 1);
 	TestEqual(TEXT("Expected room label"), Data.Rooms[0].Label, FString(TEXT("room")));
 	TestEqual(TEXT("Expected one fire source"), Data.Fires.Num(), 1);
+	TestEqual(TEXT("Expected one sprinkler"), Data.Sprinklers.Num(), 1);
 	TestEqual(TEXT("Expected one vent"), Data.Vents.Num(), 1);
 	TestEqual(TEXT("Expected one zone table"), Data.ZoneTables.Num(), 1);
 	TestEqual(TEXT("Expected 61 time samples"), Data.ZoneTables[0].TimeSeconds.Num(), 61);
@@ -122,6 +140,8 @@ bool FBRiskDataImporterSuccessTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Expected ULT_1 series"), HasSeries(TEXT("ULT_1")));
 	TestTrue(TEXT("Expected HGT_1 series"), HasSeries(TEXT("HGT_1")));
 	TestTrue(TEXT("Expected HRR_1 series"), HasSeries(TEXT("HRR_1")));
+	TestEqual(TEXT("Expected sprinkler response time"), Data.Sprinklers[0].ActivationTimeSeconds, 86.0);
+	TestEqual(TEXT("Expected sprinkler radius"), Data.Sprinklers[0].SprayRadius, 3.25);
 
 	return true;
 }

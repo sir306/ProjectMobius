@@ -37,6 +37,31 @@ struct MOBIUSDATAIMPORTER_API FBRiskFireGeometry
 	FVector Location = FVector::ZeroVector;
 };
 
+/** Sprinkler location and response metadata parsed from a B-Risk sprinklers.xml companion file. */
+struct MOBIUSDATAIMPORTER_API FBRiskSprinklerGeometry
+{
+	/** Sprinkler identifier from sprinklers.xml. */
+	int32 SprinklerId = INDEX_NONE;
+
+	/** Room that contains this sprinkler. */
+	int32 RoomId = INDEX_NONE;
+
+	/** Sprinkler head position in room-local metres. Z is measured from the room floor. */
+	FVector Location = FVector::ZeroVector;
+
+	/** Activation/response time in seconds. Negative means no known activation time. */
+	double ActivationTimeSeconds = -1.0;
+
+	/** Nominal spray radius in metres. */
+	double SprayRadius = 0.0;
+
+	/** Nominal sprinkler density. */
+	double SprayDensity = 0.0;
+
+	/** Actuation temperature in Celsius. */
+	double ActuationTemperatureC = 0.0;
+};
+
 /** Horizontal vent/opening geometry parsed from a B-Risk VENTGEOM block. */
 struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 {
@@ -113,6 +138,9 @@ struct MOBIUSDATAIMPORTER_API FBRiskScenarioData
 
 	/** All fire sources declared in FIRE blocks, in declaration order. */
 	TArray<FBRiskFireGeometry> Fires;
+
+	/** All sprinklers declared in the companion sprinklers.xml, if present. */
+	TArray<FBRiskSprinklerGeometry> Sprinklers;
 
 	/** All horizontal vents/openings declared in VENTGEOM blocks, in declaration order. */
 	TArray<FBRiskVentGeometry> Vents;

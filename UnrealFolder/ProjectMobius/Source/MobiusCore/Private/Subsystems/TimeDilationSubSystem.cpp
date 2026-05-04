@@ -87,6 +87,7 @@ void UTimeDilationSubSystem::Initialize(FSubsystemCollectionBase& Collection)
 	
 	// Get the Time Dilation from the ProjectMobius Game Instance
 	GetUpdatedTimeDilation();
+	bLastBroadcastPauseState = bIsPaused;
 }
 
 void UTimeDilationSubSystem::Deinitialize()
@@ -107,6 +108,7 @@ void UTimeDilationSubSystem::Deinitialize()
 void UTimeDilationSubSystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	BroadcastPauseStateIfChanged();
 	
 	// Check if we are paused
 	// if (!UGameplayStatics::IsGamePaused(GetWorld()) || !bIsPaused)
@@ -116,6 +118,7 @@ void UTimeDilationSubSystem::Tick(float DeltaTime)
 	// }
 	// Update the simulation time
 	UpdateSimulationTime();
+	BroadcastPauseStateIfChanged();
 }
 
 void UTimeDilationSubSystem::CalculateCurrentTimeStep(float SimCurrentTime)
@@ -136,7 +139,7 @@ void UTimeDilationSubSystem::CalculateCurrentTimeStep(float SimCurrentTime)
 	if (CurrentTimeStep >= MaxTimeSteps) // we only pause as if this occurs and not unpause as other system will have to handle this
 	{
 		// Pause the simulation
-		bIsPaused = true;
+		SetSimulationPaused(true);
 	}
 }
 
@@ -170,7 +173,7 @@ void UTimeDilationSubSystem::UpdateTotalTime(float NewTotalTime)
 void UTimeDilationSubSystem::OverrideCurrentTime(float NewSimulationTime, const uint8 PreviouslyPaused)
 {
 	// Pause the simulation regardless of the previous state
-	bIsPaused = true;
+	SetSimulationPaused(true);
 
 	// Set the new time
 	CurrentSimulationTime = NewSimulationTime;
@@ -193,10 +196,22 @@ void UTimeDilationSubSystem::OverrideCurrentTime(float NewSimulationTime, const 
 
 	if(!PreviouslyPaused)
 	{
-		bIsPaused = false;
+		SetSimulationPaused(false);
 		// log current time
 		//UE_LOG(LogTemp, Warning, TEXT("Current Time: %f"), CurrentSimulationTime);
 	}
+}
+
+void UTimeDilationSubSystem::SetSimulationPaused(bool bPaused)
+{
+	if (bIsPaused == bPaused)
+	{
+		BroadcastPauseStateIfChanged();
+		return;
+	}
+
+	bIsPaused = bPaused;
+	BroadcastPauseStateIfChanged();
 }
 
 float UTimeDilationSubSystem::GetCurrentTimeStepPercentage() const
@@ -209,7 +224,7 @@ float UTimeDilationSubSystem::GetCurrentTimeStepPercentage() const
 
 void UTimeDilationSubSystem::FileChanging()
 {
-	bIsPaused = true;
+	SetSimulationPaused(true);
 
 	CurrentSimulationTime = 0.0f;
 	CurrentTimeStep = 0;
@@ -267,13 +282,24 @@ void UTimeDilationSubSystem::UpdateSimulationTime()
 	else // we have reached end of simulation likely out by a few milliseconds
 	{
 		// TODO make this better
-		bIsPaused = true;
+		SetSimulationPaused(true);
 
 		CurrentTimeStep = MaxTimeSteps;
 
 		// Broadcast the new current time
 		OnNewCurrentTime.Broadcast(TotalTime);
 	}
+}
+
+void UTimeDilationSubSystem::BroadcastPauseStateIfChanged()
+{
+	if (bLastBroadcastPauseState == bIsPaused)
+	{
+		return;
+	}
+
+	bLastBroadcastPauseState = bIsPaused;
+	OnSimulationPauseChanged.Broadcast(bIsPaused);
 }
 
 float UTimeDilationSubSystem::GetGameElapsedTime()

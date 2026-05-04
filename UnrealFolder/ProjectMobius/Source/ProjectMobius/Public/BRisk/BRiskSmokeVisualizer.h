@@ -33,6 +33,9 @@ public:
 	/** Set all smoke material parameters for one generated smoke volume. */
 	bool SetRoomSmokeState(int32 RoomIndex, const FBRiskSmokeVisualState& SmokeState);
 
+	/** Pause or resume Niagara smoke simulation without changing the sampled smoke state. */
+	void SetSmokeSimulationPaused(bool bPaused);
+
 	/** Set RoomSmoke for one generated smoke volume. Kept for older callers. */
 	bool SetRoomSmokeScalar(int32 RoomIndex, float RoomSmoke);
 
@@ -62,4 +65,6 @@ private:
 	TArray<TObjectPtr<UNiagaraComponent>> SmokeNiagaraComponents;
 
 	TArray<FVector> SmokeRoomSizesCm;
+	TArray<FBRiskSmokeVisualState> LastSmokeStates;
+	bool bSmokeSimulationPaused = true;
 };

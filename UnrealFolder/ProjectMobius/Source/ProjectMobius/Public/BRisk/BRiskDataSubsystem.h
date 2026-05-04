@@ -16,6 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBRiskScenarioLoaded, bool, bSucce
 /** Broadcast on the game thread when the active B-Risk rooms have procedural geometry ready. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBRiskGeometryReady);
 
+class ABRiskHazardVisualizer;
 class ABRiskSmokeVisualizer;
 class UTimeDilationSubSystem;
 
@@ -172,6 +173,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "B-Risk|Smoke")
 	void ClearSmokeVolumes();
 
+	/** Spawn or rebuild simple B-Risk fire and sprinkler indicators from the active scenario. */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Hazards")
+	bool GenerateAndLoadHazardVisuals();
+
+	/** Update all generated B-Risk fire and sprinkler indicators for a simulation time in seconds. */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Hazards")
+	bool UpdateHazardVisualsAtTime(float TimeSeconds);
+
+	/** Destroy generated B-Risk fire and sprinkler indicators. */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Hazards")
+	void ClearHazardVisuals();
+
 	/** Log the active scenario. Toggle categories to inspect parsed data from Blueprint. */
 	UFUNCTION(BlueprintCallable, Category = "B-Risk|Debug")
 	void LogScenarioSummary(
@@ -271,6 +284,9 @@ private:
 	UFUNCTION()
 	void HandleNewSimulationTime(float NewCurrentTime);
 
+	UFUNCTION()
+	void HandleSimulationPauseChanged(bool bPaused);
+
 	void ConfigurePlaybackFromScenario();
 	UTimeDilationSubSystem* GetTimeDilationSubsystem() const;
 	void UnbindSmokeTimeDelegate();
@@ -280,12 +296,17 @@ private:
 	FString ActiveSmvPath;
 	bool bAutoGenerateRoomGeometryOnLoad = true;
 	bool bAutoGenerateSmokeVolumesOnLoad = true;
+	bool bAutoGenerateHazardVisualsOnLoad = true;
 	bool bHasWarnedMissingSmokeSeries = false;
 	bool bHasWarnedMissingSmokeComponent = false;
+	bool bHasWarnedMissingHazardSeries = false;
 	float RoomGeometryScale = 100.0f;
 	int32 LoadGeneration = 0;
 	FThreadSafeBool bIsLoading;
 
 	UPROPERTY()
 	TObjectPtr<ABRiskSmokeVisualizer> SmokeVisualizerActor;
+
+	UPROPERTY()
+	TObjectPtr<ABRiskHazardVisualizer> HazardVisualizerActor;
 };
