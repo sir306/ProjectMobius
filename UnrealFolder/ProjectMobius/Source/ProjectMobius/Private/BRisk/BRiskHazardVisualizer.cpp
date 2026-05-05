@@ -7,6 +7,8 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "NiagaraComponent.h"
+#include "NiagaraSystem.h"
 #include "UObject/ConstructorHelpers.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskHazardVisualizer, Log, All);
@@ -18,6 +20,8 @@ namespace
 	constexpr float ConeMeshHeightCm = 100.0f;
 	constexpr float MaxFireHeightCm = 120.0f;
 	constexpr float MinFireRadiusCm = 18.0f;
+	constexpr float MinFireConeAngleDeg = 8.0f;
+	constexpr float MaxFireConeAngleDeg = 55.0f;
 
 	const FBRiskRoomGeometry* FindRoomById(const TArray<FBRiskRoomGeometry>& Rooms, int32 RoomId)
 	{
@@ -82,6 +86,13 @@ ABRiskHazardVisualizer::ABRiskHazardVisualizer()
 	{
 		BasicShapeMaterial = BasicShapeMaterialFinder.Object;
 	}
+
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SimpleFireNiagaraSystemFinder(
+		TEXT("/Game/B-Risk/Niagara/NS_SimpleFire.NS_SimpleFire"));
+	if (SimpleFireNiagaraSystemFinder.Succeeded())
+	{
+		SimpleFireNiagaraSystem = SimpleFireNiagaraSystemFinder.Object;
+	}
 }
 
 bool ABRiskHazardVisualizer::ConfigureFromScenario(
@@ -102,6 +113,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 			nullptr,
 			TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	}
+	if (!SimpleFireNiagaraSystem)
+	{
+		SimpleFireNiagaraSystem = LoadObject<UNiagaraSystem>(
+			nullptr,
+			TEXT("/Game/B-Risk/Niagara/NS_SimpleFire.NS_SimpleFire"));
+	}
 
 	if (!ConeMesh || Scale <= 0.0f)
 	{
@@ -110,6 +127,7 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 
 	ScenarioScale = Scale;
 	FireConeComponents.SetNum(Fires.Num());
+	FireNiagaraComponents.SetNum(Fires.Num());
 	FireMaterials.SetNum(Fires.Num());
 	FireBaseLocationsCm.SetNum(Fires.Num());
 
@@ -147,6 +165,29 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 
 		FireConeComponents[FireIndex] = FireCone;
 		FireMaterials[FireIndex] = FireMaterial;
+
+		if (SimpleFireNiagaraSystem)
+		{
+			UNiagaraComponent* FireNiagara = NewObject<UNiagaraComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskSimpleFire_%d"), FireIndex));
+			FireNiagara->SetupAttachment(SceneRoot);
+			FireNiagara->SetAsset(SimpleFireNiagaraSystem);
+			FireNiagara->SetAutoActivate(false);
+			FireNiagara->SetRelativeLocation(FireBaseLocationsCm[FireIndex]);
+			FireNiagara->SetMobility(EComponentMobility::Movable);
+			FireNiagara->SetVisibility(false, true);
+			FireNiagara->SetHiddenInGame(true);
+
+			AddInstanceComponent(FireNiagara);
+			FireNiagara->OnComponentCreated();
+			FireNiagara->RegisterComponent();
+			FireNiagara->DeactivateImmediate();
+
+			FireNiagaraComponents[FireIndex] = FireNiagara;
+			FireCone->SetVisibility(false, true);
+			FireCone->SetHiddenInGame(true);
+		}
 	}
 
 	SprinklerData = Sprinklers;
@@ -213,6 +254,15 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 		}
 	}
 
+	for (UNiagaraComponent* FireNiagara : FireNiagaraComponents)
+	{
+		if (FireNiagara)
+		{
+			FireNiagara->DeactivateImmediate();
+			FireNiagara->DestroyComponent();
+		}
+	}
+
 	for (UStaticMeshComponent* SprinklerCone : SprinklerConeComponents)
 	{
 		if (SprinklerCone)
@@ -222,6 +272,7 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 	}
 
 	FireConeComponents.Reset();
+	FireNiagaraComponents.Reset();
 	FireMaterials.Reset();
 	FireBaseLocationsCm.Reset();
 	SprinklerConeComponents.Reset();
@@ -234,18 +285,32 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisualState& FireState)
 {
 	if (!FireConeComponents.IsValidIndex(FireIndex)
-		|| !FireConeComponents[FireIndex]
 		|| !FireBaseLocationsCm.IsValidIndex(FireIndex))
 	{
 		return false;
 	}
 
 	UStaticMeshComponent* FireCone = FireConeComponents[FireIndex];
+	UNiagaraComponent* FireNiagara =
+		FireNiagaraComponents.IsValidIndex(FireIndex) ? FireNiagaraComponents[FireIndex] : nullptr;
 	const bool bFireOn = FireState.HeatReleaseRateKw >= FireActivationHrrKw
 		&& FireState.FlameHeightM > 0.0f;
 
-	FireCone->SetVisibility(bFireOn, true);
-	FireCone->SetHiddenInGame(!bFireOn);
+	if (FireNiagara)
+	{
+		FireNiagara->SetVisibility(bFireOn, true);
+		FireNiagara->SetHiddenInGame(!bFireOn);
+		if (!bFireOn)
+		{
+			FireNiagara->DeactivateImmediate();
+		}
+	}
+	if (FireCone)
+	{
+		const bool bShowFallbackCone = bFireOn && !FireNiagara;
+		FireCone->SetVisibility(bShowFallbackCone, true);
+		FireCone->SetHiddenInGame(!bShowFallbackCone);
+	}
 	if (!bFireOn)
 	{
 		return true;
@@ -259,11 +324,36 @@ bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisua
 		80.0f);
 	const FVector BaseLocationCm = FireBaseLocationsCm[FireIndex];
 
-	FireCone->SetRelativeLocation(BaseLocationCm + FVector(0.0f, 0.0f, FlameHeightCm * 0.5f));
-	FireCone->SetRelativeScale3D(FVector(
+	const FVector FireScale(
 		FireRadiusCm / ConeMeshRadiusCm,
 		FireRadiusCm / ConeMeshRadiusCm,
-		FlameHeightCm / ConeMeshHeightCm));
+		FlameHeightCm / ConeMeshHeightCm);
+	const float FireConeAngleDeg = FMath::Clamp(
+		FMath::RadiansToDegrees(FMath::Atan2(FireRadiusCm, FMath::Max(FlameHeightCm, 1.0f))),
+		MinFireConeAngleDeg,
+		MaxFireConeAngleDeg);
+
+	if (FireNiagara)
+	{
+		FireNiagara->SetRelativeLocation(BaseLocationCm);
+		FireNiagara->SetRelativeScale3D(FVector::OneVector);
+		FireNiagara->SetVariableFloat(TEXT("User.FireHeight"), FlameHeightCm);
+		FireNiagara->SetVariableFloat(TEXT("User.FireConeAngle"), FireConeAngleDeg);
+		FireNiagara->SetVariableFloat(TEXT("User.HeatReleaseRateKw"), FireState.HeatReleaseRateKw);
+		FireNiagara->SetVariableFloat(TEXT("User.FlameHeightM"), FireState.FlameHeightM);
+		FireNiagara->SetVariableFloat(TEXT("User.FlameHeightCm"), FlameHeightCm);
+		FireNiagara->SetVariableFloat(TEXT("User.FireRadiusCm"), FireRadiusCm);
+		if (!FireNiagara->IsActive())
+		{
+			FireNiagara->Activate(true);
+		}
+	}
+
+	if (FireCone && !FireNiagara)
+	{
+		FireCone->SetRelativeLocation(BaseLocationCm + FVector(0.0f, 0.0f, FlameHeightCm * 0.5f));
+		FireCone->SetRelativeScale3D(FireScale);
+	}
 
 	return true;
 }
@@ -316,6 +406,13 @@ int32 ABRiskHazardVisualizer::GetHazardVisualCount() const
 	for (const UStaticMeshComponent* FireCone : FireConeComponents)
 	{
 		if (FireCone)
+		{
+			++Count;
+		}
+	}
+	for (const UNiagaraComponent* FireNiagara : FireNiagaraComponents)
+	{
+		if (FireNiagara)
 		{
 			++Count;
 		}

@@ -8,6 +8,8 @@
 
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class UNiagaraComponent;
+class UNiagaraSystem;
 class USceneComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -59,7 +61,13 @@ private:
 	TObjectPtr<UMaterialInterface> BasicShapeMaterial;
 
 	UPROPERTY()
+	TObjectPtr<UNiagaraSystem> SimpleFireNiagaraSystem;
+
+	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> FireConeComponents;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UNiagaraComponent>> FireNiagaraComponents;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> FireMaterials;
