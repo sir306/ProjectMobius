@@ -53,6 +53,12 @@ private:
 	TObjectPtr<UMaterialInterface> SmokeMaterial;
 
 	UPROPERTY()
+	TObjectPtr<UMaterialInterface> SmokeOutlineOverlayMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> SmokeOutlineEdgeMaterial;
+
+	UPROPERTY()
 	TObjectPtr<UNiagaraSystem> SmokeNiagaraSystem;
 
 	UPROPERTY()
@@ -62,9 +68,21 @@ private:
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> SmokeMaterialInstances;
 
 	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> SmokeOutlineOverlayMaterialInstances;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> SmokeOutlineEdgeComponents;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> SmokeOutlineEdgeMaterialInstances;
+
+	UPROPERTY()
 	TArray<TObjectPtr<UNiagaraComponent>> SmokeNiagaraComponents;
 
+	TArray<FVector> SmokeRoomOriginsCm;
 	TArray<FVector> SmokeRoomSizesCm;
 	TArray<FBRiskSmokeVisualState> LastSmokeStates;
 	bool bSmokeSimulationPaused = true;
+
+	void UpdateSmokeOutlineEdges(int32 RoomIndex, const FBRiskSmokeVisualState& SmokeState);
 };
