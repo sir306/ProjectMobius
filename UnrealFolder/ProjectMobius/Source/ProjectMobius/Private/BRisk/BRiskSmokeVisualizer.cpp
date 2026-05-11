@@ -19,6 +19,8 @@ namespace
 	constexpr int32 SmokeOutlineEdgesPerBox = 12;
 	constexpr int32 SmokeOutlineEdgesPerRoom = SmokeOutlineEdgesPerBox * 2;
 	constexpr float SmokeOutlineThicknessCm = 2.0f;
+	const TCHAR* HeterogeneousSmokeNiagaraSystemPath =
+		TEXT("/Game/B-Risk/Niagara/NS_HeterogenousSmokeVol.NS_HeterogenousSmokeVol");
 	const FLinearColor HotSmokeOutlineColor(0.018f, 0.014f, 0.010f, 1.0f);
 	const FLinearColor CoolSmokeOutlineColor(0.035f, 0.18f, 0.85f, 1.0f);
 
@@ -78,7 +80,7 @@ ABRiskSmokeVisualizer::ABRiskSmokeVisualizer()
 	}
 
 	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SmokeNiagaraSystemFinder(
-		TEXT("/Game/B-Risk/Niagara/NS_B-RiskSmoke.NS_B-RiskSmoke"));
+		HeterogeneousSmokeNiagaraSystemPath);
 	if (SmokeNiagaraSystemFinder.Succeeded())
 	{
 		SmokeNiagaraSystem = SmokeNiagaraSystemFinder.Object;
@@ -119,7 +121,7 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 	{
 		SmokeNiagaraSystem = LoadObject<UNiagaraSystem>(
 			nullptr,
-			TEXT("/Game/B-Risk/Niagara/NS_B-RiskSmoke.NS_B-RiskSmoke"));
+			HeterogeneousSmokeNiagaraSystemPath);
 	}
 
 	if (Rooms.Num() == 0 || Scale <= 0.0f)
@@ -166,7 +168,69 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 		SmokeRoomOriginsCm[RoomIndex] = OriginCm;
 		SmokeRoomSizesCm[RoomIndex] = SizeCm;
 
-		if (CubeMesh && SmokeMaterial)
+		for (int32 EdgeIndex = 0; EdgeIndex < SmokeOutlineEdgesPerRoom; ++EdgeIndex)
+		{
+			UStaticMeshComponent* EdgeComponent = NewObject<UStaticMeshComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskSmokeOutlineEdge_%d_%d"), RoomIndex, EdgeIndex));
+			EdgeComponent->SetupAttachment(SceneRoot);
+			EdgeComponent->SetStaticMesh(CubeMesh);
+			EdgeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			EdgeComponent->SetCastShadow(false);
+			EdgeComponent->SetReceivesDecals(false);
+			EdgeComponent->SetVisibility(false, true);
+			EdgeComponent->SetHiddenInGame(true);
+			EdgeComponent->SetMobility(EComponentMobility::Movable);
+
+			AddInstanceComponent(EdgeComponent);
+			EdgeComponent->OnComponentCreated();
+			EdgeComponent->RegisterComponent();
+
+			UMaterialInstanceDynamic* EdgeMaterial = nullptr;
+			if (SmokeOutlineEdgeMaterial)
+			{
+				EdgeMaterial = UMaterialInstanceDynamic::Create(SmokeOutlineEdgeMaterial, this);
+				if (EdgeMaterial)
+				{
+					const FLinearColor EdgeColor = EdgeIndex < SmokeOutlineEdgesPerBox
+						? HotSmokeOutlineColor
+						: CoolSmokeOutlineColor;
+					EdgeMaterial->SetVectorParameterValue(TEXT("Color"), EdgeColor);
+					EdgeMaterial->SetVectorParameterValue(TEXT("BaseColor"), EdgeColor);
+					EdgeComponent->SetMaterial(0, EdgeMaterial);
+				}
+			}
+
+			const int32 FlatEdgeIndex = RoomIndex * SmokeOutlineEdgesPerRoom + EdgeIndex;
+			SmokeOutlineEdgeComponents[FlatEdgeIndex] = EdgeComponent;
+			SmokeOutlineEdgeMaterialInstances[FlatEdgeIndex] = EdgeMaterial;
+		}
+
+		if (SmokeNiagaraSystem)
+		{
+			UNiagaraComponent* NiagaraComponent = NewObject<UNiagaraComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskSmokeNiagara_%d"), RoomIndex));
+			NiagaraComponent->SetupAttachment(SceneRoot);
+			NiagaraComponent->SetAsset(SmokeNiagaraSystem);
+			NiagaraComponent->SetAutoActivate(false);
+			NiagaraComponent->SetRelativeLocation(OriginCm + SizeCm * 0.5f);
+			NiagaraComponent->SetMobility(EComponentMobility::Movable);
+			NiagaraComponent->SetVariableVec3(TEXT("User.SmokeExtents"), SizeCm * 0.5f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), 1.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.UpperOpticalDensity"), 0.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), 0.0f);
+			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), 0.0f);
+
+			AddInstanceComponent(NiagaraComponent);
+			NiagaraComponent->OnComponentCreated();
+			NiagaraComponent->RegisterComponent();
+			NiagaraComponent->DeactivateImmediate();
+
+			SmokeNiagaraComponents[RoomIndex] = NiagaraComponent;
+			++CreatedNiagaraCount;
+		}
+		else if (CubeMesh && SmokeMaterial)
 		{
 			UStaticMeshComponent* SmokeComponent = NewObject<UStaticMeshComponent>(
 				this,
@@ -196,72 +260,9 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 				SmokeComponent->SetMaterial(0, DynamicMaterial);
 			}
 
-			for (int32 EdgeIndex = 0; EdgeIndex < SmokeOutlineEdgesPerRoom; ++EdgeIndex)
-			{
-				UStaticMeshComponent* EdgeComponent = NewObject<UStaticMeshComponent>(
-					this,
-					*FString::Printf(TEXT("BRiskSmokeOutlineEdge_%d_%d"), RoomIndex, EdgeIndex));
-				EdgeComponent->SetupAttachment(SceneRoot);
-				EdgeComponent->SetStaticMesh(CubeMesh);
-				EdgeComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-				EdgeComponent->SetCastShadow(false);
-				EdgeComponent->SetReceivesDecals(false);
-				EdgeComponent->SetVisibility(false, true);
-				EdgeComponent->SetHiddenInGame(true);
-				EdgeComponent->SetMobility(EComponentMobility::Movable);
-
-				AddInstanceComponent(EdgeComponent);
-				EdgeComponent->OnComponentCreated();
-				EdgeComponent->RegisterComponent();
-
-				UMaterialInstanceDynamic* EdgeMaterial = nullptr;
-				if (SmokeOutlineEdgeMaterial)
-				{
-					EdgeMaterial = UMaterialInstanceDynamic::Create(SmokeOutlineEdgeMaterial, this);
-					if (EdgeMaterial)
-					{
-						const FLinearColor EdgeColor = EdgeIndex < SmokeOutlineEdgesPerBox
-							? HotSmokeOutlineColor
-							: CoolSmokeOutlineColor;
-						EdgeMaterial->SetVectorParameterValue(TEXT("Color"), EdgeColor);
-						EdgeMaterial->SetVectorParameterValue(TEXT("BaseColor"), EdgeColor);
-						EdgeComponent->SetMaterial(0, EdgeMaterial);
-					}
-				}
-
-				const int32 FlatEdgeIndex = RoomIndex * SmokeOutlineEdgesPerRoom + EdgeIndex;
-				SmokeOutlineEdgeComponents[FlatEdgeIndex] = EdgeComponent;
-				SmokeOutlineEdgeMaterialInstances[FlatEdgeIndex] = EdgeMaterial;
-			}
-
 			SmokeVolumeComponents[RoomIndex] = SmokeComponent;
 			SmokeMaterialInstances[RoomIndex] = DynamicMaterial;
 			++CreatedVolumeCount;
-		}
-		else if (SmokeNiagaraSystem)
-		{
-			UNiagaraComponent* NiagaraComponent = NewObject<UNiagaraComponent>(
-				this,
-				*FString::Printf(TEXT("BRiskSmokeNiagara_%d"), RoomIndex));
-			NiagaraComponent->SetupAttachment(SceneRoot);
-			NiagaraComponent->SetAsset(SmokeNiagaraSystem);
-			NiagaraComponent->SetAutoActivate(false);
-			NiagaraComponent->SetRelativeLocation(OriginCm + FVector(SizeCm.X * 0.5f, SizeCm.Y * 0.5f, 0.0f));
-			NiagaraComponent->SetMobility(EComponentMobility::Movable);
-			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SizeCm);
-			NiagaraComponent->SetVariableVec3(TEXT("User.RoomOriginCm"), OriginCm);
-			NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), 1.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.UpperOpticalDensity"), 0.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), 0.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), 0.0f);
-
-			AddInstanceComponent(NiagaraComponent);
-			NiagaraComponent->OnComponentCreated();
-			NiagaraComponent->RegisterComponent();
-			NiagaraComponent->DeactivateImmediate();
-
-			SmokeNiagaraComponents[RoomIndex] = NiagaraComponent;
-			++CreatedNiagaraCount;
 		}
 		else
 		{
@@ -359,7 +360,7 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 
 		if (SmokeRoomSizesCm.IsValidIndex(RoomIndex))
 		{
-			NiagaraComponent->SetVariableVec3(TEXT("User.RoomSizeCm"), SmokeRoomSizesCm[RoomIndex]);
+			NiagaraComponent->SetVariableVec3(TEXT("User.SmokeExtents"), SmokeRoomSizesCm[RoomIndex] * 0.5f);
 		}
 
 		const bool bShouldRunNiagara = ShouldRunSmokeNiagara(SmokeState);
