@@ -34,13 +34,71 @@ DEFINE_LOG_CATEGORY_STATIC(LogNativeFileDialog, Log, All);
 
 // Include PFD for Windows/Linux
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
-    #include "PortableFileDialogs/portable-file-dialogs.h"
+	#ifndef _WIN32
+		#define _WIN32 0
+	#endif
+	#ifndef _WIN64
+		#define _WIN64 0
+	#endif
+	#ifndef __APPLE__
+		#define __APPLE__ 0
+	#endif
+	#ifndef __EMSCRIPTEN__
+		#define __EMSCRIPTEN__ 0
+	#endif
+	#ifndef __NX__
+		#define __NX__ 0
+	#endif
+
+	#if PLATFORM_WINDOWS
+		#include "Windows/AllowWindowsPlatformTypes.h"
+		#if !defined(SendMessage)
+			#if defined(UNICODE)
+				#define SendMessage SendMessageW
+			#else
+				#define SendMessage SendMessageA
+			#endif
+		#endif
+	#endif
+	THIRD_PARTY_INCLUDES_START
+	#if defined(_MSC_VER)
+		#pragma warning(push)
+		#pragma warning(disable : 4191)
+	#endif
+	#include "PortableFileDialogs/portable-file-dialogs.h"
+	#if defined(_MSC_VER)
+		#pragma warning(pop)
+	#endif
+	THIRD_PARTY_INCLUDES_END
+	#if PLATFORM_WINDOWS
+		#include "Windows/HideWindowsPlatformTypes.h"
+	#endif
+
+	#if defined(SendMessage)
+		#undef SendMessage
+	#endif
+	#if defined(IsLoggingEnabled)
+		#undef IsLoggingEnabled
+	#endif
 #endif
 
 // Include AppKit for Mac
 #if PLATFORM_MAC
     #include <AppKit/AppKit.h>
     #include <dispatch/dispatch.h>
+#endif
+
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
+UNativeFileDialogSubsystem::FNativeFileDialogState::FNativeFileDialogState()
+	: ActiveDialogStorage(new TUniquePtr<pfd::open_file>())
+{
+}
+
+UNativeFileDialogSubsystem::FNativeFileDialogState::~FNativeFileDialogState()
+{
+	delete static_cast<TUniquePtr<pfd::open_file>*>(ActiveDialogStorage);
+	ActiveDialogStorage = nullptr;
+}
 #endif
 
 // Helper functions (Windows/Linux only to prevent unused function warnings on Mac)
@@ -99,7 +157,12 @@ UNativeFileDialogSubsystem::UNativeFileDialogSubsystem()
 {
 	bSelectionInProgress = false;
 	ActiveDialogType = EDialogType::MeshFile;
+#if PLATFORM_WINDOWS || PLATFORM_LINUX
+	NativeDialogState = MakeUnique<FNativeFileDialogState>();
+#endif
 }
+
+UNativeFileDialogSubsystem::~UNativeFileDialogSubsystem() = default;
 
 void UNativeFileDialogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -388,12 +451,22 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 	if (DialogType == EDialogType::AgentFile)
 	{
 		Filters = { "Agent Data", "*.json *.h5", "JSON Files", "*.json", "HDF5 Files", "*.h5" };
-		ActiveDialog = MakeUnique<pfd::open_file>("Select Agent Data File", InitialDirUtf8, Filters, pfd::opt::none);
+		*static_cast<TUniquePtr<pfd::open_file>*>(NativeDialogState->ActiveDialogStorage) =
+			MakeUnique<pfd::open_file>(
+				"Select Agent Data File",
+				InitialDirUtf8,
+				Filters,
+				pfd::opt::none);
 	}
 	else if (DialogType == EDialogType::BRiskFile)
 	{
 		Filters = { "B-Risk Scenario", "*.smv", "SMV Files", "*.smv" };
-		ActiveDialog = MakeUnique<pfd::open_file>("Select B-Risk Scenario File", InitialDirUtf8, Filters, pfd::opt::none);
+		*static_cast<TUniquePtr<pfd::open_file>*>(NativeDialogState->ActiveDialogStorage) =
+			MakeUnique<pfd::open_file>(
+				"Select B-Risk Scenario File",
+				InitialDirUtf8,
+				Filters,
+				pfd::opt::none);
 	}
 	else
 	{
@@ -406,7 +479,12 @@ void UNativeFileDialogSubsystem::StartDialog(EDialogType DialogType, FOnFileSele
 			"WKT Files", "*.wkt",
 			"HDF5 Files", "*.h5"
 		};
-		ActiveDialog = MakeUnique<pfd::open_file>("Select Mesh File", InitialDirUtf8, Filters, pfd::opt::none);
+		*static_cast<TUniquePtr<pfd::open_file>*>(NativeDialogState->ActiveDialogStorage) =
+			MakeUnique<pfd::open_file>(
+				"Select Mesh File",
+				InitialDirUtf8,
+				Filters,
+				pfd::opt::none);
 	}
 
 	if (UWorld* World = GetWorld())
@@ -489,6 +567,10 @@ void UNativeFileDialogSubsystem::UpdateLastDialogDirectory(const FString& Select
 void UNativeFileDialogSubsystem::PollDialog()
 {
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
+	if (!NativeDialogState.IsValid() || !NativeDialogState->ActiveDialogStorage) return;
+
+	TUniquePtr<pfd::open_file>& ActiveDialog =
+		*static_cast<TUniquePtr<pfd::open_file>*>(NativeDialogState->ActiveDialogStorage);
 	if (!ActiveDialog.IsValid()) return;
 	if (!ActiveDialog->ready(0)) return;
 
@@ -609,7 +691,10 @@ void UNativeFileDialogSubsystem::ResetDialogState()
 		}
 		PollTimerHandle.Invalidate();
 	}
-	ActiveDialog.Reset();
+	if (NativeDialogState.IsValid() && NativeDialogState->ActiveDialogStorage)
+	{
+		static_cast<TUniquePtr<pfd::open_file>*>(NativeDialogState->ActiveDialogStorage)->Reset();
+	}
 #endif
 }
 

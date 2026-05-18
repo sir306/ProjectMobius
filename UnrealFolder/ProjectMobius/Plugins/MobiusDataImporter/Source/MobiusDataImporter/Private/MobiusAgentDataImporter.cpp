@@ -12,7 +12,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogMobiusAgentDataImporter, Log, All);
 
 namespace
 {
-	void SetImportError(FString* OutError, const FString& Message)
+	void SetMobiusAgentImportError(FString* OutError, const FString& Message)
 	{
 		if (OutError)
 		{
@@ -28,7 +28,7 @@ namespace
 			FString JsonString;
 			if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
 			{
-				SetImportError(OutError, FString::Printf(TEXT("Unable to read JSON data from: %s"), *FilePath));
+				SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Unable to read JSON data from: %s"), *FilePath));
 				return false;
 			}
 
@@ -36,7 +36,7 @@ namespace
 			const TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(JsonString);
 			if (!FJsonSerializer::Deserialize(JsonReader, RootObject) || !RootObject.IsValid())
 			{
-				SetImportError(OutError, FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *FilePath));
+				SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *FilePath));
 				return false;
 			}
 
@@ -153,7 +153,7 @@ namespace
 			FHdf5SimulationReader Reader;
 			if (!Reader.OpenFile(FilePath))
 			{
-				SetImportError(OutError, FString::Printf(TEXT("Unable to read HDF5 data from: %s"), *FilePath));
+				SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Unable to read HDF5 data from: %s"), *FilePath));
 				return false;
 			}
 
@@ -176,7 +176,7 @@ namespace
 				if (!Reader.ReadJuelichMetadata(JuelichMetadata) || !Reader.ReadJuelichTrajectories(Trajectories) ||
 				    !FHdf5SimulationReader::ConvertJuelichToMobiusFormat(JuelichMetadata, Trajectories, Hdf5Metadata, Hdf5Entities, Hdf5Samples))
 				{
-					SetImportError(OutError, FString::Printf(TEXT("Unable to import Juelich HDF5 data from: %s"), *FilePath));
+					SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Unable to import Juelich HDF5 data from: %s"), *FilePath));
 					Reader.CloseFile();
 					return false;
 				}
@@ -188,7 +188,7 @@ namespace
 				if (!Reader.ReadMetadata(Hdf5Metadata) || !Reader.ReadEntities(Hdf5Entities) ||
 				    !Reader.ReadAllSamples(Hdf5Samples, &bHasRotationField, &bHasSpeedField))
 				{
-					SetImportError(OutError, FString::Printf(TEXT("Unable to import Mobius HDF5 data from: %s"), *FilePath));
+					SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Unable to import Mobius HDF5 data from: %s"), *FilePath));
 					Reader.CloseFile();
 					return false;
 				}
@@ -197,7 +197,7 @@ namespace
 			}
 			else
 			{
-				SetImportError(OutError, FString::Printf(TEXT("HDF5 file has unrecognized format: %s"), *FilePath));
+				SetMobiusAgentImportError(OutError, FString::Printf(TEXT("HDF5 file has unrecognized format: %s"), *FilePath));
 				Reader.CloseFile();
 				return false;
 			}
@@ -271,7 +271,7 @@ bool FMobiusAgentDataImporter::ImportAgentFile(const FString& FilePath, FMobiusA
 {
 	if (FilePath.IsEmpty() || !FPaths::FileExists(FilePath))
 	{
-		SetImportError(OutError, FString::Printf(TEXT("File path does not exist: %s"), *FilePath));
+		SetMobiusAgentImportError(OutError, FString::Printf(TEXT("File path does not exist: %s"), *FilePath));
 		return false;
 	}
 
@@ -285,6 +285,6 @@ bool FMobiusAgentDataImporter::ImportAgentFile(const FString& FilePath, FMobiusA
 		return FMobiusHdf5AgentDataParser::ParseFile(FilePath, OutData, OutError);
 	}
 
-	SetImportError(OutError, FString::Printf(TEXT("File format not supported: %s"), *FilePath));
+	SetMobiusAgentImportError(OutError, FString::Printf(TEXT("File format not supported: %s"), *FilePath));
 	return false;
 }

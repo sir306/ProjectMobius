@@ -36,11 +36,11 @@
 
 namespace
 {
-        constexpr bool bEnableQtApps = false;
+        constexpr bool bEnableWebSocketQtApps = false;
 }
 
 // Utility: map UE platform to the folder your superbuild uses
-static const TCHAR* GetPlatformFolder()
+static const TCHAR* GetWebSocketPlatformFolder()
 {
 #if PLATFORM_WINDOWS
 	return TEXT("Win64");
@@ -179,7 +179,7 @@ void UWebSocketSubsystem::Deinitialize()
 
 void UWebSocketSubsystem::StartWebSocketServer()
 {
-	const TCHAR* Plat = GetPlatformFolder();
+	const TCHAR* Plat = GetWebSocketPlatformFolder();
 
 	// Where the superbuild stages Node binaries now:
 	//   Tools/bin/<Platform>/NodeJS/...
@@ -252,7 +252,7 @@ void UWebSocketSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCo
 
 void UWebSocketSubsystem::OpenOrCloseQtStatApp()
 {
-        if (!bEnableQtApps)
+        if (!bEnableWebSocketQtApps)
         {
                 return;
         }
@@ -265,7 +265,7 @@ void UWebSocketSubsystem::OpenOrCloseQtStatApp()
 		return;
 	}
 
-	const TCHAR* Plat = GetPlatformFolder();
+	const TCHAR* Plat = GetWebSocketPlatformFolder();
 
 	// Where the superbuild stages PlotUE_Data now:
 	//   Windows: Tools/bin/Win64/PlotUE_Data/appPlotUE_Data.exe

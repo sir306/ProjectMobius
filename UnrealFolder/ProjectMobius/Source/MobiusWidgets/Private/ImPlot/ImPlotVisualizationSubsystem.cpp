@@ -18,11 +18,14 @@
 #include "Widgets/SWindow.h"
 #include "Widgets/SWidget.h"
 
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
+#endif
 #include "imgui.h"
 #include "implot.h"
 namespace
 {
-	const FName DefaultChartId = NAME_None;
+	const FName VisualizationDefaultChartId = NAME_None;
 }
 
 void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -48,37 +51,37 @@ void UImPlotVisualizationSubsystem::Deinitialize()
 
 void UImPlotVisualizationSubsystem::ShowOverlay(bool bShow)
 {
-	ShowOverlayForChart(DefaultChartId, bShow);
+	ShowOverlayForChart(VisualizationDefaultChartId, bShow);
 }
 
 void UImPlotVisualizationSubsystem::ToggleOverlay()
 {
-	ToggleOverlayForChart(DefaultChartId);
+	ToggleOverlayForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::CloseOverlay()
 {
-	CloseOverlayForChart(DefaultChartId);
+	CloseOverlayForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::SetChartTitle(const FText& InTitle)
 {
-	SetChartTitleForChart(DefaultChartId, InTitle);
+	SetChartTitleForChart(VisualizationDefaultChartId, InTitle);
 }
 
 void UImPlotVisualizationSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
 {
-	SetAxisSettingsForChart(DefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
+	SetAxisSettingsForChart(VisualizationDefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
 }
 
 void UImPlotVisualizationSubsystem::SetPlotPoints(const TArray<FVector2D>& InPoints)
 {
-	SetPlotPointsForChart(DefaultChartId, InPoints);
+	SetPlotPointsForChart(VisualizationDefaultChartId, InPoints);
 }
 
 void UImPlotVisualizationSubsystem::UpdateLiveSample(double InTimeSeconds, double InCount)
 {
-	UpdateLiveSampleForChart(DefaultChartId, InTimeSeconds, InCount);
+	UpdateLiveSampleForChart(VisualizationDefaultChartId, InTimeSeconds, InCount);
 }
 
 void UImPlotVisualizationSubsystem::ShowOverlayForChart(const FName& ChartId, bool bShow)
@@ -160,57 +163,57 @@ void UImPlotVisualizationSubsystem::UpdateLiveSampleForChart(const FName& ChartI
 
 bool UImPlotVisualizationSubsystem::IsOverlayVisible() const
 {
-	return IsOverlayVisibleForChart(DefaultChartId);
+	return IsOverlayVisibleForChart(VisualizationDefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetChartTitle() const
 {
-	return GetChartTitleForChart(DefaultChartId);
+	return GetChartTitleForChart(VisualizationDefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetXAxisTitle() const
 {
-	return GetXAxisTitleForChart(DefaultChartId);
+	return GetXAxisTitleForChart(VisualizationDefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetYAxisTitle() const
 {
-	return GetYAxisTitleForChart(DefaultChartId);
+	return GetYAxisTitleForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::GetAxisLimits(double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const
 {
-	GetAxisLimitsForChart(DefaultChartId, OutXMin, OutXMax, OutYMin, OutYMax);
+	GetAxisLimitsForChart(VisualizationDefaultChartId, OutXMin, OutXMax, OutYMin, OutYMax);
 }
 
 bool UImPlotVisualizationSubsystem::HasAxisSettings() const
 {
-	return HasAxisSettingsForChart(DefaultChartId);
+	return HasAxisSettingsForChart(VisualizationDefaultChartId);
 }
 
 const TArray<FVector2D>& UImPlotVisualizationSubsystem::GetPlotPoints() const
 {
-	return GetPlotPointsForChart(DefaultChartId);
+	return GetPlotPointsForChart(VisualizationDefaultChartId);
 }
 
 bool UImPlotVisualizationSubsystem::HasLiveSample() const
 {
-	return HasLiveSampleForChart(DefaultChartId);
+	return HasLiveSampleForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::GetLiveSample(double& OutTimeSeconds, double& OutCount) const
 {
-	GetLiveSampleForChart(DefaultChartId, OutTimeSeconds, OutCount);
+	GetLiveSampleForChart(VisualizationDefaultChartId, OutTimeSeconds, OutCount);
 }
 
 bool UImPlotVisualizationSubsystem::HasLiveSampleThickness() const
 {
-	return HasLiveSampleThicknessForChart(DefaultChartId);
+	return HasLiveSampleThicknessForChart(VisualizationDefaultChartId);
 }
 
 double UImPlotVisualizationSubsystem::GetLiveSampleThickness() const
 {
-	return GetLiveSampleThicknessForChart(DefaultChartId);
+	return GetLiveSampleThicknessForChart(VisualizationDefaultChartId);
 }
 
 bool UImPlotVisualizationSubsystem::IsOverlayVisibleForChart(const FName& ChartId) const
@@ -807,7 +810,6 @@ void UImPlotVisualizationSubsystem::RenderDrawData(const ImDrawData* DrawData, c
                 }
         }
 }
-
 
 
 

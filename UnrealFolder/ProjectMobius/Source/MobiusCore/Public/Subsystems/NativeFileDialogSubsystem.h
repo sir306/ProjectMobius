@@ -27,32 +27,6 @@
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
 #include "Subsystems/WorldSubsystem.h" // Added for UWorldSubsystem
-
-// --- CHANGE 1: Only include PFD on Windows/Linux ---
-#if PLATFORM_WINDOWS || PLATFORM_LINUX
-	#ifndef _WIN32
-	#define _WIN32 0
-	#endif
-
-	#ifndef _WIN64
-	#define _WIN64 0
-	#endif
-
-	#ifndef __APPLE__
-	#define __APPLE__ 0
-	#endif
-
-	// PFD Includes
-	#if defined(_MSC_VER)
-	#pragma warning(push)
-	#pragma warning(disable : 4191)
-	#endif
-	#include "PortableFileDialogs/portable-file-dialogs.h"
-	#if defined(_MSC_VER)
-	#pragma warning(pop)
-	#endif
-#endif
-// ---------------------------------------------------
 #include "NativeFileDialogSubsystem.generated.h"
 
 // Delegate for file selection callback
@@ -78,6 +52,7 @@ class MOBIUSCORE_API UNativeFileDialogSubsystem : public UWorldSubsystem
 public:
 	/** Default constructor. */
 	UNativeFileDialogSubsystem();
+	~UNativeFileDialogSubsystem();
 
 	/**
 	 * Initialize the subsystem.
@@ -196,9 +171,14 @@ private:
 
 	FString LastDialogDirectory;
 
-	// Only use PFD dialog pointer on Windows/Linux
 #if PLATFORM_WINDOWS || PLATFORM_LINUX
-	/** */
-	TUniquePtr<pfd::open_file> ActiveDialog;
+	struct FNativeFileDialogState
+	{
+		FNativeFileDialogState();
+		~FNativeFileDialogState();
+
+		void* ActiveDialogStorage = nullptr;
+	};
+	TUniquePtr<FNativeFileDialogState> NativeDialogState;
 #endif
 };

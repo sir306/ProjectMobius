@@ -10,7 +10,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogBRiskDataImporter, Log, All);
 
 namespace
 {
-	void SetImportError(FString* OutError, const FString& Message)
+	void SetBRiskImportError(FString* OutError, const FString& Message)
 	{
 		if (OutError)
 		{
@@ -171,12 +171,12 @@ namespace
 		TArray<FString> Lines;
 		if (!FFileHelper::LoadFileToStringArray(Lines, *CsvPath))
 		{
-			SetImportError(OutError, FString::Printf(TEXT("Unable to read B-Risk zone CSV: %s"), *CsvPath));
+			SetBRiskImportError(OutError, FString::Printf(TEXT("Unable to read B-Risk zone CSV: %s"), *CsvPath));
 			return false;
 		}
 		if (Lines.Num() < 2)
 		{
-			SetImportError(OutError, FString::Printf(
+			SetBRiskImportError(OutError, FString::Printf(
 				TEXT("Invalid B-Risk zone CSV (expected at least 2 header lines): %s"), *CsvPath));
 			return false;
 		}
@@ -191,7 +191,7 @@ namespace
 
 		if (Headers.Num() == 0)
 		{
-			SetImportError(OutError, FString::Printf(TEXT("Invalid B-Risk zone CSV headers: %s"), *CsvPath));
+			SetBRiskImportError(OutError, FString::Printf(TEXT("Invalid B-Risk zone CSV headers: %s"), *CsvPath));
 			return false;
 		}
 
@@ -206,7 +206,7 @@ namespace
 		}
 		if (TimeColumnIndex == INDEX_NONE)
 		{
-			SetImportError(OutError, FString::Printf(
+			SetBRiskImportError(OutError, FString::Printf(
 				TEXT("B-Risk zone CSV is missing required Time column: %s"), *CsvPath));
 			return false;
 		}
@@ -227,7 +227,7 @@ namespace
 		}
 		if (OutTable.Series.Num() == 0)
 		{
-			SetImportError(OutError, FString::Printf(
+			SetBRiskImportError(OutError, FString::Printf(
 				TEXT("B-Risk zone CSV has no non-Time data series: %s"), *CsvPath));
 			return false;
 		}
@@ -250,7 +250,7 @@ namespace
 			double TimeValue = 0.0;
 			if (!Cells.IsValidIndex(TimeColumnIndex) || !TryParseDouble(Cells[TimeColumnIndex], TimeValue))
 			{
-				SetImportError(OutError, FString::Printf(
+				SetBRiskImportError(OutError, FString::Printf(
 					TEXT("Malformed Time value in B-Risk zone CSV %s at row %d"),
 					*CsvPath, LineIndex + 1));
 				return false;
@@ -268,7 +268,7 @@ namespace
 				double Value = 0.0;
 				if (!Cells.IsValidIndex(HeaderIndex) || !TryParseDouble(Cells[HeaderIndex], Value))
 				{
-					SetImportError(OutError, FString::Printf(
+					SetBRiskImportError(OutError, FString::Printf(
 						TEXT("Malformed numeric value for column '%s' in B-Risk zone CSV %s at row %d"),
 						*Headers[HeaderIndex], *CsvPath, LineIndex + 1));
 					return false;
@@ -279,7 +279,7 @@ namespace
 
 		if (OutTable.TimeSeconds.Num() == 0)
 		{
-			SetImportError(OutError, FString::Printf(
+			SetBRiskImportError(OutError, FString::Printf(
 				TEXT("B-Risk zone CSV has no data rows: %s"), *CsvPath));
 			return false;
 		}
@@ -288,7 +288,7 @@ namespace
 		{
 			if (Series.Values.Num() != OutTable.TimeSeconds.Num())
 			{
-				SetImportError(OutError, FString::Printf(
+				SetBRiskImportError(OutError, FString::Printf(
 					TEXT("B-Risk zone CSV series '%s' has %d samples but Time has %d samples: %s"),
 					*Series.Name, Series.Values.Num(), OutTable.TimeSeconds.Num(), *CsvPath));
 				return false;
@@ -421,21 +421,21 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 {
 	if (SmvFilePath.IsEmpty() || !FPaths::FileExists(SmvFilePath))
 	{
-		SetImportError(OutError, FString::Printf(TEXT("SMV file path does not exist: %s"), *SmvFilePath));
+		SetBRiskImportError(OutError, FString::Printf(TEXT("SMV file path does not exist: %s"), *SmvFilePath));
 		return false;
 	}
 
 	const FString Extension = FPaths::GetExtension(SmvFilePath).ToLower();
 	if (Extension != TEXT("smv"))
 	{
-		SetImportError(OutError, FString::Printf(TEXT("B-Risk importer expects a .smv file: %s"), *SmvFilePath));
+		SetBRiskImportError(OutError, FString::Printf(TEXT("B-Risk importer expects a .smv file: %s"), *SmvFilePath));
 		return false;
 	}
 
 	TArray<FString> Lines;
 	if (!FFileHelper::LoadFileToStringArray(Lines, *SmvFilePath))
 	{
-		SetImportError(OutError, FString::Printf(TEXT("Unable to read B-Risk SMV file: %s"), *SmvFilePath));
+		SetBRiskImportError(OutError, FString::Printf(TEXT("Unable to read B-Risk SMV file: %s"), *SmvFilePath));
 		return false;
 	}
 
@@ -521,7 +521,7 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 
 	if (ZoneCsvRelativePaths.Num() == 0)
 	{
-		SetImportError(OutError, FString::Printf(
+		SetBRiskImportError(OutError, FString::Printf(
 			TEXT("No ZONE references found in B-Risk SMV file: %s"), *SmvFilePath));
 		return false;
 	}
