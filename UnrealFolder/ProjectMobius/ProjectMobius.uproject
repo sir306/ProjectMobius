@@ -182,10 +182,16 @@
 		{
 			"Name": "NiagaraFluids",
 			"Enabled": true
+		},
+		{
+			"Name": "NwiroIntegrationKit",
+			"Enabled": true,
+            "Type": "Editor"
 		}
 	],
 	"AdditionalPluginDirectories": [
-		"Plugins"
+		"Plugins",
+		"../../../../../NickAssets/Unreal_mcp"
 	],
 	"TargetPlatforms": [
 		"Linux",
