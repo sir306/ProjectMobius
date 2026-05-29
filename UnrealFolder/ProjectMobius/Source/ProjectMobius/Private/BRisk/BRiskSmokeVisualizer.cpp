@@ -42,6 +42,64 @@ namespace
 		EdgeComponent->SetRelativeLocation(CenterCm);
 		EdgeComponent->SetRelativeScale3D(SizeCm / 100.0f);
 	}
+
+	void SetSmokeNiagaraUserParameters(UNiagaraComponent* NiagaraComponent, const FBRiskSmokeVisualState& SmokeState)
+	{
+		if (!NiagaraComponent)
+		{
+			return;
+		}
+
+		const float RoomSmoke = FMath::Clamp(SmokeState.RoomSmoke, 0.0f, 1.0f);
+		const float UpperOpticalDensity = FMath::Max(SmokeState.UpperOpticalDensity, 0.0f);
+		const float LowerOpticalDensity = FMath::Max(SmokeState.LowerOpticalDensity, 0.0f);
+		const float UpperExtinctionPerCm = FMath::Max(SmokeState.UpperExtinctionPerCm, 0.0f);
+		const float LowerExtinctionPerCm = FMath::Max(SmokeState.LowerExtinctionPerCm, 0.0f);
+		const float SmokeDensity = FMath::Clamp(SmokeState.SmokeDensity, 0.0f, 1.0f);
+		const float SmokeHeat = FMath::Clamp(SmokeState.SmokeHeat, 0.0f, 1.0f);
+		const float LayerHeightWorldCm = SmokeState.LayerHeightWorldCm;
+		const float LayerSoftnessCm = FMath::Max(SmokeState.LayerSoftnessCm, 0.0f);
+
+		NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), RoomSmoke);
+		NiagaraComponent->SetVariableFloat(TEXT("User.UpperOpticalDensity"), UpperOpticalDensity);
+		NiagaraComponent->SetVariableFloat(TEXT("User.LowerOpticalDensity"), LowerOpticalDensity);
+		NiagaraComponent->SetVariableFloat(TEXT("User.UpperExtinctionPerCm"), UpperExtinctionPerCm);
+		NiagaraComponent->SetVariableFloat(TEXT("User.LowerExtinctionPerCm"), LowerExtinctionPerCm);
+		NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), SmokeDensity);
+		NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), SmokeHeat);
+		NiagaraComponent->SetVariableFloat(TEXT("User.LayerHeightWorldCm"), LayerHeightWorldCm);
+		NiagaraComponent->SetVariableFloat(TEXT("User.LayerHeightWorld"), LayerHeightWorldCm);
+		NiagaraComponent->SetVariableFloat(TEXT("User.LayerSoftnessCm"), LayerSoftnessCm);
+	}
+
+	void SetSmokeMaterialParameters(UMaterialInstanceDynamic* DynamicMaterial, const FBRiskSmokeVisualState& SmokeState)
+	{
+		if (!DynamicMaterial)
+		{
+			return;
+		}
+
+		const float RoomSmoke = FMath::Clamp(SmokeState.RoomSmoke, 0.0f, 1.0f);
+		const float UpperOpticalDensity = FMath::Max(SmokeState.UpperOpticalDensity, 0.0f);
+		const float LowerOpticalDensity = FMath::Max(SmokeState.LowerOpticalDensity, 0.0f);
+		const float UpperExtinctionPerCm = FMath::Max(SmokeState.UpperExtinctionPerCm, 0.0f);
+		const float LowerExtinctionPerCm = FMath::Max(SmokeState.LowerExtinctionPerCm, 0.0f);
+		const float SmokeDensity = FMath::Clamp(SmokeState.SmokeDensity, 0.0f, 1.0f);
+		const float SmokeHeat = FMath::Clamp(SmokeState.SmokeHeat, 0.0f, 1.0f);
+		const float LayerHeightWorldCm = SmokeState.LayerHeightWorldCm;
+		const float LayerSoftnessCm = FMath::Max(SmokeState.LayerSoftnessCm, 0.0f);
+
+		DynamicMaterial->SetScalarParameterValue(TEXT("RoomSmoke"), RoomSmoke);
+		DynamicMaterial->SetScalarParameterValue(TEXT("UpperOpticalDensity"), UpperOpticalDensity);
+		DynamicMaterial->SetScalarParameterValue(TEXT("LowerOpticalDensity"), LowerOpticalDensity);
+		DynamicMaterial->SetScalarParameterValue(TEXT("UpperExtinctionPerCm"), UpperExtinctionPerCm);
+		DynamicMaterial->SetScalarParameterValue(TEXT("LowerExtinctionPerCm"), LowerExtinctionPerCm);
+		DynamicMaterial->SetScalarParameterValue(TEXT("SmokeDensity"), SmokeDensity);
+		DynamicMaterial->SetScalarParameterValue(TEXT("SmokeHeat"), SmokeHeat);
+		DynamicMaterial->SetScalarParameterValue(TEXT("LayerHeightWorldCm"), LayerHeightWorldCm);
+		DynamicMaterial->SetScalarParameterValue(TEXT("LayerHeightWorld"), LayerHeightWorldCm);
+		DynamicMaterial->SetScalarParameterValue(TEXT("LayerSoftnessCm"), LayerSoftnessCm);
+	}
 }
 
 ABRiskSmokeVisualizer::ABRiskSmokeVisualizer()
@@ -168,6 +226,12 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 		SmokeRoomOriginsCm[RoomIndex] = OriginCm;
 		SmokeRoomSizesCm[RoomIndex] = SizeCm;
 
+		FBRiskSmokeVisualState ClearSmokeState;
+		ClearSmokeState.RoomSmoke = 1.0f;
+		ClearSmokeState.LayerHeightWorldCm = OriginCm.Z + SizeCm.Z;
+		ClearSmokeState.LayerSoftnessCm = 5.0f;
+		LastSmokeStates[RoomIndex] = ClearSmokeState;
+
 		for (int32 EdgeIndex = 0; EdgeIndex < SmokeOutlineEdgesPerRoom; ++EdgeIndex)
 		{
 			UStaticMeshComponent* EdgeComponent = NewObject<UStaticMeshComponent>(
@@ -217,10 +281,7 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			NiagaraComponent->SetRelativeLocation(OriginCm + SizeCm * 0.5f);
 			NiagaraComponent->SetMobility(EComponentMobility::Movable);
 			NiagaraComponent->SetVariableVec3(TEXT("User.SmokeExtents"), SizeCm * 0.5f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), 1.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.UpperOpticalDensity"), 0.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), 0.0f);
-			NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), 0.0f);
+			SetSmokeNiagaraUserParameters(NiagaraComponent, ClearSmokeState);
 
 			AddInstanceComponent(NiagaraComponent);
 			NiagaraComponent->OnComponentCreated();
@@ -253,10 +314,7 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(SmokeMaterial, this);
 			if (DynamicMaterial)
 			{
-				DynamicMaterial->SetScalarParameterValue(TEXT("RoomSmoke"), 1.0f);
-				DynamicMaterial->SetScalarParameterValue(TEXT("UpperOpticalDensity"), 0.0f);
-				DynamicMaterial->SetScalarParameterValue(TEXT("SmokeDensity"), 0.0f);
-				DynamicMaterial->SetScalarParameterValue(TEXT("SmokeHeat"), 0.0f);
+				SetSmokeMaterialParameters(DynamicMaterial, ClearSmokeState);
 				SmokeComponent->SetMaterial(0, DynamicMaterial);
 			}
 
@@ -339,7 +397,6 @@ void ABRiskSmokeVisualizer::ClearSmokeVolumes()
 bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmokeVisualState& SmokeState)
 {
 	const float RoomSmoke = FMath::Clamp(SmokeState.RoomSmoke, 0.0f, 1.0f);
-	const float UpperOpticalDensity = FMath::Max(SmokeState.UpperOpticalDensity, 0.0f);
 	const float SmokeDensity = FMath::Clamp(SmokeState.SmokeDensity, 0.0f, 1.0f);
 	const float SmokeHeat = FMath::Clamp(SmokeState.SmokeHeat, 0.0f, 1.0f);
 
@@ -353,10 +410,7 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 	if (SmokeNiagaraComponents.IsValidIndex(RoomIndex) && SmokeNiagaraComponents[RoomIndex])
 	{
 		UNiagaraComponent* NiagaraComponent = SmokeNiagaraComponents[RoomIndex];
-		NiagaraComponent->SetVariableFloat(TEXT("User.RoomSmoke"), RoomSmoke);
-		NiagaraComponent->SetVariableFloat(TEXT("User.UpperOpticalDensity"), UpperOpticalDensity);
-		NiagaraComponent->SetVariableFloat(TEXT("User.SmokeDensity"), SmokeDensity);
-		NiagaraComponent->SetVariableFloat(TEXT("User.SmokeHeat"), SmokeHeat);
+		SetSmokeNiagaraUserParameters(NiagaraComponent, SmokeState);
 
 		if (SmokeRoomSizesCm.IsValidIndex(RoomIndex))
 		{
@@ -392,10 +446,7 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 		&& SmokeMaterialInstances.IsValidIndex(RoomIndex)
 		&& SmokeMaterialInstances[RoomIndex])
 	{
-		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("RoomSmoke"), RoomSmoke);
-		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("UpperOpticalDensity"), UpperOpticalDensity);
-		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("SmokeDensity"), SmokeDensity);
-		SmokeMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("SmokeHeat"), SmokeHeat);
+		SetSmokeMaterialParameters(SmokeMaterialInstances[RoomIndex], SmokeState);
 		bUpdated = true;
 	}
 

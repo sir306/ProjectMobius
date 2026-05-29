@@ -273,7 +273,10 @@ public:
 	static FBRiskSmokeVisualState ComputeSmokeVisualState(
 		double LayerHeight,
 		double RoomHeight,
+		double RoomOriginZMeters,
+		float GeometryScaleCmPerMeter,
 		double UpperOpticalDensity,
+		double LowerOpticalDensity,
 		double UpperTemperatureC,
 		double LowerTemperatureC);
 

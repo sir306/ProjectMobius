@@ -14,6 +14,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogBRiskDataSubsystem, Log, All);
 
 namespace
 {
+	constexpr double BRiskOpticalDensityToExtinctionPerCm = 0.023025850929940457;
+
 	void LogBRiskScenarioData(
 		const TCHAR* Prefix,
 		const FBRiskScenarioData& Data,
@@ -529,7 +531,7 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 	}
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
-		TEXT("Generated B-Risk smoke volumes: rooms=%d createdVolumes=%d zones=%d series=HGT_1,ULOD_1,ULT_1 scale=%g"),
+		TEXT("Generated B-Risk smoke volumes: rooms=%d createdVolumes=%d zones=%d series=HGT_1,ULOD_1,LLOD_1,ULT_1,LLT_1 scale=%g"),
 		ScenarioData.Rooms.Num(),
 		SmokeVisualizerActor->GetSmokeVolumeCount(),
 		ScenarioData.ZoneTables.Num(),
@@ -612,40 +614,48 @@ bool UBRiskDataSubsystem::UpdateSmokeAtTime(float TimeSeconds)
 	{
 		double LayerHeight = 0.0;
 		double UpperOpticalDensity = 0.0;
+		double LowerOpticalDensity = 0.0;
 		double UpperTemperatureC = 24.0;
 		double LowerTemperatureC = 24.0;
 		const bool bHasLayerHeight = SampleSeriesAtTime(RoomIndex, TEXT("HGT_1"), TimeSeconds, LayerHeight);
 		const bool bHasUpperOpticalDensity = SampleSeriesAtTime(RoomIndex, TEXT("ULOD_1"), TimeSeconds, UpperOpticalDensity);
+		const bool bHasLowerOpticalDensity = SampleSeriesAtTime(RoomIndex, TEXT("LLOD_1"), TimeSeconds, LowerOpticalDensity);
 		const bool bHasUpperTemperature = SampleSeriesAtTime(RoomIndex, TEXT("ULT_1"), TimeSeconds, UpperTemperatureC);
 		const bool bHasLowerTemperature = SampleSeriesAtTime(RoomIndex, TEXT("LLT_1"), TimeSeconds, LowerTemperatureC);
 
-		if ((!bHasLayerHeight || !bHasUpperOpticalDensity || !bHasUpperTemperature) && !bHasWarnedMissingSmokeSeries)
+		if ((!bHasLayerHeight || !bHasUpperOpticalDensity || !bHasLowerOpticalDensity || !bHasUpperTemperature) && !bHasWarnedMissingSmokeSeries)
 		{
 			bHasWarnedMissingSmokeSeries = true;
 			UE_LOG(LogBRiskDataSubsystem, Warning,
-				TEXT("B-Risk smoke visualizer could not find one or more visual channels (HGT_1, ULOD_1, ULT_1); missing channels use clear/ambient defaults."));
+				TEXT("B-Risk smoke visualizer could not find one or more visual channels (HGT_1, ULOD_1, LLOD_1, ULT_1); missing channels use clear/ambient defaults."));
 		}
 
 		const FBRiskSmokeVisualState SmokeState = bHasLayerHeight
 			? ComputeSmokeVisualState(
 				LayerHeight,
 				ScenarioData.Rooms[RoomIndex].Size.Z,
+				ScenarioData.Rooms[RoomIndex].Origin.Z,
+				RoomGeometryScale,
 				bHasUpperOpticalDensity ? UpperOpticalDensity : 0.0,
+				bHasLowerOpticalDensity ? LowerOpticalDensity : 0.0,
 				bHasUpperTemperature ? UpperTemperatureC : 24.0,
 				bHasLowerTemperature ? LowerTemperatureC : 24.0)
 			: FBRiskSmokeVisualState();
 
 		UE_LOG(LogBRiskDataSubsystem, Log,
-			TEXT("B-Risk smoke sample: room=%d zone=%d time=%g HGT_1=%g ULOD_1=%g ULT_1=%g LLT_1=%g roomHeight=%g RoomSmoke=%g SmokeDensity=%g SmokeHeat=%g"),
+			TEXT("B-Risk smoke sample: room=%d zone=%d time=%g HGT_1=%g ULOD_1=%g LLOD_1=%g ULT_1=%g LLT_1=%g roomHeight=%g RoomSmoke=%g UpperExtinctionPerCm=%g LowerExtinctionPerCm=%g SmokeDensity=%g SmokeHeat=%g"),
 			RoomIndex,
 			RoomIndex,
 			TimeSeconds,
 			bHasLayerHeight ? LayerHeight : -1.0,
 			bHasUpperOpticalDensity ? UpperOpticalDensity : -1.0,
+			bHasLowerOpticalDensity ? LowerOpticalDensity : -1.0,
 			bHasUpperTemperature ? UpperTemperatureC : -1.0,
 			bHasLowerTemperature ? LowerTemperatureC : -1.0,
 			ScenarioData.Rooms[RoomIndex].Size.Z,
 			SmokeState.RoomSmoke,
+			SmokeState.UpperExtinctionPerCm,
+			SmokeState.LowerExtinctionPerCm,
 			SmokeState.SmokeDensity,
 			SmokeState.SmokeHeat);
 
@@ -1074,15 +1084,26 @@ float UBRiskDataSubsystem::ComputeRoomSmokeScalar(double LayerHeight, double Roo
 FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 	double LayerHeight,
 	double RoomHeight,
+	double RoomOriginZMeters,
+	float GeometryScaleCmPerMeter,
 	double UpperOpticalDensity,
+	double LowerOpticalDensity,
 	double UpperTemperatureC,
 	double LowerTemperatureC)
 {
 	FBRiskSmokeVisualState SmokeState;
+	const double ClampedUpperOpticalDensity = FMath::Max(UpperOpticalDensity, 0.0);
+	const double ClampedLowerOpticalDensity = FMath::Max(LowerOpticalDensity, 0.0);
+
 	SmokeState.RoomSmoke = ComputeRoomSmokeScalar(LayerHeight, RoomHeight);
-	SmokeState.UpperOpticalDensity = FMath::Max(static_cast<float>(UpperOpticalDensity), 0.0f);
+	SmokeState.UpperOpticalDensity = static_cast<float>(ClampedUpperOpticalDensity);
+	SmokeState.LowerOpticalDensity = static_cast<float>(ClampedLowerOpticalDensity);
+	SmokeState.UpperExtinctionPerCm = static_cast<float>(ClampedUpperOpticalDensity * BRiskOpticalDensityToExtinctionPerCm);
+	SmokeState.LowerExtinctionPerCm = static_cast<float>(ClampedLowerOpticalDensity * BRiskOpticalDensityToExtinctionPerCm);
+	// SmokeDensity is a 0-1 UI/activation proxy (used for Niagara enable threshold + fallback cube),
+	// not physical extinction. The material should use UpperExtinctionPerCm/LowerExtinctionPerCm.
 	SmokeState.SmokeDensity = FMath::Clamp(
-		static_cast<float>(1.0 - FMath::Exp(-0.35 * FMath::Max(UpperOpticalDensity, 0.0))),
+		static_cast<float>(1.0 - FMath::Exp(-0.35 * ClampedUpperOpticalDensity)),
 		0.0f,
 		1.0f);
 	SmokeState.UpperTemperatureC = static_cast<float>(UpperTemperatureC);
@@ -1091,6 +1112,8 @@ FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 		static_cast<float>((UpperTemperatureC - 24.0) / 200.0),
 		0.0f,
 		1.0f);
+	SmokeState.LayerHeightWorldCm = static_cast<float>((RoomOriginZMeters + LayerHeight) * static_cast<double>(GeometryScaleCmPerMeter));
+	SmokeState.LayerSoftnessCm = 5.0f;
 	return SmokeState;
 }
 

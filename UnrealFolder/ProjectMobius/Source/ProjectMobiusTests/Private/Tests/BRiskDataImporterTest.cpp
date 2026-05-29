@@ -244,7 +244,10 @@ bool FBRiskSmokeMappingTest::RunTest(const FString& Parameters)
 	const FBRiskSmokeVisualState ClearState = UBRiskDataSubsystem::ComputeSmokeVisualState(
 		2.59974,
 		2.6,
+		0.0,
+		100.0f,
 		0.00045,
+		0.0002,
 		24.0,
 		23.0);
 	TestTrue(TEXT("Near-full layer height should be nearly clear"),
@@ -258,7 +261,10 @@ bool FBRiskSmokeMappingTest::RunTest(const FString& Parameters)
 	const FBRiskSmokeVisualState MidState = UBRiskDataSubsystem::ComputeSmokeVisualState(
 		1.3883,
 		2.6,
+		0.0,
+		100.0f,
 		4.45,
+		0.2,
 		222.0,
 		80.0);
 	TestTrue(TEXT("100s layer height should map to expected RoomSmoke"),
@@ -270,9 +276,29 @@ bool FBRiskSmokeMappingTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Upper optical density should be preserved in state"),
 		MidState.UpperOpticalDensity,
 		4.45f);
+	TestEqual(TEXT("Lower optical density should be preserved in state"),
+		MidState.LowerOpticalDensity,
+		0.2f);
+	TestTrue(TEXT("Upper optical density should convert to extinction per cm"),
+		FMath::IsNearlyEqual(MidState.UpperExtinctionPerCm, 0.102465f, 0.000001f));
+	TestTrue(TEXT("Lower optical density should convert to extinction per cm"),
+		FMath::IsNearlyEqual(MidState.LowerExtinctionPerCm, 0.00460517f, 0.000001f));
 	TestEqual(TEXT("Lower-layer temperature should be preserved in state"),
 		MidState.LowerTemperatureC,
 		80.0f);
+
+	const FBRiskSmokeVisualState MissingLowerState = UBRiskDataSubsystem::ComputeSmokeVisualState(
+		1.3883,
+		2.6,
+		0.0,
+		100.0f,
+		4.45,
+		0.0,
+		222.0,
+		80.0);
+	TestEqual(TEXT("Missing LLOD_1 fallback should produce zero lower extinction"),
+		MissingLowerState.LowerExtinctionPerCm,
+		0.0f);
 
 	return true;
 }
