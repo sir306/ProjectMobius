@@ -27,6 +27,7 @@
 #include "MassSpawnerSubsystem.h"
 // Fragments
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/Fragments/AgentEgressHealthFragments.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Actors to include
@@ -697,6 +698,8 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	PedestrianTemplateData.AddFragment<FEntityMovementFragment>();
 	PedestrianTemplateData.AddFragment<FEntityRenderingFragment>();
 	PedestrianTemplateData.AddFragment<FEntityCollisionFragment>();
+	PedestrianTemplateData.AddFragment<FAgentBRiskExposureFragment>();
+	PedestrianTemplateData.AddFragment<FAgentEgressHealthFragment>();
 
 	// Add the tag to prevent collision updates
 	PedestrianTemplateData.AddTag<FPedestrianCollisionsDisabled>();

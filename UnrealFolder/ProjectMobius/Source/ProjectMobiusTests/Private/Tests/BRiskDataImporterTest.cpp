@@ -4,6 +4,7 @@
 
 #include "BRiskDataImporter.h"
 #include "BRisk/BRiskDataSubsystem.h"
+#include "BRisk/BRiskEgressSubsystem.h"
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
@@ -143,6 +144,74 @@ bool FBRiskDataImporterSuccessTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Expected sprinkler response time"), Data.Sprinklers[0].ActivationTimeSeconds, 86.0);
 	TestEqual(TEXT("Expected sprinkler radius"), Data.Sprinklers[0].SprayRadius, 3.25);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskEgressHealthRewindHistoryTest,
+	"ProjectMobius.BRisk.EgressHealth.RewindHistory",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskEgressHealthRewindHistoryTest::RunTest(const FString& Parameters)
+{
+	UBRiskEgressSubsystem* EgressSubsystem = NewObject<UBRiskEgressSubsystem>();
+	TestNotNull(TEXT("Egress subsystem test object should be created"), EgressSubsystem);
+	if (!EgressSubsystem)
+	{
+		return false;
+	}
+
+	FAgentEgressHealthFragment Health;
+	EgressSubsystem->RecordAgentHealth(7, 0.0f, Health);
+
+	Health.Health = 0.5f;
+	Health.CombinedHazardDose = 0.5f;
+	EgressSubsystem->RecordAgentHealth(7, 5.0f, Health);
+
+	Health.Health = 0.0f;
+	Health.CombinedHazardDose = 1.0f;
+	Health.DeathTimeSeconds = 10.0f;
+	Health.bIsDead = true;
+	EgressSubsystem->RecordAgentHealth(7, 10.0f, Health);
+
+	FAgentEgressHealthFragment RestoredHealth;
+	RestoredHealth.DeathTimeSeconds = 10.0f;
+	TestTrue(
+		TEXT("A recorded agent should restore at a rewind time"),
+		EgressSubsystem->RestoreAgentHealth(7, 3.0f, RestoredHealth));
+	TestTrue(
+		TEXT("Health at three seconds should interpolate to 70 percent"),
+		FMath::IsNearlyEqual(RestoredHealth.Health, 0.7f));
+	TestFalse(TEXT("Agent should be alive before its death time"), RestoredHealth.bIsDead);
+
+	TestTrue(
+		TEXT("A recorded agent should restore at its death time"),
+		EgressSubsystem->RestoreAgentHealth(7, 10.0f, RestoredHealth));
+	TestEqual(TEXT("Health at death should be zero"), RestoredHealth.Health, 0.0f);
+	TestTrue(TEXT("Agent should be dead at its death time"), RestoredHealth.bIsDead);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskIndependentLoadDefaultsTest,
+	"ProjectMobius.BRisk.Loading.IndependentDefaults",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskIndependentLoadDefaultsTest::RunTest(const FString& Parameters)
+{
+	const UBRiskDataSubsystem* DataSubsystem = NewObject<UBRiskDataSubsystem>();
+	TestNotNull(TEXT("B-Risk data subsystem test object should be created"), DataSubsystem);
+	if (!DataSubsystem)
+	{
+		return false;
+	}
+
+	TestFalse(
+		TEXT("B-Risk loads should not replace the existing runtime building mesh by default"),
+		DataSubsystem->GetAutoGenerateRoomGeometryOnLoad());
+	TestFalse(
+		TEXT("B-Risk loads should not replace agent playback duration or timestep by default"),
+		DataSubsystem->GetConfigureSharedPlaybackOnLoad());
 	return true;
 }
 

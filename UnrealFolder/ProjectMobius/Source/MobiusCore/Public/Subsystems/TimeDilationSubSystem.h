@@ -267,7 +267,7 @@ private:
 public:
 #pragma region PUBLIC_GETTERS_SETTERS
 	/** Get the current simulation time */
-	FORCEINLINE float GetCurrentSimTime() 
+	FORCEINLINE float GetCurrentSimTime() const
 	{
 		UE_MT_SCOPED_READ_ACCESS(AccessDetector);
 		//UpdateSimulationTime(); // we only want to update the simulation time when we need it not every frame

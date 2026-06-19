@@ -29,6 +29,7 @@
 #include "MassExecutionContext.h"
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
+#include "MassAI/Fragments/AgentEgressHealthFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
@@ -62,6 +63,7 @@ void UPedestrianMovementProcessor::ConfigureQueries()
 	// The Entity Query Required fragments for this processor
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadOnly);
 	// Required Query Tags
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::Optional);
 
@@ -107,10 +109,31 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			{
 				// Entity Rendering Fragment
 				const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
+				const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
+				const TConstArrayView<FAgentEgressHealthFragment> AgentHealthFragments =
+					Context.GetFragmentView<FAgentEgressHealthFragment>();
 				
 				ParallelFor(EntityRenderingFragment.Num(), [&](int32 i)
 				{
-					EntityRenderingFragment[i].bRenderAgent = false;
+					const FAgentEgressHealthFragment& Health = AgentHealthFragments[i];
+					const bool bDeadAtCurrentTime =
+						Health.DeathTimeSeconds >= 0.0f
+						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
+					if (bDeadAtCurrentTime)
+					{
+						EntityMovementFragment[i].CurrentLocation = Health.DeathLocation;
+						EntityMovementFragment[i].CurrentRotation = Health.DeathRotation;
+						EntityMovementFragment[i].CurrentSpeed = 0.0f;
+						EntityMovementFragment[i].CurrentMovementBracket =
+							EPedestrianMovementBracket::Emb_NotMoving;
+						EntityRenderingFragment[i].bRenderAgent = true;
+						EntityRenderingFragment[i].bReadyToDestroy = false;
+						EntityRenderingFragment[i].bAnimationChanged = true;
+					}
+					else
+					{
+						EntityRenderingFragment[i].bRenderAgent = false;
+					}
 				});
 				
 				return;
@@ -167,6 +190,8 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Get the required fragments
 			const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 			const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
+			const TConstArrayView<FAgentEgressHealthFragment> AgentHealthFragments =
+				Context.GetFragmentView<FAgentEgressHealthFragment>();
 
 			auto Entities = Context.GetEntities();
 			
@@ -179,6 +204,22 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					// Get mutable fragments for the entity
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
+
+					const FAgentEgressHealthFragment& Health = AgentHealthFragments[i];
+					const bool bDeadAtCurrentTime =
+						Health.DeathTimeSeconds >= 0.0f
+						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
+					if (bDeadAtCurrentTime)
+					{
+						MoveFrag.CurrentLocation = Health.DeathLocation;
+						MoveFrag.CurrentRotation = Health.DeathRotation;
+						MoveFrag.CurrentSpeed = 0.0f;
+						MoveFrag.CurrentMovementBracket = EPedestrianMovementBracket::Emb_NotMoving;
+						RenderFrag.bRenderAgent = true;
+						RenderFrag.bReadyToDestroy = false;
+						RenderFrag.bAnimationChanged = true;
+						return;
+					}
 
 					// Default: do not render the agent unless confirmed valid
 					RenderFrag.bRenderAgent = false;
@@ -207,6 +248,22 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					// Get mutable fragments for the entity
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
+
+					const FAgentEgressHealthFragment& Health = AgentHealthFragments[i];
+					const bool bDeadAtCurrentTime =
+						Health.DeathTimeSeconds >= 0.0f
+						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
+					if (bDeadAtCurrentTime)
+					{
+						MoveFrag.CurrentLocation = Health.DeathLocation;
+						MoveFrag.CurrentRotation = Health.DeathRotation;
+						MoveFrag.CurrentSpeed = 0.0f;
+						MoveFrag.CurrentMovementBracket = EPedestrianMovementBracket::Emb_NotMoving;
+						RenderFrag.bRenderAgent = true;
+						RenderFrag.bReadyToDestroy = false;
+						RenderFrag.bAnimationChanged = true;
+						return;
+					}
 
 					// Default: do not render the agent unless confirmed valid
 					RenderFrag.bRenderAgent = false;
@@ -367,6 +424,7 @@ void UPedestrianMovementProcessor::SetupSubSystems(FMassExecutionContext& Execut
 	{
 		// Get the current time step
 		SetCurrentTimeStep(TimeDilationSubSystem->GetCurrentTimeStep());
+		CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
 
 		// Update flag to true so we don't check again
 		bAreSubSystemsSetup = true;

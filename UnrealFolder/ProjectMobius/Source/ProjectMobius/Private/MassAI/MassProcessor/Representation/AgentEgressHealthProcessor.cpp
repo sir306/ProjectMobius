@@ -3,7 +3,9 @@
 #include "MassAI/MassProcessor/Representation/AgentEgressHealthProcessor.h"
 
 #include "MassExecutionContext.h"
+#include "MassAI/Fragments/AgentEgressHealthFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.h"
 #include "MassAI/Tags/MassAITags.h"
 #include "Subsystems/StatisticSubsystem.h"
 
@@ -13,13 +15,14 @@ UAgentEgressHealthProcessor::UAgentEgressHealthProcessor()
 	bRequiresGameThreadExecution = true;
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 	ProcessingPhase = EMassProcessingPhase::PostPhysics;
-	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::Avoidance);
+	ExecutionOrder.ExecuteAfter.Add(UAgentEgressHealthCalculationProcessor::StaticClass()->GetFName());
 }
 
 void UAgentEgressHealthProcessor::ConfigureQueries()
 {
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::None);
 	EntityQuery.AddTagRequirement<FMassEntityRepresentationTag>(EMassFragmentPresence::All);
 	EntityQuery.RegisterWithProcessor(*this);
@@ -49,6 +52,8 @@ void UAgentEgressHealthProcessor::Execute(
 				Context.GetFragmentView<FEntityMovementFragment>();
 			const TConstArrayView<FEntityRenderingFragment> RenderingFragments =
 				Context.GetFragmentView<FEntityRenderingFragment>();
+			const TConstArrayView<FAgentEgressHealthFragment> HealthFragments =
+				Context.GetFragmentView<FAgentEgressHealthFragment>();
 
 			for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
 			{
@@ -62,14 +67,9 @@ void UAgentEgressHealthProcessor::Execute(
 				AgentEgressHealthData.Emplace(
 					Rendering.EntityID,
 					Movement.CurrentLocation,
-					ComputePreviewHealth(Rendering.EntityID));
+					HealthFragments[EntityIndex].Health);
 			}
 		});
 
 	StatisticSubsystem->PublishAgentEgressHealthData(AgentEgressHealthData);
-}
-
-float UAgentEgressHealthProcessor::ComputePreviewHealth(const int32 AgentID)
-{
-	return static_cast<float>(AgentID % 101) / 100.0f;
 }

@@ -191,6 +191,7 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 	LastError.Reset();
 	ActiveSmvPath = SmvFilePath;
 	bIsLoading = false;
+	OnBRiskScenarioCleared.Broadcast();
 
 	if (SmvFilePath.IsEmpty())
 	{
@@ -242,7 +243,10 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 					Self->ScenarioData.Vents.Num(),
 					Self->ScenarioData.ZoneTables.Num());
 
-				Self->ConfigurePlaybackFromScenario();
+				if (Self->bConfigureSharedPlaybackOnLoad)
+				{
+					Self->ConfigurePlaybackFromScenario();
+				}
 
 				if (Self->bAutoGenerateRoomGeometryOnLoad)
 				{
@@ -282,6 +286,7 @@ void UBRiskDataSubsystem::ClearScenario()
 	LastError.Reset();
 	ActiveSmvPath.Reset();
 	bIsLoading = false;
+	OnBRiskScenarioCleared.Broadcast();
 }
 
 bool UBRiskDataSubsystem::HasScenarioData() const

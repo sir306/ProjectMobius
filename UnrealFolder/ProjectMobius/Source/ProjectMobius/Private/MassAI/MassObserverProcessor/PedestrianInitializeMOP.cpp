@@ -30,6 +30,7 @@
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/Fragments/AgentEgressHealthFragments.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 // Subsystems to include with the processor
@@ -48,6 +49,7 @@
 #include "Subsystems/HeatmapSubsystem.h"
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "BRisk/BRiskEgressSubsystem.h"
 
 UPedestrianInitializeMOP::UPedestrianInitializeMOP()
 {
@@ -69,6 +71,8 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityCollisionFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FAgentBRiskExposureFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadWrite);
 
 	// Register the entity query with the processor
 	EntityQuery.RegisterWithProcessor(*this);
@@ -78,6 +82,7 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 
 	// Heatmap module subsystem
 	ProcessorRequirements.AddSubsystemRequirement<UHeatmapSubsystem>(EMassFragmentAccess::ReadWrite);
+	ProcessorRequirements.AddSubsystemRequirement<UBRiskEgressSubsystem>(EMassFragmentAccess::ReadOnly);
 
 	//ProcessorRequirements.AddSubsystemRequirement<UAgentDataSubsystem>(EMassFragmentAccess::ReadOnly);
 }
@@ -90,6 +95,8 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 	// Get the current time dilation subsystem time step
 	const UTimeDilationSubSystem* TimeDilationSubSystem = ExecutionContext.GetSubsystem<UTimeDilationSubSystem>();
+	const UBRiskEgressSubsystem* BRiskEgressSubsystem =
+		ExecutionContext.GetSubsystem<UBRiskEgressSubsystem>();
 	
 	int32 CurrentTimeStep = TimeDilationSubSystem->GetCurrentTimeStep();
 
@@ -123,7 +130,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 	int32 MaxAgentCount = AgentDataSubsystem->GetMaxAgents();
 	
 	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, &EntityIndexOffset, CurrentTimeStep, &UniqueZValues, LoadingSubsystem, MaxAgentCount](FMassExecutionContext& Context) {
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, &EntityIndexOffset, CurrentTimeStep, &UniqueZValues, LoadingSubsystem, MaxAgentCount, BRiskEgressSubsystem](FMassExecutionContext& Context) {
 
 		//UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute"));
 
@@ -138,6 +145,10 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 		const TArrayView<FEntityMovementFragment>& EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
+		const TArrayView<FAgentBRiskExposureFragment>& AgentExposureFragments =
+			Context.GetMutableFragmentView<FAgentBRiskExposureFragment>();
+		const TArrayView<FAgentEgressHealthFragment>& AgentHealthFragments =
+			Context.GetMutableFragmentView<FAgentEgressHealthFragment>();
 
 		// check timestep index is valid
 		if (!SharedAgentMovement.SimulationData.IsValid() || SharedAgentMovement.SimulationData->Num() - 1 < CurrentTimeStep)
@@ -205,6 +216,43 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			
 			UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();			
 			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndexOffset, EntityRendering);
+
+			FAgentBRiskExposureFragment& AgentExposure = AgentExposureFragments[i];
+			FAgentEgressHealthFragment& AgentHealth = AgentHealthFragments[i];
+			AgentExposure = FAgentBRiskExposureFragment();
+			AgentHealth = FAgentEgressHealthFragment();
+
+			switch (EntityRendering.AgeDemographic)
+			{
+			case EAgeDemographic::Ead_Child:
+				AgentExposure.BreathingHeightCm = 115.0f;
+				break;
+			case EAgeDemographic::Ead_Elderly:
+				AgentExposure.BreathingHeightCm = 145.0f;
+				break;
+			default:
+				AgentExposure.BreathingHeightCm = 160.0f;
+				break;
+			}
+
+			if (BRiskEgressSubsystem)
+			{
+				AgentExposure.SourceScenarioGeneration =
+					BRiskEgressSubsystem->GetScenarioGeneration();
+				FAgentBRiskHazardSample InitialHazardSample;
+				if (BRiskEgressSubsystem->SampleAgentEnvironment(
+					EntityMovement.CurrentLocation,
+					AgentExposure.BreathingHeightCm,
+					InitialHazardSample))
+				{
+					UE::Mobius::EgressHealth::ApplyCurrentHazardSample(
+						AgentExposure,
+						InitialHazardSample);
+					AgentExposure.LastSampleTimeSeconds = InitialHazardSample.SampleTimeSeconds;
+					AgentExposure.IntegratedThroughTimeSeconds =
+						InitialHazardSample.SampleTimeSeconds;
+				}
+			}
 
 			// check all movement samples so we can get all unique Z values
 			if (!UniqueZValues.Contains(ZValue))

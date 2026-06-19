@@ -24,8 +24,6 @@ protected:
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& ExecutionContext) override;
 
 private:
-	static float ComputePreviewHealth(int32 AgentID);
-
 	UPROPERTY()
 	FMassEntityQuery EntityQuery;
 

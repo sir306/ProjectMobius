@@ -16,12 +16,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBRiskScenarioLoaded, bool, bSucce
 /** Broadcast on the game thread when the active B-Risk rooms have procedural geometry ready. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBRiskGeometryReady);
 
+/** Broadcast when active B-Risk scenario data is discarded or replaced. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBRiskScenarioCleared);
+
 class ABRiskHazardVisualizer;
 class ABRiskSmokeVisualizer;
 class UTimeDilationSubSystem;
 
 /** World subsystem that owns the active B-Risk scenario. */
-UCLASS()
+UCLASS(Config = Game, DefaultConfig)
 class PROJECTMOBIUS_API UBRiskDataSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
@@ -134,6 +137,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "B-Risk|Geometry")
 	bool GetAutoGenerateRoomGeometryOnLoad() const { return bAutoGenerateRoomGeometryOnLoad; }
 
+	/** Allow B-Risk to own the shared play-bar duration and timestep. Disabled when agent playback owns the timeline. */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Playback")
+	void SetConfigureSharedPlaybackOnLoad(bool bEnabled) { bConfigureSharedPlaybackOnLoad = bEnabled; }
+
+	UFUNCTION(BlueprintPure, Category = "B-Risk|Playback")
+	bool GetConfigureSharedPlaybackOnLoad() const { return bConfigureSharedPlaybackOnLoad; }
+
 	/** Set the scale used when converting B-Risk room metres into Unreal units. Default is 100 cm per metre. */
 	UFUNCTION(BlueprintCallable, Category = "B-Risk|Geometry")
 	void SetRoomGeometryScale(float InScale);
@@ -216,6 +226,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "B-Risk|Delegates")
 	FOnBRiskGeometryReady OnBRiskGeometryReady;
 
+	/** Fired when the active scenario cache is cleared, including before replacement loads. */
+	UPROPERTY(BlueprintAssignable, Category = "B-Risk|Delegates")
+	FOnBRiskScenarioCleared OnBRiskScenarioCleared;
+
 	/** Returns the full parsed scenario. Valid after OnBRiskScenarioLoaded fires with bSuccess = true. */
 	const FBRiskScenarioData& GetScenarioData() const { return ScenarioData; }
 
@@ -297,9 +311,36 @@ private:
 	FBRiskScenarioData ScenarioData;
 	FString LastError;
 	FString ActiveSmvPath;
-	bool bAutoGenerateRoomGeometryOnLoad = true;
+
+	/**
+	 * When enabled, loading an SMV replaces the current RuntimeMeshBuilder mesh
+	 * with the simple ROOM/VENT geometry exported by B-Risk. Leave disabled to
+	 * preserve a separately loaded high-poly building mesh.
+	 */
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadWrite,
+		Config,
+		Category = "B-Risk|Loading",
+		meta = (AllowPrivateAccess = "true", DisplayName = "Use B-Risk Room Geometry On Load"))
+	bool bAutoGenerateRoomGeometryOnLoad = false;
+
 	bool bAutoGenerateSmokeVolumesOnLoad = true;
 	bool bAutoGenerateHazardVisualsOnLoad = true;
+
+	/**
+	 * When enabled, the SMV Time column owns the shared simulation duration,
+	 * timestep, current time and pause state. Leave disabled when agent movement
+	 * data owns the common playback timeline.
+	 */
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadWrite,
+		Config,
+		Category = "B-Risk|Loading",
+		meta = (AllowPrivateAccess = "true", DisplayName = "Use B-Risk Playback Timing On Load"))
+	bool bConfigureSharedPlaybackOnLoad = false;
+
 	bool bHasWarnedMissingSmokeSeries = false;
 	bool bHasWarnedMissingSmokeComponent = false;
 	bool bHasWarnedMissingHazardSeries = false;

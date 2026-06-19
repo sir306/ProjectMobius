@@ -29,7 +29,9 @@
 #include "MassExecutionContext.h"
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
+#include "MassAI/Fragments/AgentEgressHealthFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Tags
@@ -53,6 +55,7 @@ UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::Avoidance);
+	ExecutionOrder.ExecuteAfter.Add(UAgentEgressHealthCalculationProcessor::StaticClass()->GetFName());
 
 	bRequiresGameThreadExecution = true;
 }
@@ -62,6 +65,7 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 	// The Entity Query Required fragments for this processor;
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadOnly);
 
 	// Add the shared Niagara representation fragment
 	EntityQuery.AddSharedRequirement<FAgentNiagaraDataFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
@@ -166,6 +170,8 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	// Get the entity Rendering fragment
 	const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
+	const TConstArrayView<FAgentEgressHealthFragment> AgentHealthFragments =
+		Context.GetFragmentView<FAgentEgressHealthFragment>();
 
 	auto Entities = Context.GetEntities();
 
@@ -173,6 +179,7 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	{
 		auto EntityMovement = EntityMovementFragment[i];
 		auto& EntityRendering = EntityRenderingFragment[i];
+		const bool bIsDead = AgentHealthFragments[i].bIsDead;
 
 		// Get the entity instance index
 		int32 EntityInstanceID = EntityRendering.InstanceID;
@@ -180,18 +187,18 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 		// check if the entity is a child
 		if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
 		{
-			SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+			SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
 		}
 		// check if elderly
 		else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
 		{
 			if (EntityRendering.bIsMale)
 			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
 			}
 			else
 			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 			}
 
 		}
@@ -199,21 +206,31 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 		{
 			if (EntityRendering.bIsMale)
 			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
 			}
 			else
 			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
+				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 			}
 		}
 	}
 }
 
-void UNiagaraAgentRepProcessor::SetAgentData(int32 Index, const FEntityMovementFragment EntityMovementFragment, FEntityRenderingFragment& EntityRenderingFragment, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates)
+void UNiagaraAgentRepProcessor::SetAgentData(
+	int32 Index,
+	const FEntityMovementFragment EntityMovementFragment,
+	FEntityRenderingFragment& EntityRenderingFragment,
+	const bool bIsDead,
+	TArray<FVector4>& LocationAndScales,
+	TArray<FQuat>& Rotations,
+	TArray<int32>& AnimationStates)
 {
 	LocationAndScales[Index] = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, EntityRenderingFragment.bRenderAgent ? 1.0f : 0.0f);
 	Rotations[Index] = EntityMovementFragment.CurrentRotation.Quaternion();
-	AnimationStates[Index] = GetIntAnimState(EntityMovementFragment.CurrentMovementBracket);
+	// TODO: Replace the stopped death animation with hiding the mesh and placing a death marker at the agent location.
+	AnimationStates[Index] = bIsDead
+		? GetIntAnimState(EPedestrianMovementBracket::Emb_NotMoving)
+		: GetIntAnimState(EntityMovementFragment.CurrentMovementBracket);
 
 	// update entity destroy state
 	EntityRenderingFragment.bReadyToDestroy = !EntityRenderingFragment.bRenderAgent;
