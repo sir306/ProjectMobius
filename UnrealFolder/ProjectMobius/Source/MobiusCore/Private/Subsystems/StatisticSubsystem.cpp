@@ -94,6 +94,23 @@ FAgentMeshViewer UStatisticSubsystem::GetHoveredAgentInfoMeshData()
 	return HoveredAgentData;
 }
 
+void UStatisticSubsystem::PublishAgentEgressHealthData(TArray<FAgentEgressHealthViewer>& InOutAgentData)
+{
+	Swap(AgentEgressHealthData, InOutAgentData);
+	++AgentEgressHealthRevision;
+}
+
+TConstArrayView<FAgentEgressHealthViewer> UStatisticSubsystem::GetAgentEgressHealthData() const
+{
+	return AgentEgressHealthData;
+}
+
+void UStatisticSubsystem::ClearAgentEgressHealthData()
+{
+	AgentEgressHealthData.Reset();
+	++AgentEgressHealthRevision;
+}
+
 void UStatisticSubsystem::UpdateFlowCounters()
 {
 	if (!GetWorld()){return;}
@@ -229,6 +246,7 @@ void UStatisticSubsystem::ResetForFileSwitch()
 	PedestrianAgentData.Empty();
 	SelectedAgentData = FAgentMeshViewer();
 	HoveredAgentData = FAgentMeshViewer();
+	ClearAgentEgressHealthData();
 
 	OnSelectedAgentInfoChanged.Broadcast();
 
