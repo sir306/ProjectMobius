@@ -4,20 +4,39 @@
 
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
+#include "Fonts/SlateFontInfo.h"
 #include "GameFramework/PlayerController.h"
+#include "Rendering/DrawElements.h"
 #include "SceneView.h"
 #include "Slate/SlateVectorArtData.h"
 #include "Slate/SlateVectorArtInstanceData.h"
-#include "UI/InWorld/AgentEgressHealthWidget.h"
+#include "Styling/CoreStyle.h"
+#include "UI/InWorld/AgentEgressTenabilityWidget.h"
 
-void SAgentEgressHealth::Construct(const FArguments& InArgs, UAgentEgressHealthWidget& InThis)
+namespace
+{
+	const TCHAR* TenabilityCriterionLabel(const uint8 Criterion)
+	{
+		switch (Criterion)
+		{
+		case 1: return TEXT("VIS");
+		case 2: return TEXT("TOX");
+		case 3: return TEXT("THR");
+		case 4: return TEXT("TMP");
+		case 5: return TEXT("LYR");
+		default: return TEXT("---");
+		}
+	}
+}
+
+void SAgentEgressTenability::Construct(const FArguments& InArgs, UAgentEgressTenabilityWidget& InThis)
 {
 	ParentWidget = &InThis;
 	SetCanTick(true);
 	ForceVolatile(true);
 }
 
-void SAgentEgressHealth::SetMeshAsset(
+void SAgentEgressTenability::SetMeshAsset(
 	USlateVectorArtData* InMeshAsset,
 	const int32 InitialInstanceCapacity)
 {
@@ -27,14 +46,14 @@ void SAgentEgressHealth::SetMeshAsset(
 	}
 }
 
-void SAgentEgressHealth::Tick(
+void SAgentEgressTenability::Tick(
 	const FGeometry& AllottedGeometry,
 	const double InCurrentTime,
 	const float InDeltaTime)
 {
 	SMeshWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-	UAgentEgressHealthWidget* Widget = ParentWidget.Get();
+	UAgentEgressTenabilityWidget* Widget = ParentWidget.Get();
 	if (!Widget || MeshId == MAX_uint32)
 	{
 		return;
@@ -72,11 +91,14 @@ void SAgentEgressHealth::Tick(
 		LocalWidgetSize.X / ViewportSize.X,
 		LocalWidgetSize.Y / ViewportSize.Y);
 
-	const TConstArrayView<FAgentEgressHealthViewer> AgentData = Widget->GetAgentEgressHealthData();
+	const TConstArrayView<FAgentEgressTenabilityViewer> AgentData = Widget->GetAgentEgressTenabilityData();
 	FSlateInstanceBufferData PerInstanceUpdate;
 	PerInstanceUpdate.Reserve(AgentData.Num());
 
-	for (const FAgentEgressHealthViewer& Agent : AgentData)
+	const bool bWantDebug = Widget->bShowDebugText;
+	DebugMarkers.Reset(bWantDebug ? AgentData.Num() : 0);
+
+	for (const FAgentEgressTenabilityViewer& Agent : AgentData)
 	{
 		if (Agent.AgentID < 0)
 		{
@@ -117,17 +139,40 @@ void SAgentEgressHealth::Tick(
 		const FVector2D WidgetLocalPosition = PixelPosition * PixelToWidgetScale;
 		const FVector2D AbsolutePosition = AllottedGeometry.LocalToAbsolute(WidgetLocalPosition);
 
+		// Encode tenability into the single instance data scalar:
+		//   value = ShownCriterion + clamp(DisplayRisk, 0, 0.999)
+		// The material decodes floor() -> criterion (0=None..5=LayerHeight) for the
+		// icon/accent colour, and frac() -> DisplayRisk for the bar fill length.
+		// Use the live current dominant criterion so the bar reflects the scrubbed
+		// time (the first-failure criterion is retained separately for ASET analytics).
+		const uint8 ShownCriterion = Agent.CurrentDominantCriterion;
+		const float EncodedTenability =
+			static_cast<float>(ShownCriterion) + FMath::Clamp(Agent.DisplayRisk, 0.0f, 0.999f);
+
 		FSlateVectorArtInstanceData InstanceData;
 		InstanceData.SetPosition(AbsolutePosition);
 		InstanceData.SetScale(InstanceScale);
-		InstanceData.SetBaseAddress(FMath::Clamp(Agent.AgentEgressHealth, 0.0f, 1.0f));
+		InstanceData.SetBaseAddress(EncodedTenability);
 		PerInstanceUpdate.Add(FVector4f(InstanceData.GetData()));
+
+		if (bWantDebug)
+		{
+			FDebugMarker& Marker = DebugMarkers.AddDefaulted_GetRef();
+			Marker.LocalPosition = WidgetLocalPosition;
+			Marker.Scale = InstanceScale;
+			Marker.DisplayRisk = Agent.DisplayRisk;
+			Marker.ShownCriterion = ShownCriterion;
+			Marker.CurrentVisibilityM = Agent.CurrentVisibilityM;
+			Marker.AccumulatedToxicFED = Agent.AccumulatedToxicFED;
+			Marker.AccumulatedThermalFED = Agent.AccumulatedThermalFED;
+			Marker.CurrentTemperatureC = Agent.CurrentTemperatureC;
+		}
 	}
 
 	UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
 }
 
-int32 SAgentEgressHealth::OnPaint(
+int32 SAgentEgressTenability::OnPaint(
 	const FPaintArgs& Args,
 	const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect,
@@ -136,7 +181,7 @@ int32 SAgentEgressHealth::OnPaint(
 	const FWidgetStyle& InWidgetStyle,
 	const bool bParentEnabled) const
 {
-	return SMeshWidget::OnPaint(
+	int32 MaxLayerId = SMeshWidget::OnPaint(
 		Args,
 		AllottedGeometry,
 		MyCullingRect,
@@ -144,10 +189,46 @@ int32 SAgentEgressHealth::OnPaint(
 		LayerId,
 		InWidgetStyle,
 		bParentEnabled);
+
+	if (DebugMarkers.Num() == 0)
+	{
+		return MaxLayerId;
+	}
+
+	// Per-agent debug text: "<CRIT> R<DisplayRisk> v<vis> fT<toxic> fR<thermal> T<temp>".
+	const int32 TextLayer = MaxLayerId + 1;
+	const FSlateFontInfo DebugFont = FCoreStyle::GetDefaultFontStyle("Bold", 7);
+	const FLinearColor TextColour(0.0f, 0.0f, 0.0f, 0.95f);
+
+	for (const FDebugMarker& Marker : DebugMarkers)
+	{
+		const FString Line = FString::Printf(
+			TEXT("%s R%.2f v%.0f fT%.2f fR%.2f T%.0f"),
+			TenabilityCriterionLabel(Marker.ShownCriterion),
+			Marker.DisplayRisk,
+			Marker.CurrentVisibilityM,
+			Marker.AccumulatedToxicFED,
+			Marker.AccumulatedThermalFED,
+			Marker.CurrentTemperatureC);
+
+		// Place the label just above the bar (bar sits at the projected point).
+		const FVector2D TextPos = Marker.LocalPosition - FVector2D(40.0f * Marker.Scale, 14.0f * Marker.Scale);
+		FSlateDrawElement::MakeText(
+			OutDrawElements,
+			TextLayer,
+			AllottedGeometry.ToPaintGeometry(FVector2D(160.0f, 12.0f), FSlateLayoutTransform(TextPos)),
+			Line,
+			DebugFont,
+			ESlateDrawEffect::None,
+			TextColour);
+	}
+
+	return TextLayer;
 }
 
-void SAgentEgressHealth::ClearInstances()
+void SAgentEgressTenability::ClearInstances()
 {
+	DebugMarkers.Reset();
 	if (MeshId != MAX_uint32)
 	{
 		FSlateInstanceBufferData EmptyData;

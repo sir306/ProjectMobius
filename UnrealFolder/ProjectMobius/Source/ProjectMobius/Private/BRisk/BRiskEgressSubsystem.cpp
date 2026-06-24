@@ -111,6 +111,21 @@ bool UBRiskEgressSubsystem::SampleAgentEnvironment(
 	OutSample.SootKgPerCubicMeter = Layer.SootKgPerCubicMeter;
 	OutSample.DirectGasFed = RoomState->DirectGasFed;
 	OutSample.DirectThermalFed = RoomState->DirectThermalFed;
+
+	// Track A: B-Risk calculated room values (monitor-height, cumulative FED).
+	OutSample.CalcFEDSum = RoomState->CalcFEDSum;
+	OutSample.CalcFEDRadSum = RoomState->CalcFEDRadSum;
+	OutSample.CalcVisibilityM = RoomState->CalcVisibilityM;
+	OutSample.CalcHeatReleaseKW = RoomState->CalcHeatReleaseKW;
+	OutSample.CalcLayerHeightM = RoomState->CalcLayerHeightM;
+	OutSample.CalcUpperTemperatureC = RoomState->CalcUpperTemperatureC;
+	OutSample.CalcLowerTemperatureC = RoomState->CalcLowerTemperatureC;
+	OutSample.bHasCalcFEDSum = RoomState->bHasCalcFEDSum;
+	OutSample.bHasCalcFEDRadSum = RoomState->bHasCalcFEDRadSum;
+	OutSample.bHasCalcVisibility = RoomState->bHasCalcVisibility;
+	OutSample.bHasCalcLayerHeight = RoomState->bHasCalcLayerHeight;
+	OutSample.bHasCalcTemperature = RoomState->bHasCalcTemperature;
+
 	OutSample.AvailableChannels = RoomState->AvailableChannels | Layer.AvailableChannels;
 	OutSample.bUpperLayer = bUpperLayer;
 	return true;
@@ -126,6 +141,8 @@ const FBRiskEgressRoomState* UBRiskEgressSubsystem::FindRoomStateAtLocation(
 		return &RoomStates[PreferredRoomIndex];
 	}
 
+	// When rooms overlap (e.g. a corridor modelled inside a larger B-Risk zone),
+	// the smallest enclosing volume is the most specific spatial match for the agent.
 	const FBRiskEgressRoomState* BestMatch = nullptr;
 	double BestVolume = TNumericLimits<double>::Max();
 
@@ -155,7 +172,7 @@ const FBRiskEgressRoomState* UBRiskEgressSubsystem::FindRoomStateAtLocation(
 void UBRiskEgressSubsystem::RecordAgentHealth(
 	const int32 AgentId,
 	const float TimeSeconds,
-	const FAgentEgressHealthFragment& Health)
+	const FAgentEgressTenabilityFragment& Health)
 {
 	if (AgentId < 0 || TimeSeconds < 0.0f)
 	{
@@ -165,8 +182,9 @@ void UBRiskEgressSubsystem::RecordAgentHealth(
 	TArray<FAgentEgressHealthHistorySample>& History = AgentHealthHistory.FindOrAdd(AgentId);
 	FAgentEgressHealthHistorySample NewSample;
 	NewSample.TimeSeconds = TimeSeconds;
-	NewSample.Health = Health.Health;
-	NewSample.CombinedHazardDose = Health.CombinedHazardDose;
+	NewSample.DisplayRisk = Health.DisplayRisk;
+	NewSample.ShownCriterion = static_cast<uint8>(
+		Health.bTenabilityFailed ? Health.FirstFailureCriterion : Health.CurrentDominantCriterion);
 
 	if (!History.IsEmpty())
 	{
@@ -183,21 +201,24 @@ void UBRiskEgressSubsystem::RecordAgentHealth(
 		}
 	}
 
+	// Collapse collinear samples: if the new risk rate equals the previous interval's
+	// rate AND the shown criterion is unchanged, overwrite the tail rather than
+	// appending. Keeps the rewind history compact while preserving criterion changes.
 	if (History.Num() >= 2)
 	{
 		const FAgentEgressHealthHistorySample& PreviousSample = History[History.Num() - 2];
 		const FAgentEgressHealthHistorySample& LastSample = History.Last();
 		const float PreviousDuration = LastSample.TimeSeconds - PreviousSample.TimeSeconds;
 		const float NewDuration = NewSample.TimeSeconds - LastSample.TimeSeconds;
-		if (PreviousDuration > UE_KINDA_SMALL_NUMBER && NewDuration > UE_KINDA_SMALL_NUMBER)
+		if (PreviousDuration > UE_KINDA_SMALL_NUMBER && NewDuration > UE_KINDA_SMALL_NUMBER
+			&& LastSample.ShownCriterion == NewSample.ShownCriterion
+			&& PreviousSample.ShownCriterion == LastSample.ShownCriterion)
 		{
-			const float PreviousDoseRate =
-				(LastSample.CombinedHazardDose - PreviousSample.CombinedHazardDose)
-				/ PreviousDuration;
-			const float NewDoseRate =
-				(NewSample.CombinedHazardDose - LastSample.CombinedHazardDose)
-				/ NewDuration;
-			if (FMath::IsNearlyEqual(PreviousDoseRate, NewDoseRate, 0.0001f))
+			const float PreviousRiskRate =
+				(LastSample.DisplayRisk - PreviousSample.DisplayRisk) / PreviousDuration;
+			const float NewRiskRate =
+				(NewSample.DisplayRisk - LastSample.DisplayRisk) / NewDuration;
+			if (FMath::IsNearlyEqual(PreviousRiskRate, NewRiskRate, 0.0001f))
 			{
 				History.Last() = NewSample;
 				return;
@@ -211,7 +232,7 @@ void UBRiskEgressSubsystem::RecordAgentHealth(
 bool UBRiskEgressSubsystem::RestoreAgentHealth(
 	const int32 AgentId,
 	const float TimeSeconds,
-	FAgentEgressHealthFragment& InOutHealth) const
+	FAgentEgressTenabilityFragment& InOutHealth) const
 {
 	const TArray<FAgentEgressHealthHistorySample>* History = AgentHealthHistory.Find(AgentId);
 	if (!History || History->IsEmpty())
@@ -256,17 +277,13 @@ bool UBRiskEgressSubsystem::RestoreAgentHealth(
 	const float Alpha = Duration > UE_KINDA_SMALL_NUMBER
 		? FMath::Clamp((TimeSeconds - LowerSample->TimeSeconds) / Duration, 0.0f, 1.0f)
 		: 0.0f;
-	InOutHealth.Health = FMath::Lerp(LowerSample->Health, UpperSample->Health, Alpha);
-	InOutHealth.CombinedHazardDose = FMath::Lerp(
-		LowerSample->CombinedHazardDose,
-		UpperSample->CombinedHazardDose,
-		Alpha);
-	InOutHealth.bIsDead = InOutHealth.DeathTimeSeconds >= 0.0f
-		&& TimeSeconds + UE_KINDA_SMALL_NUMBER >= InOutHealth.DeathTimeSeconds;
-	if (InOutHealth.bIsDead)
-	{
-		InOutHealth.Health = 0.0f;
-	}
+
+	// Restore the bar's display risk by interpolation; the shown criterion is a
+	// discrete label, so snap it to the bracket the scrub time falls in.
+	InOutHealth.DisplayRisk = FMath::Lerp(LowerSample->DisplayRisk, UpperSample->DisplayRisk, Alpha);
+	InOutHealth.CurrentDominantCriterion =
+		static_cast<ETenabilityCriterion>(Alpha < 0.5f ? LowerSample->ShownCriterion : UpperSample->ShownCriterion);
+	InOutHealth.Health = 1.0f - FMath::Clamp(InOutHealth.DisplayRisk, 0.0f, 1.0f);
 	return true;
 }
 
@@ -314,6 +331,7 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 		RoomState.RoomIndex = RoomIndex;
 		RoomState.RoomId = Room.RoomId;
 		RoomState.WorldBounds = FBox(Room.Origin * Scale, (Room.Origin + Room.Size) * Scale);
+		// Default the smoke layer to the ceiling until zone data overrides it in ResolveTypedRoomState.
 		RoomState.LayerHeightWorldCm = RoomState.WorldBounds.Max.Z;
 
 		if (!ZoneTables.IsValidIndex(RoomIndex))
@@ -394,6 +412,7 @@ void UBRiskEgressSubsystem::RefreshAtTime(const float NewSimulationTime)
 		}
 
 		ResolveTypedRoomState(RoomIndex);
+		ApplyTenabilityCalcToRoom(RoomIndex);
 	}
 
 	++Revision;
@@ -420,6 +439,11 @@ void UBRiskEgressSubsystem::ResolveTypedRoomState(const int32 RoomIndex)
 	RoomState.SampleTimeSeconds = SampleTimeSeconds;
 	RoomState.DirectGasFed = 0.0f;
 	RoomState.DirectThermalFed = 0.0f;
+	RoomState.bHasCalcFEDSum = false;
+	RoomState.bHasCalcFEDRadSum = false;
+	RoomState.bHasCalcVisibility = false;
+	RoomState.bHasCalcLayerHeight = false;
+	RoomState.bHasCalcTemperature = false;
 	RoomState.AvailableChannels = 0;
 	RoomState.UpperLayer = FBRiskEgressLayerState();
 	RoomState.LowerLayer = FBRiskEgressLayerState();
@@ -578,6 +602,175 @@ void UBRiskEgressSubsystem::ResolveTypedRoomState(const int32 RoomIndex)
 	}
 }
 
+FBRiskTenabilitySample UBRiskEgressSubsystem::SampleTenabilityTableAtTime(
+	const FBRiskTenabilityRoomTable& Table,
+	const double TimeSeconds)
+{
+	if (Table.Samples.Num() == 0)
+	{
+		return FBRiskTenabilitySample();
+	}
+
+	if (Table.Samples.Num() == 1 || TimeSeconds <= Table.Samples[0].SampleTimeSeconds)
+	{
+		return Table.Samples[0];
+	}
+
+	const FBRiskTenabilitySample& LastSample = Table.Samples.Last();
+	if (TimeSeconds >= LastSample.SampleTimeSeconds)
+	{
+		return LastSample;
+	}
+
+	// Binary search for the bracketing pair, then linear-interpolate every channel.
+	int32 LowerIndex = 0;
+	int32 UpperIndex = Table.Samples.Num() - 1;
+	while (UpperIndex - LowerIndex > 1)
+	{
+		const int32 MidIndex = (LowerIndex + UpperIndex) / 2;
+		if (Table.Samples[MidIndex].SampleTimeSeconds <= TimeSeconds)
+		{
+			LowerIndex = MidIndex;
+		}
+		else
+		{
+			UpperIndex = MidIndex;
+		}
+	}
+
+	const FBRiskTenabilitySample& Lo = Table.Samples[LowerIndex];
+	const FBRiskTenabilitySample& Hi = Table.Samples[UpperIndex];
+	const double Duration = Hi.SampleTimeSeconds - Lo.SampleTimeSeconds;
+	const double Alpha = Duration > UE_DOUBLE_KINDA_SMALL_NUMBER
+		? FMath::Clamp((TimeSeconds - Lo.SampleTimeSeconds) / Duration, 0.0, 1.0)
+		: 0.0;
+
+	FBRiskTenabilitySample Result;
+	Result.SampleTimeSeconds = TimeSeconds;
+	Result.HeatReleaseKW = FMath::Lerp(Lo.HeatReleaseKW, Hi.HeatReleaseKW, Alpha);
+	Result.LayerHeightM = FMath::Lerp(Lo.LayerHeightM, Hi.LayerHeightM, Alpha);
+	Result.UpperTemperatureC = FMath::Lerp(Lo.UpperTemperatureC, Hi.UpperTemperatureC, Alpha);
+	Result.LowerTemperatureC = FMath::Lerp(Lo.LowerTemperatureC, Hi.LowerTemperatureC, Alpha);
+	Result.VisibilityM = FMath::Lerp(Lo.VisibilityM, Hi.VisibilityM, Alpha);
+	Result.FEDSum = FMath::Lerp(Lo.FEDSum, Hi.FEDSum, Alpha);
+	Result.FEDRadSum = FMath::Lerp(Lo.FEDRadSum, Hi.FEDRadSum, Alpha);
+
+	// Availability is the AND of both endpoints: a channel is usable for
+	// interpolation only when present in both bracketing samples.
+	Result.bHasHeatRelease = Lo.bHasHeatRelease && Hi.bHasHeatRelease;
+	Result.bHasLayerHeight = Lo.bHasLayerHeight && Hi.bHasLayerHeight;
+	Result.bHasUpperTemperature = Lo.bHasUpperTemperature && Hi.bHasUpperTemperature;
+	Result.bHasLowerTemperature = Lo.bHasLowerTemperature && Hi.bHasLowerTemperature;
+	Result.bHasVisibility = Lo.bHasVisibility && Hi.bHasVisibility;
+	Result.bHasFEDSum = Lo.bHasFEDSum && Hi.bHasFEDSum;
+	Result.bHasFEDRadSum = Lo.bHasFEDRadSum && Hi.bHasFEDRadSum;
+	return Result;
+}
+
+void UBRiskEgressSubsystem::ApplyTenabilityCalcToRoom(const int32 RoomIndex)
+{
+	if (!RoomStates.IsValidIndex(RoomIndex) || !BRiskDataSubsystem)
+	{
+		return;
+	}
+
+	FBRiskEgressRoomState& RoomState = RoomStates[RoomIndex];
+	if (!BRiskDataSubsystem->HasTenabilityData())
+	{
+		return;
+	}
+
+	// Track A is keyed by B-Risk room id, independent of room array order.
+	const TArray<FBRiskTenabilityRoomTable>& Tables = BRiskDataSubsystem->GetTenabilityTables();
+	const FBRiskTenabilityRoomTable* Table = Tables.FindByPredicate(
+		[&RoomState](const FBRiskTenabilityRoomTable& Candidate)
+		{
+			return Candidate.RoomId == RoomState.RoomId;
+		});
+	if (!Table)
+	{
+		return;
+	}
+
+	const FBRiskTenabilitySample Sample = SampleTenabilityTableAtTime(*Table, SampleTimeSeconds);
+	RoomState.CalcFEDSum = static_cast<float>(Sample.FEDSum);
+	RoomState.CalcFEDRadSum = static_cast<float>(Sample.FEDRadSum);
+	RoomState.CalcVisibilityM = static_cast<float>(Sample.VisibilityM);
+	RoomState.CalcHeatReleaseKW = static_cast<float>(Sample.HeatReleaseKW);
+	RoomState.CalcLayerHeightM = static_cast<float>(Sample.LayerHeightM);
+	RoomState.CalcUpperTemperatureC = static_cast<float>(Sample.UpperTemperatureC);
+	RoomState.CalcLowerTemperatureC = static_cast<float>(Sample.LowerTemperatureC);
+	RoomState.bHasCalcFEDSum = Sample.bHasFEDSum;
+	RoomState.bHasCalcFEDRadSum = Sample.bHasFEDRadSum;
+	RoomState.bHasCalcVisibility = Sample.bHasVisibility;
+	RoomState.bHasCalcLayerHeight = Sample.bHasLayerHeight;
+	RoomState.bHasCalcTemperature = Sample.bHasUpperTemperature || Sample.bHasLowerTemperature;
+}
+
+FTenabilityAnalysisSettings UBRiskEgressSubsystem::BuildTenabilitySettingsFromEndpoints() const
+{
+	FTenabilityAnalysisSettings Settings;
+	if (!BRiskDataSubsystem)
+	{
+		return Settings;
+	}
+
+	const FBRiskTenabilityEndpoints& Endpoints = BRiskDataSubsystem->GetTenabilityEndpoints();
+
+	if (Endpoints.bHasMonitorHeight)
+	{
+		Settings.MonitorHeightM = static_cast<float>(Endpoints.MonitorHeightM);
+	}
+	else
+	{
+		UE_LOG(LogBRiskEgressSubsystem, Warning,
+			TEXT("B-Risk input has no monitor_height; using default %.2f m."), Settings.MonitorHeightM);
+	}
+
+	if (Endpoints.bHasEndpointVisibility)
+	{
+		Settings.EndpointVisibilityM = static_cast<float>(Endpoints.EndpointVisibilityM);
+	}
+	else
+	{
+		UE_LOG(LogBRiskEgressSubsystem, Warning,
+			TEXT("B-Risk input has no endpoint_visibility; using default %.2f m."), Settings.EndpointVisibilityM);
+	}
+
+	if (Endpoints.bHasEndpointFED)
+	{
+		Settings.EndpointToxicFED = static_cast<float>(Endpoints.EndpointFED);
+	}
+	else
+	{
+		UE_LOG(LogBRiskEgressSubsystem, Warning,
+			TEXT("B-Risk input has no endpoint_FED; using default %.2f."), Settings.EndpointToxicFED);
+	}
+
+	// endpoint_radiation is B-Risk's radiant/thermal FED endpoint.
+	if (Endpoints.bHasEndpointRadiation)
+	{
+		Settings.EndpointThermalFED = static_cast<float>(Endpoints.EndpointRadiation);
+	}
+	else
+	{
+		UE_LOG(LogBRiskEgressSubsystem, Warning,
+			TEXT("B-Risk input has no endpoint_radiation; using default thermal FED endpoint %.2f."),
+			Settings.EndpointThermalFED);
+	}
+
+	// endpoint_temp is NOT a Celsius layer-temperature threshold (observed O(1000)).
+	// Do not wire it into a Celsius criterion. Leave the temperature criterion disabled.
+	if (Endpoints.bHasEndpointTemp)
+	{
+		UE_LOG(LogBRiskEgressSubsystem, Verbose,
+			TEXT("B-Risk endpoint_temp=%.1f present but not mapped to a Celsius criterion."),
+			Endpoints.EndpointTempRaw);
+	}
+
+	return Settings;
+}
+
 FName UBRiskEgressSubsystem::NormalizeSeriesName(const FString& SeriesName)
 {
 	FString Normalized = SeriesName;
@@ -586,6 +779,8 @@ FName UBRiskEgressSubsystem::NormalizeSeriesName(const FString& SeriesName)
 	Normalized.ReplaceInline(TEXT(" "), TEXT(""));
 	Normalized.ReplaceInline(TEXT("-"), TEXT("_"));
 
+	// B-Risk exports zone series with a trailing room index (e.g. "UCO_1", "ULOD_2").
+	// Strip it so the aliases in TryGetRawSeries match regardless of room count.
 	int32 LastUnderscore = INDEX_NONE;
 	if (Normalized.FindLastChar(TEXT('_'), LastUnderscore) && LastUnderscore + 1 < Normalized.Len())
 	{
@@ -713,6 +908,7 @@ bool UBRiskEgressSubsystem::TryGetConcentrationPpm(
 	}
 	if (UnitContains(*Unit, TEXT("kg/kg")) || UnitContains(*Unit, TEXT("mass fraction")))
 	{
+		// Mass fraction → ppm: multiply by (air molar mass / species molar mass) × 1e6.
 		OutPpm = RawValue * (AirMolecularWeight / MolecularWeight) * 1000000.0f;
 		return true;
 	}

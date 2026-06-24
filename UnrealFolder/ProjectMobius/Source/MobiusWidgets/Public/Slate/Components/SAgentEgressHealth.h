@@ -5,19 +5,19 @@
 #include "CoreMinimal.h"
 #include "Slate/SMeshWidget.h"
 
-class UAgentEgressHealthWidget;
+class UAgentEgressTenabilityWidget;
 class USlateVectorArtData;
 
 /** Draws every active agent health bar in one hardware-instanced Slate mesh. */
-class MOBIUSWIDGETS_API SAgentEgressHealth final : public SMeshWidget
+class MOBIUSWIDGETS_API SAgentEgressTenability final : public SMeshWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SAgentEgressHealth)
+	SLATE_BEGIN_ARGS(SAgentEgressTenability)
 		{
 		}
 	SLATE_END_ARGS()
 
-	void Construct(const FArguments& InArgs, UAgentEgressHealthWidget& InThis);
+	void Construct(const FArguments& InArgs, UAgentEgressTenabilityWidget& InThis);
 	void SetMeshAsset(USlateVectorArtData* InMeshAsset, int32 InitialInstanceCapacity);
 
 	virtual void Tick(
@@ -38,6 +38,22 @@ protected:
 private:
 	void ClearInstances();
 
-	TWeakObjectPtr<UAgentEgressHealthWidget> ParentWidget;
+	/** One screen-resolved agent marker, cached in Tick and drawn as debug text in OnPaint. */
+	struct FDebugMarker
+	{
+		FVector2D LocalPosition = FVector2D::ZeroVector;
+		float Scale = 1.0f;
+		float DisplayRisk = 0.0f;
+		uint8 ShownCriterion = 0;
+		float CurrentVisibilityM = 0.0f;
+		float AccumulatedToxicFED = 0.0f;
+		float AccumulatedThermalFED = 0.0f;
+		float CurrentTemperatureC = 0.0f;
+	};
+
+	TWeakObjectPtr<UAgentEgressTenabilityWidget> ParentWidget;
 	uint32 MeshId = MAX_uint32;
+
+	/** Per-agent debug values resolved this frame, drawn as text above each bar. */
+	TArray<FDebugMarker> DebugMarkers;
 };

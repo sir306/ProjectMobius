@@ -28,5 +28,5 @@ private:
 	FMassEntityQuery EntityQuery;
 
 	/** Reused through buffer swapping with UStatisticSubsystem. */
-	TArray<FAgentEgressHealthViewer> AgentEgressHealthData;
+	TArray<FAgentEgressTenabilityViewer> AgentEgressHealthData;
 };

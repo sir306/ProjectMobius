@@ -130,10 +130,10 @@ public:
 	 * The supplied array is swapped with the previous snapshot so the producer
 	 * can reuse that allocation on the next frame.
 	 */
-	void PublishAgentEgressHealthData(TArray<FAgentEgressHealthViewer>& InOutAgentData);
+	void PublishAgentEgressHealthData(TArray<FAgentEgressTenabilityViewer>& InOutAgentData);
 
 	/** Returns the current egress health snapshot without copying it. */
-	TConstArrayView<FAgentEgressHealthViewer> GetAgentEgressHealthData() const;
+	TConstArrayView<FAgentEgressTenabilityViewer> GetAgentEgressHealthData() const;
 
 	/** Monotonically increasing revision for the current snapshot. */
 	uint64 GetAgentEgressHealthRevision() const { return AgentEgressHealthRevision; }
@@ -227,7 +227,7 @@ private:
 	TArray<FAgentMeshViewer> PedestrianAgentData = TArray<FAgentMeshViewer>(); // Holds the current agent data for the mesh viewer
 	FAgentMeshViewer SelectedAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
-	TArray<FAgentEgressHealthViewer> AgentEgressHealthData;
+	TArray<FAgentEgressTenabilityViewer> AgentEgressHealthData;
 	uint64 AgentEgressHealthRevision = 0;
 
 	/** Reference to the FlowCounter actor, if needed for statistics gathering */

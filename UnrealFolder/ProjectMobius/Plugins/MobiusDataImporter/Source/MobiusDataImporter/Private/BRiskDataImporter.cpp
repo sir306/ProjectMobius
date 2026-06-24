@@ -415,6 +415,190 @@ namespace
 			}
 		}
 	}
+
+	/** Read a node's named attribute as a double. Returns false if absent/unparseable. */
+	bool TryGetNodeAttributeDouble(const FXmlNode* Node, const TCHAR* AttributeName, double& OutValue)
+	{
+		if (!Node)
+		{
+			return false;
+		}
+
+		const FString Attr = Node->GetAttribute(AttributeName);
+		if (Attr.IsEmpty())
+		{
+			return false;
+		}
+
+		return TryParseDouble(TrimCell(Attr), OutValue);
+	}
+
+	/** Read a <Tag value="..."> child's "value" attribute; sets bHasFlag only when present. */
+	void ReadValuedChild(const FXmlNode* TimeNode, const TCHAR* Tag, double& OutValue, bool& bHasFlag)
+	{
+		const FXmlNode* Child = FindFirstChildByTag(TimeNode, Tag);
+		double Parsed = 0.0;
+		if (Child && TryGetNodeAttributeDouble(Child, TEXT("value"), Parsed))
+		{
+			OutValue = Parsed;
+			bHasFlag = true;
+		}
+	}
+
+	/** Depth-first search for the first descendant node with the given tag. */
+	const FXmlNode* FindNodeByTagRecursive(const FXmlNode* Parent, const FString& Tag)
+	{
+		if (!Parent)
+		{
+			return nullptr;
+		}
+
+		for (const FXmlNode* Child : Parent->GetChildrenNodes())
+		{
+			if (!Child)
+			{
+				continue;
+			}
+
+			if (Child->GetTag().Equals(Tag, ESearchCase::IgnoreCase))
+			{
+				return Child;
+			}
+
+			if (const FXmlNode* Found = FindNodeByTagRecursive(Child, Tag))
+			{
+				return Found;
+			}
+		}
+
+		return nullptr;
+	}
+
+	/**
+	 * Parse B-Risk calculated tenability output (output1.xml) into per-room tables.
+	 * Structure: <output><run><room id="N"><time value="t"><FEDSum value=".."/>...
+	 * Missing scenarios (no file) leave OutTables empty; missing tags within a
+	 * sample leave the corresponding bHas* flag false rather than fabricating a value.
+	 */
+	void ParseTenabilityOutputXml(const FString& XmlPath, TArray<FBRiskTenabilityRoomTable>& OutTables)
+	{
+		OutTables.Reset();
+		if (!FPaths::FileExists(XmlPath))
+		{
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			UE_LOG(LogBRiskDataImporter, Warning,
+				TEXT("Unable to parse B-Risk output XML: %s"), *XmlPath);
+			return;
+		}
+
+		const FXmlNode* RootNode = XmlFile.GetRootNode();
+		if (!RootNode)
+		{
+			return;
+		}
+
+		const FXmlNode* RunNode = FindFirstChildByTag(RootNode, TEXT("run"));
+		const FXmlNode* RoomsParent = RunNode ? RunNode : RootNode;
+
+		for (const FXmlNode* RoomNode : RoomsParent->GetChildrenNodes())
+		{
+			if (!RoomNode || !RoomNode->GetTag().Equals(TEXT("room"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			FBRiskTenabilityRoomTable Table;
+			const FString RoomIdAttr = RoomNode->GetAttribute(TEXT("id"));
+			Table.RoomId = RoomIdAttr.IsEmpty() ? INDEX_NONE : FCString::Atoi(*RoomIdAttr);
+
+			for (const FXmlNode* TimeNode : RoomNode->GetChildrenNodes())
+			{
+				if (!TimeNode || !TimeNode->GetTag().Equals(TEXT("time"), ESearchCase::IgnoreCase))
+				{
+					continue;
+				}
+
+				FBRiskTenabilitySample Sample;
+				double TimeValue = 0.0;
+				if (TryGetNodeAttributeDouble(TimeNode, TEXT("value"), TimeValue))
+				{
+					Sample.SampleTimeSeconds = TimeValue;
+				}
+
+				ReadValuedChild(TimeNode, TEXT("HeatRelease"), Sample.HeatReleaseKW, Sample.bHasHeatRelease);
+				ReadValuedChild(TimeNode, TEXT("layerheight"), Sample.LayerHeightM, Sample.bHasLayerHeight);
+				ReadValuedChild(TimeNode, TEXT("uppertemp"), Sample.UpperTemperatureC, Sample.bHasUpperTemperature);
+				ReadValuedChild(TimeNode, TEXT("lowertemp"), Sample.LowerTemperatureC, Sample.bHasLowerTemperature);
+				ReadValuedChild(TimeNode, TEXT("Visibility"), Sample.VisibilityM, Sample.bHasVisibility);
+				ReadValuedChild(TimeNode, TEXT("FEDSum"), Sample.FEDSum, Sample.bHasFEDSum);
+				ReadValuedChild(TimeNode, TEXT("FEDRadSum"), Sample.FEDRadSum, Sample.bHasFEDRadSum);
+
+				Table.Samples.Add(Sample);
+			}
+
+			Table.Samples.Sort([](const FBRiskTenabilitySample& A, const FBRiskTenabilitySample& B)
+			{
+				return A.SampleTimeSeconds < B.SampleTimeSeconds;
+			});
+
+			if (Table.Samples.Num() > 0)
+			{
+				OutTables.Add(MoveTemp(Table));
+			}
+		}
+	}
+
+	/**
+	 * Parse B-Risk analysis endpoints from input1.xml's <tenability> block. Each
+	 * endpoint is a content node (e.g. <endpoint_FED>0.3</endpoint_FED>). Absent
+	 * tags leave the corresponding bHas* flag false so the consumer can warn and
+	 * use a documented default. endpoint_temp is captured raw (not Celsius).
+	 */
+	void ParseTenabilityEndpointsXml(const FString& XmlPath, FBRiskTenabilityEndpoints& OutEndpoints)
+	{
+		if (!FPaths::FileExists(XmlPath))
+		{
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			UE_LOG(LogBRiskDataImporter, Warning,
+				TEXT("Unable to parse B-Risk input XML: %s"), *XmlPath);
+			return;
+		}
+
+		const FXmlNode* RootNode = XmlFile.GetRootNode();
+		const FXmlNode* TenabilityNode = FindNodeByTagRecursive(RootNode, TEXT("tenability"));
+		if (!TenabilityNode)
+		{
+			return;
+		}
+
+		const auto ReadEndpoint =
+			[TenabilityNode](const TCHAR* Tag, double& OutValue, bool& bHasFlag)
+		{
+			const FString Content = GetChildContent(TenabilityNode, Tag);
+			double Parsed = 0.0;
+			if (!Content.IsEmpty() && TryParseDouble(Content, Parsed))
+			{
+				OutValue = Parsed;
+				bHasFlag = true;
+			}
+		};
+
+		ReadEndpoint(TEXT("monitor_height"), OutEndpoints.MonitorHeightM, OutEndpoints.bHasMonitorHeight);
+		ReadEndpoint(TEXT("endpoint_visibility"), OutEndpoints.EndpointVisibilityM, OutEndpoints.bHasEndpointVisibility);
+		ReadEndpoint(TEXT("endpoint_FED"), OutEndpoints.EndpointFED, OutEndpoints.bHasEndpointFED);
+		ReadEndpoint(TEXT("endpoint_radiation"), OutEndpoints.EndpointRadiation, OutEndpoints.bHasEndpointRadiation);
+		ReadEndpoint(TEXT("endpoint_temp"), OutEndpoints.EndpointTempRaw, OutEndpoints.bHasEndpointTemp);
+	}
 }
 
 bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRiskScenarioData& OutData, FString* OutError)
@@ -546,14 +730,32 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 		OutData.ReferencedFiles.AddUnique(SprinklersXmlPath);
 	}
 
+	// B-Risk calculated tenability output (FEDSum/FEDRadSum/Visibility/...) lives in
+	// output1.xml, a sibling of the .smv that is NOT referenced by the manifest.
+	const FString OutputXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("output1.xml")));
+	ParseTenabilityOutputXml(OutputXmlPath, OutData.TenabilityTables);
+	if (OutData.TenabilityTables.Num() > 0)
+	{
+		OutData.ReferencedFiles.AddUnique(OutputXmlPath);
+	}
+
+	// Analysis endpoints (monitor height, endpoint_FED, ...) live in input1.xml.
+	const FString InputXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("input1.xml")));
+	ParseTenabilityEndpointsXml(InputXmlPath, OutData.TenabilityEndpoints);
+	if (FPaths::FileExists(InputXmlPath))
+	{
+		OutData.ReferencedFiles.AddUnique(InputXmlPath);
+	}
+
 	UE_LOG(LogBRiskDataImporter, Log,
-		TEXT("Imported B-Risk scenario: %s  (rooms=%d  fires=%d  sprinklers=%d  vents=%d  zoneTables=%d)"),
+		TEXT("Imported B-Risk scenario: %s  (rooms=%d  fires=%d  sprinklers=%d  vents=%d  zoneTables=%d  tenabilityRooms=%d)"),
 		*SmvFilePath,
 		OutData.Rooms.Num(),
 		OutData.Fires.Num(),
 		OutData.Sprinklers.Num(),
 		OutData.Vents.Num(),
-		OutData.ZoneTables.Num());
+		OutData.ZoneTables.Num(),
+		OutData.TenabilityTables.Num());
 
 	return true;
 }

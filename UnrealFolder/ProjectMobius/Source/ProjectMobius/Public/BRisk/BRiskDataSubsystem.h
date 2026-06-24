@@ -245,6 +245,15 @@ public:
 	/** All parsed zone CSV tables. */
 	const TArray<FBRiskZoneTable>& GetZoneTables() const { return ScenarioData.ZoneTables; }
 
+	/** B-Risk calculated tenability output tables (FEDSum/FEDRadSum/Visibility/...), one per room. */
+	const TArray<FBRiskTenabilityRoomTable>& GetTenabilityTables() const { return ScenarioData.TenabilityTables; }
+
+	/** Analysis endpoints parsed from input1.xml (monitor height, endpoint_FED, ...). */
+	const FBRiskTenabilityEndpoints& GetTenabilityEndpoints() const { return ScenarioData.TenabilityEndpoints; }
+
+	/** True when the scenario shipped a parseable output1.xml with at least one room table. */
+	bool HasTenabilityData() const { return ScenarioData.TenabilityTables.Num() > 0; }
+
 	/**
 	 * Find a named series inside a specific zone table.
 	 *

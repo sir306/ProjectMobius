@@ -29,7 +29,7 @@
 #include "MassExecutionContext.h"
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
-#include "MassAI/Fragments/AgentEgressHealthFragments.h"
+#include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
@@ -63,7 +63,7 @@ void UPedestrianMovementProcessor::ConfigureQueries()
 	// The Entity Query Required fragments for this processor
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FAgentEgressTenabilityFragment>(EMassFragmentAccess::ReadOnly);
 	// Required Query Tags
 	EntityQuery.AddTagRequirement<FMassEntityDeleteTag>(EMassFragmentPresence::Optional);
 
@@ -110,12 +110,12 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 				// Entity Rendering Fragment
 				const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 				const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
-				const TConstArrayView<FAgentEgressHealthFragment> AgentHealthFragments =
-					Context.GetFragmentView<FAgentEgressHealthFragment>();
+				const TConstArrayView<FAgentEgressTenabilityFragment> AgentHealthFragments =
+					Context.GetFragmentView<FAgentEgressTenabilityFragment>();
 				
 				ParallelFor(EntityRenderingFragment.Num(), [&](int32 i)
 				{
-					const FAgentEgressHealthFragment& Health = AgentHealthFragments[i];
+					const FAgentEgressTenabilityFragment& Health = AgentHealthFragments[i];
 					const bool bDeadAtCurrentTime =
 						Health.DeathTimeSeconds >= 0.0f
 						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
@@ -190,8 +190,8 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Get the required fragments
 			const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 			const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
-			const TConstArrayView<FAgentEgressHealthFragment> AgentHealthFragments =
-				Context.GetFragmentView<FAgentEgressHealthFragment>();
+			const TConstArrayView<FAgentEgressTenabilityFragment> AgentHealthFragments =
+				Context.GetFragmentView<FAgentEgressTenabilityFragment>();
 
 			auto Entities = Context.GetEntities();
 			
@@ -205,7 +205,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
 
-					const FAgentEgressHealthFragment& Health = AgentHealthFragments[i];
+					const FAgentEgressTenabilityFragment& Health = AgentHealthFragments[i];
 					const bool bDeadAtCurrentTime =
 						Health.DeathTimeSeconds >= 0.0f
 						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
@@ -249,7 +249,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
 
-					const FAgentEgressHealthFragment& Health = AgentHealthFragments[i];
+					const FAgentEgressTenabilityFragment& Health = AgentHealthFragments[i];
 					const bool bDeadAtCurrentTime =
 						Health.DeathTimeSeconds >= 0.0f
 						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;

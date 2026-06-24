@@ -122,6 +122,91 @@ struct MOBIUSDATAIMPORTER_API FBRiskZoneTable
 };
 
 /**
+ * One room/time row of B-Risk's *calculated* tenability output (output1.xml).
+ *
+ * Unlike the raw zone CSV channels, these are values B-Risk itself computed at
+ * the configured monitor height / egress path: FEDSum and FEDRadSum are
+ * cumulative-since-t0 dose curves for the whole room; Visibility, layer height,
+ * heat release and the two layer temperatures are instantaneous. Each bHas*
+ * flag records whether the source tag was present so consumers never substitute
+ * a fabricated value for a missing one.
+ */
+struct MOBIUSDATAIMPORTER_API FBRiskTenabilitySample
+{
+	/** Simulation time of this output sample, in seconds. */
+	double SampleTimeSeconds = 0.0;
+
+	/** Room heat release rate (kW) from <HeatRelease>. */
+	double HeatReleaseKW = 0.0;
+
+	/** Smoke layer interface height above the floor (m) from <layerheight>. */
+	double LayerHeightM = 0.0;
+
+	/** Upper-layer temperature (C) from <uppertemp>. */
+	double UpperTemperatureC = 24.0;
+
+	/** Lower-layer temperature (C) from <lowertemp>. */
+	double LowerTemperatureC = 24.0;
+
+	/** Visibility (m) from <Visibility>. */
+	double VisibilityM = 20.0;
+
+	/** Cumulative toxic FED (dimensionless) from <FEDSum>. */
+	double FEDSum = 0.0;
+
+	/** Cumulative thermal/radiant FED (dimensionless) from <FEDRadSum>. */
+	double FEDRadSum = 0.0;
+
+	bool bHasHeatRelease = false;
+	bool bHasLayerHeight = false;
+	bool bHasUpperTemperature = false;
+	bool bHasLowerTemperature = false;
+	bool bHasVisibility = false;
+	bool bHasFEDSum = false;
+	bool bHasFEDRadSum = false;
+};
+
+/**
+ * All B-Risk calculated tenability output samples for a single room, parsed
+ * from the <room id="..."> block of output1.xml. Samples are stored in
+ * ascending time order, matching the <time> sub-blocks.
+ */
+struct MOBIUSDATAIMPORTER_API FBRiskTenabilityRoomTable
+{
+	/** Room identifier from <room id="...">, matching FBRiskRoomGeometry::RoomId. */
+	int32 RoomId = INDEX_NONE;
+
+	/** One entry per <time> block, ascending by SampleTimeSeconds. */
+	TArray<FBRiskTenabilitySample> Samples;
+};
+
+/**
+ * B-Risk analysis endpoints parsed from input1.xml. These are the tenability
+ * limits B-Risk itself was configured with, used as defaults for the egress
+ * tenability analysis. A bHas* flag is false when the tag was absent, so the
+ * consumer logs a warning and falls back to a documented default rather than
+ * silently trusting a zero.
+ *
+ * NOTE: EndpointTempRaw is the raw <endpoint_temp> value and is NOT a layer
+ * temperature in Celsius (observed values are O(1000)); do not map it to a
+ * Celsius criterion without resolving its semantics.
+ */
+struct MOBIUSDATAIMPORTER_API FBRiskTenabilityEndpoints
+{
+	double MonitorHeightM = 2.0;
+	double EndpointVisibilityM = 10.0;
+	double EndpointFED = 0.3;
+	double EndpointRadiation = 0.3;
+	double EndpointTempRaw = 0.0;
+
+	bool bHasMonitorHeight = false;
+	bool bHasEndpointVisibility = false;
+	bool bHasEndpointFED = false;
+	bool bHasEndpointRadiation = false;
+	bool bHasEndpointTemp = false;
+};
+
+/**
  * Top-level container for everything parsed from a B-Risk scenario.
  * Created by FBRiskDataImporter::ImportScenarioFromSmv and passed to consumers.
  */
@@ -147,6 +232,16 @@ struct MOBIUSDATAIMPORTER_API FBRiskScenarioData
 
 	/** One entry per zone CSV referenced by the ZONE block(s) in the SMV manifest. */
 	TArray<FBRiskZoneTable> ZoneTables;
+
+	/**
+	 * B-Risk calculated tenability output (FEDSum/FEDRadSum/Visibility/...), one
+	 * table per room, parsed from the companion output1.xml when present. Empty
+	 * when the scenario has no output1.xml sibling.
+	 */
+	TArray<FBRiskTenabilityRoomTable> TenabilityTables;
+
+	/** Analysis endpoints parsed from companion input1.xml. Defaults when absent. */
+	FBRiskTenabilityEndpoints TenabilityEndpoints;
 };
 
 /**

@@ -30,7 +30,7 @@
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
 #include "MassAI/Fragments/EntityInfoFragment.h"
-#include "MassAI/Fragments/AgentEgressHealthFragments.h"
+#include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 // Subsystems to include with the processor
@@ -72,7 +72,7 @@ void UPedestrianInitializeMOP::ConfigureQueries()
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FEntityCollisionFragment>(EMassFragmentAccess::ReadWrite);
 	EntityQuery.AddRequirement<FAgentBRiskExposureFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FAgentEgressTenabilityFragment>(EMassFragmentAccess::ReadWrite);
 
 	// Register the entity query with the processor
 	EntityQuery.RegisterWithProcessor(*this);
@@ -147,8 +147,8 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 		const TArrayView<FAgentBRiskExposureFragment>& AgentExposureFragments =
 			Context.GetMutableFragmentView<FAgentBRiskExposureFragment>();
-		const TArrayView<FAgentEgressHealthFragment>& AgentHealthFragments =
-			Context.GetMutableFragmentView<FAgentEgressHealthFragment>();
+		const TArrayView<FAgentEgressTenabilityFragment>& AgentHealthFragments =
+			Context.GetMutableFragmentView<FAgentEgressTenabilityFragment>();
 
 		// check timestep index is valid
 		if (!SharedAgentMovement.SimulationData.IsValid() || SharedAgentMovement.SimulationData->Num() - 1 < CurrentTimeStep)
@@ -218,9 +218,9 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndexOffset, EntityRendering);
 
 			FAgentBRiskExposureFragment& AgentExposure = AgentExposureFragments[i];
-			FAgentEgressHealthFragment& AgentHealth = AgentHealthFragments[i];
+			FAgentEgressTenabilityFragment& AgentHealth = AgentHealthFragments[i];
 			AgentExposure = FAgentBRiskExposureFragment();
-			AgentHealth = FAgentEgressHealthFragment();
+			AgentHealth = FAgentEgressTenabilityFragment();
 
 			switch (EntityRendering.AgeDemographic)
 			{

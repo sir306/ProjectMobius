@@ -161,7 +161,7 @@ bool FBRiskEgressHealthRewindHistoryTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	FAgentEgressHealthFragment Health;
+	FAgentEgressTenabilityFragment Health;
 	EgressSubsystem->RecordAgentHealth(7, 0.0f, Health);
 
 	Health.Health = 0.5f;
@@ -174,7 +174,7 @@ bool FBRiskEgressHealthRewindHistoryTest::RunTest(const FString& Parameters)
 	Health.bIsDead = true;
 	EgressSubsystem->RecordAgentHealth(7, 10.0f, Health);
 
-	FAgentEgressHealthFragment RestoredHealth;
+	FAgentEgressTenabilityFragment RestoredHealth;
 	RestoredHealth.DeathTimeSeconds = 10.0f;
 	TestTrue(
 		TEXT("A recorded agent should restore at a rewind time"),

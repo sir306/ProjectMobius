@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MassProcessor.h"
+#include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "AgentEgressHealthCalculationProcessor.generated.h"
 
 /**
@@ -31,6 +32,12 @@ private:
 
 	UPROPERTY()
 	FMassEntityQuery EntityQuery;
+
+	/** Tenability endpoints + enabled criteria, rebuilt from B-Risk input on scenario load. */
+	FTenabilityAnalysisSettings TenabilitySettings;
+
+	/** Scenario generation the cached TenabilitySettings were built for. */
+	uint64 TenabilitySettingsGeneration = TNumericLimits<uint64>::Max();
 
 	UPROPERTY(EditAnywhere, Config, Category = "Egress Health|Integration", meta = (ClampMin = "0.001"))
 	float MaximumIntegrationStepSeconds = 1.0f;

@@ -34,11 +34,11 @@ public:
  * this is separate from FAgentMeshViewer as it is only used for the egress health widget
  * and we want to keep the data separate for clarity and maintainability.
  */
-struct FAgentEgressHealthViewer
+struct FAgentEgressTenabilityViewer
 {
 	public:
-	FAgentEgressHealthViewer() {}
-	FAgentEgressHealthViewer(int32 InAgentID, FVector InAgentWorldPos, float InAgentEgressHealth)
+	FAgentEgressTenabilityViewer() {}
+	FAgentEgressTenabilityViewer(int32 InAgentID, FVector InAgentWorldPos, float InAgentEgressHealth)
 	{
 		// Unique Agent ID - ensures no double ups and fast lookups
 		AgentID = InAgentID;
@@ -55,6 +55,44 @@ struct FAgentEgressHealthViewer
 
 	FVector AgentWorldPosition = FVector(FVector::ZeroVector); // World position of the agent
 
-	/** Agent Egress Health, way to display agent egress health */
+	/**
+	 * Backwards-compatible display value: AgentEgressHealth = 1 - Clamp01(DisplayRisk).
+	 * This is NOT an analytical health value; prefer DisplayRisk and the separate
+	 * tenability fields below.
+	 */
 	float AgentEgressHealth = 1.0f;
+
+	// --- Tenability publishing (one consistent bar = DisplayRisk; icon = criterion) ---
+	// Display-only aggregate risk: MAX of enabled category risks (never the sum), 0..1.
+	float DisplayRisk = 0.0f;
+
+	// Separate normalized per-category risks (0..1, not additive).
+	float VisibilityRisk = 0.0f;
+	float ToxicFEDRisk = 0.0f;
+	float ThermalFEDRisk = 0.0f;
+	float TemperatureRisk = 0.0f;
+	float LayerHeightRisk = 0.0f;
+
+	// Accumulated agent FED dose (Track B per-room deltas).
+	float AccumulatedToxicFED = 0.0f;
+	float AccumulatedThermalFED = 0.0f;
+
+	// Current / worst sampled tenability values.
+	float CurrentVisibilityM = 20.0f;
+	float WorstVisibilityM = 20.0f;
+	float CurrentTemperatureC = 24.0f;
+	float WorstTemperatureC = 24.0f;
+	float CurrentLayerHeightM = 0.0f;
+	float CurrentHeatReleaseKW = 0.0f;
+
+	// ETenabilityCriterion stored as uint8 to avoid a MobiusCore->ProjectMobius
+	// module dependency. 0 = None; see ETenabilityCriterion for the mapping.
+	uint8 CurrentDominantCriterion = 0;
+	uint8 FirstFailureCriterion = 0;
+
+	// Bit flags (UE::Mobius::TenabilityFailureFlags) of all simultaneous failures.
+	uint8 FailureMask = 0;
+
+	float FirstFailureTimeSeconds = -1.0f;
+	bool bTenabilityFailed = false;
 };

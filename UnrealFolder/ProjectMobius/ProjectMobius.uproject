@@ -186,12 +186,16 @@
 		{
 			"Name": "NwiroIntegrationKit",
 			"Enabled": true,
-            "Type": "Editor"
+			"Type": "Editor"
+		},
+		{
+			"Name": "McpAutomationBridge",
+			"Enabled": true
 		}
 	],
 	"AdditionalPluginDirectories": [
 		"Plugins",
-		"../../../../../NickAssets/Unreal_mcp"
+		"../../../../../NickAssets/UE_Plugins/McpBridge-bin/5.5"
 	],
 	"TargetPlatforms": [
 		"Linux",

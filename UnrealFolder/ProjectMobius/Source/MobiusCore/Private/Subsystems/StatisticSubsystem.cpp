@@ -94,13 +94,13 @@ FAgentMeshViewer UStatisticSubsystem::GetHoveredAgentInfoMeshData()
 	return HoveredAgentData;
 }
 
-void UStatisticSubsystem::PublishAgentEgressHealthData(TArray<FAgentEgressHealthViewer>& InOutAgentData)
+void UStatisticSubsystem::PublishAgentEgressHealthData(TArray<FAgentEgressTenabilityViewer>& InOutAgentData)
 {
 	Swap(AgentEgressHealthData, InOutAgentData);
 	++AgentEgressHealthRevision;
 }
 
-TConstArrayView<FAgentEgressHealthViewer> UStatisticSubsystem::GetAgentEgressHealthData() const
+TConstArrayView<FAgentEgressTenabilityViewer> UStatisticSubsystem::GetAgentEgressHealthData() const
 {
 	return AgentEgressHealthData;
 }

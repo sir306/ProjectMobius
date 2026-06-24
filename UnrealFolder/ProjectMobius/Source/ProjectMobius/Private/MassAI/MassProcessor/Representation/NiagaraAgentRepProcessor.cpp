@@ -29,7 +29,7 @@
 #include "MassExecutionContext.h"
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
-#include "MassAI/Fragments/AgentEgressHealthFragments.h"
+#include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.h"
 // Shared Fragments to include with the processor
@@ -65,7 +65,7 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 	// The Entity Query Required fragments for this processor;
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
-	EntityQuery.AddRequirement<FAgentEgressHealthFragment>(EMassFragmentAccess::ReadOnly);
+	EntityQuery.AddRequirement<FAgentEgressTenabilityFragment>(EMassFragmentAccess::ReadOnly);
 
 	// Add the shared Niagara representation fragment
 	EntityQuery.AddSharedRequirement<FAgentNiagaraDataFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
@@ -170,8 +170,8 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	// Get the entity Rendering fragment
 	const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
-	const TConstArrayView<FAgentEgressHealthFragment> AgentHealthFragments =
-		Context.GetFragmentView<FAgentEgressHealthFragment>();
+	const TConstArrayView<FAgentEgressTenabilityFragment> AgentHealthFragments =
+		Context.GetFragmentView<FAgentEgressTenabilityFragment>();
 
 	auto Entities = Context.GetEntities();
 
