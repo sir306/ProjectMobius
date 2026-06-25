@@ -31,6 +31,74 @@
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Fonts/FontMeasure.h"
+
+namespace
+{
+	/**
+	 * Stops the playbar clock from "bouncing" horizontally without changing digit spacing.
+	 *
+	 * Root cause (confirmed from a frame-by-frame capture): the clock string has a constant character
+	 * count (MM:SS.mm / HH:MM:SS.mm, all fields zero-padded) but the UI font has proportional digits
+	 * ('1' narrower than '8'/'0'), so the total width changes every tick. With centre justification the
+	 * whole string re-centres each frame, translating left/right — the visible bounce.
+	 *
+	 * Fix (keeps the current font and its natural, tight kerning — no extra spacing between digits):
+	 *   1) Left-justify, so the leading significant digits (minutes/seconds) are anchored and the string
+	 *      no longer translates as a whole.
+	 *   2) Reserve a constant width (the widest possible string for the current format, font-measured)
+	 *      via SetMinDesiredWidth, so the box itself can't resize / re-centre within its parent. The
+	 *      reserved slack is invisible trailing space on the right — it does NOT separate the digits.
+	 * Purely visual — no timing/playback behaviour changes.
+	 *
+	 * @param TextBlock     The current-time text block (no-op if null).
+	 * @param bHoursNeeded  True when the format includes an hours field (HH:MM:SS.mm).
+	 */
+	void ReserveStableTimeWidth(UTextBlock* TextBlock, const bool bHoursNeeded)
+	{
+		if (!TextBlock)
+		{
+			return;
+		}
+
+		// Anchor left so the significant digits stay put instead of the whole string re-centring.
+		TextBlock->SetJustification(ETextJustify::Left);
+
+		// Width reservation needs the font measure service; skip in headless/cook contexts where there
+		// is no renderer (the left-justify above already removes the dominant bounce on its own).
+		if (!FSlateApplication::IsInitialized() || !FSlateApplication::Get().GetRenderer())
+		{
+			return;
+		}
+
+		const TSharedRef<FSlateFontMeasure> FontMeasure =
+			FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+		const FSlateFontInfo Font = TextBlock->GetFont();
+
+		// Widest single digit in this font (covers non-tabular fonts where '1' is narrower than '8').
+		double WidestDigit = 0.0;
+		for (TCHAR Digit = TEXT('0'); Digit <= TEXT('9'); ++Digit)
+		{
+			WidestDigit = FMath::Max(WidestDigit, FontMeasure->Measure(FString::Chr(Digit), Font).X);
+		}
+		const double ColonWidth = FontMeasure->Measure(TEXT(":"), Font).X;
+		const double DotWidth   = FontMeasure->Measure(TEXT("."), Font).X;
+
+		// Format is "MM:SS.mm" (+ "HH:" when hours are shown). Reserve up to 3 hour digits so the width
+		// stays constant even if the hour field grows from 2 to 3 digits during long playback.
+		int32 DigitCount = 6; // MM + SS + mm
+		int32 ColonCount = 1; // ':' between MM and SS  (the '.' before mm is counted separately)
+		if (bHoursNeeded)
+		{
+			DigitCount += 3;  // up to HHH
+			ColonCount += 1;  // extra ':' between hours and minutes
+		}
+
+		const double ReservedWidth = (DigitCount * WidestDigit) + (ColonCount * ColonWidth) + DotWidth;
+		TextBlock->SetMinDesiredWidth(FMath::CeilToFloat(static_cast<float>(ReservedWidth)));
+	}
+}
 
 FOnSimulationPlayBarLifecycle& USimulationPlayBar::OnPlayBarConstructed()
 {
@@ -474,6 +542,11 @@ void USimulationPlayBar::UpdateMaxTime(float NewMaxTime)
 		// Set the max value of the slider
 		PlaybackSlider->SetMaxValue(NewMaxTime);
 	}
+
+	// Keep the current-time clock a constant width and left-anchored so it doesn't bounce as digits
+	// change. Done here because the chosen format (and thus the widest possible string) depends on
+	// HoursNeeded, set just above. Also covers the initial UpdateMaxTime(0.0f) call in NativeConstruct.
+	ReserveStableTimeWidth(CurrentTimeTextBlock, HoursNeeded != 0);
 }
 
 void USimulationPlayBar::AssignStyleAssets() const
