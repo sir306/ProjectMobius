@@ -46,6 +46,52 @@
 
 class UStatisticSubsystem;
 
+namespace
+{
+	/**
+	 * If an agent has reached its tenability-failure time at or before the current sim time, snap it to
+	 * its recorded failure pose and keep it visible (a tenability-failure marker). Centralises the snap
+	 * that was previously copy-pasted across the no-data, static, and interpolation paths of Execute()
+	 * so the three can never drift apart.
+	 *
+	 * Behaviour is byte-for-byte identical to the former inline blocks:
+	 *   - failed  -> snap to recorded failure pose, speed 0, NotMoving bracket, kept visible; returns true.
+	 *   - tenable -> leaves both fragments untouched; returns false (caller owns the tenable path).
+	 *
+	 * File-local + FORCEINLINE so it inlines into the per-entity ParallelFor loops (hot path).
+	 * Reads the fragment's existing DeathTimeSeconds/DeathLocation/DeathRotation fields — these are the
+	 * current names for the tenability-failure time/pose; a codebase-wide rename is a separate task.
+	 *
+	 * @return true if the agent has failed tenability at CurrentSimTime (failure pose applied), else false.
+	 */
+	FORCEINLINE bool ApplyTenabilityFailurePoseIfReached(
+		FEntityMovementFragment& MoveFrag,
+		FEntityRenderingFragment& RenderFrag,
+		const FAgentEgressTenabilityFragment& Tenability,
+		const float CurrentSimTime)
+	{
+		// Identical guard to the original: a valid (>=0) failure time that the playhead has reached.
+		const bool bTenabilityFailedAtCurrentTime =
+			Tenability.DeathTimeSeconds >= 0.0f
+			&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Tenability.DeathTimeSeconds;
+
+		if (!bTenabilityFailedAtCurrentTime)
+		{
+			return false;
+		}
+
+		// Freeze the agent at its recorded tenability-failure pose and keep it rendered (failure marker).
+		MoveFrag.CurrentLocation = Tenability.DeathLocation;
+		MoveFrag.CurrentRotation = Tenability.DeathRotation;
+		MoveFrag.CurrentSpeed = 0.0f;
+		MoveFrag.CurrentMovementBracket = EPedestrianMovementBracket::Emb_NotMoving;
+		RenderFrag.bRenderAgent = true;
+		RenderFrag.bReadyToDestroy = false;
+		RenderFrag.bAnimationChanged = true;
+		return true;
+	}
+}
+
 UPedestrianMovementProcessor::UPedestrianMovementProcessor():
 	TimeDilationSubSystem(nullptr)
 {
@@ -110,27 +156,14 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 				// Entity Rendering Fragment
 				const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 				const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
-				const TConstArrayView<FAgentEgressTenabilityFragment> AgentHealthFragments =
+				const TConstArrayView<FAgentEgressTenabilityFragment> AgentTenabilityFragments =
 					Context.GetFragmentView<FAgentEgressTenabilityFragment>();
 				
 				ParallelFor(EntityRenderingFragment.Num(), [&](int32 i)
 				{
-					const FAgentEgressTenabilityFragment& Health = AgentHealthFragments[i];
-					const bool bDeadAtCurrentTime =
-						Health.DeathTimeSeconds >= 0.0f
-						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
-					if (bDeadAtCurrentTime)
-					{
-						EntityMovementFragment[i].CurrentLocation = Health.DeathLocation;
-						EntityMovementFragment[i].CurrentRotation = Health.DeathRotation;
-						EntityMovementFragment[i].CurrentSpeed = 0.0f;
-						EntityMovementFragment[i].CurrentMovementBracket =
-							EPedestrianMovementBracket::Emb_NotMoving;
-						EntityRenderingFragment[i].bRenderAgent = true;
-						EntityRenderingFragment[i].bReadyToDestroy = false;
-						EntityRenderingFragment[i].bAnimationChanged = true;
-					}
-					else
+					// No sample data this step: agents that have failed tenability still freeze at their
+					// failure pose, everyone else is hidden. Matches the former inline failed/else block.
+					if (!ApplyTenabilityFailurePoseIfReached(EntityMovementFragment[i], EntityRenderingFragment[i], AgentTenabilityFragments[i], CurrentSimTime))
 					{
 						EntityRenderingFragment[i].bRenderAgent = false;
 					}
@@ -190,7 +223,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Get the required fragments
 			const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 			const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
-			const TConstArrayView<FAgentEgressTenabilityFragment> AgentHealthFragments =
+			const TConstArrayView<FAgentEgressTenabilityFragment> AgentTenabilityFragments =
 				Context.GetFragmentView<FAgentEgressTenabilityFragment>();
 
 			auto Entities = Context.GetEntities();
@@ -205,19 +238,11 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
 
-					const FAgentEgressTenabilityFragment& Health = AgentHealthFragments[i];
-					const bool bDeadAtCurrentTime =
-						Health.DeathTimeSeconds >= 0.0f
-						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
-					if (bDeadAtCurrentTime)
+					const FAgentEgressTenabilityFragment& Tenability = AgentTenabilityFragments[i];
+
+					// Agents that have failed tenability freeze at their failure pose and skip the lookup.
+					if (ApplyTenabilityFailurePoseIfReached(MoveFrag, RenderFrag, Tenability, CurrentSimTime))
 					{
-						MoveFrag.CurrentLocation = Health.DeathLocation;
-						MoveFrag.CurrentRotation = Health.DeathRotation;
-						MoveFrag.CurrentSpeed = 0.0f;
-						MoveFrag.CurrentMovementBracket = EPedestrianMovementBracket::Emb_NotMoving;
-						RenderFrag.bRenderAgent = true;
-						RenderFrag.bReadyToDestroy = false;
-						RenderFrag.bAnimationChanged = true;
 						return;
 					}
 
@@ -249,19 +274,11 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
 
-					const FAgentEgressTenabilityFragment& Health = AgentHealthFragments[i];
-					const bool bDeadAtCurrentTime =
-						Health.DeathTimeSeconds >= 0.0f
-						&& CurrentSimTime + UE_KINDA_SMALL_NUMBER >= Health.DeathTimeSeconds;
-					if (bDeadAtCurrentTime)
+					const FAgentEgressTenabilityFragment& Tenability = AgentTenabilityFragments[i];
+
+					// Agents that have failed tenability freeze at their failure pose and skip the lookup.
+					if (ApplyTenabilityFailurePoseIfReached(MoveFrag, RenderFrag, Tenability, CurrentSimTime))
 					{
-						MoveFrag.CurrentLocation = Health.DeathLocation;
-						MoveFrag.CurrentRotation = Health.DeathRotation;
-						MoveFrag.CurrentSpeed = 0.0f;
-						MoveFrag.CurrentMovementBracket = EPedestrianMovementBracket::Emb_NotMoving;
-						RenderFrag.bRenderAgent = true;
-						RenderFrag.bReadyToDestroy = false;
-						RenderFrag.bAnimationChanged = true;
 						return;
 					}
 
