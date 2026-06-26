@@ -329,30 +329,67 @@ float UTimeDilationSubSystem::GetGameElapsedTime()
 
 FText UTimeDilationSubSystem::FormatSimTime(float TotalSeconds, bool bIncludeHours) const
 {
-       // Configure formatting so all components have at least two digits
-       FNumberFormattingOptions NumberFormat;
-       NumberFormat.MinimumIntegralDigits = 2;
-       NumberFormat.MaximumIntegralDigits = 3;
+       // D1 allocation cache: this is called several times per frame (UpdateSimulationTime, the playbar's
+       // OnNewCurrentTime handler, GetCurrentSimTimeStr) and, when paused/idle, repeatedly with the same value —
+       // and it used to rebuild FNumberFormattingOptions + FFormatNamedArguments + 3-4 FText every call. We now
+       // build the formatting options once and cache the result FText, reusing it whenever the *displayed*
+       // components are unchanged. The output is a pure function of (bIncludeHours, hour, minute, second,
+       // hundredth), so the cached FText is bit-identical to a fresh build for the same key.
 
-       // Prepare format arguments common to both outputs
-       FFormatNamedArguments TimeFormatArgs;
-       FText Minute = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 3600.f) / 60.f), &NumberFormat);
-       FText Second = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 60.f)), &NumberFormat);
-       FText Millisecond = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 1.f) * 100.f), &NumberFormat); // rounding to two dp
-
-       TimeFormatArgs.Add(TEXT("Minute"), Minute);
-       TimeFormatArgs.Add(TEXT("Second"), Second);
-       TimeFormatArgs.Add(TEXT("Millisecond"), Millisecond);
-
-       if (bIncludeHours)
+       // Build-once formatting: 2-3 digit, zero-padded integral components (identical to the previous options).
+       static const FNumberFormattingOptions NumberFormat = []
        {
-               FText Hour = FText::AsNumber(FMath::FloorToInt32(TotalSeconds / 3600.f), &NumberFormat);
-               TimeFormatArgs.Add(TEXT("Hour"), Hour);
+               FNumberFormattingOptions Opts;
+               Opts.MinimumIntegralDigits = 2;
+               Opts.MaximumIntegralDigits = 3;
+               return Opts;
+       }();
 
-               return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Hour}:{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       // Displayed components — floored, computed exactly as before (the millisecond field is hundredths).
+       const int32 Hour      = FMath::FloorToInt32(TotalSeconds / 3600.f);
+       const int32 Minute    = FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 3600.f) / 60.f);
+       const int32 Second    = FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 60.f));
+       const int32 Hundredth = FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 1.f) * 100.f); // two dp
+
+       // Cache is only touched on the game thread (all callers are UI/game-thread today). A non-game-thread
+       // caller falls through to a fresh, allocation-equivalent build so the static FText can never be raced.
+       const bool bUseCache = IsInGameThread();
+       static bool  bHasCached = false;
+       static bool  CachedIncludeHours = false;
+       static int32 CachedHour = -1, CachedMinute = -1, CachedSecond = -1, CachedHundredth = -1;
+       static FText CachedText;
+
+       if (bUseCache && bHasCached && bIncludeHours == CachedIncludeHours &&
+           Hour == CachedHour && Minute == CachedMinute && Second == CachedSecond && Hundredth == CachedHundredth)
+       {
+               return CachedText;
        }
 
-       return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       FFormatNamedArguments TimeFormatArgs;
+       TimeFormatArgs.Add(TEXT("Minute"), FText::AsNumber(Minute, &NumberFormat));
+       TimeFormatArgs.Add(TEXT("Second"), FText::AsNumber(Second, &NumberFormat));
+       TimeFormatArgs.Add(TEXT("Millisecond"), FText::AsNumber(Hundredth, &NumberFormat));
+
+       FText Result;
+       if (bIncludeHours)
+       {
+               TimeFormatArgs.Add(TEXT("Hour"), FText::AsNumber(Hour, &NumberFormat));
+               Result = FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Hour}:{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       }
+       else
+       {
+               Result = FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       }
+
+       if (bUseCache)
+       {
+               bHasCached = true;
+               CachedIncludeHours = bIncludeHours;
+               CachedHour = Hour; CachedMinute = Minute; CachedSecond = Second; CachedHundredth = Hundredth;
+               CachedText = Result;
+       }
+
+       return Result;
 }
 
 
