@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameUserSettings.h"
+#include "EnumsAndStructs/ScalabilityEnums.h"
 #include "UserProjectSettings.generated.h"
 
 /**
@@ -40,6 +41,12 @@ private:
 	
 	UPROPERTY(Config)
 	bool bDisplayMobiusLogWindowAtStartup = false;
+
+	/** Persisted render performance tier override (task C2). Auto = detect from hardware at startup;
+	 *  Low/Medium/High pin a tier so captures reproduce identically across machines. Serialized via
+	 *  SaveSettings()/LoadSettings() (GameUserSettings ini), the same path as the logger flags above. */
+	UPROPERTY(Config)
+	TEnumAsByte<ERenderPerformanceTier> RenderPerformanceTierOverride = ERpt_Auto;
 #pragma endregion PRIVATE_VARIABLES
 	
 public:
@@ -55,6 +62,16 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category="UserSettings")
 	void SetDisplayMobiusLogWindowAtStartup(bool bEnable) { bDisplayMobiusLogWindowAtStartup = bEnable; }
+
+	/** Get the persisted render tier override (task C2). */
+	UFUNCTION(BlueprintCallable, Category="UserSettings|Render Tier")
+	TEnumAsByte<ERenderPerformanceTier> GetRenderPerformanceTierOverride() const { return RenderPerformanceTierOverride; }
+
+	/** Set + persist the render tier override (task C2). Persists via SaveSettings() so the Config
+	 *  property is serialized through the real UObject SaveConfig path. Does NOT itself apply the tier —
+	 *  UPerformanceUtilSubsystem::SetRenderPerformanceTierOverride() persists AND applies. */
+	UFUNCTION(BlueprintCallable, Category="UserSettings|Render Tier")
+	void SetRenderPerformanceTierOverride(TEnumAsByte<ERenderPerformanceTier> NewOverride);
 #pragma endregion GETTERS_AND_SETTERS
 
 public:

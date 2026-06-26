@@ -114,6 +114,17 @@ void UUserProjectSettings::ResetConfig()
 {
 	bEnableMobiusLoggerAtStartup = true;
 	bDisplayMobiusLogWindowAtStartup = false;
+	RenderPerformanceTierOverride = ERpt_Auto;
+}
+
+void UUserProjectSettings::SetRenderPerformanceTierOverride(TEnumAsByte<ERenderPerformanceTier> NewOverride)
+{
+	RenderPerformanceTierOverride = NewOverride;
+
+	// Persist via SaveSettings() -> UGameUserSettings::SaveSettings -> real UObject::SaveConfig, which
+	// serializes ALL UPROPERTY(Config) fields. (The custom no-arg SaveConfig() above only hand-copies the
+	// two logger flags through its GEngine fallback, so it would NOT persist this field.)
+	SaveSettings();
 }
 
 void UUserProjectSettings::EnableMobiusLogger(bool bEnable)

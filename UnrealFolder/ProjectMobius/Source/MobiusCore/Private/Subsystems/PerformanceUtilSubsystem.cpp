@@ -7,14 +7,72 @@
 #include "EnumsAndStructs/ScalabilityEnums.h"
 #include "GameFramework/GameUserSettings.h"
 #include "HAL/PlatformTime.h"
+#include "HAL/PlatformMemory.h"
+#include "RHI.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "UserConfig/UserProjectSettings.h"
+
+// Heavy render-feature cvar tables per render tier (task C1). Each entry documents what it gates and
+// the per-tier value. Returned as "name=value" strings for ApplyConsoleCommands (-> ECVF_SetByCode).
+//
+// HIGH mirrors DefaultEngine.ini [/Script/Engine.RendererSettings] exactly, so applying it on capable
+// hardware is a value-level no-op (only the cvar priority is bumped). LOW/MEDIUM cut the per-frame GPU
+// cost. NOTE: r.RayTracing itself is ECVF_ReadOnly (startup-gated) — a runtime Set is ignored by the
+// engine, so it is intentionally omitted. The effective runtime ray-tracing saving comes from disabling
+// the RT *workloads*: r.Lumen.HardwareRayTracing (-> software Lumen) and r.RayTracing.Shadows. To strip
+// r.RayTracing entirely a startup path (device profile / [ConsoleVariables] / command line) is required.
+static TArray<FString> GetRenderTierConsoleCommands(ERenderPerformanceTier Tier)
+{
+	switch (Tier)
+	{
+	case ERpt_Low:
+		// Aggressive: software Lumen kept (GI on) so heterogeneous-volume smoke stays lit; everything
+		// else trimmed. (Flip r.DynamicGlobalIlluminationMethod to 0 for an even cheaper, flatter look —
+		// pending in-editor smoke A/B, see PRD C1.)
+		return {
+			TEXT("r.Lumen.HardwareRayTracing=0"),        // HW Lumen RT -> software Lumen (largest GPU saving)
+			TEXT("r.RayTracing.Shadows=0"),              // ray-traced shadows off -> rasterized CSM
+			TEXT("r.DynamicGlobalIlluminationMethod=1"), // keep (software) Lumen GI for smoke lighting
+			TEXT("r.ReflectionMethod=2"),                // SSR (cheap) instead of Lumen reflections
+			TEXT("r.AntiAliasingMethod=2"),              // TAA (cheaper than TSR)
+			TEXT("r.MSAACount=1"),                       // MSAA is inert in deferred; pin to 1
+			TEXT("r.DistanceFieldAO=0"),                 // distance-field AO off
+		};
+	case ERpt_Medium:
+		// Balanced: drop hardware ray tracing (software Lumen GI + reflections kept), AA stays TSR.
+		return {
+			TEXT("r.Lumen.HardwareRayTracing=0"),        // software Lumen (keeps GI/reflections, drops RT cost)
+			TEXT("r.RayTracing.Shadows=0"),              // rasterized shadows
+			TEXT("r.DynamicGlobalIlluminationMethod=1"), // Lumen GI
+			TEXT("r.ReflectionMethod=1"),                // Lumen reflections
+			TEXT("r.AntiAliasingMethod=4"),              // TSR (as shipped)
+			TEXT("r.MSAACount=1"),
+			TEXT("r.DistanceFieldAO=0"),
+		};
+	case ERpt_High:
+	default:
+		// Mirrors DefaultEngine.ini (capable-HW shipping values) -> value-level no-op on capable HW.
+		return {
+			TEXT("r.Lumen.HardwareRayTracing=1"),        // ini: r.Lumen.HardwareRayTracing=True
+			TEXT("r.RayTracing.Shadows=1"),              // ini: r.RayTracing.Shadows=True
+			TEXT("r.DynamicGlobalIlluminationMethod=1"), // ini: r.DynamicGlobalIlluminationMethod=1
+			TEXT("r.ReflectionMethod=1"),                // ini: r.ReflectionMethod=1
+			TEXT("r.AntiAliasingMethod=4"),              // ini: r.AntiAliasingMethod=4 (TSR)
+			TEXT("r.MSAACount=4"),                       // ini: r.MSAACount=4
+			TEXT("r.DistanceFieldAO=1"),                 // engine default (not in ini) -> true no-op on High
+		};
+	}
+}
 
 UPerformanceUtilSubsystem::UPerformanceUtilSubsystem()
 {
 	GlobalScalabilitySetting = EGss_Epic;
 	CurrentAvatarModelType = EPss_High;
+	// Default to High so first construction / capable hardware matches DefaultEngine.ini until
+	// InitializeRenderPerformanceTier() detects or an override pins a lower tier (tasks C1/C2).
+	CurrentRenderTier = ERpt_High;
 }
 
 UPerformanceUtilSubsystem::~UPerformanceUtilSubsystem()
@@ -55,6 +113,10 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		}
 	}
 
+	// Detect (or apply the persisted override for) the render performance tier once at startup
+	// (tasks C1/C2). HIGH == today's DefaultEngine.ini values, so capable hardware is unchanged.
+	InitializeRenderPerformanceTier();
+
 	if (StartupLogger)
 	{
 		const double DurationMs = (FPlatformTime::Seconds() - InitStart) * 1000.0;
@@ -64,6 +126,16 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UPerformanceUtilSubsystem::Deinitialize()
 {
+	// Restore the shipping HIGH cvar set if this (Game/PIE) world applied a degraded tier. Cvars set
+	// with ECVF_SetByCode persist process-wide, so without this a Low/Medium PIE session would leave
+	// the editor viewport degraded until restart. Only fires if a non-High tier was actually applied
+	// (the editor world never applies one, so CurrentRenderTier stays High there). (Task C1.)
+	if (CurrentRenderTier != ERpt_High)
+	{
+		ApplyConsoleCommands(GetRenderTierConsoleCommands(ERpt_High));
+		CurrentRenderTier = ERpt_High;
+	}
+
 	// Clean up any resources or delegates here if needed
 	if (ProjectSettings)
 	{
@@ -589,23 +661,111 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 
 void UPerformanceUtilSubsystem::CheckHardwareUsageAndApplyOptimizations()
 {
-	// look at game user setting api - this may help
-	// https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/GameFramework/UGameUserSettings?application_version=5.6
-	
-	// CPU Usage
-	// Is it multi-core/multi-threaded?
-	// If so, check the current CPU usage across all cores
-	// If single core/threaded then require big optimizations
-	/*
-	 * Single core/threaded cpu would mean that we have to disable some features that are CPU intensive, and scale
-	 * down core features where possible.
-	 */
+	// Intentionally a no-op for the render tier. C1 is startup hardware-detect (InitializeRenderPerformanceTier)
+	// plus the C2 override only — NOT FPS-driven runtime degradation.
+	//
+	// A naive "on sustained low FPS, step the tier down" here would break C1's own pass criterion
+	// ("HIGH == today's cvars, identical render on capable HW"): a transient <15 FPS dip on capable
+	// hardware (e.g. a heavy spawn / Niagara burst with a large crowd) would silently — and, with no
+	// step-up path, permanently — drop the session below HIGH. It is also not world-gated like the
+	// startup path, so it could degrade the editor viewport. Correct runtime degradation needs
+	// hysteresis + step-up recovery + Game/PIE gating + explicit opt-in, so it belongs in its own task.
+	//
+	// (The pre-existing avatar-representation downscale in the caller ApplyOptimizationsBasedOnFPS is
+	// unchanged by C1.)
+}
 
-	// GPU Usage
-	// GPU check the current 3D usage
-	// GPU check the current VRAM usage
-	
-	// Memory Usage
-	// If any of these are above a certain threshold, apply optimizations
+ERenderPerformanceTier UPerformanceUtilSubsystem::DetectHardwareRenderTier() const
+{
+	// Heuristic auto-detect (task C1). Thresholds are deliberately conservative and tunable. Signals:
+	//  - hardware ray-tracing support (a weak/old GPU without it should never run the RT path),
+	//  - dedicated VRAM (the GPU's onboard video memory),
+	//  - total system RAM.
+	const bool bSupportsHardwareRT = GRHISupportsRayTracing;
+
+	// Dedicated VRAM (bytes) reported by the active RHI adapter. Per RHIStats.h this is -1 when the RHI
+	// could not determine it (e.g. some non-DXGI driver paths) — that is "unknown", NOT a small GPU — so
+	// we must not down-tier on VRAM alone in that case. On the project's primary Win64/D3D12 target DXGI
+	// populates this reliably.
+	FTextureMemoryStats TexMemStats;
+	RHIGetTextureMemoryStats(TexMemStats);
+	const int64 DedicatedVramBytes = TexMemStats.DedicatedVideoMemory;
+	const bool bVramKnown = DedicatedVramBytes >= 0;
+
+	// Total physical system RAM (bytes).
+	const uint64 TotalPhysicalBytes = FPlatformMemory::GetStats().TotalPhysical;
+
+	constexpr int64 GiB = 1024LL * 1024LL * 1024LL;
+
+	// LOW: no HW ray tracing, or a (known) memory-constrained GPU, or a memory-constrained system.
+	if (!bSupportsHardwareRT || (bVramKnown && DedicatedVramBytes < 3 * GiB) || TotalPhysicalBytes < 8ULL * GiB)
+	{
+		return ERpt_Low;
+	}
+
+	// HIGH: HW ray tracing + ample (known) VRAM + ample system RAM.
+	if (bVramKnown && DedicatedVramBytes >= 8 * GiB && TotalPhysicalBytes >= 16ULL * GiB)
+	{
+		return ERpt_High;
+	}
+
+	// Everything in between.
+	return ERpt_Medium;
+}
+
+void UPerformanceUtilSubsystem::ApplyRenderPerformanceTier(TEnumAsByte<ERenderPerformanceTier> Tier)
+{
+	// Resolve Auto defensively (callers normally pass a concrete tier).
+	const ERenderPerformanceTier ResolvedTier = (Tier.GetValue() == ERpt_Auto) ? DetectHardwareRenderTier() : Tier.GetValue();
+
+	ApplyConsoleCommands(GetRenderTierConsoleCommands(ResolvedTier));
+	CurrentRenderTier = ResolvedTier;
+
+	if (UMobiusCustomLoggerSubsystem* Logger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr)
+	{
+		Logger->EnqueueLogMessage(FString::Printf(TEXT("ApplyRenderPerformanceTier -> tier %d"), static_cast<int32>(ResolvedTier)));
+	}
+	// Intentionally does NOT broadcast OnAutoScalabilityChanged: the render tier is render-only and
+	// must not trigger the avatar-representation downscale that delegate drives.
+}
+
+void UPerformanceUtilSubsystem::InitializeRenderPerformanceTier()
+{
+	// Apply only in real game / PIE worlds — never the editor world — so the developer's editor viewport
+	// render settings are left untouched at startup (task C1). The C2 override setter applies in any
+	// world, so a tier can still be forced for in-editor testing.
+	const UWorld* World = GetWorld();
+	if (!World || (World->WorldType != EWorldType::Game && World->WorldType != EWorldType::PIE))
+	{
+		return;
+	}
+
+	// Read the persisted override (task C2). Auto -> hardware detect.
+	ERenderPerformanceTier Override = ERpt_Auto;
+	if (const UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(ProjectSettings))
+	{
+		Override = UserSettings->GetRenderPerformanceTierOverride();
+	}
+
+	const ERenderPerformanceTier TierToApply = (Override == ERpt_Auto) ? DetectHardwareRenderTier() : Override;
+	ApplyRenderPerformanceTier(TierToApply);
+}
+
+void UPerformanceUtilSubsystem::SetRenderPerformanceTierOverride(TEnumAsByte<ERenderPerformanceTier> NewOverride)
+{
+	// Persist the override (task C2) ...
+	if (UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(ProjectSettings))
+	{
+		UserSettings->SetRenderPerformanceTierOverride(NewOverride); // writes UPROPERTY(Config) + SaveSettings()
+	}
+
+	// ... then apply immediately (Auto re-runs detection).
+	const ERenderPerformanceTier TierToApply = (NewOverride.GetValue() == ERpt_Auto) ? DetectHardwareRenderTier() : NewOverride.GetValue();
+	ApplyRenderPerformanceTier(TierToApply);
+}
+
+TEnumAsByte<ERenderPerformanceTier> UPerformanceUtilSubsystem::GetCurrentRenderTier() const
+{
+	return CurrentRenderTier;
 }
 
