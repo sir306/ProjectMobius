@@ -334,35 +334,36 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 		// Default the smoke layer to the ceiling until zone data overrides it in ResolveTypedRoomState.
 		RoomState.LayerHeightWorldCm = RoomState.WorldBounds.Max.Z;
 
-		if (!ZoneTables.IsValidIndex(RoomIndex))
-		{
-			continue;
-		}
-
-		const FBRiskZoneTable& ZoneTable = ZoneTables[RoomIndex];
+		// B-Risk packs every room into a single zone table, one column per channel
+		// suffixed with the room id ("ULOD_1", "ULOD_2", ...). Collect just this
+		// room's columns from across all zone tables, keyed by their suffix-stripped
+		// name so TryGetRawSeries' aliases match regardless of room count.
 		FRoomSeriesCache& SeriesCache = RoomSeriesCaches[RoomIndex];
-		SeriesCache.SeriesNames.Reserve(ZoneTable.Series.Num());
-		SeriesCache.SeriesUnits.Reserve(ZoneTable.Series.Num());
-		SeriesCache.SeriesValues.Init(0.0f, ZoneTable.Series.Num());
-
-		for (int32 SeriesIndex = 0; SeriesIndex < ZoneTable.Series.Num(); ++SeriesIndex)
+		for (int32 TableIndex = 0; TableIndex < ZoneTables.Num(); ++TableIndex)
 		{
-			const FBRiskSeries& Series = ZoneTable.Series[SeriesIndex];
-			const FName NormalizedName = NormalizeSeriesName(Series.Name);
-			SeriesCache.SeriesNames.Add(NormalizedName);
-			SeriesCache.SeriesUnits.Add(Series.Unit);
-			SeriesCache.SeriesLookup.FindOrAdd(NormalizedName, SeriesIndex);
-		}
-	}
+			const FBRiskZoneTable& ZoneTable = ZoneTables[TableIndex];
+			for (int32 SeriesIndex = 0; SeriesIndex < ZoneTable.Series.Num(); ++SeriesIndex)
+			{
+				const FBRiskSeries& Series = ZoneTable.Series[SeriesIndex];
+				const int32 Suffix = ExtractRoomIdSuffix(Series.Name);
+				// Take columns whose suffix matches this room. A suffix-less column is
+				// only attributed to a single-room scenario as a defensive fallback.
+				const bool bMatchesRoom = (Suffix == Room.RoomId)
+					|| (Suffix == INDEX_NONE && Rooms.Num() == 1);
+				if (!bMatchesRoom)
+				{
+					continue;
+				}
 
-	if (Rooms.Num() != ZoneTables.Num())
-	{
-		UE_LOG(
-			LogBRiskEgressSubsystem,
-			Warning,
-			TEXT("B-Risk room/zone count differs (rooms=%d zones=%d). Egress data uses matching indices."),
-			Rooms.Num(),
-			ZoneTables.Num());
+				const FName NormalizedName = NormalizeSeriesName(Series.Name);
+				const int32 CacheIndex = SeriesCache.SeriesNames.Add(NormalizedName);
+				SeriesCache.SeriesUnits.Add(Series.Unit);
+				SeriesCache.SeriesValues.Add(0.0f);
+				SeriesCache.SourceTableIndex.Add(TableIndex);
+				SeriesCache.SourceSeriesIndex.Add(SeriesIndex);
+				SeriesCache.SeriesLookup.FindOrAdd(NormalizedName, CacheIndex);
+			}
+		}
 	}
 
 	++Revision;
@@ -389,17 +390,19 @@ void UBRiskEgressSubsystem::RefreshAtTime(const float NewSimulationTime)
 
 	for (int32 RoomIndex = 0; RoomIndex < RoomSeriesCaches.Num(); ++RoomIndex)
 	{
-		if (!ZoneTables.IsValidIndex(RoomIndex))
-		{
-			continue;
-		}
-
-		const FBRiskZoneTable& ZoneTable = ZoneTables[RoomIndex];
 		FRoomSeriesCache& SeriesCache = RoomSeriesCaches[RoomIndex];
-		const int32 SeriesCount = FMath::Min(ZoneTable.Series.Num(), SeriesCache.SeriesValues.Num());
 
-		for (int32 SeriesIndex = 0; SeriesIndex < SeriesCount; ++SeriesIndex)
+		for (int32 CacheIndex = 0; CacheIndex < SeriesCache.SeriesValues.Num(); ++CacheIndex)
 		{
+			const int32 TableIndex = SeriesCache.SourceTableIndex[CacheIndex];
+			const int32 SeriesIndex = SeriesCache.SourceSeriesIndex[CacheIndex];
+			if (!ZoneTables.IsValidIndex(TableIndex)
+				|| !ZoneTables[TableIndex].Series.IsValidIndex(SeriesIndex))
+			{
+				continue;
+			}
+
+			const FBRiskZoneTable& ZoneTable = ZoneTables[TableIndex];
 			float SampledValue = 0.0f;
 			if (SampleAlignedSeries(
 				ZoneTable.TimeSeconds,
@@ -407,7 +410,7 @@ void UBRiskEgressSubsystem::RefreshAtTime(const float NewSimulationTime)
 				NewSimulationTime,
 				SampledValue))
 			{
-				SeriesCache.SeriesValues[SeriesIndex] = SampledValue;
+				SeriesCache.SeriesValues[CacheIndex] = SampledValue;
 			}
 		}
 
@@ -769,6 +772,28 @@ FTenabilityAnalysisSettings UBRiskEgressSubsystem::BuildTenabilitySettingsFromEn
 	}
 
 	return Settings;
+}
+
+int32 UBRiskEgressSubsystem::ExtractRoomIdSuffix(const FString& SeriesName)
+{
+	FString Trimmed = SeriesName;
+	Trimmed.TrimStartAndEndInline();
+
+	int32 LastUnderscore = INDEX_NONE;
+	if (!Trimmed.FindLastChar(TEXT('_'), LastUnderscore) || LastUnderscore + 1 >= Trimmed.Len())
+	{
+		return INDEX_NONE;
+	}
+
+	for (int32 Index = LastUnderscore + 1; Index < Trimmed.Len(); ++Index)
+	{
+		if (!FChar::IsDigit(Trimmed[Index]))
+		{
+			return INDEX_NONE;
+		}
+	}
+
+	return FCString::Atoi(*Trimmed.Mid(LastUnderscore + 1));
 }
 
 FName UBRiskEgressSubsystem::NormalizeSeriesName(const FString& SeriesName)

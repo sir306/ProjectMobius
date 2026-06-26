@@ -505,6 +505,12 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 	{
 		FActorSpawnParameters SpawnParameters;
 		SpawnParameters.Name = TEXT("BRiskSmokeVisualizer");
+		// Swapping the .smv mid-session destroys the previous visualizer, but Destroy()
+		// only marks it Garbage — the actor keeps this name (and the Level as its outer)
+		// until GC, which won't run inside the async-import window. SpawnActor's default
+		// Required_Fatal name mode would then hit a name collision and crash via
+		// UE_LOG(LogSpawn, Fatal). Requested makes the name unique on collision instead.
+		SpawnParameters.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		SmokeVisualizerActor = World->SpawnActor<ABRiskSmokeVisualizer>(
 			ABRiskSmokeVisualizer::StaticClass(),
@@ -536,7 +542,7 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 	}
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
-		TEXT("Generated B-Risk smoke volumes: rooms=%d createdVolumes=%d zones=%d series=HGT_1,ULOD_1,LLOD_1,ULT_1,LLT_1 scale=%g"),
+		TEXT("Generated B-Risk smoke volumes: rooms=%d createdVolumes=%d zones=%d series=HGT_<roomId>,ULOD_<roomId>,LLOD_<roomId>,ULT_<roomId>,LLT_<roomId> scale=%g"),
 		ScenarioData.Rooms.Num(),
 		SmokeVisualizerActor->GetSmokeVolumeCount(),
 		ScenarioData.ZoneTables.Num(),
@@ -556,7 +562,7 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 		return false;
 	}
 
-	if (ScenarioData.Fires.Num() == 0 && ScenarioData.Sprinklers.Num() == 0)
+	if (ScenarioData.Fires.Num() == 0 && ScenarioData.Sprinklers.Num() == 0 && ScenarioData.Vents.Num() == 0)
 	{
 		return false;
 	}
@@ -565,6 +571,10 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 	{
 		FActorSpawnParameters SpawnParameters;
 		SpawnParameters.Name = TEXT("BRiskHazardVisualizer");
+		// See the smoke visualizer spawn above: a mid-session .smv reload leaves the
+		// previous (Garbage, pre-GC) actor holding this name, so the default
+		// Required_Fatal name mode would crash on the collision. Requested avoids it.
+		SpawnParameters.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
 		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		HazardVisualizerActor = World->SpawnActor<ABRiskHazardVisualizer>(
 			ABRiskHazardVisualizer::StaticClass(),
@@ -583,6 +593,7 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 		ScenarioData.Rooms,
 		ScenarioData.Fires,
 		ScenarioData.Sprinklers,
+		ScenarioData.Vents,
 		RoomGeometryScale))
 	{
 		LastError = TEXT("Failed to configure B-Risk hazard visuals.");
@@ -622,17 +633,19 @@ bool UBRiskDataSubsystem::UpdateSmokeAtTime(float TimeSeconds)
 		double LowerOpticalDensity = 0.0;
 		double UpperTemperatureC = 24.0;
 		double LowerTemperatureC = 24.0;
-		const bool bHasLayerHeight = SampleSeriesAtTime(RoomIndex, TEXT("HGT_1"), TimeSeconds, LayerHeight);
-		const bool bHasUpperOpticalDensity = SampleSeriesAtTime(RoomIndex, TEXT("ULOD_1"), TimeSeconds, UpperOpticalDensity);
-		const bool bHasLowerOpticalDensity = SampleSeriesAtTime(RoomIndex, TEXT("LLOD_1"), TimeSeconds, LowerOpticalDensity);
-		const bool bHasUpperTemperature = SampleSeriesAtTime(RoomIndex, TEXT("ULT_1"), TimeSeconds, UpperTemperatureC);
-		const bool bHasLowerTemperature = SampleSeriesAtTime(RoomIndex, TEXT("LLT_1"), TimeSeconds, LowerTemperatureC);
+		// B-Risk suffixes each room's layer channels with the room id (HGT_1, HGT_2, ...).
+		const int32 RoomId = ScenarioData.Rooms[RoomIndex].RoomId;
+		const bool bHasLayerHeight = SampleRoomChannelAtTime(RoomId, TEXT("HGT"), TimeSeconds, LayerHeight);
+		const bool bHasUpperOpticalDensity = SampleRoomChannelAtTime(RoomId, TEXT("ULOD"), TimeSeconds, UpperOpticalDensity);
+		const bool bHasLowerOpticalDensity = SampleRoomChannelAtTime(RoomId, TEXT("LLOD"), TimeSeconds, LowerOpticalDensity);
+		const bool bHasUpperTemperature = SampleRoomChannelAtTime(RoomId, TEXT("ULT"), TimeSeconds, UpperTemperatureC);
+		const bool bHasLowerTemperature = SampleRoomChannelAtTime(RoomId, TEXT("LLT"), TimeSeconds, LowerTemperatureC);
 
 		if ((!bHasLayerHeight || !bHasUpperOpticalDensity || !bHasLowerOpticalDensity || !bHasUpperTemperature) && !bHasWarnedMissingSmokeSeries)
 		{
 			bHasWarnedMissingSmokeSeries = true;
 			UE_LOG(LogBRiskDataSubsystem, Warning,
-				TEXT("B-Risk smoke visualizer could not find one or more visual channels (HGT_1, ULOD_1, LLOD_1, ULT_1); missing channels use clear/ambient defaults."));
+				TEXT("B-Risk smoke visualizer could not find one or more visual channels (HGT_<roomId>, ULOD_<roomId>, LLOD_<roomId>, ULT_<roomId>); missing channels use clear/ambient defaults."));
 		}
 
 		const FBRiskSmokeVisualState SmokeState = bHasLayerHeight
@@ -648,9 +661,9 @@ bool UBRiskDataSubsystem::UpdateSmokeAtTime(float TimeSeconds)
 			: FBRiskSmokeVisualState();
 
 		UE_LOG(LogBRiskDataSubsystem, Log,
-			TEXT("B-Risk smoke sample: room=%d zone=%d time=%g HGT_1=%g ULOD_1=%g LLOD_1=%g ULT_1=%g LLT_1=%g roomHeight=%g RoomSmoke=%g UpperExtinctionPerCm=%g LowerExtinctionPerCm=%g SmokeDensity=%g SmokeHeat=%g"),
+			TEXT("B-Risk smoke sample: room=%d roomId=%d time=%g HGT=%g ULOD=%g LLOD=%g ULT=%g LLT=%g roomHeight=%g RoomSmoke=%g UpperExtinctionPerCm=%g LowerExtinctionPerCm=%g SmokeDensity=%g SmokeHeat=%g"),
 			RoomIndex,
-			RoomIndex,
+			RoomId,
 			TimeSeconds,
 			bHasLayerHeight ? LayerHeight : -1.0,
 			bHasUpperOpticalDensity ? UpperOpticalDensity : -1.0,
@@ -692,24 +705,21 @@ bool UBRiskDataSubsystem::UpdateHazardVisualsAtTime(float TimeSeconds)
 	bool bUpdatedAny = false;
 	for (int32 FireIndex = 0; FireIndex < ScenarioData.Fires.Num(); ++FireIndex)
 	{
-		const FBRiskFireGeometry& Fire = ScenarioData.Fires[FireIndex];
-		const int32 RoomIndex = ScenarioData.Rooms.IndexOfByPredicate([&Fire](const FBRiskRoomGeometry& Room)
-		{
-			return Room.RoomId == Fire.RoomId;
-		});
-
 		double HeatReleaseRateKw = 0.0;
 		double FlameHeightM = 0.0;
 		double FireBaseM = 0.3;
-		const bool bHasHrr = SampleSeriesAtTime(RoomIndex, TEXT("HRR_1"), TimeSeconds, HeatReleaseRateKw);
-		const bool bHasFlameHeight = SampleSeriesAtTime(RoomIndex, TEXT("FLHGT_1"), TimeSeconds, FlameHeightM);
-		const bool bHasFireBase = SampleSeriesAtTime(RoomIndex, TEXT("FBASE_1"), TimeSeconds, FireBaseM);
+		// B-Risk suffixes fire channels with the 1-based fire-object number (HRR_1 for
+		// the first fire object), independent of which room contains the fire.
+		const int32 FireObjectId = FireIndex + 1;
+		const bool bHasHrr = SampleRoomChannelAtTime(FireObjectId, TEXT("HRR"), TimeSeconds, HeatReleaseRateKw);
+		const bool bHasFlameHeight = SampleRoomChannelAtTime(FireObjectId, TEXT("FLHGT"), TimeSeconds, FlameHeightM);
+		const bool bHasFireBase = SampleRoomChannelAtTime(FireObjectId, TEXT("FBASE"), TimeSeconds, FireBaseM);
 
 		if ((!bHasHrr || !bHasFlameHeight) && !bHasWarnedMissingHazardSeries)
 		{
 			bHasWarnedMissingHazardSeries = true;
 			UE_LOG(LogBRiskDataSubsystem, Warning,
-				TEXT("B-Risk hazard visualizer could not find one or more fire channels (HRR_1, FLHGT_1, FBASE_1); missing channels use hidden/default fire visuals."));
+				TEXT("B-Risk hazard visualizer could not find one or more fire channels (HRR_<fireId>, FLHGT_<fireId>, FBASE_<fireId>); missing channels use hidden/default fire visuals."));
 		}
 
 		FBRiskFireVisualState FireState;
@@ -880,6 +890,20 @@ bool UBRiskDataSubsystem::SampleSeriesAtTime(int32 ZoneTableIndex, const FString
 	const double Alpha = (TimeSeconds - Times[Lo]) / (Times[Hi] - Times[Lo]);
 	OutValue = FMath::Lerp(Values[Lo], Values[Hi], Alpha);
 	return true;
+}
+
+bool UBRiskDataSubsystem::SampleRoomChannelAtTime(int32 OneBasedIndex, const TCHAR* BaseName,
+                                                  double TimeSeconds, double& OutValue) const
+{
+	const FString FullName = FString::Printf(TEXT("%s_%d"), BaseName, OneBasedIndex);
+	for (int32 TableIndex = 0; TableIndex < ScenarioData.ZoneTables.Num(); ++TableIndex)
+	{
+		if (SampleSeriesAtTime(TableIndex, FullName, TimeSeconds, OutValue))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(

@@ -31,11 +31,12 @@ class PROJECTMOBIUS_API ABRiskHazardVisualizer : public AActor
 public:
 	ABRiskHazardVisualizer();
 
-	/** Rebuild fire and sprinkler components for the active B-Risk scenario. */
+	/** Rebuild fire, sprinkler and vent components for the active B-Risk scenario. */
 	bool ConfigureFromScenario(
 		const TArray<FBRiskRoomGeometry>& Rooms,
 		const TArray<FBRiskFireGeometry>& Fires,
 		const TArray<FBRiskSprinklerGeometry>& Sprinklers,
+		const TArray<FBRiskVentGeometry>& Vents,
 		float Scale);
 
 	/** Remove all generated hazard components. */
@@ -50,12 +51,32 @@ public:
 	/** Number of generated visual components. */
 	int32 GetHazardVisualCount() const;
 
+	/**
+	 * Compute the world-space slab (centre + size, cm) for a B-Risk vent on its
+	 * FromRoom wall. The wall is taken from room adjacency when ToRoom is a real
+	 * room (the shared wall is geometrically unambiguous and matches Smokeview),
+	 * and from the B-Risk/CFAST face id (1=-Y front, 2=+X right, 3=+Y rear,
+	 * 4=-X left) only for vents to the exterior (ToRoom == nullptr). Returns
+	 * false if FromRoom is missing or the opening has no area.
+	 */
+	static bool ComputeVentSlab(
+		const FBRiskVentGeometry& Vent,
+		const FBRiskRoomGeometry* FromRoom,
+		const FBRiskRoomGeometry* ToRoom,
+		float Scale,
+		float ThicknessCm,
+		FVector& OutCenterCm,
+		FVector& OutSizeCm);
+
 private:
 	UPROPERTY()
 	TObjectPtr<USceneComponent> SceneRoot;
 
 	UPROPERTY()
 	TObjectPtr<UStaticMesh> ConeMesh;
+
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> CubeMesh;
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BasicShapeMaterial;
@@ -77,6 +98,13 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> SprinklerMaterials;
+
+	/** One thin slab marking each B-Risk vent/opening on its FromRoom wall. */
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> VentComponents;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentMaterials;
 
 	TArray<FVector> FireBaseLocationsCm;
 	TArray<FBRiskSprinklerGeometry> SprinklerData;

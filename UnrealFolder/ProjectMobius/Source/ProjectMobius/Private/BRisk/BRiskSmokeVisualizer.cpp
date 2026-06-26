@@ -15,14 +15,35 @@ DEFINE_LOG_CATEGORY_STATIC(LogBRiskSmokeVisualizer, Log, All);
 
 namespace
 {
-	constexpr float SmokeNiagaraActivationDensityThreshold = 0.02f;
+	// Activation/visibility gate on the 0-1 SmokeDensity proxy. Kept tiny on purpose:
+	// SmokeDensity = 1-exp(-0.35*ULOD) ignores path length, so the old 0.02 gate
+	// (ULOD ~= 0.058) is already ~47% obscuration across a 4 m room. For a well-mixed
+	// B-Risk room (layer pinned at the floor, e.g. 3_RoomFire room 2) the smoke region
+	// is the whole room from t=0, so that gate made it pop from invisible straight to
+	// half-opaque ("nothing -> full room"). A near-zero gate lets the per-room
+	// extinction ramp the opacity in smoothly from barely-visible. Rooms with a
+	// descending layer are unaffected (they already looked gradual).
+	constexpr float SmokeNiagaraActivationDensityThreshold = 0.001f;
+	// Per room the outline is a CONSTANT zone box (full room, floor->ceiling, 12 edges,
+	// always visible) plus a MOVING layer-interface rectangle (4 horizontal edges at the
+	// current layer height). The zone box never changes; only the layer line tracks the
+	// interface, so a well-mixed room (layer pinned near the floor) still shows its full
+	// room outline with the layer line sitting low.
 	constexpr int32 SmokeOutlineEdgesPerBox = 12;
-	constexpr int32 SmokeOutlineEdgesPerRoom = SmokeOutlineEdgesPerBox * 2;
+	constexpr int32 SmokeOutlineLayerEdges = 4;
+	constexpr int32 SmokeOutlineEdgesPerRoom = SmokeOutlineEdgesPerBox + SmokeOutlineLayerEdges;
 	constexpr float SmokeOutlineThicknessCm = 2.0f;
 	const TCHAR* HeterogeneousSmokeNiagaraSystemPath =
 		TEXT("/Game/B-Risk/Niagara/NS_HeterogenousSmokeVol.NS_HeterogenousSmokeVol");
-	const FLinearColor HotSmokeOutlineColor(0.018f, 0.014f, 0.010f, 1.0f);
-	const FLinearColor CoolSmokeOutlineColor(0.035f, 0.18f, 0.85f, 1.0f);
+	// Colours follow Smokeview defaults so fire engineers see a familiar palette
+	// (B-RISK delegates all visualisation to Smokeview; SR282 defines no colours of
+	// its own). Constant zone box uses Smokeview's geometry-outline cyan (OUTLINECOLOR
+	// 0 255 255 — also matches the cyan room edges in SR282 Fig.19). The moving
+	// layer-interface line has no Smokeview equivalent (Smokeview shows the layer by
+	// temperature-colouring the upper region), so it uses neutral white (FOREGROUNDCOLOR)
+	// to avoid clashing with the magenta vents / orange fire / yellow sensors palette.
+	const FLinearColor RoomZoneOutlineColor(0.0f, 1.0f, 1.0f, 1.0f);
+	const FLinearColor LayerInterfaceOutlineColor(1.0f, 1.0f, 1.0f, 1.0f);
 
 	bool ShouldRunSmokeNiagara(const FBRiskSmokeVisualState& SmokeState)
 	{
@@ -257,8 +278,8 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 				if (EdgeMaterial)
 				{
 					const FLinearColor EdgeColor = EdgeIndex < SmokeOutlineEdgesPerBox
-						? HotSmokeOutlineColor
-						: CoolSmokeOutlineColor;
+						? RoomZoneOutlineColor
+						: LayerInterfaceOutlineColor;
 					EdgeMaterial->SetVectorParameterValue(TEXT("Color"), EdgeColor);
 					EdgeMaterial->SetVectorParameterValue(TEXT("BaseColor"), EdgeColor);
 					EdgeComponent->SetMaterial(0, EdgeMaterial);
@@ -286,6 +307,16 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			AddInstanceComponent(NiagaraComponent);
 			NiagaraComponent->OnComponentCreated();
 			NiagaraComponent->RegisterComponent();
+
+			// NS_HeterogenousSmokeVol is a GPU sim (heterogeneous volume); GPU sims
+			// cannot compute CPU-side dynamic bounds, so without an explicit fixed
+			// bound the volume is culled/clipped against the asset's origin-anchored
+			// bounds. That renders the room at the world origin but malforms every
+			// offset room. Pin per-room LOCAL-space bounds (component sits at the room
+			// centre, so the volume spans +/- half the room size) to override it.
+			const FVector HalfExtentsCm = SizeCm * 0.5f;
+			NiagaraComponent->SetSystemFixedBounds(FBox(-HalfExtentsCm, HalfExtentsCm));
+
 			NiagaraComponent->DeactivateImmediate();
 
 			SmokeNiagaraComponents[RoomIndex] = NiagaraComponent;
@@ -471,10 +502,13 @@ void ABRiskSmokeVisualizer::UpdateSmokeOutlineEdges(int32 RoomIndex, const FBRis
 		return;
 	}
 
-	const float Density = FMath::Clamp(SmokeState.SmokeDensity, 0.0f, 1.0f);
 	const float RoomSmoke = FMath::Clamp(SmokeState.RoomSmoke, 0.0f, 1.0f);
-	const bool bShowHotOutline = Density >= SmokeNiagaraActivationDensityThreshold && RoomSmoke < 0.995f;
-	const bool bShowCoolOutline = RoomSmoke > 0.005f;
+	// Show the layer line only when smoke is actually present (same gate as the visible
+	// volume), AND the interface sits meaningfully between floor and ceiling. Without the
+	// smoke-presence check a well-mixed room (layer pinned low from t=0, e.g. room 2)
+	// would show the layer line before any smoke develops. The zone box is always shown.
+	const bool bShowLayerLine = ShouldRunSmokeNiagara(SmokeState)
+		&& RoomSmoke > 0.005f && RoomSmoke < 0.995f;
 
 	const FVector OriginCm = SmokeRoomOriginsCm[RoomIndex];
 	const FVector SizeCm = SmokeRoomSizesCm[RoomIndex];
@@ -534,8 +568,38 @@ void ABRiskSmokeVisualizer::UpdateSmokeOutlineEdges(int32 RoomIndex, const FBRis
 		}
 	};
 
-	ConfigureBoxOutline(0, bShowHotOutline, LayerZ, TopZ);
-	ConfigureBoxOutline(SmokeOutlineEdgesPerBox, bShowCoolOutline, FloorZ, LayerZ);
+	// Constant zone outline: the full room box (floor -> ceiling), always visible.
+	ConfigureBoxOutline(0, true, FloorZ, TopZ);
+
+	// Moving layer-interface rectangle: 4 horizontal edges at the current layer height.
+	const FVector LayerEdgeCenters[SmokeOutlineLayerEdges] = {
+		FVector(MidX, MinY, LayerZ),
+		FVector(MidX, MaxY, LayerZ),
+		FVector(MinX, MidY, LayerZ),
+		FVector(MaxX, MidY, LayerZ),
+	};
+	const FVector LayerEdgeSizes[SmokeOutlineLayerEdges] = {
+		FVector(SizeCm.X, T, T),
+		FVector(SizeCm.X, T, T),
+		FVector(T, SizeCm.Y, T),
+		FVector(T, SizeCm.Y, T),
+	};
+	for (int32 LayerEdgeIndex = 0; LayerEdgeIndex < SmokeOutlineLayerEdges; ++LayerEdgeIndex)
+	{
+		const int32 FlatEdgeIndex = RoomIndex * SmokeOutlineEdgesPerRoom + SmokeOutlineEdgesPerBox + LayerEdgeIndex;
+		if (!SmokeOutlineEdgeComponents.IsValidIndex(FlatEdgeIndex) || !SmokeOutlineEdgeComponents[FlatEdgeIndex])
+		{
+			continue;
+		}
+
+		UStaticMeshComponent* EdgeComponent = SmokeOutlineEdgeComponents[FlatEdgeIndex];
+		EdgeComponent->SetVisibility(bShowLayerLine, true);
+		EdgeComponent->SetHiddenInGame(!bShowLayerLine);
+		if (bShowLayerLine)
+		{
+			ConfigureOutlineEdge(EdgeComponent, LayerEdgeCenters[LayerEdgeIndex], LayerEdgeSizes[LayerEdgeIndex]);
+		}
+	}
 }
 
 void ABRiskSmokeVisualizer::SetSmokeSimulationPaused(bool bPaused)

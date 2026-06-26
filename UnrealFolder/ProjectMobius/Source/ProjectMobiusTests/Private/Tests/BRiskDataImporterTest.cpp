@@ -5,6 +5,7 @@
 #include "BRiskDataImporter.h"
 #include "BRisk/BRiskDataSubsystem.h"
 #include "BRisk/BRiskEgressSubsystem.h"
+#include "BRisk/BRiskHazardVisualizer.h"
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
@@ -422,6 +423,169 @@ bool FBRiskDataImporterFailureTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Malformed numeric cell should fail"),
 		FBRiskDataImporter::ImportScenarioFromSmv(MalformedSmv, Data, &Error));
 
+	return true;
+}
+
+// --- Multi-room: per-room columns in a single zone table ----------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskMultiRoomZoneImportTest,
+	"ProjectMobius.BRisk.Importer.MultiRoomZone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskMultiRoomZoneImportTest::RunTest(const FString& Parameters)
+{
+	// Three rooms laid out like b-risk-Testdata\3_RoomFire; fire only in room 1.
+	const FString Smv =
+		TEXT("ROOM   1\n 8.0 8.0 4.0\n 0.0 0.0 0.0\n")
+		TEXT("ROOM   2\n 8.0 8.0 4.0\n 8.0 0.0 0.0\n")
+		TEXT("ROOM   3\n 8.0 8.0 4.0\n 0.0 8.0 0.0\n")
+		TEXT("FIRE\n 1 3.15 2.15 0.3\n")
+		TEXT("ZONE\n3_RoomFire_zone.csv\n");
+
+	// Distinct per-room ULOD so we can prove room 2/3 are not aliased to room 1.
+	FString Csv =
+		TEXT("s,C,C,m,1 / m,C,C,m,1 / m,C,C,m,1 / m,kW,\n")
+		TEXT("Time,ULT_1,LLT_1,HGT_1,ULOD_1,ULT_2,LLT_2,HGT_2,ULOD_2,ULT_3,LLT_3,HGT_3,ULOD_3,HRR_1,\n")
+		TEXT("0,24,24,4.0,0.5,24,24,4.0,1.5,24,24,4.0,2.5,0,\n")
+		TEXT("600,200,150,1.2,0.5,180,140,1.6,1.5,160,130,2.0,2.5,1000,\n");
+
+	const FString Dir = MakeBRiskTestDir();
+	const FString SmvPath = FPaths::Combine(Dir, TEXT("3_RoomFire.smv"));
+	TestTrue(TEXT("multi-room smv written"), WriteTextFile(SmvPath, Smv));
+	TestTrue(TEXT("multi-room csv written"),
+		WriteTextFile(FPaths::Combine(Dir, TEXT("3_RoomFire_zone.csv")), Csv));
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("multi-room scenario imports"),
+		FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	TestEqual(TEXT("three rooms parsed"), Data.Rooms.Num(), 3);
+	// B-Risk packs all rooms into ONE zone table with per-room suffixed columns.
+	TestEqual(TEXT("single shared zone table"), Data.ZoneTables.Num(), 1);
+
+	auto FindSeries = [&Data](const TCHAR* Name) -> const FBRiskSeries*
+	{
+		if (Data.ZoneTables.Num() == 0)
+		{
+			return nullptr;
+		}
+		return Data.ZoneTables[0].Series.FindByPredicate(
+			[Name](const FBRiskSeries& S) { return S.Name.Equals(Name, ESearchCase::IgnoreCase); });
+	};
+
+	const FBRiskSeries* Ulod1 = FindSeries(TEXT("ULOD_1"));
+	const FBRiskSeries* Ulod2 = FindSeries(TEXT("ULOD_2"));
+	const FBRiskSeries* Ulod3 = FindSeries(TEXT("ULOD_3"));
+	TestNotNull(TEXT("ULOD_1 present"), Ulod1);
+	TestNotNull(TEXT("ULOD_2 present"), Ulod2);
+	TestNotNull(TEXT("ULOD_3 present"), Ulod3);
+	if (Ulod1 && Ulod2 && Ulod3)
+	{
+		// Each room must carry its own value, not room 1's, at every sample.
+		TestEqual(TEXT("room 1 ULOD"), Ulod1->Values[0], 0.5);
+		TestEqual(TEXT("room 2 ULOD distinct from room 1"), Ulod2->Values[0], 1.5);
+		TestEqual(TEXT("room 3 ULOD distinct from room 1"), Ulod3->Values[0], 2.5);
+	}
+
+	// Fire channel uses the fire-object suffix (_1), present once.
+	TestNotNull(TEXT("HRR_1 present"), FindSeries(TEXT("HRR_1")));
+	return true;
+}
+
+// --- Vent slabs land on the wall shared with the connected room ---------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentWallPlacementTest,
+	"ProjectMobius.BRisk.Hazard.VentWallPlacement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
+{
+	// 3_RoomFire layout: room 1 at origin, room 2 east (+X), room 3 north (+Y).
+	auto MakeRoom = [](int32 Id, const FVector& Origin)
+	{
+		FBRiskRoomGeometry R;
+		R.RoomId = Id;
+		R.Origin = Origin;
+		R.Size = FVector(8.0, 8.0, 4.0);
+		return R;
+	};
+	const FBRiskRoomGeometry Room1 = MakeRoom(1, FVector(0, 0, 0));
+	const FBRiskRoomGeometry Room2 = MakeRoom(2, FVector(8, 0, 0));
+	const FBRiskRoomGeometry Room3 = MakeRoom(3, FVector(0, 8, 0));
+
+	auto MakeVent = [](int32 From, int32 To, int32 Face, double Offset)
+	{
+		FBRiskVentGeometry V;
+		V.FromRoomId = From;
+		V.ToRoomId = To;
+		V.Face = Face;
+		V.Width = 2.4;
+		V.Offset = Offset;
+		V.SillHeight = 0.0;
+		V.Height = 2.0;
+		return V;
+	};
+
+	const float Scale = 100.0f;
+	const float Thickness = 8.0f;
+	FVector Center, Size;
+
+	// Vent 1->2: room 2 is east, so the slab must be on room 1's +X wall (x = 800 cm),
+	// thin in X, spanning Y. NOT on +Y (the old face-id mapping bug).
+	TestTrue(TEXT("vent 1->2 resolves"),
+		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 2, 2, 0.0), &Room1, &Room2, Scale, Thickness, Center, Size));
+	// FVector components are double in UE5.5; compare against double literals so
+	// TestEqual binds to the (double,double,double) overload unambiguously.
+	const double ThicknessCm = static_cast<double>(Thickness);
+	TestEqual(TEXT("vent 1->2 on +X wall"), Center.X, 800.0, 0.01);
+	TestEqual(TEXT("vent 1->2 thin in X"), Size.X, ThicknessCm, 0.01);
+	TestEqual(TEXT("vent 1->2 spans Y by width"), Size.Y, 240.0, 0.01);
+	TestEqual(TEXT("vent 1->2 floor-to-2m centre"), Center.Z, 100.0, 0.01);
+
+	// Vent 1->3: room 3 is north, so the slab must be on room 1's +Y wall (y = 800 cm),
+	// thin in Y, spanning X.
+	TestTrue(TEXT("vent 1->3 resolves"),
+		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 3, 3, 0.0), &Room1, &Room3, Scale, Thickness, Center, Size));
+	TestEqual(TEXT("vent 1->3 on +Y wall"), Center.Y, 800.0, 0.01);
+	TestEqual(TEXT("vent 1->3 thin in Y"), Size.Y, ThicknessCm, 0.01);
+	TestEqual(TEXT("vent 1->3 spans X by width"), Size.X, 240.0, 0.01);
+
+	// Vent 1->4: exterior (no such room) -> fall back to CFAST face id 4 = -X (left) wall.
+	TestTrue(TEXT("vent 1->exterior resolves"),
+		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 4, 4, 0.8), &Room1, nullptr, Scale, Thickness, Center, Size));
+	TestEqual(TEXT("exterior vent on -X wall"), Center.X, 0.0, 0.01);
+	TestEqual(TEXT("exterior vent offset applied on Y"), Center.Y, 200.0, 0.01); // (80 + 320)/2
+
+	return true;
+}
+
+// --- Suffix mapping the renderer + egress cache rely on -----------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskRoomIdSuffixTest,
+	"ProjectMobius.BRisk.Egress.RoomIdSuffix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskRoomIdSuffixTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("ULOD_1 -> 1"), UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("ULOD_1")), 1);
+	TestEqual(TEXT("HGT_2 -> 2"), UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("HGT_2")), 2);
+	TestEqual(TEXT("HRR_10 -> 10"), UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("HRR_10")), 10);
+	TestEqual(TEXT("leading/trailing space tolerated"),
+		UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT(" ULOD_3 ")), 3);
+	TestEqual(TEXT("no suffix -> INDEX_NONE"),
+		UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("Time")), INDEX_NONE);
+	TestEqual(TEXT("bare channel -> INDEX_NONE"),
+		UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("ULOD")), INDEX_NONE);
+	TestEqual(TEXT("non-numeric suffix -> INDEX_NONE"),
+		UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("FED_GAS")), INDEX_NONE);
 	return true;
 }
 

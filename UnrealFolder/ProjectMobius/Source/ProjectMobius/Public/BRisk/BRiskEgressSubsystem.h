@@ -118,6 +118,13 @@ public:
 	uint64 GetScenarioGeneration() const { return ScenarioGeneration; }
 	float GetSampleTimeSeconds() const { return SampleTimeSeconds; }
 
+	/**
+	 * Return the 1-based room/object id from a B-Risk series name's trailing
+	 * numeric suffix (e.g. "ULOD_2" -> 2, "HGT_1" -> 1), or INDEX_NONE if the
+	 * name has no numeric suffix. Public so tests can lock the mapping.
+	 */
+	static int32 ExtractRoomIdSuffix(const FString& SeriesName);
+
 	/** Records a forward-playback health sample, compressing linear runs. */
 	void RecordAgentHealth(
 		int32 AgentId,
@@ -137,6 +144,11 @@ private:
 		TArray<FString> SeriesUnits;
 		TArray<float> SeriesValues;
 		TMap<FName, int32> SeriesLookup;
+		// For each cached series, where it lives in the shared zone-table data.
+		// B-Risk emits one zone table holding every room's columns suffixed "_<roomId>",
+		// so a room's cache references rows of that single table rather than its own table.
+		TArray<int32> SourceTableIndex;
+		TArray<int32> SourceSeriesIndex;
 	};
 
 	UFUNCTION()

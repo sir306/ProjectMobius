@@ -317,6 +317,16 @@ private:
 	UTimeDilationSubSystem* GetTimeDilationSubsystem() const;
 	void UnbindSmokeTimeDelegate();
 
+	/**
+	 * Sample a per-index channel by building the B-Risk column name
+	 * "<BaseName>_<OneBasedIndex>" (e.g. index 2 + "ULOD" -> "ULOD_2") and
+	 * searching every loaded zone table. B-Risk packs all rooms/fires into a
+	 * single zone CSV with one "_<n>" suffixed column per channel, so the
+	 * 1-based id (room id for layer channels, fire-object number for fire
+	 * channels) - not the array index into Rooms/Fires - selects the column.
+	 */
+	bool SampleRoomChannelAtTime(int32 OneBasedIndex, const TCHAR* BaseName, double TimeSeconds, double& OutValue) const;
+
 	FBRiskScenarioData ScenarioData;
 	FString LastError;
 	FString ActiveSmvPath;

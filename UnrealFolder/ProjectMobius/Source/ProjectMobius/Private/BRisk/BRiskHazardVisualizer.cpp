@@ -80,6 +80,13 @@ ABRiskHazardVisualizer::ABRiskHazardVisualizer()
 		ConeMesh = ConeMeshFinder.Object;
 	}
 
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMeshFinder(
+		TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (CubeMeshFinder.Succeeded())
+	{
+		CubeMesh = CubeMeshFinder.Object;
+	}
+
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BasicShapeMaterialFinder(
 		TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	if (BasicShapeMaterialFinder.Succeeded())
@@ -95,10 +102,107 @@ ABRiskHazardVisualizer::ABRiskHazardVisualizer()
 	}
 }
 
+bool ABRiskHazardVisualizer::ComputeVentSlab(
+	const FBRiskVentGeometry& Vent,
+	const FBRiskRoomGeometry* FromRoom,
+	const FBRiskRoomGeometry* ToRoom,
+	float Scale,
+	float ThicknessCm,
+	FVector& OutCenterCm,
+	FVector& OutSizeCm)
+{
+	if (!FromRoom || Vent.Width <= 0.0 || Vent.Height <= 0.0 || Scale <= 0.0f)
+	{
+		return false;
+	}
+
+	const FVector MinCm = FromRoom->Origin * Scale;
+	const FVector MaxCm = (FromRoom->Origin + FromRoom->Size) * Scale;
+
+	const double Sill = FMath::Clamp(
+		(FromRoom->Origin.Z + Vent.SillHeight) * Scale,
+		static_cast<double>(MinCm.Z), static_cast<double>(MaxCm.Z));
+	const double Head = FMath::Clamp(
+		(FromRoom->Origin.Z + Vent.SillHeight + Vent.Height) * Scale,
+		static_cast<double>(MinCm.Z), static_cast<double>(MaxCm.Z));
+	if (Head <= Sill)
+	{
+		return false;
+	}
+	const double CenterZ = (Sill + Head) * 0.5;
+	const double HeightCm = Head - Sill;
+	const double WidthCm = Vent.Width * Scale;
+	const double OffsetCm = Vent.Offset * Scale;
+
+	enum EVentWall { WallNegX, WallPosX, WallNegY, WallPosY };
+	EVentWall Wall = WallNegY;
+	bool bResolved = false;
+
+	// Preferred: derive the shared wall from room adjacency. This is unambiguous
+	// from the parsed room boxes and matches Smokeview regardless of how B-Risk
+	// numbers vent faces.
+	if (ToRoom)
+	{
+		const FVector ToMinCm = ToRoom->Origin * Scale;
+		const FVector ToMaxCm = (ToRoom->Origin + ToRoom->Size) * Scale;
+		constexpr double AdjacencyEpsCm = 1.0;
+		if (FMath::Abs(MaxCm.X - ToMinCm.X) < AdjacencyEpsCm) { Wall = WallPosX; bResolved = true; }
+		else if (FMath::Abs(MinCm.X - ToMaxCm.X) < AdjacencyEpsCm) { Wall = WallNegX; bResolved = true; }
+		else if (FMath::Abs(MaxCm.Y - ToMinCm.Y) < AdjacencyEpsCm) { Wall = WallPosY; bResolved = true; }
+		else if (FMath::Abs(MinCm.Y - ToMaxCm.Y) < AdjacencyEpsCm) { Wall = WallNegY; bResolved = true; }
+	}
+
+	// Fallback for exterior vents (ToRoom not a real room): B-Risk/CFAST face id
+	// 1=-Y(front) 2=+X(right) 3=+Y(rear) 4=-X(left).
+	if (!bResolved)
+	{
+		switch (Vent.Face)
+		{
+		case 1: Wall = WallNegY; break;
+		case 2: Wall = WallPosX; break;
+		case 3: Wall = WallPosY; break;
+		case 4: Wall = WallNegX; break;
+		default: return false;
+		}
+	}
+
+	if (Wall == WallNegX || Wall == WallPosX)
+	{
+		// Wall lies in the YZ plane; the opening runs along Y.
+		const double SpanMin = MinCm.Y;
+		const double SpanMax = MaxCm.Y;
+		const double OpenStart = FMath::Clamp(SpanMin + OffsetCm, SpanMin, SpanMax);
+		const double OpenEnd = FMath::Clamp(OpenStart + WidthCm, SpanMin, SpanMax);
+		if (OpenEnd <= OpenStart)
+		{
+			return false;
+		}
+		const double WallX = (Wall == WallPosX) ? MaxCm.X : MinCm.X;
+		OutCenterCm = FVector(WallX, (OpenStart + OpenEnd) * 0.5, CenterZ);
+		OutSizeCm = FVector(ThicknessCm, OpenEnd - OpenStart, HeightCm);
+		return true;
+	}
+
+	// Wall lies in the XZ plane; the opening runs along X.
+	const double SpanMin = MinCm.X;
+	const double SpanMax = MaxCm.X;
+	const double OpenStart = FMath::Clamp(SpanMin + OffsetCm, SpanMin, SpanMax);
+	const double OpenEnd = FMath::Clamp(OpenStart + WidthCm, SpanMin, SpanMax);
+	if (OpenEnd <= OpenStart)
+	{
+		return false;
+	}
+	const double WallY = (Wall == WallPosY) ? MaxCm.Y : MinCm.Y;
+	OutCenterCm = FVector((OpenStart + OpenEnd) * 0.5, WallY, CenterZ);
+	OutSizeCm = FVector(OpenEnd - OpenStart, ThicknessCm, HeightCm);
+	return true;
+}
+
 bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	const TArray<FBRiskRoomGeometry>& Rooms,
 	const TArray<FBRiskFireGeometry>& Fires,
 	const TArray<FBRiskSprinklerGeometry>& Sprinklers,
+	const TArray<FBRiskVentGeometry>& Vents,
 	float Scale)
 {
 	ClearHazardVisuals();
@@ -106,6 +210,10 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	if (!ConeMesh)
 	{
 		ConeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cone.Cone"));
+	}
+	if (!CubeMesh)
+	{
+		CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
 	}
 	if (!BasicShapeMaterial)
 	{
@@ -154,10 +262,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		FireCone->OnComponentCreated();
 		FireCone->RegisterComponent();
 
+		// Smokeview FIRECOLOR default (255,128,0). Fallback cone only — hidden whenever
+		// the NS_SimpleFire Niagara system loads, so rarely seen, but kept consistent.
 		UMaterialInstanceDynamic* FireMaterial = MakeColoredMaterial(
 			BasicShapeMaterial,
 			this,
-			FLinearColor(1.0f, 0.22f, 0.02f, 1.0f));
+			FLinearColor(1.0f, 0.502f, 0.0f, 1.0f));
 		if (FireMaterial)
 		{
 			FireCone->SetMaterial(0, FireMaterial);
@@ -222,10 +332,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		SprinklerCone->OnComponentCreated();
 		SprinklerCone->RegisterComponent();
 
+		// Smokeview SPRINKONCOLOR default (0,1,0) — green = activated. The cone only
+		// appears at sprinkler activation, so the "on" colour is the correct state.
 		UMaterialInstanceDynamic* SprinklerMaterial = MakeColoredMaterial(
 			BasicShapeMaterial,
 			this,
-			FLinearColor(0.18f, 0.55f, 1.0f, 1.0f));
+			FLinearColor(0.0f, 1.0f, 0.0f, 1.0f));
 		if (SprinklerMaterial)
 		{
 			SprinklerCone->SetMaterial(0, SprinklerMaterial);
@@ -235,13 +347,72 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		SprinklerMaterials[SprinklerIndex] = SprinklerMaterial;
 	}
 
+	// Vents/openings: one thin slab per VENTGEOM, placed on its FromRoom wall.
+	// Static markers (no time dependence) so they stay visible for the whole run.
+	constexpr float VentSlabThicknessCm = 8.0f;
+	VentComponents.Reserve(Vents.Num());
+	VentMaterials.Reserve(Vents.Num());
+	int32 CreatedVentCount = 0;
+
+	for (int32 VentIndex = 0; VentIndex < Vents.Num(); ++VentIndex)
+	{
+		const FBRiskVentGeometry& Vent = Vents[VentIndex];
+		const FBRiskRoomGeometry* FromRoom = FindRoomById(Rooms, Vent.FromRoomId);
+		const FBRiskRoomGeometry* ToRoom = FindRoomById(Rooms, Vent.ToRoomId);
+
+		FVector CenterCm = FVector::ZeroVector;
+		FVector SizeCm = FVector::ZeroVector;
+		if (!CubeMesh || !ComputeVentSlab(Vent, FromRoom, ToRoom, Scale, VentSlabThicknessCm, CenterCm, SizeCm))
+		{
+			UE_LOG(LogBRiskHazardVisualizer, Warning,
+				TEXT("Skipping B-Risk vent %d (fromRoom=%d toRoom=%d face=%d width=%g height=%g): no FromRoom geometry or zero opening."),
+				VentIndex, Vent.FromRoomId, Vent.ToRoomId, Vent.Face, Vent.Width, Vent.Height);
+			continue;
+		}
+
+		UStaticMeshComponent* VentComponent = NewObject<UStaticMeshComponent>(
+			this,
+			*FString::Printf(TEXT("BRiskVent_%d"), VentIndex));
+		VentComponent->SetupAttachment(SceneRoot);
+		VentComponent->SetStaticMesh(CubeMesh);
+		VentComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		VentComponent->SetCastShadow(false);
+		VentComponent->SetReceivesDecals(false);
+		VentComponent->SetMobility(EComponentMobility::Movable);
+		VentComponent->SetRelativeLocation(CenterCm);
+		VentComponent->SetRelativeScale3D(SizeCm / 100.0f);
+		VentComponent->SetVisibility(true, true);
+		VentComponent->SetHiddenInGame(false);
+
+		AddInstanceComponent(VentComponent);
+		VentComponent->OnComponentCreated();
+		VentComponent->RegisterComponent();
+
+		// Smokeview VENTCOLOR default (1,0,1) — magenta is the standard vent/door colour
+		// fire engineers recognise (SR282 Fig.19 shows magenta vent outlines in Smokeview).
+		UMaterialInstanceDynamic* VentMaterial = MakeColoredMaterial(
+			BasicShapeMaterial,
+			this,
+			FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+		if (VentMaterial)
+		{
+			VentComponent->SetMaterial(0, VentMaterial);
+		}
+
+		VentComponents.Add(VentComponent);
+		VentMaterials.Add(VentMaterial);
+		++CreatedVentCount;
+	}
+
 	UE_LOG(LogBRiskHazardVisualizer, Log,
-		TEXT("Configured B-Risk hazard visualizer: fires=%d sprinklers=%d scale=%g"),
+		TEXT("Configured B-Risk hazard visualizer: fires=%d sprinklers=%d vents=%d/%d scale=%g"),
 		Fires.Num(),
 		Sprinklers.Num(),
+		CreatedVentCount,
+		Vents.Num(),
 		Scale);
 
-	return Fires.Num() > 0 || Sprinklers.Num() > 0;
+	return Fires.Num() > 0 || Sprinklers.Num() > 0 || CreatedVentCount > 0;
 }
 
 void ABRiskHazardVisualizer::ClearHazardVisuals()
@@ -271,6 +442,14 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 		}
 	}
 
+	for (UStaticMeshComponent* VentComponent : VentComponents)
+	{
+		if (VentComponent)
+		{
+			VentComponent->DestroyComponent();
+		}
+	}
+
 	FireConeComponents.Reset();
 	FireNiagaraComponents.Reset();
 	FireMaterials.Reset();
@@ -280,6 +459,8 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 	SprinklerData.Reset();
 	SprinklerHeadLocationsCm.Reset();
 	SprinklerRoomHeightsCm.Reset();
+	VentComponents.Reset();
+	VentMaterials.Reset();
 }
 
 bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisualState& FireState)
@@ -420,6 +601,13 @@ int32 ABRiskHazardVisualizer::GetHazardVisualCount() const
 	for (const UStaticMeshComponent* SprinklerCone : SprinklerConeComponents)
 	{
 		if (SprinklerCone)
+		{
+			++Count;
+		}
+	}
+	for (const UStaticMeshComponent* VentComponent : VentComponents)
+	{
+		if (VentComponent)
 		{
 			++Count;
 		}
