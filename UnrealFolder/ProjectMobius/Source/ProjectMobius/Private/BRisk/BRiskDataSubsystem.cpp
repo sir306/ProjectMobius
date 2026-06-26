@@ -5,6 +5,7 @@
 #include "BRisk/BRiskSmokeVisualizer.h"
 #include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
+#include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Async/Async.h"
 #include "Kismet/GameplayStatics.h"
@@ -1175,28 +1176,51 @@ void UBRiskDataSubsystem::ConfigurePlaybackFromScenario()
 		return;
 	}
 
+	// Timeline ownership: when an agent trajectory file is loaded, its sample times own the
+	// playback length (configured in UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData),
+	// so B-Risk must NOT overwrite TotalTime/TimeBetweenSteps. With no agent file, B-Risk drives
+	// the timeline. The source is auto-detected here; a user-facing toggle is planned.
+	bool bAgentDataDrivesTimeline = false;
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UAgentDataSubsystem* AgentData = World->GetSubsystem<UAgentDataSubsystem>())
+		{
+			bAgentDataDrivesTimeline = AgentData->bIsDataLoaded;
+		}
+	}
+
 	const TArray<double>& Times = ScenarioData.ZoneTables[0].TimeSeconds;
 	const double FirstTime = Times[0];
-	const float TotalTime = static_cast<float>(Times.Last());
-	const float TimeBetweenSteps = Times.Num() > 1
-		? static_cast<float>(Times[1] - Times[0])
-		: TimeSubsystem->TimeBetweenSteps;
 
-	if (TimeBetweenSteps > UE_KINDA_SMALL_NUMBER)
+	if (!bAgentDataDrivesTimeline)
 	{
-		TimeSubsystem->UpdateTimeBetweenData(TimeBetweenSteps);
+		const float TotalTime = static_cast<float>(Times.Last());
+		const float TimeBetweenSteps = Times.Num() > 1
+			? static_cast<float>(Times[1] - Times[0])
+			: TimeSubsystem->TimeBetweenSteps;
+
+		if (TimeBetweenSteps > UE_KINDA_SMALL_NUMBER)
+		{
+			TimeSubsystem->UpdateTimeBetweenData(TimeBetweenSteps);
+		}
+		TimeSubsystem->UpdateTotalTime(TotalTime);
 	}
-	TimeSubsystem->UpdateTotalTime(TotalTime);
+
+	// Restart playback from the beginning on every (re)load, regardless of which source owns
+	// the timeline length: reset to t=0 and stay paused. With an agent file loaded this
+	// restarts the whole shared timeline to 0 as well. Per-agent B-Risk exposure is cleared
+	// separately via OnBRiskScenarioCleared -> ScenarioGeneration bump (see UBRiskEgressSubsystem).
 	TimeSubsystem->OverrideCurrentTime(0.0f, 1);
 	TimeSubsystem->SetSimulationPaused(true);
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
-		TEXT("Configured B-Risk playback from zone Time column: first=%g last=%g samples=%d TotalTime=%g TimeBetweenSteps=%g CurrentTime=0 paused=true"),
+		TEXT("Configured B-Risk playback from zone Time column: first=%g last=%g samples=%d TotalTime=%g TimeBetweenSteps=%g CurrentTime=0 paused=true timelineOwner=%s"),
 		FirstTime,
 		Times.Last(),
 		Times.Num(),
 		TimeSubsystem->TotalTime,
-		TimeSubsystem->TimeBetweenSteps);
+		TimeSubsystem->TimeBetweenSteps,
+		bAgentDataDrivesTimeline ? TEXT("agent") : TEXT("b-risk"));
 }
 
 UTimeDilationSubSystem* UBRiskDataSubsystem::GetTimeDilationSubsystem() const
