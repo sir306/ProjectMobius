@@ -242,8 +242,11 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			continue;
 		}
 
-		const FVector OriginCm = Room.Origin * Scale;
-		const FVector SizeCm = Room.Size * Scale;
+		// B-Risk metres -> Unreal cm with the X<->Y swap (see BRiskCoord). OriginCm is
+		// the box minimum corner; SizeCm is the extent (X/Y swapped for non-square rooms).
+		const FBox RoomBoxCm = BRiskCoord::ToUnrealBox(Room.Origin, Room.Size, Scale);
+		const FVector OriginCm = RoomBoxCm.Min;
+		const FVector SizeCm = RoomBoxCm.GetSize();
 		SmokeRoomOriginsCm[RoomIndex] = OriginCm;
 		SmokeRoomSizesCm[RoomIndex] = SizeCm;
 

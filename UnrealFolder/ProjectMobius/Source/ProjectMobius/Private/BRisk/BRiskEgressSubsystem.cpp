@@ -330,7 +330,9 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 		FBRiskEgressRoomState& RoomState = RoomStates[RoomIndex];
 		RoomState.RoomIndex = RoomIndex;
 		RoomState.RoomId = Room.RoomId;
-		RoomState.WorldBounds = FBox(Room.Origin * Scale, (Room.Origin + Room.Size) * Scale);
+		// Must use the exact same conversion as the smoke/hazard visualizers (BRiskCoord,
+		// X<->Y swap) so agent world positions map to the correct room (tenability lookup).
+		RoomState.WorldBounds = BRiskCoord::ToUnrealBox(Room.Origin, Room.Size, Scale);
 		// Default the smoke layer to the ceiling until zone data overrides it in ResolveTypedRoomState.
 		RoomState.LayerHeightWorldCm = RoomState.WorldBounds.Max.Z;
 

@@ -537,31 +537,35 @@ bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
 	const float Thickness = 8.0f;
 	FVector Center, Size;
 
-	// Vent 1->2: room 2 is east, so the slab must be on room 1's +X wall (x = 800 cm),
-	// thin in X, spanning Y. NOT on +Y (the old face-id mapping bug).
+	// After the B-Risk -> Unreal X<->Y swap (BRiskCoord): room 2 (B-Risk east/+X) is at
+	// Unreal +Y, and room 3 (B-Risk north/+Y) is at Unreal +X.
+
+	// Vent 1->2: room 2 is adjacent on Unreal +Y, so the slab is on room 1's +Y wall
+	// (y = 800 cm), thin in Y, spanning X.
 	TestTrue(TEXT("vent 1->2 resolves"),
 		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 2, 2, 0.0), &Room1, &Room2, Scale, Thickness, Center, Size));
 	// FVector components are double in UE5.5; compare against double literals so
 	// TestEqual binds to the (double,double,double) overload unambiguously.
 	const double ThicknessCm = static_cast<double>(Thickness);
-	TestEqual(TEXT("vent 1->2 on +X wall"), Center.X, 800.0, 0.01);
-	TestEqual(TEXT("vent 1->2 thin in X"), Size.X, ThicknessCm, 0.01);
-	TestEqual(TEXT("vent 1->2 spans Y by width"), Size.Y, 240.0, 0.01);
+	TestEqual(TEXT("vent 1->2 on +Y wall"), Center.Y, 800.0, 0.01);
+	TestEqual(TEXT("vent 1->2 thin in Y"), Size.Y, ThicknessCm, 0.01);
+	TestEqual(TEXT("vent 1->2 spans X by width"), Size.X, 240.0, 0.01);
 	TestEqual(TEXT("vent 1->2 floor-to-2m centre"), Center.Z, 100.0, 0.01);
 
-	// Vent 1->3: room 3 is north, so the slab must be on room 1's +Y wall (y = 800 cm),
-	// thin in Y, spanning X.
+	// Vent 1->3: room 3 is adjacent on Unreal +X, so the slab is on room 1's +X wall
+	// (x = 800 cm), thin in X, spanning Y.
 	TestTrue(TEXT("vent 1->3 resolves"),
 		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 3, 3, 0.0), &Room1, &Room3, Scale, Thickness, Center, Size));
-	TestEqual(TEXT("vent 1->3 on +Y wall"), Center.Y, 800.0, 0.01);
-	TestEqual(TEXT("vent 1->3 thin in Y"), Size.Y, ThicknessCm, 0.01);
-	TestEqual(TEXT("vent 1->3 spans X by width"), Size.X, 240.0, 0.01);
+	TestEqual(TEXT("vent 1->3 on +X wall"), Center.X, 800.0, 0.01);
+	TestEqual(TEXT("vent 1->3 thin in X"), Size.X, ThicknessCm, 0.01);
+	TestEqual(TEXT("vent 1->3 spans Y by width"), Size.Y, 240.0, 0.01);
 
-	// Vent 1->4: exterior (no such room) -> fall back to CFAST face id 4 = -X (left) wall.
+	// Vent 1->4: exterior (no such room) -> CFAST face id 4 = B-Risk -X, which maps to the
+	// Unreal -Y wall under the swap. Offset (0.8 m) runs along Unreal X.
 	TestTrue(TEXT("vent 1->exterior resolves"),
 		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 4, 4, 0.8), &Room1, nullptr, Scale, Thickness, Center, Size));
-	TestEqual(TEXT("exterior vent on -X wall"), Center.X, 0.0, 0.01);
-	TestEqual(TEXT("exterior vent offset applied on Y"), Center.Y, 200.0, 0.01); // (80 + 320)/2
+	TestEqual(TEXT("exterior vent on -Y wall"), Center.Y, 0.0, 0.01);
+	TestEqual(TEXT("exterior vent offset applied on X"), Center.X, 200.0, 0.01); // (80 + 320)/2
 
 	return true;
 }

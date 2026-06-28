@@ -38,12 +38,11 @@ namespace
 			return RoomLocalLocationM;
 		}
 
-		// B-Risk/Smokeview reports fire and sprinkler room-local X from the opposite end
-		// of the generated room mesh convention used by our VENTGEOM face layout.
-		return Room->Origin + FVector(
-			Room->Size.X - RoomLocalLocationM.X,
-			RoomLocalLocationM.Y,
-			RoomLocalLocationM.Z);
+		// World position in the B-Risk frame (metres). The X<->Y swap into Unreal space is
+		// applied by the caller via BRiskCoord::ToUnreal, so there is no per-axis flip here.
+		// (Previously this mirrored X to patch a coordinate mismatch; that is now handled
+		// correctly and consistently for all geometry by BRiskCoord.)
+		return Room->Origin + RoomLocalLocationM;
 	}
 
 	UMaterialInstanceDynamic* MakeColoredMaterial(
@@ -116,8 +115,9 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		return false;
 	}
 
-	const FVector MinCm = FromRoom->Origin * Scale;
-	const FVector MaxCm = (FromRoom->Origin + FromRoom->Size) * Scale;
+	const FBox FromBoxCm = BRiskCoord::ToUnrealBox(FromRoom->Origin, FromRoom->Size, Scale);
+	const FVector MinCm = FromBoxCm.Min;
+	const FVector MaxCm = FromBoxCm.Max;
 
 	const double Sill = FMath::Clamp(
 		(FromRoom->Origin.Z + Vent.SillHeight) * Scale,
@@ -143,8 +143,9 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	// numbers vent faces.
 	if (ToRoom)
 	{
-		const FVector ToMinCm = ToRoom->Origin * Scale;
-		const FVector ToMaxCm = (ToRoom->Origin + ToRoom->Size) * Scale;
+		const FBox ToBoxCm = BRiskCoord::ToUnrealBox(ToRoom->Origin, ToRoom->Size, Scale);
+		const FVector ToMinCm = ToBoxCm.Min;
+		const FVector ToMaxCm = ToBoxCm.Max;
 		constexpr double AdjacencyEpsCm = 1.0;
 		if (FMath::Abs(MaxCm.X - ToMinCm.X) < AdjacencyEpsCm) { Wall = WallPosX; bResolved = true; }
 		else if (FMath::Abs(MinCm.X - ToMaxCm.X) < AdjacencyEpsCm) { Wall = WallNegX; bResolved = true; }
@@ -152,16 +153,17 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		else if (FMath::Abs(MinCm.Y - ToMaxCm.Y) < AdjacencyEpsCm) { Wall = WallNegY; bResolved = true; }
 	}
 
-	// Fallback for exterior vents (ToRoom not a real room): B-Risk/CFAST face id
-	// 1=-Y(front) 2=+X(right) 3=+Y(rear) 4=-X(left).
+	// Fallback for exterior vents (ToRoom not a real room). The .smv/CFAST face id is in
+	// B-Risk axes: 1=-Y(front) 2=+X(right) 3=+Y(rear) 4=-X(left). Map to Unreal walls
+	// under the X<->Y swap (BRiskCoord): B-Risk +/-X -> UE +/-Y, B-Risk +/-Y -> UE +/-X.
 	if (!bResolved)
 	{
 		switch (Vent.Face)
 		{
-		case 1: Wall = WallNegY; break;
-		case 2: Wall = WallPosX; break;
-		case 3: Wall = WallPosY; break;
-		case 4: Wall = WallNegX; break;
+		case 1: Wall = WallNegX; break; // B-Risk -Y -> UE -X
+		case 2: Wall = WallPosY; break; // B-Risk +X -> UE +Y
+		case 3: Wall = WallPosX; break; // B-Risk +Y -> UE +X
+		case 4: Wall = WallNegY; break; // B-Risk -X -> UE -Y
 		default: return false;
 		}
 	}
@@ -244,7 +246,7 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		const FBRiskFireGeometry& Fire = Fires[FireIndex];
 		const FBRiskRoomGeometry* Room = FindRoomById(Rooms, Fire.RoomId);
 		const FVector WorldLocationM = TransformHazardRoomLocalToWorldM(Room, Fire.Location);
-		FireBaseLocationsCm[FireIndex] = WorldLocationM * Scale;
+		FireBaseLocationsCm[FireIndex] = BRiskCoord::ToUnreal(WorldLocationM, Scale);
 
 		UStaticMeshComponent* FireCone = NewObject<UStaticMeshComponent>(
 			this,
@@ -312,7 +314,7 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		const FBRiskRoomGeometry* Room = FindRoomById(Rooms, Sprinkler.RoomId);
 		const float RoomHeightCm = Room ? Room->Size.Z * Scale : 260.0f;
 		SprinklerHeadLocationsCm[SprinklerIndex] =
-			TransformHazardRoomLocalToWorldM(Room, Sprinkler.Location) * Scale;
+			BRiskCoord::ToUnreal(TransformHazardRoomLocalToWorldM(Room, Sprinkler.Location), Scale);
 		SprinklerRoomHeightsCm[SprinklerIndex] = RoomHeightCm;
 
 		UStaticMeshComponent* SprinklerCone = NewObject<UStaticMeshComponent>(

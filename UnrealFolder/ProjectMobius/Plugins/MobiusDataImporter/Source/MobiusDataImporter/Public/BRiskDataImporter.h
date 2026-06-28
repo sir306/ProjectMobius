@@ -5,6 +5,40 @@
 #include "CoreMinimal.h"
 
 /**
+ * B-Risk / Smokeview store geometry in a RIGHT-handed metric frame: X and Y are
+ * horizontal (in Smokeview's default view X runs screen-right, Y runs into the
+ * screen / depth) and Z is up. Unreal Engine is LEFT-handed with X forward, Y
+ * right, Z up. Converting requires swapping X and Y: this both matches Smokeview's
+ * on-screen layout (B-Risk X -> UE Y "right", B-Risk Y -> UE X "forward") and
+ * corrects right- to left-handed chirality so the scene is not mirrored. Z (up) is
+ * shared. Scale converts metres -> Unreal units (cm).
+ *
+ * EVERY B-Risk geometry conversion must go through these helpers so the smoke
+ * volumes, vent slabs, fire/sprinkler markers and the egress room bounds (used for
+ * agent -> room lookup) stay in exact agreement.
+ */
+namespace BRiskCoord
+{
+	/** Convert a B-Risk point (metres) to an Unreal location (cm), swapping X<->Y. */
+	FORCEINLINE FVector ToUnreal(const FVector& BRiskMetres, float Scale)
+	{
+		return FVector(BRiskMetres.Y, BRiskMetres.X, BRiskMetres.Z) * Scale;
+	}
+
+	/**
+	 * Convert a B-Risk axis-aligned room box (lower-corner Origin + Size, metres) to
+	 * an Unreal-space FBox (cm). A pure X<->Y swap preserves min/max ordering, so the
+	 * swapped Origin stays the box minimum.
+	 */
+	FORCEINLINE FBox ToUnrealBox(const FVector& OriginMetres, const FVector& SizeMetres, float Scale)
+	{
+		return FBox(
+			ToUnreal(OriginMetres, Scale),
+			ToUnreal(OriginMetres + SizeMetres, Scale));
+	}
+}
+
+/**
  * Geometry descriptor for a single room parsed from a B-Risk SMV manifest.
  * Dimensions and origin are stored in the B-Risk coordinate space (metres).
  * The Label is populated from the companion LABEL block that follows each ROOM block.

@@ -916,6 +916,12 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 	TArray<FVector>& OutNormals,
 	FString* OutError)
 {
+	// TODO(coords): this room-mesh path still uses the raw (pre-swap) Origin*Scale
+	// conversion and the legacy VENTGEOM face map, NOT the BRiskCoord X<->Y swap that
+	// the smoke/hazard visualizers and egress bounds now use. It is dormant
+	// (bAutoGenerateRoomGeometryOnLoad defaults false). Before enabling it, migrate the
+	// box conversion to BRiskCoord::ToUnrealBox and the wall/opening logic to match, or
+	// the generated mesh will be mirrored relative to the smoke/vent visuals.
 	OutVertices.Reset();
 	OutTriangles.Reset();
 	OutNormals.Reset();
