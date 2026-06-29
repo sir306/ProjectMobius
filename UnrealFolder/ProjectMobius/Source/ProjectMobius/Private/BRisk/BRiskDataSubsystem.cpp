@@ -1164,6 +1164,116 @@ FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 	return SmokeState;
 }
 
+FBRiskVentFlow UBRiskDataSubsystem::ComputeWallVentFlow(
+	const FBRiskVentSideState& From,
+	const FBRiskVentSideState& To,
+	const FBRiskVentGeometry& Vent)
+{
+	// Cross-vent hydrostatic flow per CCFM.VENTS/CFAST (SR282 §7.11.1): build each side's
+	// two-layer pressure profile over the opening, integrate the Bernoulli slab flux, and
+	// split by sign about the neutral plane into bidirectional out/in streams. Qualitative
+	// fallback only (B-Risk exports no per-vent flow; Smokeview computes it the same way).
+	constexpr double Cd = 0.68;             // discharge coefficient (SR282 §7.6 / vents.xml)
+	constexpr double DensityConstant = 353.0; // rho = 353 / T[K] zone-model approximation
+	constexpr double Gravity = 9.81;
+	constexpr double AmbientTempC = 20.0;
+	constexpr int32 NumSlabs = 24;
+	constexpr double FlowEpsilonKgs = 1.0e-6;
+
+	FBRiskVentFlow Out;
+	if (Vent.Width <= 0.0 || Vent.Height <= 0.0)
+	{
+		return Out; // closed / degenerate opening
+	}
+
+	auto DensityAtTempC = [](double TempC) -> double
+	{
+		return DensityConstant / (TempC + 273.15); // channels are Celsius (the +273.15 is mandatory)
+	};
+	const double RhoAmb = DensityAtTempC(AmbientTempC);
+
+	const double ZBottom = From.FloorZM + Vent.SillHeight;
+	const double ZTop = ZBottom + Vent.Height;
+
+	auto SideIfaceZ = [](const FBRiskVentSideState& S) -> double
+	{
+		return S.bIsExterior ? TNumericLimits<double>::Lowest() : (S.FloorZM + S.LayerHeightM);
+	};
+	auto SideRhoLower = [&](const FBRiskVentSideState& S) { return S.bIsExterior ? RhoAmb : DensityAtTempC(S.LowerTempC); };
+	auto SideRhoUpper = [&](const FBRiskVentSideState& S) { return S.bIsExterior ? RhoAmb : DensityAtTempC(S.UpperTempC); };
+	auto SideRhoAtZ = [&](const FBRiskVentSideState& S, double z) { return z >= SideIfaceZ(S) ? SideRhoUpper(S) : SideRhoLower(S); };
+	auto SideTempC = [&](const FBRiskVentSideState& S, double z) -> double
+	{
+		return S.bIsExterior ? AmbientTempC : (z >= SideIfaceZ(S) ? S.UpperTempC : S.LowerTempC);
+	};
+
+	// Gauge pressure on one side at height z, referenced to the From-room floor (common datum).
+	// p(z) = PRS - g * integral_(floor..z)(rho - rhoAmb) dz'. The (rho - rhoAmb) form keeps
+	// magnitudes ~O(Pa) and makes an exterior side collapse to ~0 automatically.
+	const double DatumZ = From.FloorZM;
+	auto SidePressureAtZ = [&](const FBRiskVentSideState& S, double z) -> double
+	{
+		const double Iface = SideIfaceZ(S);
+		const double RhoLo = SideRhoLower(S);
+		const double RhoUp = SideRhoUpper(S);
+		double Integral = 0.0;
+		double zCursor = DatumZ;
+		const double LowerTop = FMath::Min(z, Iface);
+		if (LowerTop > zCursor) { Integral += (RhoLo - RhoAmb) * (LowerTop - zCursor); zCursor = LowerTop; }
+		if (z > zCursor) { Integral += (RhoUp - RhoAmb) * (z - zCursor); }
+		return S.PressurePa - Gravity * Integral;
+	};
+
+	const double dz = (ZTop - ZBottom) / static_cast<double>(NumSlabs);
+	double SumTempOut = 0.0;
+	double SumTempIn = 0.0;
+	double PrevDeltaP = 0.0;
+	bool bHavePrev = false;
+
+	for (int32 SlabIndex = 0; SlabIndex < NumSlabs; ++SlabIndex)
+	{
+		const double z = ZBottom + (static_cast<double>(SlabIndex) + 0.5) * dz; // slab midpoint
+		const double DeltaP = SidePressureAtZ(From, z) - SidePressureAtZ(To, z);
+
+		// Neutral plane = first sign change of DeltaP across slabs (flux -> 0 there).
+		if (bHavePrev && Out.NeutralPlaneHeightM < 0.0
+			&& (PrevDeltaP == 0.0 || (PrevDeltaP < 0.0) != (DeltaP < 0.0)))
+		{
+			Out.NeutralPlaneHeightM = (z - 0.5 * dz) - From.FloorZM;
+		}
+		PrevDeltaP = DeltaP;
+		bHavePrev = true;
+
+		if (FMath::Abs(DeltaP) < KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		// Upwind side donates density + temperature for this slab.
+		const bool bFromIsUpwind = DeltaP > 0.0;
+		const FBRiskVentSideState& Donor = bFromIsUpwind ? From : To;
+		const double RhoDonor = SideRhoAtZ(Donor, z);
+		const double TempDonor = SideTempC(Donor, z);
+		const double SlabMass = Cd * Vent.Width * FMath::Sqrt(2.0 * RhoDonor * FMath::Abs(DeltaP)) * dz;
+
+		if (bFromIsUpwind)
+		{
+			Out.MassFlowOutKgs += SlabMass;
+			SumTempOut += SlabMass * TempDonor;
+		}
+		else
+		{
+			Out.MassFlowInKgs += SlabMass;
+			SumTempIn += SlabMass * TempDonor;
+		}
+	}
+
+	Out.OutTemperatureC = (Out.MassFlowOutKgs > FlowEpsilonKgs) ? (SumTempOut / Out.MassFlowOutKgs) : From.UpperTempC;
+	Out.InTemperatureC = (Out.MassFlowInKgs > FlowEpsilonKgs) ? (SumTempIn / Out.MassFlowInKgs) : (To.bIsExterior ? AmbientTempC : To.LowerTempC);
+	Out.bHasFlow = (Out.MassFlowOutKgs + Out.MassFlowInKgs) > FlowEpsilonKgs;
+	return Out;
+}
+
 void UBRiskDataSubsystem::HandleNewSimulationTime(float NewCurrentTime)
 {
 	UpdateSmokeAtTime(NewCurrentTime);

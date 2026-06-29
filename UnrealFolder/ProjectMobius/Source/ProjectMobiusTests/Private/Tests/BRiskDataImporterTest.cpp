@@ -571,6 +571,60 @@ bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// --- Derived Smokeview-style wall-vent flow (no data oracle; verify qualitative physics) ---
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentFlowTest,
+	"ProjectMobius.BRisk.Hazard.VentFlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentFlowTest::RunTest(const FString& Parameters)
+{
+	FBRiskVentGeometry Vent;
+	Vent.FromRoomId = 1;
+	Vent.ToRoomId = 2;
+	Vent.Width = 0.8;
+	Vent.SillHeight = 0.0;
+	Vent.Height = 2.0;
+
+	// Fire room (hot buoyant upper layer, slightly low floor pressure) -> cool room. Expect the
+	// classic doorway pattern: hot gas OUT the top, cool air IN the bottom, neutral plane between.
+	FBRiskVentSideState Hot;
+	Hot.FloorZM = 0.0;
+	Hot.UpperTempC = 400.0;
+	Hot.LowerTempC = 30.0;
+	Hot.LayerHeightM = 1.0;
+	Hot.PressurePa = -2.0;
+
+	FBRiskVentSideState Cool;
+	Cool.FloorZM = 0.0;
+	Cool.UpperTempC = 20.0;
+	Cool.LowerTempC = 20.0;
+	Cool.LayerHeightM = 2.0;
+	Cool.PressurePa = 0.0;
+
+	const FBRiskVentFlow Flow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Vent);
+	TestTrue(TEXT("flow present"), Flow.bHasFlow);
+	TestTrue(TEXT("hot gas flows out the top"), Flow.MassFlowOutKgs > 0.0);
+	TestTrue(TEXT("cool air flows in the bottom"), Flow.MassFlowInKgs > 0.0);
+	TestTrue(TEXT("out stream hotter than in stream"), Flow.OutTemperatureC > Flow.InTemperatureC);
+	TestTrue(TEXT("neutral plane lies within the opening"),
+		Flow.NeutralPlaneHeightM > 0.0 && Flow.NeutralPlaneHeightM < 2.0);
+
+	// Closed opening (zero width) produces no flow.
+	FBRiskVentGeometry Closed = Vent;
+	Closed.Width = 0.0;
+	const FBRiskVentFlow NoFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Closed);
+	TestFalse(TEXT("closed vent has no flow"), NoFlow.bHasFlow);
+
+	// Identical rooms at equal pressure: no pressure difference, so no flow either way.
+	const FBRiskVentFlow Still = UBRiskDataSubsystem::ComputeWallVentFlow(Cool, Cool, Vent);
+	TestTrue(TEXT("identical rooms produce negligible flow"),
+		(Still.MassFlowOutKgs + Still.MassFlowInKgs) < 1.0e-3);
+
+	return true;
+}
+
 // --- Suffix mapping the renderer + egress cache rely on -----------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

@@ -5,6 +5,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "BRiskDataImporter.h"
 #include "BRisk/BRiskSmokeVisualState.h"
+#include "BRisk/BRiskVentFlow.h"
 #include "BRiskDataSubsystem.generated.h"
 
 /**
@@ -302,6 +303,17 @@ public:
 		double LowerOpticalDensity,
 		double UpperTemperatureC,
 		double LowerTemperatureC);
+
+	/**
+	 * Smokeview-style derived natural flow through one wall vent at a single time, computed
+	 * from the two sides' two-layer hydrostatic pressure profiles (CCFM.VENTS/CFAST algorithm,
+	 * SR282 §7.11.1). Qualitative fallback used because B-Risk does not export per-vent flow.
+	 * Pure; pass pre-sampled side state + vent geometry.
+	 */
+	static FBRiskVentFlow ComputeWallVentFlow(
+		const FBRiskVentSideState& From,
+		const FBRiskVentSideState& To,
+		const FBRiskVentGeometry& Vent);
 
 private:
 	UFUNCTION()
