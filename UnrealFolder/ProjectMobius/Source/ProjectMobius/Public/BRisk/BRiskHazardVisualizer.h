@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "BRiskDataImporter.h"
+#include "BRisk/BRiskVentFlow.h"
 #include "BRiskHazardVisualizer.generated.h"
 
 class UMaterialInstanceDynamic;
@@ -47,6 +48,14 @@ public:
 
 	/** Update all sprinkler indicators for the current simulation time. */
 	void SetSimulationTime(float TimeSeconds);
+
+	/**
+	 * Update the per-vent in/out flow indicators from derived flow (one entry per vent,
+	 * index-aligned with the Vents array passed to ConfigureFromScenario). Out and in
+	 * streams are split at the neutral plane, sized by mass flow and coloured by stream
+	 * temperature. See UBRiskDataSubsystem::ComputeWallVentFlow.
+	 */
+	void SetVentFlows(const TArray<FBRiskVentFlow>& VentFlows);
 
 	/** Number of generated visual components. */
 	int32 GetHazardVisualCount() const;
@@ -105,6 +114,31 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentMaterials;
+
+	/** Per-vent cone indicators for the OUT (FromRoom -> ToRoom) and IN flow streams. */
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> VentFlowOutArrows;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> VentFlowInArrows;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentFlowOutMaterials;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentFlowInMaterials;
+
+	/** Per-vent opening geometry (cm, world) used to place the flow indicators. */
+	struct FVentFlowGeom
+	{
+		bool bValid = false;
+		FVector OpeningCenterCm = FVector::ZeroVector;
+		FVector OutwardNormal = FVector::ZeroVector; // unit, points out of FromRoom through the wall
+		float SillZCm = 0.0f;
+		float HeadZCm = 0.0f;
+		float FloorZCm = 0.0f; // FromRoom floor Z in cm (datum for the neutral-plane height)
+	};
+	TArray<FVentFlowGeom> VentFlowGeometry;
 
 	TArray<FVector> FireBaseLocationsCm;
 	TArray<FBRiskSprinklerGeometry> SprinklerData;

@@ -731,8 +731,47 @@ bool UBRiskDataSubsystem::UpdateHazardVisualsAtTime(float TimeSeconds)
 		bUpdatedAny |= HazardVisualizerActor->SetFireState(FireIndex, FireState);
 	}
 
+	// Derived Smokeview-style vent flow (B-Risk exports none): compute per vent from the two
+	// rooms' sampled layer state and push to the visualizer's in/out flow indicators.
+	if (ScenarioData.Vents.Num() > 0)
+	{
+		auto BuildVentSide = [this, TimeSeconds](int32 RoomId) -> FBRiskVentSideState
+		{
+			FBRiskVentSideState Side;
+			const FBRiskRoomGeometry* Room = ScenarioData.Rooms.FindByPredicate(
+				[RoomId](const FBRiskRoomGeometry& R) { return R.RoomId == RoomId; });
+			if (!Room)
+			{
+				Side.bIsExterior = true;
+				return Side;
+			}
+			Side.FloorZM = Room->Origin.Z;
+			double Value = 0.0;
+			if (SampleRoomChannelAtTime(RoomId, TEXT("ULT"), TimeSeconds, Value)) { Side.UpperTempC = Value; }
+			if (SampleRoomChannelAtTime(RoomId, TEXT("LLT"), TimeSeconds, Value)) { Side.LowerTempC = Value; }
+			if (SampleRoomChannelAtTime(RoomId, TEXT("HGT"), TimeSeconds, Value)) { Side.LayerHeightM = Value; }
+			if (SampleRoomChannelAtTime(RoomId, TEXT("PRS"), TimeSeconds, Value)) { Side.PressurePa = Value; }
+			return Side;
+		};
+
+		TArray<FBRiskVentFlow> VentFlows;
+		VentFlows.SetNum(ScenarioData.Vents.Num());
+		for (int32 VentIndex = 0; VentIndex < ScenarioData.Vents.Num(); ++VentIndex)
+		{
+			const FBRiskVentGeometry& Vent = ScenarioData.Vents[VentIndex];
+			FBRiskVentSideState From = BuildVentSide(Vent.FromRoomId);
+			FBRiskVentSideState To = BuildVentSide(Vent.ToRoomId);
+			if (To.bIsExterior)
+			{
+				To.FloorZM = From.FloorZM; // exterior uses the From-room floor as the common datum
+			}
+			VentFlows[VentIndex] = ComputeWallVentFlow(From, To, Vent);
+		}
+		HazardVisualizerActor->SetVentFlows(VentFlows);
+	}
+
 	HazardVisualizerActor->SetSimulationTime(TimeSeconds);
-	return bUpdatedAny || ScenarioData.Sprinklers.Num() > 0;
+	return bUpdatedAny || ScenarioData.Sprinklers.Num() > 0 || ScenarioData.Vents.Num() > 0;
 }
 
 void UBRiskDataSubsystem::ClearSmokeVolumes()

@@ -10,6 +10,7 @@
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Math/RotationMatrix.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskHazardVisualizer, Log, All);
 
@@ -29,6 +30,20 @@ namespace
 		{
 			return Room.RoomId == RoomId;
 		});
+	}
+
+	// Map a gas temperature to a cool->hot colour (blue -> green -> red over ~20..600 C),
+	// echoing Smokeview's colourbar so vent-flow streams read hot/cool at a glance.
+	FLinearColor TemperatureToColor(double TempC)
+	{
+		const float U = FMath::Clamp(static_cast<float>((TempC - 20.0) / (600.0 - 20.0)), 0.0f, 1.0f);
+		if (U < 0.5f)
+		{
+			const float K = U * 2.0f;                       // blue -> green
+			return FLinearColor(0.0f, K, 1.0f - K, 1.0f);
+		}
+		const float K = (U - 0.5f) * 2.0f;                  // green -> red
+		return FLinearColor(K, 1.0f - K, 0.0f, 1.0f);
 	}
 
 	FVector TransformHazardRoomLocalToWorldM(const FBRiskRoomGeometry* Room, const FVector& RoomLocalLocationM)
@@ -398,6 +413,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	constexpr float VentSlabThicknessCm = 8.0f;
 	VentComponents.Reserve(Vents.Num());
 	VentMaterials.Reserve(Vents.Num());
+	// Per-vent flow indicators are index-aligned with Vents (SetVentFlows indexes by vent).
+	VentFlowGeometry.SetNum(Vents.Num());
+	VentFlowOutArrows.SetNum(Vents.Num());
+	VentFlowInArrows.SetNum(Vents.Num());
+	VentFlowOutMaterials.SetNum(Vents.Num());
+	VentFlowInMaterials.SetNum(Vents.Num());
 	int32 CreatedVentCount = 0;
 
 	for (int32 VentIndex = 0; VentIndex < Vents.Num(); ++VentIndex)
@@ -457,6 +478,57 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 			VentComponents.Add(VentEdge);
 			VentMaterials.Add(VentMaterial);
 		}
+
+		// Flow-indicator geometry + two hidden cone arrows (out/in), driven per tick by
+		// SetVentFlows. Outward normal = the opening's thin (wall-normal) axis pointing out
+		// of FromRoom.
+		if (ConeMesh)
+		{
+			const FBox FromBoxCm = BRiskCoord::ToUnrealBox(FromRoom->Origin, FromRoom->Size, Scale);
+			const FVector FromCenterCm = FromBoxCm.GetCenter();
+			int32 NormalAxis = 0;
+			if (SizeCm[1] < SizeCm[NormalAxis]) { NormalAxis = 1; }
+			if (SizeCm[2] < SizeCm[NormalAxis]) { NormalAxis = 2; }
+			FVector OutwardNormal = FVector::ZeroVector;
+			OutwardNormal[NormalAxis] = (CenterCm[NormalAxis] >= FromCenterCm[NormalAxis]) ? 1.0 : -1.0;
+
+			FVentFlowGeom& Geom = VentFlowGeometry[VentIndex];
+			Geom.bValid = true;
+			Geom.OpeningCenterCm = CenterCm;
+			Geom.OutwardNormal = OutwardNormal;
+			Geom.SillZCm = static_cast<float>(CenterCm.Z - SizeCm.Z * 0.5);
+			Geom.HeadZCm = static_cast<float>(CenterCm.Z + SizeCm.Z * 0.5);
+			Geom.FloorZCm = static_cast<float>(FromRoom->Origin.Z * Scale);
+
+			auto MakeFlowArrow = [&](const TCHAR* Suffix) -> UStaticMeshComponent*
+			{
+				UStaticMeshComponent* Arrow = NewObject<UStaticMeshComponent>(
+					this, *FString::Printf(TEXT("BRiskVentFlow_%d_%s"), VentIndex, Suffix));
+				Arrow->SetupAttachment(SceneRoot);
+				Arrow->SetStaticMesh(ConeMesh);
+				Arrow->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				Arrow->SetCastShadow(false);
+				Arrow->SetReceivesDecals(false);
+				Arrow->SetMobility(EComponentMobility::Movable);
+				Arrow->SetVisibility(false, true);
+				Arrow->SetHiddenInGame(true);
+				AddInstanceComponent(Arrow);
+				Arrow->OnComponentCreated();
+				Arrow->RegisterComponent();
+				return Arrow;
+			};
+
+			UStaticMeshComponent* OutArrow = MakeFlowArrow(TEXT("Out"));
+			UStaticMeshComponent* InArrow = MakeFlowArrow(TEXT("In"));
+			UMaterialInstanceDynamic* OutMat = MakeColoredMaterial(BasicShapeMaterial, this, FLinearColor::White);
+			UMaterialInstanceDynamic* InMat = MakeColoredMaterial(BasicShapeMaterial, this, FLinearColor::White);
+			if (OutMat) { OutArrow->SetMaterial(0, OutMat); }
+			if (InMat) { InArrow->SetMaterial(0, InMat); }
+			VentFlowOutArrows[VentIndex] = OutArrow;
+			VentFlowInArrows[VentIndex] = InArrow;
+			VentFlowOutMaterials[VentIndex] = OutMat;
+			VentFlowInMaterials[VentIndex] = InMat;
+		}
 		++CreatedVentCount;
 	}
 
@@ -506,6 +578,15 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 		}
 	}
 
+	for (UStaticMeshComponent* Arrow : VentFlowOutArrows)
+	{
+		if (Arrow) { Arrow->DestroyComponent(); }
+	}
+	for (UStaticMeshComponent* Arrow : VentFlowInArrows)
+	{
+		if (Arrow) { Arrow->DestroyComponent(); }
+	}
+
 	FireConeComponents.Reset();
 	FireNiagaraComponents.Reset();
 	FireMaterials.Reset();
@@ -517,6 +598,11 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 	SprinklerRoomHeightsCm.Reset();
 	VentComponents.Reset();
 	VentMaterials.Reset();
+	VentFlowOutArrows.Reset();
+	VentFlowInArrows.Reset();
+	VentFlowOutMaterials.Reset();
+	VentFlowInMaterials.Reset();
+	VentFlowGeometry.Reset();
 }
 
 bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisualState& FireState)
@@ -634,6 +720,75 @@ void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
 			SprayRadiusCm / ConeMeshRadiusCm,
 			SprayRadiusCm / ConeMeshRadiusCm,
 			SprayHeightCm / ConeMeshHeightCm));
+	}
+}
+
+void ABRiskHazardVisualizer::SetVentFlows(const TArray<FBRiskVentFlow>& VentFlows)
+{
+	constexpr double MinShownKgs = 1.0e-3;   // hide trivially small streams
+	constexpr float ArrowRadiusCm = 9.0f;
+	constexpr float MinArrowLenCm = 18.0f;
+	constexpr float MaxArrowLenCm = 130.0f;
+	constexpr float KgsToLenCm = 80.0f;      // mass-flow -> arrow length scale
+
+	for (int32 VentIndex = 0; VentIndex < VentFlowGeometry.Num(); ++VentIndex)
+	{
+		const FVentFlowGeom& Geom = VentFlowGeometry[VentIndex];
+		UStaticMeshComponent* OutArrow = VentFlowOutArrows.IsValidIndex(VentIndex) ? VentFlowOutArrows[VentIndex] : nullptr;
+		UStaticMeshComponent* InArrow = VentFlowInArrows.IsValidIndex(VentIndex) ? VentFlowInArrows[VentIndex] : nullptr;
+		UMaterialInstanceDynamic* OutMat = VentFlowOutMaterials.IsValidIndex(VentIndex) ? VentFlowOutMaterials[VentIndex] : nullptr;
+		UMaterialInstanceDynamic* InMat = VentFlowInMaterials.IsValidIndex(VentIndex) ? VentFlowInMaterials[VentIndex] : nullptr;
+
+		const FBRiskVentFlow Flow = VentFlows.IsValidIndex(VentIndex) ? VentFlows[VentIndex] : FBRiskVentFlow();
+
+		// Neutral plane in cm, clamped into the opening; if none, split at the opening centre.
+		const float OpeningMidZ = (Geom.SillZCm + Geom.HeadZCm) * 0.5f;
+		const float NeutralZCm = (Flow.NeutralPlaneHeightM >= 0.0)
+			? FMath::Clamp(Geom.FloorZCm + static_cast<float>(Flow.NeutralPlaneHeightM) * ScenarioScale, Geom.SillZCm, Geom.HeadZCm)
+			: OpeningMidZ;
+
+		// Configure one cone arrow: apex points along Dir (the flow direction), centred in its
+		// half of the opening, length from mass flow, colour from stream temperature.
+		auto ConfigureArrow = [&](UStaticMeshComponent* Arrow, UMaterialInstanceDynamic* Mat,
+			double MassKgs, double TempC, const FVector& Dir, float ZLow, float ZHigh)
+		{
+			if (!Arrow)
+			{
+				return;
+			}
+			const bool bShow = Geom.bValid && Flow.bHasFlow && MassKgs > MinShownKgs
+				&& ZHigh > ZLow && !Dir.IsNearlyZero();
+			Arrow->SetVisibility(bShow, true);
+			Arrow->SetHiddenInGame(!bShow);
+			if (!bShow)
+			{
+				return;
+			}
+
+			const float LenCm = FMath::Clamp(static_cast<float>(MassKgs) * KgsToLenCm, MinArrowLenCm, MaxArrowLenCm);
+			FVector Location = Geom.OpeningCenterCm;
+			Location.Z = (ZLow + ZHigh) * 0.5f;
+			Location += Dir * (LenCm * 0.5f); // base at the opening, apex pointing outward/inward
+			Arrow->SetRelativeLocation(Location);
+			Arrow->SetRelativeRotation(FRotationMatrix::MakeFromZ(Dir).Rotator()); // cone apex = local +Z
+			Arrow->SetRelativeScale3D(FVector(
+				ArrowRadiusCm / ConeMeshRadiusCm,
+				ArrowRadiusCm / ConeMeshRadiusCm,
+				LenCm / ConeMeshHeightCm));
+			if (Mat)
+			{
+				const FLinearColor Color = TemperatureToColor(TempC);
+				Mat->SetVectorParameterValue(TEXT("Color"), Color);
+				Mat->SetVectorParameterValue(TEXT("BaseColor"), Color);
+			}
+		};
+
+		// OUT: hot gas leaving FromRoom (upper part of the opening, above the neutral plane).
+		ConfigureArrow(OutArrow, OutMat, Flow.MassFlowOutKgs, Flow.OutTemperatureC,
+			Geom.OutwardNormal, NeutralZCm, Geom.HeadZCm);
+		// IN: cooler air entering FromRoom (lower part, below the neutral plane).
+		ConfigureArrow(InArrow, InMat, Flow.MassFlowInKgs, Flow.InTemperatureC,
+			-Geom.OutwardNormal, Geom.SillZCm, NeutralZCm);
 	}
 }
 
