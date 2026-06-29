@@ -246,8 +246,9 @@ bool FBRiskRoomMeshDataTest::RunTest(const FString& Parameters)
 
 	const FBox Bounds(Vertices);
 	TestTrue(TEXT("Room bounds should be valid"), Bounds.IsValid != 0);
-	TestEqual(TEXT("Room X extent should be 2400 cm"), Bounds.GetSize().X, 2400.0);
-	TestEqual(TEXT("Room Y extent should be 550 cm"), Bounds.GetSize().Y, 550.0);
+	// BRiskCoord swaps X<->Y: B-Risk size (24 width, 5.5 depth) -> Unreal (Y=2400, X=550).
+	TestEqual(TEXT("Room X extent should be 550 cm"), Bounds.GetSize().X, 550.0);
+	TestEqual(TEXT("Room Y extent should be 2400 cm"), Bounds.GetSize().Y, 2400.0);
 	TestEqual(TEXT("Room Z extent should be 260 cm"), Bounds.GetSize().Z, 260.0);
 
 	const FBRiskRoomGeometry RoomCopy = Room;

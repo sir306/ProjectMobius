@@ -916,12 +916,11 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 	TArray<FVector>& OutNormals,
 	FString* OutError)
 {
-	// TODO(coords): this room-mesh path still uses the raw (pre-swap) Origin*Scale
-	// conversion and the legacy VENTGEOM face map, NOT the BRiskCoord X<->Y swap that
-	// the smoke/hazard visualizers and egress bounds now use. It is dormant
-	// (bAutoGenerateRoomGeometryOnLoad defaults false). Before enabling it, migrate the
-	// box conversion to BRiskCoord::ToUnrealBox and the wall/opening logic to match, or
-	// the generated mesh will be mirrored relative to the smoke/vent visuals.
+	// Generates solid room walls (with door openings) in Unreal space, coordinate-consistent
+	// with the smoke/hazard visualizers via BRiskCoord (X<->Y swap). Currently DORMANT
+	// (bAutoGenerateRoomGeometryOnLoad defaults false) — intended for a future "load extra
+	// geometry" toggle. Known limitation: at most one opening per wall (multiple vents sharing
+	// a single wall are not yet cut). Output is unverified in-editor while dormant.
 	OutVertices.Reset();
 	OutTriangles.Reset();
 	OutNormals.Reset();
@@ -991,23 +990,14 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 			return false;
 		}
 
-		const FVector Min = Room.Origin * Scale;
-		const FVector Max = (Room.Origin + Room.Size) * Scale;
-
-		const FBRiskVentGeometry* RoomVent = nullptr;
-		for (const FBRiskVentGeometry& Vent : Vents)
-		{
-			if (Vent.FromRoomId == Room.RoomId
-				&& Vent.Width > 0.0
-				&& Vent.Height > 0.0)
-			{
-				RoomVent = &Vent;
-				break;
-			}
-		}
+		// B-Risk metres -> Unreal cm with the X<->Y swap (see BRiskCoord), matching the
+		// smoke/hazard visualizers and egress bounds so generated walls aren't mirrored.
+		const FBox RoomBoxCm = BRiskCoord::ToUnrealBox(Room.Origin, Room.Size, Scale);
+		const FVector Min = RoomBoxCm.Min;
+		const FVector Max = RoomBoxCm.Max;
 
 		const auto AddWallWithOptionalOpening = [&](
-			int32 Face,
+			int32 WallBRiskFace,
 			const FVector& A,
 			const FVector& B,
 			const FVector& C,
@@ -1017,16 +1007,35 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 			double WallStart,
 			double WallEnd)
 		{
-			if (!RoomVent || RoomVent->Face != Face)
+			// Cut the opening for the vent on THIS wall: the first of this room's vents whose
+			// B-Risk face id matches. (One opening per wall; multiple vents sharing a wall is
+			// not yet supported.) The caller passes the B-Risk face for this UE wall under the
+			// X<->Y swap.
+			const FBRiskVentGeometry* WallVent = nullptr;
+			for (const FBRiskVentGeometry& Vent : Vents)
+			{
+				if (Vent.FromRoomId == Room.RoomId
+					&& Vent.Face == WallBRiskFace
+					&& Vent.Width > 0.0
+					&& Vent.Height > 0.0)
+				{
+					WallVent = &Vent;
+					break;
+				}
+			}
+
+			if (!WallVent)
 			{
 				AddQuad(A, B, C, D);
 				return;
 			}
 
-			const double OpeningStart = FMath::Clamp(RoomVent->Offset * Scale, WallStart, WallEnd);
-			const double OpeningEnd = FMath::Clamp((RoomVent->Offset + RoomVent->Width) * Scale, WallStart, WallEnd);
-			const double Sill = FMath::Clamp((Room.Origin.Z + RoomVent->SillHeight) * Scale, static_cast<double>(Min.Z), static_cast<double>(Max.Z));
-			const double Head = FMath::Clamp((Room.Origin.Z + RoomVent->SillHeight + RoomVent->Height) * Scale, static_cast<double>(Min.Z), static_cast<double>(Max.Z));
+			// Offset is room-local along the wall, so measure it from the wall start (fixes
+			// offset rooms where WallStart != 0).
+			const double OpeningStart = FMath::Clamp(WallStart + WallVent->Offset * Scale, WallStart, WallEnd);
+			const double OpeningEnd = FMath::Clamp(WallStart + (WallVent->Offset + WallVent->Width) * Scale, WallStart, WallEnd);
+			const double Sill = FMath::Clamp((Room.Origin.Z + WallVent->SillHeight) * Scale, static_cast<double>(Min.Z), static_cast<double>(Max.Z));
+			const double Head = FMath::Clamp((Room.Origin.Z + WallVent->SillHeight + WallVent->Height) * Scale, static_cast<double>(Min.Z), static_cast<double>(Max.Z));
 
 			if (OpeningEnd <= OpeningStart || Head <= Sill)
 			{
@@ -1098,10 +1107,12 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 		AddQuad(FVector(Min.X, Min.Y, Min.Z), FVector(Min.X, Max.Y, Min.Z), FVector(Max.X, Max.Y, Min.Z), FVector(Max.X, Min.Y, Min.Z));
 		AddQuad(FVector(Min.X, Min.Y, Max.Z), FVector(Max.X, Min.Y, Max.Z), FVector(Max.X, Max.Y, Max.Z), FVector(Min.X, Max.Y, Max.Z));
 
-		AddWallWithOptionalOpening(1, FVector(Min.X, Min.Y, Min.Z), FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Min.Y, Max.Z), FVector(Min.X, Min.Y, Max.Z), true, false, Min.X, Max.X);
+		// Each UE wall maps to a B-Risk vent face under the BRiskCoord X<->Y swap:
+		// UE -Y wall = B-Risk face 4 (-X), UE +Y = face 2 (+X), UE -X = face 1 (-Y), UE +X = face 3 (+Y).
+		AddWallWithOptionalOpening(4, FVector(Min.X, Min.Y, Min.Z), FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Min.Y, Max.Z), FVector(Min.X, Min.Y, Max.Z), true, false, Min.X, Max.X);
 		AddWallWithOptionalOpening(2, FVector(Max.X, Max.Y, Min.Z), FVector(Min.X, Max.Y, Min.Z), FVector(Min.X, Max.Y, Max.Z), FVector(Max.X, Max.Y, Max.Z), true, true, Min.X, Max.X);
-		AddWallWithOptionalOpening(3, FVector(Min.X, Max.Y, Min.Z), FVector(Min.X, Min.Y, Min.Z), FVector(Min.X, Min.Y, Max.Z), FVector(Min.X, Max.Y, Max.Z), false, true, Min.Y, Max.Y);
-		AddWallWithOptionalOpening(4, FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Max.Y, Min.Z), FVector(Max.X, Max.Y, Max.Z), FVector(Max.X, Min.Y, Max.Z), false, false, Min.Y, Max.Y);
+		AddWallWithOptionalOpening(1, FVector(Min.X, Max.Y, Min.Z), FVector(Min.X, Min.Y, Min.Z), FVector(Min.X, Min.Y, Max.Z), FVector(Min.X, Max.Y, Max.Z), false, true, Min.Y, Max.Y);
+		AddWallWithOptionalOpening(3, FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Max.Y, Min.Z), FVector(Max.X, Max.Y, Max.Z), FVector(Max.X, Min.Y, Max.Z), false, false, Min.Y, Max.Y);
 	}
 
 	return true;
