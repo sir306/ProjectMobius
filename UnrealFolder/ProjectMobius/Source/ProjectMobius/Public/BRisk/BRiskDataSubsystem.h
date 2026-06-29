@@ -164,6 +164,42 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "B-Risk|Geometry")
 	bool GenerateAndLoadRoomGeometry();
 
+	/**
+	 * Tear down B-Risk room geometry from the shared RuntimeMeshBuilder. Only clears geometry
+	 * B-Risk itself generated (gated on bRoomGeometryActive), so it never removes a separately
+	 * imported building mesh.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Geometry")
+	void ClearRoomGeometry();
+
+	/**
+	 * Live toggle for room geometry. Sets the load-time flag AND acts immediately when a scenario
+	 * is already loaded: generates the room walls when enabled, tears them down when disabled.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Geometry")
+	void SetRoomGeometryEnabled(bool bEnabled);
+
+	/**
+	 * Live toggle for B-Risk playback timing. Sets the flag AND re-evaluates the active timeline
+	 * source immediately (without reloading), preserving the current play position and play/pause
+	 * state. See ApplyActiveTimeline.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Playback")
+	void SetUseBRiskTiming(bool bEnabled);
+
+	/**
+	 * Re-evaluate which data source owns the shared playback clock and reconfigure it live.
+	 *
+	 * Source priority: B-Risk when its timing is enabled AND it has zone-time data; otherwise the
+	 * agent trajectory when present (detected via the spawn subsystem's cached duration); otherwise
+	 * nothing (the clock is left untouched). Agent data is always parsed/loaded on its own grid
+	 * regardless of which source owns the clock.
+	 *
+	 * @param bResetToStart  true on a fresh load (restart at t=0, paused); false for a live toggle
+	 *                       (clamp the current position into the new range, preserve play/pause).
+	 */
+	void ApplyActiveTimeline(bool bResetToStart);
+
 	/** Enable or disable automatic smoke volume generation after a successful .smv load. */
 	UFUNCTION(BlueprintCallable, Category = "B-Risk|Smoke")
 	void SetAutoGenerateSmokeVolumesOnLoad(bool bEnabled) { bAutoGenerateSmokeVolumesOnLoad = bEnabled; }
@@ -358,6 +394,13 @@ private:
 
 	bool bAutoGenerateSmokeVolumesOnLoad = true;
 	bool bAutoGenerateHazardVisualsOnLoad = true;
+
+	/**
+	 * True while B-Risk-generated room geometry is present in the shared RuntimeMeshBuilder.
+	 * Gates ClearRoomGeometry so we only ever tear down geometry B-Risk itself built, never a
+	 * separately imported building mesh.
+	 */
+	bool bRoomGeometryActive = false;
 
 	/**
 	 * When enabled, the SMV Time column owns the shared simulation duration,

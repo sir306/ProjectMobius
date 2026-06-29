@@ -197,10 +197,6 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 		// DEACTIVATE THE NIAGARA SYSTEM
 		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
-			
-		// get time dilation subsystem current time step
-		int32 CurrentTimeStep = GetWorld()->GetSubsystem<UTimeDilationSubSystem>()->GetCurrentTimeStep();
-
 
 		auto Entities = Context.GetEntities();
 		

@@ -537,6 +537,19 @@ void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 
 }
 
+void ARuntimeMeshBuilder::ClearMobiusProceduralMesh()
+{
+	// Guard: ResetMeshCollisionAndPhysics dereferences the component directly.
+	if (!MobiusProceduralMeshComponent)
+	{
+		return;
+	}
+
+	// Reuse the procedural-only teardown. This empties mesh sections + collision and leaves
+	// any imported Datasmith building (a separate component tree) completely untouched.
+	ResetMeshCollisionAndPhysics();
+}
+
 void ARuntimeMeshBuilder::UpdateMeshFileName()
 {
 	const double UpdateStart = FPlatformTime::Seconds();

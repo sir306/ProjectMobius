@@ -6,6 +6,7 @@
 #include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
+#include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Async/Async.h"
 #include "Kismet/GameplayStatics.h"
@@ -188,6 +189,7 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 	const int32 RequestGeneration = ++LoadGeneration;
 	ClearSmokeVolumes();
 	ClearHazardVisuals();
+	ClearRoomGeometry();
 	ScenarioData = FBRiskScenarioData();
 	LastError.Reset();
 	ActiveSmvPath = SmvFilePath;
@@ -283,6 +285,7 @@ void UBRiskDataSubsystem::ClearScenario()
 	++LoadGeneration;
 	ClearSmokeVolumes();
 	ClearHazardVisuals();
+	ClearRoomGeometry();
 	ScenarioData = FBRiskScenarioData();
 	LastError.Reset();
 	ActiveSmvPath.Reset();
@@ -474,6 +477,7 @@ bool UBRiskDataSubsystem::GenerateAndLoadRoomGeometry()
 	}
 
 	MeshBuilder->GenerateMobiusMesh(Vertices, Triangles, Normals);
+	bRoomGeometryActive = true;
 	UE_LOG(LogBRiskDataSubsystem, Log,
 		TEXT("Generated B-Risk room geometry: rooms=%d vertices=%d triangles=%d scale=%g"),
 		ScenarioData.Rooms.Num(),
@@ -483,6 +487,54 @@ bool UBRiskDataSubsystem::GenerateAndLoadRoomGeometry()
 
 	OnBRiskGeometryReady.Broadcast();
 	return true;
+}
+
+void UBRiskDataSubsystem::ClearRoomGeometry()
+{
+	// Only tear down geometry B-Risk itself generated; never touch a separately imported building.
+	if (!bRoomGeometryActive)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (ARuntimeMeshBuilder* MeshBuilder = Cast<ARuntimeMeshBuilder>(
+			UGameplayStatics::GetActorOfClass(World, ARuntimeMeshBuilder::StaticClass())))
+		{
+			MeshBuilder->ClearMobiusProceduralMesh();
+		}
+	}
+
+	bRoomGeometryActive = false;
+}
+
+void UBRiskDataSubsystem::SetRoomGeometryEnabled(bool bEnabled)
+{
+	bAutoGenerateRoomGeometryOnLoad = bEnabled;
+
+	// With no scenario loaded the flag simply applies on the next load. With one loaded, act now.
+	if (!HasScenarioData())
+	{
+		return;
+	}
+
+	if (bEnabled)
+	{
+		GenerateAndLoadRoomGeometry();
+	}
+	else
+	{
+		ClearRoomGeometry();
+	}
+}
+
+void UBRiskDataSubsystem::SetUseBRiskTiming(bool bEnabled)
+{
+	bConfigureSharedPlaybackOnLoad = bEnabled;
+
+	// Switch the active clock source live, keeping the current position + play/pause state.
+	ApplyActiveTimeline(/*bResetToStart=*/false);
 }
 
 bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
@@ -1347,64 +1399,112 @@ void UBRiskDataSubsystem::HandleSimulationPauseChanged(bool bPaused)
 
 void UBRiskDataSubsystem::ConfigurePlaybackFromScenario()
 {
-	if (ScenarioData.ZoneTables.Num() == 0 || ScenarioData.ZoneTables[0].TimeSeconds.Num() == 0)
-	{
-		return;
-	}
+	// Called on a successful .smv load (only when B-Risk timing is enabled). Restart the shared
+	// timeline at t=0, paused, using whichever source currently owns the clock.
+	ApplyActiveTimeline(/*bResetToStart=*/true);
+}
 
-	UTimeDilationSubSystem* TimeSubsystem = GetTimeDilationSubsystem();
-	if (!TimeSubsystem)
+void UBRiskDataSubsystem::ApplyActiveTimeline(bool bResetToStart)
+{
+	UTimeDilationSubSystem* Clock = GetTimeDilationSubsystem();
+	if (!Clock)
 	{
 		UE_LOG(LogBRiskDataSubsystem, Warning,
-			TEXT("B-Risk scenario loaded but TimeDilationSubSystem is unavailable; play bar timing was not configured."));
+			TEXT("ApplyActiveTimeline: TimeDilationSubSystem unavailable; clock not configured."));
 		return;
 	}
 
-	// Timeline ownership: when an agent trajectory file is loaded, its sample times own the
-	// playback length (configured in UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData),
-	// so B-Risk must NOT overwrite TotalTime/TimeBetweenSteps. With no agent file, B-Risk drives
-	// the timeline. The source is auto-detected here; a user-facing toggle is planned.
-	bool bAgentDataDrivesTimeline = false;
-	if (const UWorld* World = GetWorld())
+	const UWorld* World = GetWorld();
+	if (!World)
 	{
-		if (const UAgentDataSubsystem* AgentData = World->GetSubsystem<UAgentDataSubsystem>())
-		{
-			bAgentDataDrivesTimeline = AgentData->bIsDataLoaded;
-		}
+		return;
 	}
 
-	const TArray<double>& Times = ScenarioData.ZoneTables[0].TimeSeconds;
-	const double FirstTime = Times[0];
+	// --- Determine source availability -------------------------------------------------------
+	// B-Risk: has parseable zone-time data (HasScenarioData guards ZoneTables[0].TimeSeconds).
+	const bool bBRiskLoaded = HasScenarioData();
 
-	if (!bAgentDataDrivesTimeline)
+	// Agent: the spawn subsystem caches the agent trajectory's duration + sample interval at build
+	// time. These persist for the life of the loaded file, unlike UAgentDataSubsystem::bIsDataLoaded
+	// (a transient one-shot edge reset right after the load-complete broadcast).
+	float AgentTotal = 0.0f;
+	float AgentInterval = 0.0f;
+	if (const UMassEntitySpawnSubsystem* SpawnSubsystem = World->GetSubsystem<UMassEntitySpawnSubsystem>())
 	{
-		const float TotalTime = static_cast<float>(Times.Last());
-		const float TimeBetweenSteps = Times.Num() > 1
+		AgentTotal = SpawnSubsystem->GetAgentTotalTime();
+		AgentInterval = SpawnSubsystem->GetAgentTimeBetweenSteps();
+	}
+	const bool bAgentLoaded = (AgentTotal > 0.0f && AgentInterval > UE_KINDA_SMALL_NUMBER);
+
+	// --- Choose the clock source -------------------------------------------------------------
+	// B-Risk owns the clock only when its timing is enabled AND it has data; otherwise the agent
+	// trajectory owns it; with neither available there is nothing to drive the clock, so leave it
+	// untouched (safety gate). Agent data is still parsed/loaded on its own grid either way.
+	enum class ETimelineSource : uint8 { None, BRisk, Agent };
+	ETimelineSource Source = ETimelineSource::None;
+	if (bConfigureSharedPlaybackOnLoad && bBRiskLoaded)
+	{
+		Source = ETimelineSource::BRisk;
+	}
+	else if (bAgentLoaded)
+	{
+		Source = ETimelineSource::Agent;
+	}
+
+	if (Source == ETimelineSource::None)
+	{
+		UE_LOG(LogBRiskDataSubsystem, Verbose,
+			TEXT("ApplyActiveTimeline: no active timeline source (bRiskTiming=%d bRiskLoaded=%d agentLoaded=%d); clock left as-is."),
+			bConfigureSharedPlaybackOnLoad ? 1 : 0, bBRiskLoaded ? 1 : 0, bAgentLoaded ? 1 : 0);
+		return;
+	}
+
+	// --- Resolve the new (total, interval) for the chosen source -----------------------------
+	float NewTotal = 0.0f;
+	float NewInterval = 0.0f;
+	if (Source == ETimelineSource::BRisk)
+	{
+		const TArray<double>& Times = ScenarioData.ZoneTables[0].TimeSeconds;
+		NewTotal = static_cast<float>(Times.Last());
+		NewInterval = Times.Num() > 1
 			? static_cast<float>(Times[1] - Times[0])
-			: TimeSubsystem->TimeBetweenSteps;
-
-		if (TimeBetweenSteps > UE_KINDA_SMALL_NUMBER)
-		{
-			TimeSubsystem->UpdateTimeBetweenData(TimeBetweenSteps);
-		}
-		TimeSubsystem->UpdateTotalTime(TotalTime);
+			: Clock->TimeBetweenSteps;
+	}
+	else // Agent
+	{
+		NewTotal = AgentTotal;
+		NewInterval = AgentInterval;
 	}
 
-	// Restart playback from the beginning on every (re)load, regardless of which source owns
-	// the timeline length: reset to t=0 and stay paused. With an agent file loaded this
-	// restarts the whole shared timeline to 0 as well. Per-agent B-Risk exposure is cleared
-	// separately via OnBRiskScenarioCleared -> ScenarioGeneration bump (see UBRiskEgressSubsystem).
-	TimeSubsystem->OverrideCurrentTime(0.0f, 1);
-	TimeSubsystem->SetSimulationPaused(true);
+	// Safety gate: never push a degenerate clock configuration.
+	if (NewTotal <= 0.0f || NewInterval <= UE_KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	// --- Apply, preserving the live position + play/pause state ------------------------------
+	const bool bWasPaused = Clock->bIsPaused;
+	const float PrevSec = Clock->GetCurrentSimTime();
+
+	Clock->UpdateTimeBetweenData(NewInterval);
+	Clock->UpdateTotalTime(NewTotal);
+
+	const float NewSec = bResetToStart ? 0.0f : FMath::Clamp(PrevSec, 0.0f, NewTotal);
+
+	// A fresh load always restarts paused; a live toggle preserves the prior play/pause state.
+	// OverrideCurrentTime force-pauses, then resumes iff PreviouslyPaused == 0, so passing the
+	// desired paused-ness as that argument sets the final state exactly.
+	const bool bTargetPaused = bResetToStart ? true : bWasPaused;
+	Clock->OverrideCurrentTime(NewSec, bTargetPaused ? 1 : 0);
 
 	UE_LOG(LogBRiskDataSubsystem, Log,
-		TEXT("Configured B-Risk playback from zone Time column: first=%g last=%g samples=%d TotalTime=%g TimeBetweenSteps=%g CurrentTime=0 paused=true timelineOwner=%s"),
-		FirstTime,
-		Times.Last(),
-		Times.Num(),
-		TimeSubsystem->TotalTime,
-		TimeSubsystem->TimeBetweenSteps,
-		bAgentDataDrivesTimeline ? TEXT("agent") : TEXT("b-risk"));
+		TEXT("ApplyActiveTimeline: source=%s reset=%d TotalTime=%g TimeBetweenSteps=%g CurrentTime=%g paused=%d"),
+		Source == ETimelineSource::BRisk ? TEXT("b-risk") : TEXT("agent"),
+		bResetToStart ? 1 : 0,
+		NewTotal,
+		NewInterval,
+		NewSec,
+		bTargetPaused ? 1 : 0);
 }
 
 UTimeDilationSubSystem* UBRiskDataSubsystem::GetTimeDilationSubsystem() const

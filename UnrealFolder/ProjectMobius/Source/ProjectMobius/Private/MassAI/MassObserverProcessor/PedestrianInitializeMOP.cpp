@@ -36,6 +36,7 @@
 // Subsystems to include with the processor
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
+#include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 // Tags required for the processor
 #include "MassAI/Tags/MassAITags.h"
 // Other includes
@@ -98,7 +99,19 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 	const UBRiskEgressSubsystem* BRiskEgressSubsystem =
 		ExecutionContext.GetSubsystem<UBRiskEgressSubsystem>();
 	
+	// Index the agent sample map on its own native grid (absolute seconds / agent interval) so the
+	// initial placement frame is correct even when B-Risk owns the shared clock interval. At load
+	// the clock is reset to t=0 so this is normally step 0; the conversion keeps it correct if the
+	// observer ever runs at a non-zero time.
 	int32 CurrentTimeStep = TimeDilationSubSystem->GetCurrentTimeStep();
+	if (const UMassEntitySpawnSubsystem* SpawnSubsystem = GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>())
+	{
+		const float AgentInterval = SpawnSubsystem->GetAgentTimeBetweenSteps();
+		if (AgentInterval > UE_KINDA_SMALL_NUMBER)
+		{
+			CurrentTimeStep = FMath::Max(0, FMath::FloorToInt32(TimeDilationSubSystem->GetCurrentSimTime() / AgentInterval));
+		}
+	}
 
 	// check current time step not less than 0
 	if (CurrentTimeStep < 0)

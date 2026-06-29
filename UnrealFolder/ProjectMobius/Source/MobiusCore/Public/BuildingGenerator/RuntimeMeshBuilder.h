@@ -127,6 +127,14 @@ public:
 	void ResetMeshCollisionAndPhysics();
 
 	/**
+	 * Clear ONLY the procedural mesh geometry (sections + collision) without touching any
+	 * imported Datasmith building. Used to tear down B-Risk room geometry when it is toggled
+	 * off or replaced. Safe to call when no procedural geometry exists.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MeshGenerator|Generation")
+	void ClearMobiusProceduralMesh();
+
+	/**
 	 * Update the Mesh file name, this is bound to the OnMeshFileChanged Delegate in the Game Instance
 	 * and will call the methods to get the mesh data and rebuild the mesh
 	 */

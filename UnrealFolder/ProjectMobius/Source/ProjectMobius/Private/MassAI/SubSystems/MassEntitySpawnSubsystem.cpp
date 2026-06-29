@@ -44,6 +44,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "BRisk/BRiskDataSubsystem.h"
 // Niagara
 #include "MassExecutionContext.h"
 #include "NiagaraComponent.h"
@@ -693,6 +694,12 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		AgentDataSubsystem->CachedEntityData.Shrink();
 	}
 
+	// Persist the agent grid (interval + total) before SimulationFragment is moved into the shared
+	// struct below. These outlive the runnable and act as the reliable "agent data present" signal
+	// for the timeline coordinator, plus the source of the movement processor's agent-native index.
+	AgentTimeBetweenSteps = TimeBetweenStepsLocal;
+	AgentTotalTime = SimulationFragment.MaxTime;
+
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
 	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();
 	PedestrianTemplateData.AddFragment<FEntityMovementFragment>();
@@ -710,14 +717,21 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
 	}
 
-	// Get Time Dilation from the ProjectMobius Game Instance
-	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
-
-	// update time between steps
-	TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenStepsLocal);
-
-	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
-	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
+	// Configure the shared playback clock. Route through the B-Risk timeline coordinator so the
+	// active source (agent vs B-Risk) owns the clock: with B-Risk timing enabled the clock keeps
+	// the B-Risk duration while agent data still loads on its own grid (req: agent loaded after a
+	// B-Risk file). The coordinator reads this subsystem's just-cached AgentTotalTime/interval.
+	// Fall back to a direct agent-clock config when the B-Risk subsystem is unavailable so the
+	// pure-agent workflow never regresses.
+	if (UBRiskDataSubsystem* BRiskSubsystem = GetWorld()->GetSubsystem<UBRiskDataSubsystem>())
+	{
+		BRiskSubsystem->ApplyActiveTimeline(/*bResetToStart=*/true);
+	}
+	else if (UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>())
+	{
+		TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenStepsLocal);
+		TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
+	}
 
         auto SharedSimulationFragmentData = FSharedStruct::Make(MoveTemp(SimulationFragment));
 

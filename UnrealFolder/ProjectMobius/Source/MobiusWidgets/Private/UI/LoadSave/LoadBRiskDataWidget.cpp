@@ -165,7 +165,9 @@ void ULoadBRiskDataWidget::OnUseBRiskTimingChanged(bool bIsChecked)
 	{
 		if (UBRiskDataSubsystem* BRiskSubsystem = World->GetSubsystem<UBRiskDataSubsystem>())
 		{
-			BRiskSubsystem->SetConfigureSharedPlaybackOnLoad(bIsChecked);
+			// Live: sets the flag AND re-evaluates the active clock source now (no reload),
+			// preserving the current play position and play/pause state.
+			BRiskSubsystem->SetUseBRiskTiming(bIsChecked);
 		}
 	}
 }
@@ -176,7 +178,9 @@ void ULoadBRiskDataWidget::OnLoadRoomGeometryChanged(bool bIsChecked)
 	{
 		if (UBRiskDataSubsystem* BRiskSubsystem = World->GetSubsystem<UBRiskDataSubsystem>())
 		{
-			BRiskSubsystem->SetAutoGenerateRoomGeometryOnLoad(bIsChecked);
+			// Live: sets the flag AND generates/tears down room geometry immediately when a
+			// scenario is already loaded.
+			BRiskSubsystem->SetRoomGeometryEnabled(bIsChecked);
 		}
 	}
 }

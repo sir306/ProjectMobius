@@ -144,6 +144,14 @@ private:
 	UPROPERTY()
 	class UTimeDilationSubSystem* TimeDilationSubSystem;
 
+	/**
+	 * Spawn subsystem, cached source of the agent trajectory's sample interval. The agent sample
+	 * map is keyed on the agent's own grid, which is independent of the shared clock interval
+	 * (B-Risk may own that). Used to re-derive the sample index from absolute seconds.
+	 */
+	UPROPERTY()
+	class UMassEntitySpawnSubsystem* AgentSpawnSubsystem = nullptr;
+
 	/** The current Time step of the simulation */
 	UPROPERTY()
 	int32 CurrentTimeStep = 0;
@@ -196,6 +204,14 @@ private:
 	 * Updates the current time step, if the subsystem is nullptr it will return and not update the time step
 	 */
 	void UpdateCurrentTimeStepAndStepPercentage();
+
+	/**
+	 * Derive CurrentTimeStep + TimeStepPercentage from the absolute simulation time (CurrentSimTime)
+	 * and the agent's native sample interval, so the agent sample map is indexed correctly even when
+	 * B-Risk owns the shared clock interval. Identity with the clock grid when the agent owns the
+	 * clock. Falls back to the shared clock's step/percentage when the agent interval is unavailable.
+	 */
+	void RecomputeAgentTimeIndex();
 	
 #pragma endregion PRIVATE_METHODS
 

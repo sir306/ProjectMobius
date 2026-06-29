@@ -435,13 +435,18 @@ void UPedestrianMovementProcessor::SetupSubSystems(FMassExecutionContext& Execut
 		// Get the TimeDilationSubSystem
 		TimeDilationSubSystem = ExecutionContext.GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
 	}
-	
+
+	// Cache the spawn subsystem (stable for the world's lifetime); source of the agent sample interval.
+	if(AgentSpawnSubsystem == nullptr)
+	{
+		AgentSpawnSubsystem = ExecutionContext.GetWorld()->GetSubsystem<UMassEntitySpawnSubsystem>();
+	}
+
 	// check that the TimeDilationSubSystem was allocated and update the current time step value
 	if(TimeDilationSubSystem != nullptr)
 	{
-		// Get the current time step
-		SetCurrentTimeStep(TimeDilationSubSystem->GetCurrentTimeStep());
 		CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
+		RecomputeAgentTimeIndex();
 
 		// Update flag to true so we don't check again
 		bAreSubSystemsSetup = true;
@@ -452,17 +457,35 @@ void UPedestrianMovementProcessor::UpdateCurrentTimeStepAndStepPercentage()
 {
 	if(TimeDilationSubSystem != nullptr)
 	{
-		// Get the current time step
-		SetCurrentTimeStep(TimeDilationSubSystem->GetCurrentTimeStep());
-
-		// update the time step percentage
-		TimeStepPercentage = TimeDilationSubSystem->GetCurrentTimeStepPercentage();
-
 		CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
+		RecomputeAgentTimeIndex();
 	}
 	else
 	{
 		// if the subsystem is nullptr then set the flag to false, this way it will try to get the subsystem again
 		bAreSubSystemsSetup = false;
+	}
+}
+
+void UPedestrianMovementProcessor::RecomputeAgentTimeIndex()
+{
+	// The agent sample map is keyed on the agent's own grid. Index it from absolute seconds so the
+	// lookup is correct regardless of which source owns the shared clock interval (B-Risk may own it).
+	const float AgentInterval = AgentSpawnSubsystem ? AgentSpawnSubsystem->GetAgentTimeBetweenSteps() : 0.0f;
+
+	if (AgentInterval > UE_KINDA_SMALL_NUMBER)
+	{
+		const float StepFloat = CurrentSimTime / AgentInterval;
+		const int32 Step = FMath::Max(0, FMath::FloorToInt32(StepFloat));
+		SetCurrentTimeStep(Step);
+		// Fractional part in [0,1) — interpolation alpha between this sample and the next.
+		TimeStepPercentage = StepFloat - static_cast<float>(FMath::FloorToInt32(StepFloat));
+	}
+	else
+	{
+		// Fallback: agent interval unavailable -> use the shared clock grid (legacy behaviour). This
+		// is identity with the above when the agent owns the clock (clock interval == agent interval).
+		SetCurrentTimeStep(TimeDilationSubSystem->GetCurrentTimeStep());
+		TimeStepPercentage = TimeDilationSubSystem->GetCurrentTimeStepPercentage();
 	}
 }
