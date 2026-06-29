@@ -602,6 +602,24 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 		return false;
 	}
 
+	// Auto-scale the vent-flow colourbar to the scenario's actual upper-layer temperature range
+	// (like Smokeview), so the hottest flows read red instead of everything mapping to teal.
+	double MaxUpperTempC = 60.0; // floor so the colour range is never degenerate
+	for (const FBRiskZoneTable& ZoneTable : ScenarioData.ZoneTables)
+	{
+		for (const FBRiskSeries& Series : ZoneTable.Series)
+		{
+			if (Series.Name.StartsWith(TEXT("ULT")))
+			{
+				for (const double Value : Series.Values)
+				{
+					MaxUpperTempC = FMath::Max(MaxUpperTempC, Value);
+				}
+			}
+		}
+	}
+	HazardVisualizerActor->SetFlowTemperatureRange(20.0f, static_cast<float>(MaxUpperTempC));
+
 	if (UTimeDilationSubSystem* TimeSubsystem = GetTimeDilationSubsystem())
 	{
 		TimeSubsystem->OnNewCurrentTime.RemoveDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);

@@ -57,6 +57,12 @@ public:
 	 */
 	void SetVentFlows(const TArray<FBRiskVentFlow>& VentFlows);
 
+	/**
+	 * Set the temperature range (Celsius) the vent-flow colourbar maps over. Pass the
+	 * scenario's actual min/max so the hottest flow reaches red (Smokeview auto-scale).
+	 */
+	void SetFlowTemperatureRange(float MinC, float MaxC);
+
 	/** Number of generated visual components. */
 	int32 GetHazardVisualCount() const;
 
@@ -88,7 +94,14 @@ private:
 	TObjectPtr<UStaticMesh> CubeMesh;
 
 	UPROPERTY()
+	TObjectPtr<UStaticMesh> PlaneMesh;
+
+	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BasicShapeMaterial;
+
+	/** Unlit, two-sided material (Color param -> emissive) for the flat vent-flow regions. */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> VentFlowMaterial;
 
 	UPROPERTY()
 	TObjectPtr<UNiagaraSystem> SimpleFireNiagaraSystem;
@@ -115,18 +128,16 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentMaterials;
 
-	/** Per-vent cone indicators for the OUT (FromRoom -> ToRoom) and IN flow streams. */
+	/**
+	 * Per-vent stack of thin flat bands tracing the in/out flow velocity profile across the
+	 * opening height (curved: width ~ sqrt(distance from the neutral plane), pinched to zero
+	 * at the neutral plane). Flattened: band b of vent v is at index v*<bands> + b.
+	 */
 	UPROPERTY()
-	TArray<TObjectPtr<UStaticMeshComponent>> VentFlowOutArrows;
+	TArray<TObjectPtr<UStaticMeshComponent>> VentFlowBandQuads;
 
 	UPROPERTY()
-	TArray<TObjectPtr<UStaticMeshComponent>> VentFlowInArrows;
-
-	UPROPERTY()
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentFlowOutMaterials;
-
-	UPROPERTY()
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentFlowInMaterials;
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentFlowBandMaterials;
 
 	/** Per-vent opening geometry (cm, world) used to place the flow indicators. */
 	struct FVentFlowGeom
@@ -145,4 +156,8 @@ private:
 	TArray<FVector> SprinklerHeadLocationsCm;
 	TArray<float> SprinklerRoomHeightsCm;
 	float ScenarioScale = 100.0f;
+
+	/** Temperature range (Celsius) the vent-flow colourbar maps over (Smokeview-style auto-scale). */
+	float FlowTempMinC = 20.0f;
+	float FlowTempMaxC = 200.0f;
 };

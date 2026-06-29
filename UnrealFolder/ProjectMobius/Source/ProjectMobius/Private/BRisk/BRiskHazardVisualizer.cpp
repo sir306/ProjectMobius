@@ -19,6 +19,7 @@ namespace
 	constexpr float FireActivationHrrKw = 1.0f;
 	constexpr float ConeMeshRadiusCm = 50.0f;
 	constexpr float ConeMeshHeightCm = 100.0f;
+	constexpr int32 VentFlowBandsPerVent = 36; // height bands tracing the vent-flow velocity profile
 	constexpr float MaxFireHeightCm = 120.0f;
 	constexpr float MinFireRadiusCm = 18.0f;
 	constexpr float MinFireConeAngleDeg = 8.0f;
@@ -32,18 +33,25 @@ namespace
 		});
 	}
 
-	// Map a gas temperature to a cool->hot colour (blue -> green -> red over ~20..600 C),
-	// echoing Smokeview's colourbar so vent-flow streams read hot/cool at a glance.
-	FLinearColor TemperatureToColor(double TempC)
+	// Map a gas temperature to Smokeview's standard rainbow colourbar
+	// (blue -> cyan -> green -> yellow -> red) over [MinC, MaxC]. The range is the scenario's
+	// actual temperature span (auto-scaled like Smokeview) so the hottest flows reach red.
+	FLinearColor TemperatureToColor(double TempC, float MinC, float MaxC)
 	{
-		const float U = FMath::Clamp(static_cast<float>((TempC - 20.0) / (600.0 - 20.0)), 0.0f, 1.0f);
-		if (U < 0.5f)
-		{
-			const float K = U * 2.0f;                       // blue -> green
-			return FLinearColor(0.0f, K, 1.0f - K, 1.0f);
-		}
-		const float K = (U - 0.5f) * 2.0f;                  // green -> red
-		return FLinearColor(K, 1.0f - K, 0.0f, 1.0f);
+		const float Range = FMath::Max(MaxC - MinC, 1.0f);
+		const float U = FMath::Clamp(static_cast<float>((TempC - MinC) / Range), 0.0f, 1.0f);
+		// Five equal stops: blue, cyan, green, yellow, red.
+		const FLinearColor Stops[5] = {
+			FLinearColor(0.0f, 0.0f, 1.0f, 1.0f),
+			FLinearColor(0.0f, 1.0f, 1.0f, 1.0f),
+			FLinearColor(0.0f, 1.0f, 0.0f, 1.0f),
+			FLinearColor(1.0f, 1.0f, 0.0f, 1.0f),
+			FLinearColor(1.0f, 0.0f, 0.0f, 1.0f)
+		};
+		const float Scaled = U * 4.0f;
+		const int32 Lo = FMath::Clamp(FMath::FloorToInt(Scaled), 0, 3);
+		const float Frac = Scaled - static_cast<float>(Lo);
+		return FMath::Lerp(Stops[Lo], Stops[Lo + 1], Frac);
 	}
 
 	FVector TransformHazardRoomLocalToWorldM(const FBRiskRoomGeometry* Room, const FVector& RoomLocalLocationM)
@@ -141,11 +149,25 @@ ABRiskHazardVisualizer::ABRiskHazardVisualizer()
 		CubeMesh = CubeMeshFinder.Object;
 	}
 
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneMeshFinder(
+		TEXT("/Engine/BasicShapes/Plane.Plane"));
+	if (PlaneMeshFinder.Succeeded())
+	{
+		PlaneMesh = PlaneMeshFinder.Object;
+	}
+
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> BasicShapeMaterialFinder(
 		TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	if (BasicShapeMaterialFinder.Succeeded())
 	{
 		BasicShapeMaterial = BasicShapeMaterialFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> VentFlowMaterialFinder(
+		TEXT("/Game/B-Risk/Materials/M_BRiskVentFlow.M_BRiskVentFlow"));
+	if (VentFlowMaterialFinder.Succeeded())
+	{
+		VentFlowMaterial = VentFlowMaterialFinder.Object;
 	}
 
 	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> SimpleFireNiagaraSystemFinder(
@@ -415,10 +437,8 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	VentMaterials.Reserve(Vents.Num());
 	// Per-vent flow indicators are index-aligned with Vents (SetVentFlows indexes by vent).
 	VentFlowGeometry.SetNum(Vents.Num());
-	VentFlowOutArrows.SetNum(Vents.Num());
-	VentFlowInArrows.SetNum(Vents.Num());
-	VentFlowOutMaterials.SetNum(Vents.Num());
-	VentFlowInMaterials.SetNum(Vents.Num());
+	VentFlowBandQuads.SetNum(Vents.Num() * VentFlowBandsPerVent);
+	VentFlowBandMaterials.SetNum(Vents.Num() * VentFlowBandsPerVent);
 	int32 CreatedVentCount = 0;
 
 	for (int32 VentIndex = 0; VentIndex < Vents.Num(); ++VentIndex)
@@ -479,10 +499,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 			VentMaterials.Add(VentMaterial);
 		}
 
-		// Flow-indicator geometry + two hidden cone arrows (out/in), driven per tick by
-		// SetVentFlows. Outward normal = the opening's thin (wall-normal) axis pointing out
-		// of FromRoom.
-		if (ConeMesh)
+		// Flow-indicator geometry + two hidden flat quad regions (out/in), driven per tick by
+		// SetVentFlows. A flat Plane with the two-sided unlit M_BRiskVentFlow material gives a
+		// flat, uniform, double-sided region (readable from any orbit angle), matching
+		// Smokeview. Outward normal = the opening's thin (wall-normal) axis pointing out of
+		// FromRoom.
+		if (PlaneMesh && VentFlowMaterial)
 		{
 			const FBox FromBoxCm = BRiskCoord::ToUnrealBox(FromRoom->Origin, FromRoom->Size, Scale);
 			const FVector FromCenterCm = FromBoxCm.GetCenter();
@@ -505,7 +527,7 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 				UStaticMeshComponent* Arrow = NewObject<UStaticMeshComponent>(
 					this, *FString::Printf(TEXT("BRiskVentFlow_%d_%s"), VentIndex, Suffix));
 				Arrow->SetupAttachment(SceneRoot);
-				Arrow->SetStaticMesh(ConeMesh);
+				Arrow->SetStaticMesh(PlaneMesh);
 				Arrow->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 				Arrow->SetCastShadow(false);
 				Arrow->SetReceivesDecals(false);
@@ -518,16 +540,20 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 				return Arrow;
 			};
 
-			UStaticMeshComponent* OutArrow = MakeFlowArrow(TEXT("Out"));
-			UStaticMeshComponent* InArrow = MakeFlowArrow(TEXT("In"));
-			UMaterialInstanceDynamic* OutMat = MakeColoredMaterial(BasicShapeMaterial, this, FLinearColor::White);
-			UMaterialInstanceDynamic* InMat = MakeColoredMaterial(BasicShapeMaterial, this, FLinearColor::White);
-			if (OutMat) { OutArrow->SetMaterial(0, OutMat); }
-			if (InMat) { InArrow->SetMaterial(0, InMat); }
-			VentFlowOutArrows[VentIndex] = OutArrow;
-			VentFlowInArrows[VentIndex] = InArrow;
-			VentFlowOutMaterials[VentIndex] = OutMat;
-			VentFlowInMaterials[VentIndex] = InMat;
+			for (int32 BandIndex = 0; BandIndex < VentFlowBandsPerVent; ++BandIndex)
+			{
+				UStaticMeshComponent* BandQuad = MakeFlowArrow(*FString::Printf(TEXT("Band%d"), BandIndex));
+				UMaterialInstanceDynamic* BandMat = MakeColoredMaterial(VentFlowMaterial, this, FLinearColor::White);
+				if (BandMat)
+				{
+					// Translucent material: set a visible opacity (the base material's default is 0).
+					BandMat->SetScalarParameterValue(TEXT("Opacity"), 0.5f);
+					BandQuad->SetMaterial(0, BandMat);
+				}
+				const int32 FlatIndex = VentIndex * VentFlowBandsPerVent + BandIndex;
+				VentFlowBandQuads[FlatIndex] = BandQuad;
+				VentFlowBandMaterials[FlatIndex] = BandMat;
+			}
 		}
 		++CreatedVentCount;
 	}
@@ -578,13 +604,9 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 		}
 	}
 
-	for (UStaticMeshComponent* Arrow : VentFlowOutArrows)
+	for (UStaticMeshComponent* Band : VentFlowBandQuads)
 	{
-		if (Arrow) { Arrow->DestroyComponent(); }
-	}
-	for (UStaticMeshComponent* Arrow : VentFlowInArrows)
-	{
-		if (Arrow) { Arrow->DestroyComponent(); }
+		if (Band) { Band->DestroyComponent(); }
 	}
 
 	FireConeComponents.Reset();
@@ -598,10 +620,8 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 	SprinklerRoomHeightsCm.Reset();
 	VentComponents.Reset();
 	VentMaterials.Reset();
-	VentFlowOutArrows.Reset();
-	VentFlowInArrows.Reset();
-	VentFlowOutMaterials.Reset();
-	VentFlowInMaterials.Reset();
+	VentFlowBandQuads.Reset();
+	VentFlowBandMaterials.Reset();
 	VentFlowGeometry.Reset();
 }
 
@@ -725,20 +745,14 @@ void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
 
 void ABRiskHazardVisualizer::SetVentFlows(const TArray<FBRiskVentFlow>& VentFlows)
 {
-	constexpr double MinShownKgs = 1.0e-3;   // hide trivially small streams
-	constexpr float ArrowRadiusCm = 9.0f;
-	constexpr float MinArrowLenCm = 18.0f;
-	constexpr float MaxArrowLenCm = 130.0f;
-	constexpr float KgsToLenCm = 80.0f;      // mass-flow -> arrow length scale
+	constexpr float PlaneMeshSizeCm = 100.0f; // /Engine/BasicShapes/Plane is 100x100 cm
+	constexpr float MinShownWidthCm = 3.0f;   // hide the near-neutral-plane slivers (the pinch)
+	constexpr float MaxWidthCm = 120.0f;
+	constexpr float KgsToWidthCm = 80.0f;     // peak mass-flow -> bulge width
 
 	for (int32 VentIndex = 0; VentIndex < VentFlowGeometry.Num(); ++VentIndex)
 	{
 		const FVentFlowGeom& Geom = VentFlowGeometry[VentIndex];
-		UStaticMeshComponent* OutArrow = VentFlowOutArrows.IsValidIndex(VentIndex) ? VentFlowOutArrows[VentIndex] : nullptr;
-		UStaticMeshComponent* InArrow = VentFlowInArrows.IsValidIndex(VentIndex) ? VentFlowInArrows[VentIndex] : nullptr;
-		UMaterialInstanceDynamic* OutMat = VentFlowOutMaterials.IsValidIndex(VentIndex) ? VentFlowOutMaterials[VentIndex] : nullptr;
-		UMaterialInstanceDynamic* InMat = VentFlowInMaterials.IsValidIndex(VentIndex) ? VentFlowInMaterials[VentIndex] : nullptr;
-
 		const FBRiskVentFlow Flow = VentFlows.IsValidIndex(VentIndex) ? VentFlows[VentIndex] : FBRiskVentFlow();
 
 		// Neutral plane in cm, clamped into the opening; if none, split at the opening centre.
@@ -747,49 +761,66 @@ void ABRiskHazardVisualizer::SetVentFlows(const TArray<FBRiskVentFlow>& VentFlow
 			? FMath::Clamp(Geom.FloorZCm + static_cast<float>(Flow.NeutralPlaneHeightM) * ScenarioScale, Geom.SillZCm, Geom.HeadZCm)
 			: OpeningMidZ;
 
-		// Configure one cone arrow: apex points along Dir (the flow direction), centred in its
-		// half of the opening, length from mass flow, colour from stream temperature.
-		auto ConfigureArrow = [&](UStaticMeshComponent* Arrow, UMaterialInstanceDynamic* Mat,
-			double MassKgs, double TempC, const FVector& Dir, float ZLow, float ZHigh)
+		const float MaxOutWidthCm = FMath::Min(static_cast<float>(Flow.MassFlowOutKgs) * KgsToWidthCm, MaxWidthCm);
+		const float MaxInWidthCm = FMath::Min(static_cast<float>(Flow.MassFlowInKgs) * KgsToWidthCm, MaxWidthCm);
+		const float BandHeightCm = (Geom.HeadZCm - Geom.SillZCm) / static_cast<float>(VentFlowBandsPerVent);
+		const float OutSpanCm = Geom.HeadZCm - NeutralZCm;
+		const float InSpanCm = NeutralZCm - Geom.SillZCm;
+		const FRotator BandRotation = FRotationMatrix::MakeFromXY(Geom.OutwardNormal, FVector::UpVector).Rotator();
+
+		// Stack of thin bands tracing the velocity profile across the opening height. The band
+		// width follows ~sqrt(distance from the neutral plane), so the outer edge curves and
+		// pinches to zero at the neutral plane (hot gas bulging out the top, cool air in the
+		// bottom) — the Smokeview look. Each band is coloured by its stream's gas temperature.
+		for (int32 BandIndex = 0; BandIndex < VentFlowBandsPerVent; ++BandIndex)
 		{
-			if (!Arrow)
+			const int32 FlatIndex = VentIndex * VentFlowBandsPerVent + BandIndex;
+			UStaticMeshComponent* Band = VentFlowBandQuads.IsValidIndex(FlatIndex) ? VentFlowBandQuads[FlatIndex] : nullptr;
+			if (!Band)
 			{
-				return;
+				continue;
 			}
-			const bool bShow = Geom.bValid && Flow.bHasFlow && MassKgs > MinShownKgs
-				&& ZHigh > ZLow && !Dir.IsNearlyZero();
-			Arrow->SetVisibility(bShow, true);
-			Arrow->SetHiddenInGame(!bShow);
+			UMaterialInstanceDynamic* Mat = VentFlowBandMaterials.IsValidIndex(FlatIndex) ? VentFlowBandMaterials[FlatIndex] : nullptr;
+
+			const float BandZ = Geom.SillZCm + (static_cast<float>(BandIndex) + 0.5f) * BandHeightCm;
+			const bool bOut = BandZ >= NeutralZCm;
+			const float Span = bOut ? OutSpanCm : InSpanCm;
+			const float Frac = (Span > KINDA_SMALL_NUMBER)
+				? FMath::Clamp((bOut ? (BandZ - NeutralZCm) : (NeutralZCm - BandZ)) / Span, 0.0f, 1.0f)
+				: 0.0f;
+			const float WidthCm = (bOut ? MaxOutWidthCm : MaxInWidthCm) * FMath::Sqrt(Frac);
+
+			const bool bShow = Geom.bValid && Flow.bHasFlow && WidthCm > MinShownWidthCm
+				&& !Geom.OutwardNormal.IsNearlyZero();
+			Band->SetVisibility(bShow, true);
+			Band->SetHiddenInGame(!bShow);
 			if (!bShow)
 			{
-				return;
+				continue;
 			}
 
-			const float LenCm = FMath::Clamp(static_cast<float>(MassKgs) * KgsToLenCm, MinArrowLenCm, MaxArrowLenCm);
+			const float SignSide = bOut ? 1.0f : -1.0f;
 			FVector Location = Geom.OpeningCenterCm;
-			Location.Z = (ZLow + ZHigh) * 0.5f;
-			Location += Dir * (LenCm * 0.5f); // base at the opening, apex pointing outward/inward
-			Arrow->SetRelativeLocation(Location);
-			Arrow->SetRelativeRotation(FRotationMatrix::MakeFromZ(Dir).Rotator()); // cone apex = local +Z
-			Arrow->SetRelativeScale3D(FVector(
-				ArrowRadiusCm / ConeMeshRadiusCm,
-				ArrowRadiusCm / ConeMeshRadiusCm,
-				LenCm / ConeMeshHeightCm));
+			Location.Z = BandZ;
+			Location += Geom.OutwardNormal * (SignSide * WidthCm * 0.5f); // inner edge at the door
+			Band->SetRelativeLocation(Location);
+			Band->SetRelativeRotation(BandRotation);
+			Band->SetRelativeScale3D(FVector(WidthCm / PlaneMeshSizeCm, BandHeightCm / PlaneMeshSizeCm, 1.0f));
 			if (Mat)
 			{
-				const FLinearColor Color = TemperatureToColor(TempC);
+				const FLinearColor Color = TemperatureToColor(
+					bOut ? Flow.OutTemperatureC : Flow.InTemperatureC, FlowTempMinC, FlowTempMaxC);
 				Mat->SetVectorParameterValue(TEXT("Color"), Color);
 				Mat->SetVectorParameterValue(TEXT("BaseColor"), Color);
 			}
-		};
-
-		// OUT: hot gas leaving FromRoom (upper part of the opening, above the neutral plane).
-		ConfigureArrow(OutArrow, OutMat, Flow.MassFlowOutKgs, Flow.OutTemperatureC,
-			Geom.OutwardNormal, NeutralZCm, Geom.HeadZCm);
-		// IN: cooler air entering FromRoom (lower part, below the neutral plane).
-		ConfigureArrow(InArrow, InMat, Flow.MassFlowInKgs, Flow.InTemperatureC,
-			-Geom.OutwardNormal, Geom.SillZCm, NeutralZCm);
+		}
 	}
+}
+
+void ABRiskHazardVisualizer::SetFlowTemperatureRange(float MinC, float MaxC)
+{
+	FlowTempMinC = MinC;
+	FlowTempMaxC = FMath::Max(MaxC, MinC + 1.0f);
 }
 
 int32 ABRiskHazardVisualizer::GetHazardVisualCount() const
