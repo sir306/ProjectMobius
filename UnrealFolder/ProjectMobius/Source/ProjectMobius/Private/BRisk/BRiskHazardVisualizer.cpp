@@ -63,6 +63,46 @@ namespace
 		}
 		return DynamicMaterial;
 	}
+
+	// Decompose a vent opening box (CenterCm/SizeCm, thin in the wall-normal axis) into the
+	// 4 thin "wire" edges of its rectangular perimeter, so vents read as a wireframe outline
+	// matching the room zone outlines instead of a solid slab. Outputs per-edge centre+size.
+	void BuildVentOutlineEdges(
+		const FVector& CenterCm,
+		const FVector& SizeCm,
+		float WireThicknessCm,
+		TArray<FVector>& OutCenters,
+		TArray<FVector>& OutSizes)
+	{
+		// Wall normal = thinnest axis (the slab thickness).
+		int32 NormalAxis = 0;
+		if (SizeCm[1] < SizeCm[NormalAxis]) { NormalAxis = 1; }
+		if (SizeCm[2] < SizeCm[NormalAxis]) { NormalAxis = 2; }
+		const int32 UAxis = (NormalAxis + 1) % 3;
+		const int32 VAxis = (NormalAxis + 2) % 3;
+
+		const double HalfU = SizeCm[UAxis] * 0.5;
+		const double HalfV = SizeCm[VAxis] * 0.5;
+		const double NormalCm = FMath::Min(static_cast<double>(WireThicknessCm), static_cast<double>(SizeCm[NormalAxis]));
+
+		auto AddEdge = [&](double UOffset, double VOffset, bool bSpanU)
+		{
+			FVector C = CenterCm;
+			C[UAxis] = CenterCm[UAxis] + UOffset;
+			C[VAxis] = CenterCm[VAxis] + VOffset;
+			FVector S = FVector::ZeroVector;
+			S[NormalAxis] = NormalCm;
+			S[UAxis] = bSpanU ? SizeCm[UAxis] : WireThicknessCm;
+			S[VAxis] = bSpanU ? WireThicknessCm : SizeCm[VAxis];
+			OutCenters.Add(C);
+			OutSizes.Add(S);
+		};
+
+		AddEdge(0.0, +HalfV, true);  // top edge (spans U)
+		AddEdge(0.0, -HalfV, true);  // bottom edge
+		AddEdge(+HalfU, 0.0, false); // one side (spans V)
+		AddEdge(-HalfU, 0.0, false); // other side
+	}
 }
 
 ABRiskHazardVisualizer::ABRiskHazardVisualizer()
@@ -326,7 +366,11 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		SprinklerCone->SetCastShadow(false);
 		SprinklerCone->SetReceivesDecals(false);
 		SprinklerCone->SetMobility(EComponentMobility::Movable);
-		SprinklerCone->SetRelativeRotation(FRotator(180.0f, 0.0f, 0.0f));
+		// Cone apex at the sprinkler head (top), base spreading toward the floor — the
+		// shape of downward water spray. (Was FRotator(180,...), which put the apex on the
+		// floor i.e. upside down.) Positioning in SetSimulationTime centres it half a spray
+		// height below the head, leaving the apex at the head.
+		SprinklerCone->SetRelativeRotation(FRotator(0.0f, 0.0f, 0.0f));
 		SprinklerCone->SetVisibility(false, true);
 		SprinklerCone->SetHiddenInGame(true);
 
@@ -372,37 +416,47 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 			continue;
 		}
 
-		UStaticMeshComponent* VentComponent = NewObject<UStaticMeshComponent>(
-			this,
-			*FString::Printf(TEXT("BRiskVent_%d"), VentIndex));
-		VentComponent->SetupAttachment(SceneRoot);
-		VentComponent->SetStaticMesh(CubeMesh);
-		VentComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		VentComponent->SetCastShadow(false);
-		VentComponent->SetReceivesDecals(false);
-		VentComponent->SetMobility(EComponentMobility::Movable);
-		VentComponent->SetRelativeLocation(CenterCm);
-		VentComponent->SetRelativeScale3D(SizeCm / 100.0f);
-		VentComponent->SetVisibility(true, true);
-		VentComponent->SetHiddenInGame(false);
+		// Render the opening as a 4-edge wireframe rectangle to match the room zone outline
+		// style, rather than a solid slab.
+		constexpr float VentWireThicknessCm = 6.0f;
+		TArray<FVector> EdgeCenters;
+		TArray<FVector> EdgeSizes;
+		BuildVentOutlineEdges(CenterCm, SizeCm, VentWireThicknessCm, EdgeCenters, EdgeSizes);
 
-		AddInstanceComponent(VentComponent);
-		VentComponent->OnComponentCreated();
-		VentComponent->RegisterComponent();
-
-		// Smokeview VENTCOLOR default (1,0,1) — magenta is the standard vent/door colour
-		// fire engineers recognise (SR282 Fig.19 shows magenta vent outlines in Smokeview).
-		UMaterialInstanceDynamic* VentMaterial = MakeColoredMaterial(
-			BasicShapeMaterial,
-			this,
-			FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
-		if (VentMaterial)
+		for (int32 EdgeIndex = 0; EdgeIndex < EdgeCenters.Num(); ++EdgeIndex)
 		{
-			VentComponent->SetMaterial(0, VentMaterial);
-		}
+			UStaticMeshComponent* VentEdge = NewObject<UStaticMeshComponent>(
+				this,
+				*FString::Printf(TEXT("BRiskVent_%d_Edge_%d"), VentIndex, EdgeIndex));
+			VentEdge->SetupAttachment(SceneRoot);
+			VentEdge->SetStaticMesh(CubeMesh);
+			VentEdge->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			VentEdge->SetCastShadow(false);
+			VentEdge->SetReceivesDecals(false);
+			VentEdge->SetMobility(EComponentMobility::Movable);
+			VentEdge->SetRelativeLocation(EdgeCenters[EdgeIndex]);
+			VentEdge->SetRelativeScale3D(EdgeSizes[EdgeIndex] / 100.0f);
+			VentEdge->SetVisibility(true, true);
+			VentEdge->SetHiddenInGame(false);
 
-		VentComponents.Add(VentComponent);
-		VentMaterials.Add(VentMaterial);
+			AddInstanceComponent(VentEdge);
+			VentEdge->OnComponentCreated();
+			VentEdge->RegisterComponent();
+
+			// Smokeview VENTCOLOR default (1,0,1) — magenta is the standard vent/door colour
+			// fire engineers recognise (SR282 Fig.19 shows magenta vent outlines in Smokeview).
+			UMaterialInstanceDynamic* VentMaterial = MakeColoredMaterial(
+				BasicShapeMaterial,
+				this,
+				FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+			if (VentMaterial)
+			{
+				VentEdge->SetMaterial(0, VentMaterial);
+			}
+
+			VentComponents.Add(VentEdge);
+			VentMaterials.Add(VentMaterial);
+		}
 		++CreatedVentCount;
 	}
 
