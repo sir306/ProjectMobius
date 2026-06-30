@@ -266,6 +266,9 @@ void UPedestrianDataDisplay::GetScreenGridCoefficients(int32 Col, int32 Row, flo
 
 void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 {
+	// Insights scope for the whole font-fit (always pays the 8x GetTextSize measure). Compiled out of shipping.
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR("PedData::FontFit");
+
 	// // Reset Grid Panel to default size
 	// ResizeScreenGridToDefaultSize();
 	
@@ -305,6 +308,25 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 		}
 	}
 
+	// D4 geometry cache: the fitted font + grid-slot resize below are a pure function of the panel's
+	// paint-space size (BoxSize) and the widest field text (TextSize). When both are unchanged since the
+	// last fit, skip the rest of this method — it otherwise calls SetFont x8 (each invalidates a text
+	// block) and resizes the grid slot every update, forcing a Slate prepass/paint. Text size is part of
+	// the key (not box alone) because these fields change during playback/hover, so a box-only key could
+	// skip a real refit and clip text; keying on both keeps visuals identical. Converges to a no-op once
+	// the panel size and displayed text settle.
+	if (BoxSize.Equals(CachedFontFitBoxSize, 0.5f) && TextSize.Equals(CachedFontFitTextSize, 0.5f))
+	{
+		return;
+	}
+	CachedFontFitBoxSize = BoxSize;
+	CachedFontFitTextSize = TextSize;
+
+	// Insights scope for the part the D4 cache should make RARE: SetFont x8 + grid-slot resize. If this
+	// scope's Count tracks FontFit's Count (i.e. fires almost every call), the early-return is NOT engaging
+	// and we have a bug to fix before touching the WBP. If it's a small fraction, the C++ half is working.
+	TRACE_CPUPROFILER_EVENT_SCOPE_STR("PedData::FontFit_Recompute");
+
 	BoxSize *= 0.5f; // each text slot takes up 50% of the box size, so we scale down to fit
 	
 	// Compute scale factor to fit in box (maintain aspect ratio)
@@ -329,7 +351,11 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 		{
 			if (Widget)
 			{
-				Widget->SetFontSize(10);
+				// Only push the font when it actually differs — SetFontSize invalidates the text block.
+				if (!FMath::IsNearlyEqual(Widget->GetFontSize(), 10.0f))
+				{
+					Widget->SetFontSize(10);
+				}
 				FVector2D CurrentTextSize = Widget->GetTextSize();
 				TextSize.X = FMath::Max(TextSize.X, CurrentTextSize.X);
 				TextSize.Y = FMath::Max(TextSize.Y, CurrentTextSize.Y);
@@ -343,7 +369,11 @@ void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 		{
 			if (Widget)
 			{
-				Widget->SetFontSize(FinalFontSize);
+				// Only push the font when it actually differs — SetFontSize invalidates the text block.
+				if (!FMath::IsNearlyEqual(Widget->GetFontSize(), FinalFontSize))
+				{
+					Widget->SetFontSize(FinalFontSize);
+				}
 			}
 		}
 	}
