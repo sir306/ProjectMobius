@@ -33,6 +33,7 @@
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "SimData/ISimSampleProvider.h" // A1: read samples through the provider, not SimulationData directly
 // Subsystems to include with the processor
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
@@ -163,19 +164,22 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		const TArrayView<FAgentEgressTenabilityFragment>& AgentHealthFragments =
 			Context.GetMutableFragmentView<FAgentEgressTenabilityFragment>();
 
+		// A1: read through the provider instead of SimulationData directly. IsValidAndPopulated()/GetNumTimesteps()
+		// mirror the old IsValid()/Num() check; GetSamplesForTimestep() mirrors the old [CurrentTimeStep] lookup
+		// (returns nullptr for an absent step, which is null-safe here vs the old operator[] assert).
+		const ISimSampleProvider* const Provider = SharedAgentMovement.Provider.Get();
+
 		// check timestep index is valid
-		if (!SharedAgentMovement.SimulationData.IsValid() || SharedAgentMovement.SimulationData->Num() - 1 < CurrentTimeStep)
+		if (!Provider || !Provider->IsValidAndPopulated() || Provider->GetNumTimesteps() - 1 < CurrentTimeStep)
 		{
 			// log
 			UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute CurrentTimeStep not valid"));
 			return;
 		}
 
-		// Get the size of the data
-		//int32 DataSize = SharedAgentMovement.SimulationData->operator[](CurrentTimeStep).Num();
-
 		// Get the first Shared Movement Sample for all entities
-		TArray<FSimMovementSample> AllAgentMovementSamples = (*SharedAgentMovement.SimulationData)[CurrentTimeStep];
+		const TArray<FSimMovementSample>* CurrentStepSamplesPtr = Provider->GetSamplesForTimestep(CurrentTimeStep);
+		TArray<FSimMovementSample> AllAgentMovementSamples = CurrentStepSamplesPtr ? *CurrentStepSamplesPtr : TArray<FSimMovementSample>();
 
 		auto Entities = Context.GetEntities();
 		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
@@ -213,17 +217,22 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			}
 			else
 			{
-				for (auto Sample : *SharedAgentMovement.SimulationData)
+				// A1: iterate all timesteps via the provider's guaranteed-complete pass instead of *SimulationData.
+				// NOTE: the inner guard tests AllAgentMovementSamples (the current-step copy), which is already
+				// known invalid for EntityIndexOffset in this else-branch, so this body is unreachable — exactly
+				// as before. Kept verbatim (behaviour-preserving refactor, not a fix for the latent dead branch).
+				// ForEachTimestep can't early-break, but since the body never runs, iterating all steps is
+				// equivalent to the old break-on-first.
+				Provider->ForEachTimestep([&](int32 /*Timestep*/, const TArray<FSimMovementSample>& Samples)
 				{
 					if (AllAgentMovementSamples.IsValidIndex(EntityIndexOffset))
 					{
-						EntityMovement.CurrentLocation = Sample.Value[EntityIndexOffset].Position;
-						EntityMovement.CurrentRotation = Sample.Value[EntityIndexOffset].Rotation;
-						EntityMovement.CurrentSpeed = Sample.Value[EntityIndexOffset].Speed;
-						ZValue = Sample.Value[EntityIndexOffset].Position.Z;
-						break;
+						EntityMovement.CurrentLocation = Samples[EntityIndexOffset].Position;
+						EntityMovement.CurrentRotation = Samples[EntityIndexOffset].Rotation;
+						EntityMovement.CurrentSpeed = Samples[EntityIndexOffset].Speed;
+						ZValue = Samples[EntityIndexOffset].Position.Z;
 					}
-				}
+				});
 				EntityRendering.bRenderAgent = false;// setting to false should prevent any rendering issues at start but our check in processor could be a problem
 			}
 			

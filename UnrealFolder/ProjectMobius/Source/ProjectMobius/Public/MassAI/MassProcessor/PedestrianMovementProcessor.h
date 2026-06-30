@@ -203,6 +203,10 @@ private:
 	uint32 CachedDataGeneration = 0;
 	int32  CachedMapsTimeStep   = INDEX_NONE;
 
+	/** A1: last timestep we sent to ISimSampleProvider::NotifyPlayhead, so the movement direction hint
+	 *  (forward/rewind) can be derived. Starts INDEX_NONE -> first notify reads as forward. */
+	int32  PrevTimeStep = INDEX_NONE;
+
 #pragma endregion PRIVATE_VARIABLES
 
 #pragma region PRIVATE_METHODS

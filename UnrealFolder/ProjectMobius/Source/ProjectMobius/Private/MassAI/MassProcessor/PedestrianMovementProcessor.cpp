@@ -33,6 +33,7 @@
 #include "MassAI/Fragments/EntityInfoFragment.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "SimData/ISimSampleProvider.h" // A1: read samples through the provider, not SimulationData directly
 // Subsystems to include with the processor
 #include "Subsystems/TimeDilationSubSystem.h"
 #include <MassAI/Tags/MassAITags.h>
@@ -174,9 +175,12 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Retrieve the simulation fragment once
 			const auto& SimulationFragment = Context.GetSharedFragment<FSimulationFragment>();
 
-			// Use FindChecked if you're confident the key exists (or add checks otherwise)
-			const TArray<FSimMovementSample>* CurrentSamplesPtr = SimulationFragment.SimulationData->Find(CurrentTimeStep);
-			const TArray<FSimMovementSample>* NextSamplesPtr = SimulationFragment.SimulationData->Find(CurrentTimeStep + 1);
+			// A1: read samples through the provider (windowed accessor). Returns bitwise what
+			// SimulationData->Find() did, including nullptr for an absent timestep — which the B2 cache and
+			// the bSamplesTheSame check below both rely on. IsThereDataToProcess already proved Provider valid.
+			ISimSampleProvider* const Provider = SimulationFragment.Provider.Get(); // non-const: NotifyPlayhead below is non-const
+			const TArray<FSimMovementSample>* CurrentSamplesPtr = Provider ? Provider->GetSamplesForTimestep(CurrentTimeStep) : nullptr;
+			const TArray<FSimMovementSample>* NextSamplesPtr     = Provider ? Provider->GetSamplesForTimestep(CurrentTimeStep + 1) : nullptr;
 
 			if (!CurrentSamplesPtr)
 			{
@@ -209,6 +213,17 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			const uint32 CurGen = SimulationFragment.DataGeneration;
 			if (ShouldRebuildSampleIndexMaps(CachedDataGeneration, CachedMapsTimeStep, CurGen, CurrentTimeStep))
 			{
+				// A1: tell the provider the playhead moved so a future streaming provider can prefetch. Fired
+				// once per window change (inside the rebuild guard, on the first chunk), not per chunk. Dir is
+				// +1 forward / -1 rewind / 0 unchanged; the resident provider ignores it. PrevTimeStep tracks
+				// the last window we notified for.
+				if (Provider)
+				{
+					const int32 Dir = (CurrentTimeStep == PrevTimeStep) ? 0 : (CurrentTimeStep > PrevTimeStep ? 1 : -1);
+					Provider->NotifyPlayhead(CurrentTimeStep, Dir);
+					PrevTimeStep = CurrentTimeStep;
+				}
+
 				// Reset and pre-reserve with a known max size if available
 				EntityIDToCurrentMovementSampleIndexMap.Reset();
 				EntityIDToCurrentMovementSampleIndexMap.Reserve(CurrentMovementSamples.Num()); // If Reset doesn't clear capacity
@@ -410,20 +425,22 @@ void UPedestrianMovementProcessor::InterpolateAndAssign(FEntityMovementFragment&
 bool UPedestrianMovementProcessor::IsThereDataToProcess(const FMassExecutionContext& ExecutionContext) const
 {
 	// TODO: This one should be at the start to only check once per call not per loop iteration per call
-	// Check if the shared fragment is empty or not need more methodology to handle this and not check every time executed
-	const TSharedPtr<TMap<int32, TArray<FSimMovementSample>>>& SimData =
-		ExecutionContext.GetSharedFragment<FSimulationFragment>().SimulationData;
-	if (!SimData.IsValid() || SimData->IsEmpty())
+	// A1: query the provider instead of SimulationData directly. IsValidAndPopulated() mirrors the old
+	// "valid && !IsEmpty()", GetNumTimesteps() mirrors SimData->Num(), GetSamplesForTimestep() mirrors Find()
+	// (incl. nullptr for an absent timestep) — so this is logically identical to the previous check.
+	const ISimSampleProvider* const Provider =
+		ExecutionContext.GetSharedFragment<FSimulationFragment>().Provider.Get();
+	if (!Provider || !Provider->IsValidAndPopulated())
 	{
 		return false;
 	}
 
-	if (CurrentTimeStep >= SimData->Num())
+	if (CurrentTimeStep >= Provider->GetNumTimesteps())
 	{
 		return false;
 	}
 
-	const TArray<FSimMovementSample>* StepSamples = SimData->Find(CurrentTimeStep);
+	const TArray<FSimMovementSample>* StepSamples = Provider->GetSamplesForTimestep(CurrentTimeStep);
 	if (!StepSamples || StepSamples->IsEmpty())
 	{
 		return false;
