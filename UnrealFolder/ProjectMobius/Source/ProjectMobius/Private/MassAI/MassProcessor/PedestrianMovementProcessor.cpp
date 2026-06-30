@@ -199,27 +199,41 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Avoid repeated lookups and copy only if needed
 			const TArray<FSimMovementSample>& NextMovementSamples = bSamplesTheSame ? CurrentMovementSamples : *NextSamplesPtr;
 
-			// Reset and pre-reserve with a known max size if available
-			EntityIDToCurrentMovementSampleIndexMap.Reset();
-			EntityIDToCurrentMovementSampleIndexMap.Reserve(CurrentMovementSamples.Num()); // If Reset doesn't clear capacity
-
-			for (int32 Index = 0; Index < CurrentMovementSamples.Num(); ++Index)
+			// B2: the maps are keyed chunk-independently (by EntityID), so rebuilding them every chunk every
+			// frame is pure redundancy (O(NumChunks * N) game-thread insertions). Rebuild only when the data
+			// window changes — composite (DataGeneration, timestep) key, NOT timestep alone (see
+			// ShouldRebuildSampleIndexMaps for the file-switch OOB hazard). The per-frame CurrentSamplesPtr /
+			// NextSamplesPtr fetch above is left UNCHANGED so the array bounds always match the cached map.
+			// SAFE because ForEachEntityChunk runs sequentially (chunks 2..N in a frame hit the cache);
+			// ParallelForEachEntityChunk would reintroduce a race on these shared maps.
+			const uint32 CurGen = SimulationFragment.DataGeneration;
+			if (ShouldRebuildSampleIndexMaps(CachedDataGeneration, CachedMapsTimeStep, CurGen, CurrentTimeStep))
 			{
-				EntityIDToCurrentMovementSampleIndexMap.Add(CurrentMovementSamples[Index].EntityID, Index);
-			}
+				// Reset and pre-reserve with a known max size if available
+				EntityIDToCurrentMovementSampleIndexMap.Reset();
+				EntityIDToCurrentMovementSampleIndexMap.Reserve(CurrentMovementSamples.Num()); // If Reset doesn't clear capacity
 
-			if (!bSamplesTheSame)
-			{
-				EntityIDToNextMovementSampleIndexMap.Reset();
-				EntityIDToNextMovementSampleIndexMap.Reserve(NextMovementSamples.Num());
-
-				for (int32 Index = 0; Index < NextMovementSamples.Num(); ++Index)
+				for (int32 Index = 0; Index < CurrentMovementSamples.Num(); ++Index)
 				{
-					EntityIDToNextMovementSampleIndexMap.Add(NextMovementSamples[Index].EntityID, Index);
+					EntityIDToCurrentMovementSampleIndexMap.Add(CurrentMovementSamples[Index].EntityID, Index);
 				}
+
+				if (!bSamplesTheSame)
+				{
+					EntityIDToNextMovementSampleIndexMap.Reset();
+					EntityIDToNextMovementSampleIndexMap.Reserve(NextMovementSamples.Num());
+
+					for (int32 Index = 0; Index < NextMovementSamples.Num(); ++Index)
+					{
+						EntityIDToNextMovementSampleIndexMap.Add(NextMovementSamples[Index].EntityID, Index);
+					}
+				}
+
+				CachedDataGeneration = CurGen;
+				CachedMapsTimeStep   = CurrentTimeStep;
 			}
 
-			
+
 			// Get the required fragments
 			const TArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetMutableFragmentView<FEntityMovementFragment>();
 			const TArrayView<FEntityRenderingFragment> EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();

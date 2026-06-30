@@ -1159,15 +1159,18 @@ void FProcessAgentSimulationDataRunnable::CalcSmoothedStepMovementBrackets(const
 		if (bShouldStop) break;
 		CalculateSrcVectors(RecordVectors, AgentSamples[a]); // Calculate the short-time source vectors for the agent
 
-		// Lambda for O(1) indexed write to SimulationData (replaces SetAnimPt linear scan)
-		auto WriteAnimData = [&SampleIndex, a](int32 TimeStep, EPedestrianMovementBracket emb, float StepDuration)
+		// Lambda for O(1) indexed write to SimulationData (replaces SetAnimPt linear scan).
+		// A2: only MovementBracket is stored now. The former per-sample StepDurationMS write was removed — that
+		// field moved off FSimMovementSample into FSimSampleStepMotion because nothing consumed it. The step
+		// duration is still computed locally below (it drives the rolling tSpan gait window via newtSpan), it is
+		// just no longer persisted per sample. To re-enable, see FSimSampleStepMotion in SimulationFragment.h.
+		auto WriteAnimData = [&SampleIndex, a](int32 TimeStep, EPedestrianMovementBracket emb)
 		{
 			if (TMap<int32, FSimMovementSample*>* TimeMap = SampleIndex.Find(TimeStep))
 			{
 				if (FSimMovementSample** SamplePtr = TimeMap->Find(a))
 				{
 					(*SamplePtr)->MovementBracket = emb;
-					(*SamplePtr)->StepDurationMS = static_cast<unsigned long>(StepDuration * 1000.0f);
 				}
 			}
 		};
@@ -1179,7 +1182,7 @@ void FProcessAgentSimulationDataRunnable::CalcSmoothedStepMovementBrackets(const
 		// Iterate t through all recordVectors, rapidly moving through the initial zero-speed records
 		for (t = 0; t < RecordVectors.Num() && (RecordVectors[t].Length()/(timeDurationPerRecord) < MinSpeedWalking); t++) {
 			if (bShouldStop) break;
-			WriteAnimData(t, EPedestrianMovementBracket::Emb_NotMoving, 1.0f);
+			WriteAnimData(t, EPedestrianMovementBracket::Emb_NotMoving);
 		}
 		if (bShouldStop) break;
 		// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
@@ -1196,7 +1199,7 @@ void FProcessAgentSimulationDataRunnable::CalcSmoothedStepMovementBrackets(const
 			if (bShouldStop) break;
 			stepSpeed = StepVector.Length()/(static_cast<double>(tSpan) * timeDurationPerRecord) / 100; // This 100 value is coming from the isSI conversion
 			EPedestrianMovementBracket thisAnimMF = CalculateStepAnimationParams(static_cast<float>(stepSpeed), stepDuration);
-			WriteAnimData(t, thisAnimMF, stepDuration);
+			WriteAnimData(t, thisAnimMF);
 
 			// Move the step forward by one record, by subtracting the last vector and adding the new one
 			StepVector -= RecordVectors[t]; // subtract this record single vector, ahead of the next step assessment, from t+1

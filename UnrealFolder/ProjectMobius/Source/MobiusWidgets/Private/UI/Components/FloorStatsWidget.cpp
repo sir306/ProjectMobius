@@ -26,6 +26,7 @@
 
 #include "Components/TextBlock.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "SimData/ISimSampleProvider.h" // A1: ForEachTimestep over the resident provider
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
@@ -484,54 +485,47 @@ void UFloorStatsWidget::BuildDataForImPlotOverlay()
                 return;
         }
 
-        if (!SimulationFragment->SimulationData.IsValid())
-        {
-                SendImPlotChartData();
-                return;
-        }
-        const int32 NumSteps = SimulationFragment->SimulationData->Num();
-        if (NumSteps == 0)
+        // A1: read through the provider interface instead of SimulationData directly. IsValidAndPopulated()
+        // is the exact equivalent of the old (valid && Num()>0) pair of guards.
+        const ISimSampleProvider* const Provider = SimulationFragment->Provider.Get();
+        if (!Provider || !Provider->IsValidAndPopulated())
         {
                 SendImPlotChartData();
                 return;
         }
 
-        // Get sorted keys from the TMap to handle non-sequential timestep indices
+        // ForEachTimestep is the guaranteed-complete, ascending pass (Invariant 5) — it replaces the old
+        // GetKeys/Sort/Find loop and yields the same sorted (timestep -> samples), so SortedKeys and the
+        // parallel SampleCounts come out identical to before.
         TArray<int32> SortedKeys;
-        SimulationFragment->SimulationData->GetKeys(SortedKeys);
-        SortedKeys.Sort();
-
         TArray<int32> SampleCounts;
-        SampleCounts.SetNum(SortedKeys.Num());
 
         int32 SmallestFoundSampleCount = INT32_MAX;
         int32 LargestFoundSampleCount = 0;
 
-        for (int32 i = 0; i < SortedKeys.Num(); ++i)
+        Provider->ForEachTimestep([&](int32 Timestep, const TArray<FSimMovementSample>& Samples)
         {
                 int32 StepCount = 0;
-                if (const TArray<FSimMovementSample>* Samples = SimulationFragment->SimulationData->Find(SortedKeys[i]))
+                for (const FSimMovementSample& Sample : Samples)
                 {
-                        for (const FSimMovementSample& Sample : *Samples)
+                        if (bIsBetweenFloorWidget)
                         {
-                                if (bIsBetweenFloorWidget)
-                                {
-                                        if (IsLocationBetweenFloors(BottomHeatmap, TopHeatmap, Sample.Position))
-                                        {
-                                                ++StepCount;
-                                        }
-                                }
-                                else if (IsLocationOnFloor(BottomHeatmap, Sample.Position))
+                                if (IsLocationBetweenFloors(BottomHeatmap, TopHeatmap, Sample.Position))
                                 {
                                         ++StepCount;
                                 }
                         }
+                        else if (IsLocationOnFloor(BottomHeatmap, Sample.Position))
+                        {
+                                ++StepCount;
+                        }
                 }
 
-                SampleCounts[i] = StepCount;
+                SortedKeys.Add(Timestep);
+                SampleCounts.Add(StepCount);
                 SmallestFoundSampleCount = FMath::Min(SmallestFoundSampleCount, StepCount);
                 LargestFoundSampleCount = FMath::Max(LargestFoundSampleCount, StepCount);
-        }
+        });
 
         MinAgentCountToSend = SmallestFoundSampleCount == INT32_MAX ? 0 : SmallestFoundSampleCount;
         MaxAgentCountToSend = LargestFoundSampleCount;

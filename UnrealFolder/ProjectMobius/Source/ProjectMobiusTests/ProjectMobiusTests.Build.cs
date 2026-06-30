@@ -19,6 +19,7 @@ public class ProjectMobiusTests : ModuleRules
 			"StructUtils",
 			"MassCommon",
 			"MassSpawner",
+			"MassRepresentation", // transitively required: PedestrianMovementProcessor.h -> SimulationFragment.h -> MRS_RepresentationSubsystem.h -> MassRepresentationSubsystem.h
 			"Json",
 			"JsonUtilities",
 			"MobiusCore",

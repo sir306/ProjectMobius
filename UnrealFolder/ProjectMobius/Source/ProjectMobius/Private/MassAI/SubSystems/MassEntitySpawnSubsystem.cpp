@@ -29,6 +29,7 @@
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "SimData/ISimSampleProvider.h" // A1: FFullyResidentProvider built into the shared fragment
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Actors to include
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
@@ -474,6 +475,9 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 			Frag->SimulationData->Empty();
 			Frag->SimulationData.Reset();
 		}
+		// A1: release the provider too. It holds a copy of the same TSharedPtr as SimulationData, so it
+		// must be reset for the backing allocation's control block to go away on file switch.
+		Frag->Provider.Reset();
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -732,6 +736,18 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenStepsLocal);
 		TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
 	}
+
+	// B2: stamp the monotonic build generation (composite cache key for the persistent movement processor).
+	// Bumped here once per rebuild and never reset, so a file switch back to t=0 still invalidates the
+	// processor's sample-index maps. Placed after the SimulationFragment move above and before the MoveTemp
+	// into the shared struct below so it travels into the shared fragment (covers the null-runnable branch too).
+	SimulationFragment.DataGeneration = ++SimDataGenerationCounter;
+
+	// A1: wrap the resident TMap in an FFullyResidentProvider so consumers (FloorStatsWidget, and a future
+	// streaming provider) read through the ISimSampleProvider interface instead of touching SimulationData
+	// directly. Shares the same TSharedPtr (no copy); built before the MoveTemp so it travels into the shared
+	// fragment. ModeTable defaults to { "" } (perf task A2 — importer drops the source per-sample mode attribute).
+	SimulationFragment.Provider = MakeShared<FFullyResidentProvider>(SimulationFragment.SimulationData);
 
         auto SharedSimulationFragmentData = FSharedStruct::Make(MoveTemp(SimulationFragment));
 

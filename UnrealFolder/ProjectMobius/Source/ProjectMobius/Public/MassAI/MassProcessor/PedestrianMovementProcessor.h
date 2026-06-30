@@ -44,6 +44,20 @@ class PROJECTMOBIUS_API UPedestrianMovementProcessor : public UMassProcessor
 public:
 	UPedestrianMovementProcessor();
 
+	/**
+	 * B2 per-timestep map cache invalidation predicate (pure; unit-tested in MovementMapCacheInvalidation).
+	 * The EntityID->sample-index maps are derived from SimulationData->Find(timestep); this processor is
+	 * persistent across file switches, so the cache key MUST be the composite (DataGeneration, timestep),
+	 * never timestep alone: a file switch resets the clock to t=0 while a NEW fragment is built, so a
+	 * t=0 -> t=0 switch looks unchanged under a timestep-only key and would reuse the previous file's map
+	 * against the new (possibly shorter) sample array -> out-of-bounds read. Returns true when EITHER the
+	 * data generation OR the timestep differs from what the maps were last built for.
+	 */
+	static bool ShouldRebuildSampleIndexMaps(uint32 CachedGen, int32 CachedStep, uint32 CurGen, int32 CurStep)
+	{
+		return CachedGen != CurGen || CachedStep != CurStep;
+	}
+
 protected:
 #pragma region PROTECTED_METHODS
 	virtual void ConfigureQueries() override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
@@ -179,6 +193,15 @@ private:
 	/**	Lookup Map Key:Entity ID, Val: Index in next movement sample */
 	UPROPERTY()
 	TMap<int32, int32> EntityIDToNextMovementSampleIndexMap;
+
+	/**
+	 * B2 cache key: the (DataGeneration, timestep) the two lookup maps above were last built for. Plain
+	 * members (uint32 is not a reflectable UPROPERTY type, and they need no GC/serialisation). Start at
+	 * (0, INDEX_NONE) while real generations start at 1, so the first Execute always rebuilds. See
+	 * ShouldRebuildSampleIndexMaps.
+	 */
+	uint32 CachedDataGeneration = 0;
+	int32  CachedMapsTimeStep   = INDEX_NONE;
 
 #pragma endregion PRIVATE_VARIABLES
 

@@ -180,6 +180,13 @@ private:
         /** Agent trajectory total duration (seconds). Cached alongside AgentTimeBetweenSteps. */
         float AgentTotalTime = 0.0f;
 
+        /** B2 cache generation: bumped once per fragment rebuild (i.e. every agent-file load/switch) and
+         *  stamped into FSimulationFragment::DataGeneration. The persistent movement processor uses it as a
+         *  cache-invalidation key (composite with timestep) so a file switch back to t=0 still rebuilds its
+         *  sample-index maps. NEVER reset (a reset would re-introduce ABA at the generation level); a uint32
+         *  wrap after 4 billion switches is a non-issue. Real generations therefore start at 1. */
+        uint32 SimDataGenerationCounter = 0;
+
         /** Template ID registered with TemplateRegistryInstance, used to call DestroyTemplate on file switch. */
         FMassEntityTemplateID RegisteredPedestrianTemplateID;
 };
