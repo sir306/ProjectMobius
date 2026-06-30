@@ -519,14 +519,45 @@ void UBRiskDataSubsystem::SetRoomGeometryEnabled(bool bEnabled)
 		return;
 	}
 
+	// TODO(b-risk geometry toggle / mobius builder): the OFF path below reloads the imported building
+	// model, which can be expensive for large fbx/datasmith files. Before proceeding, prompt the user
+	// with a confirmation warning (e.g. "Switching B-Risk room geometry off reloads the building model
+	// '<name>' — for large models this may take a while. Proceed?") via UMobiusUserFeedbackSubsystem,
+	// and only act on confirmation; on cancel, revert bAutoGenerateRoomGeometryOnLoad + the checkbox.
+
 	if (bEnabled)
 	{
+		// Show B-Risk room geometry. GenerateMobiusMesh replaces whatever the shared RuntimeMeshBuilder
+		// holds (including an imported building) with the B-Risk rooms regenerated from the loaded .smv.
 		GenerateAndLoadRoomGeometry();
+		return;
 	}
-	else
+
+	// OFF: the shared RuntimeMeshBuilder holds EITHER B-Risk rooms OR an imported building, so simply
+	// clearing the rooms would leave nothing on screen. Instead RELOAD the previously selected building
+	// mesh file (fbx/datasmith/ifc) so the model the room generation tore off the builder is rebuilt
+	// from disk. Fall back to clearing the rooms only when no building file was ever selected.
+	UWorld* World = GetWorld();
+	const UProjectMobiusGameInstance* GameInst =
+		World ? Cast<UProjectMobiusGameInstance>(World->GetGameInstance()) : nullptr;
+	static const FString MeshPathPlaceholder(TEXT("Click Browse to choose file"));
+	const FString MeshFilePath = GameInst ? GameInst->GetSimulationMeshFilePath() : FString();
+
+	if (World && !MeshFilePath.IsEmpty() && MeshFilePath != MeshPathPlaceholder)
 	{
-		ClearRoomGeometry();
+		if (ARuntimeMeshBuilder* MeshBuilder = Cast<ARuntimeMeshBuilder>(
+			UGameplayStatics::GetActorOfClass(World, ARuntimeMeshBuilder::StaticClass())))
+		{
+			// Rebuilds the building from its file (the same path UpdateMeshFileName reads from the
+			// game instance). The builder now holds the building, not B-Risk rooms.
+			MeshBuilder->UpdateMeshFileName();
+			bRoomGeometryActive = false;
+			return;
+		}
 	}
+
+	// No building model to restore — just tear down the B-Risk rooms.
+	ClearRoomGeometry();
 }
 
 void UBRiskDataSubsystem::SetUseBRiskTiming(bool bEnabled)
