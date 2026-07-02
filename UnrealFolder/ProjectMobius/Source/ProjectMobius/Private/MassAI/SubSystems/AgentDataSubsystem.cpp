@@ -41,6 +41,7 @@
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
 #include "HAL/PlatformTime.h"
+#include "SimData/SimDiskCache.h" // A3: post-conversion .msc disk-cache writer
 
 namespace
 {
@@ -913,6 +914,34 @@ void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 	}
 
 	CalcSmoothedStepMovementBrackets(AgentDataArray);
+
+	if (bShouldStop)
+	{
+		return;
+	}
+
+	// A3: persist a post-conversion .msc disk cache for this dataset (prerequisite for streaming A4/A5).
+	// Unused for playback today -> pure side effect, zero behaviour change. MUST run HERE: after
+	// CalcSmoothedStepMovementBrackets above (MovementBracket now finalised) and BEFORE bIsDataLoaded is
+	// set below -- that flag is what releases the game thread to MoveTemp SimulationData out from under us
+	// (BuildPedestrianMovementFragmentData), so the read of SimulationData must complete first. Worker
+	// thread, so it never stalls the game thread. Format-agnostic -> covers both JSON and HDF5 imports.
+	if (!bShouldStop && MobiusSimCache::IsWriteOnImportEnabled() && AgentMovementInfoData.SimulationData.IsValid())
+	{
+		if (Subsys)
+		{
+			Subsys->LoadingTaskQueue.Enqueue(TEXT("Writing Simulation Cache..."));
+		}
+		// ModeTable mirrors FFullyResidentProvider's default { "" }: the importer drops the source "mode"
+		// attribute at the FSimMovementSample conversion (A2), so every sample's ModeIndex is 0.
+		MobiusSimCache::WriteCacheForImport(
+			SimulationDataFilePath,
+			*AgentMovementInfoData.SimulationData,
+			AgentMovementInfoData.MaxTime,
+			TimeBetweenSteps,
+			{ FString() },
+			bShouldStop);
+	}
 
 	if (bShouldStop)
 	{
