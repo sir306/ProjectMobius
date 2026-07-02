@@ -174,21 +174,23 @@ Blender/*
 # Assimp upstream test directory (CC-BY-SA content removed; not needed at runtime)
 UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp/test/
 
-# HDF5 machine-specific generated config (not used by UE build)
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/cmake/
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/lib/pkgconfig/
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/lib/libhdf5.settings
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/include/H5pubconf.h
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/share/
+# HDF5 machine-specific generated config (not used by UE build).
+# Path updated after the plugin move Hdf5DataPlugin -> MobiusDataImporter.
+# NOTE: install/include/H5pubconf.h is deliberately TRACKED (unlike the rest): the UE build
+# includes it via install/include, so a fresh clone must compile without running cmake.
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/cmake/
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/lib/pkgconfig/
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/lib/libhdf5.settings
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/share/
 
 # HDF5 third-party (scoped to vendored path)
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/**/java/.classes
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/**/*~
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/build*
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/src/H5config.h.in
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/.classpath
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/.claude/
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/CLAUDE.md
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/**/java/.classes
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/**/*~
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/build*
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/src/H5config.h.in
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/.classpath
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/.claude/
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/CLAUDE.md
 UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/CMakeUserPresets.json
 UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/HDF5Examples/CMakeUserPresets.json
 UnrealFolder/ProjectMobius/UnitTestSampleData/**/MobiusCaptures/
