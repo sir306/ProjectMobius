@@ -205,13 +205,15 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 
 			// B2: the maps are keyed chunk-independently (by EntityID), so rebuilding them every chunk every
 			// frame is pure redundancy (O(NumChunks * N) game-thread insertions). Rebuild only when the data
-			// window changes — composite (DataGeneration, timestep) key, NOT timestep alone (see
-			// ShouldRebuildSampleIndexMaps for the file-switch OOB hazard). The per-frame CurrentSamplesPtr /
-			// NextSamplesPtr fetch above is left UNCHANGED so the array bounds always match the cached map.
+			// window changes — composite (DataGeneration, timestep, served-block identities) key, NOT
+			// timestep alone (see ShouldRebuildSampleIndexMaps for the file-switch OOB hazard and the A4
+			// streaming served-content swap it also guards). The per-frame CurrentSamplesPtr / NextSamplesPtr
+			// fetch above is left UNCHANGED so the array bounds always match the cached map.
 			// SAFE because ForEachEntityChunk runs sequentially (chunks 2..N in a frame hit the cache);
 			// ParallelForEachEntityChunk would reintroduce a race on these shared maps.
 			const uint32 CurGen = SimulationFragment.DataGeneration;
-			if (ShouldRebuildSampleIndexMaps(CachedDataGeneration, CachedMapsTimeStep, CurGen, CurrentTimeStep))
+			if (ShouldRebuildSampleIndexMaps(CachedDataGeneration, CachedMapsTimeStep, CachedCurrentBlockPtr, CachedNextBlockPtr,
+			                                 CurGen, CurrentTimeStep, CurrentSamplesPtr, NextSamplesPtr))
 			{
 				// A1: tell the provider the playhead moved so a future streaming provider can prefetch. Fired
 				// once per window change (inside the rebuild guard, on the first chunk), not per chunk. Dir is
@@ -246,6 +248,8 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 
 				CachedDataGeneration = CurGen;
 				CachedMapsTimeStep   = CurrentTimeStep;
+				CachedCurrentBlockPtr = CurrentSamplesPtr;
+				CachedNextBlockPtr    = NextSamplesPtr;
 			}
 
 
