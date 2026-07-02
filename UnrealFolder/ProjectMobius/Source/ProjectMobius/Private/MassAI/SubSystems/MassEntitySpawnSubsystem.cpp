@@ -30,6 +30,8 @@
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "SimData/ISimSampleProvider.h" // A1: FFullyResidentProvider built into the shared fragment
+#include "SimData/FStreamingProvider.h" // A4: optional .msc-backed streaming provider (flag-gated)
+#include "SimData/SimDiskCache.h"       // A4: cache path/hash lookup for the loaded source file
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Actors to include
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
@@ -748,6 +750,37 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// directly. Shares the same TSharedPtr (no copy); built before the MoveTemp so it travels into the shared
 	// fragment. ModeTable defaults to { "" } (perf task A2 — importer drops the source per-sample mode attribute).
 	SimulationFragment.Provider = MakeShared<FFullyResidentProvider>(SimulationFragment.SimulationData);
+
+	// A4 (flag-forced streaming): with mobius.SimCache.ForceStreaming=1, swap in the .msc-backed
+	// FStreamingProvider when a valid cache exists for the loaded source file (the A3 import hook wrote
+	// it just before this callback). Every validation failure falls back to the resident provider built
+	// above, and with the cvar at its default 0 this block is inert — the legacy path is untouched.
+	// NOTE: A4 changes only the READ path; the resident TMap is still built by the import. Dropping it
+	// for RAM savings is A5's residency decision, not this flag.
+	if (FStreamingProvider::IsForceStreamingEnabled())
+	{
+		const FString SourcePath = AgentDataSubsystem ? AgentDataSubsystem->GetLoadedSimulationDataFilePath() : FString();
+		if (!SourcePath.IsEmpty())
+		{
+			const uint64 SourceHash = MobiusSimCache::ComputeSourceHash(SourcePath);
+			const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(SourcePath, SourceHash);
+			TSharedPtr<FStreamingProvider> StreamingProvider = MakeShared<FStreamingProvider>(CacheFilePath, SourceHash);
+			// Timestep-count parity with the just-imported data is the last stale-cache guard (the hash
+			// keys only source bytes — see the A4 forward-trap note in SimDiskCache.h).
+			if (StreamingProvider->IsValidAndPopulated()
+				&& SimulationFragment.SimulationData.IsValid()
+				&& StreamingProvider->GetNumTimesteps() == SimulationFragment.SimulationData->Num())
+			{
+				SimulationFragment.Provider = StreamingProvider;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("mobius.SimCache.ForceStreaming=1 but no usable .msc for '%s' — falling back to the resident provider"),
+					*SourcePath);
+			}
+		}
+	}
 
         auto SharedSimulationFragmentData = FSharedStruct::Make(MoveTemp(SimulationFragment));
 

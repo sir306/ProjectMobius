@@ -87,6 +87,10 @@ public:
 	virtual void Tick(float DeltaTime) override;
 virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(UAgentDataSubsystem, STATGROUP_Tickables); }
 
+	/** Path of the currently-imported agent-data file, empty when no import runnable exists (A4: the
+	 *  spawn subsystem uses it to locate the matching .msc cache when force-streaming is enabled). */
+	FString GetLoadedSimulationDataFilePath() const;
+
 	/** Helper used to copy imported entity metadata into an EntityInfoFragment. */
 	static void ParseEntityInfo(const FMobiusAgentEntityData& Entity, FEntityInfoFragment& OutInfo);
 
@@ -259,6 +263,9 @@ public:
 
 	/** Helper function to get all the movement samples for a given agent ID */
 	TArray<FSimMovementSample> GetMovementSamples(int32 AgentID);
+
+	/** Source agent-data file this runnable is importing (A4: keys the .msc cache lookup). */
+	const FString& GetSimulationDataFilePath() const { return SimulationDataFilePath; }
 
 	/** Calculate smoothed step-motion animation movement brackets for each agent, using agent speeds smoothed (roughly) over a step duration */
 	void CalcSmoothedStepMovementBrackets(const TArray<FAgentData>& AgentSamples);

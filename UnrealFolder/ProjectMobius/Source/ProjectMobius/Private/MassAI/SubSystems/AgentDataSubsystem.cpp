@@ -144,6 +144,11 @@ void UAgentDataSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
+FString UAgentDataSubsystem::GetLoadedSimulationDataFilePath() const
+{
+	return AgentDataRunnable.IsValid() ? AgentDataRunnable->GetSimulationDataFilePath() : FString();
+}
+
 void UAgentDataSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);

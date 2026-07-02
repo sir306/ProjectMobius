@@ -41,8 +41,8 @@ namespace
 		return FCrc::MemCrc32(Buffer.GetData(), static_cast<int32>(MaxBytes));
 	}
 
-	/** Read just the fixed prefix (Magic..RecordSize) of an existing cache and confirm it matches this hash
-	 *  + format. Cheap reuse check — does not validate records. */
+	/** Parse the header of an existing cache and confirm it matches this hash + format. Cheap reuse
+	 *  check — does not validate records. */
 	bool IsValidExistingCache(const FString& CacheFilePath, uint64 ExpectedSourceHash)
 	{
 		TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*CacheFilePath));
@@ -51,30 +51,67 @@ namespace
 			return false;
 		}
 
-		// Magic(4) + Version(4) + SourceHash(8) + NumTimesteps(4) + RecordSize(4) = 24 bytes, all ahead of
-		// the variable-length ModeTable so they can be read without parsing the rest.
-		if (Reader->TotalSize() < 24)
-		{
-			return false;
-		}
-
-		uint32 Magic = 0, Version = 0, NumTimesteps = 0, RecordSize = 0;
-		uint64 SourceHash = 0;
-		*Reader << Magic;
-		*Reader << Version;
-		*Reader << SourceHash;
-		*Reader << NumTimesteps;
-		*Reader << RecordSize;
-
-		return Magic == MobiusSimCache::Magic
-			&& Version == MobiusSimCache::Version
-			&& SourceHash == ExpectedSourceHash
-			&& RecordSize == MobiusSimCache::RecordSize;
+		MobiusSimCache::FMscHeader Header;
+		return MobiusSimCache::ReadCacheHeader(*Reader, Header)
+			&& Header.SourceHash == ExpectedSourceHash;
 	}
 }
 
 namespace MobiusSimCache
 {
+	bool ReadCacheHeader(FArchive& Reader, FMscHeader& OutHeader)
+	{
+		// Fixed prefix Magic..RecordSize = 24 bytes, then MaxTime(4) + TimeBetweenSteps(4) + NumModes(4).
+		if (Reader.TotalSize() < 36)
+		{
+			return false;
+		}
+
+		Reader.Seek(0);
+		Reader << OutHeader.Magic;
+		Reader << OutHeader.Version;
+		Reader << OutHeader.SourceHash;
+		Reader << OutHeader.NumTimesteps;
+		Reader << OutHeader.RecordSize;
+
+		// Stop at the fixed prefix on a foreign/stale layout — the rest cannot be decoded safely.
+		if (!OutHeader.IsCompatible())
+		{
+			return false;
+		}
+
+		Reader << OutHeader.MaxTime;
+		Reader << OutHeader.TimeBetweenSteps;
+
+		uint32 NumModes = 0;
+		Reader << NumModes;
+		// Sanity bound: the table is a small intern list (today effectively { "" }); a huge count means a
+		// corrupt file, and looping on it would read garbage FStrings.
+		if (NumModes > 4096u)
+		{
+			return false;
+		}
+		OutHeader.ModeTable.Reset();
+		OutHeader.ModeTable.Reserve(static_cast<int32>(NumModes));
+		for (uint32 i = 0; i < NumModes; ++i)
+		{
+			FString Mode;
+			Reader << Mode;
+			OutHeader.ModeTable.Add(MoveTemp(Mode));
+		}
+
+		if (Reader.IsError())
+		{
+			return false;
+		}
+
+		OutHeader.OffsetTableStart = Reader.Tell();
+
+		// The offset table ((NumTimesteps+1) x uint64) must actually fit in the file.
+		const int64 OffsetTableBytes = (static_cast<int64>(OutHeader.NumTimesteps) + 1) * static_cast<int64>(sizeof(uint64));
+		return OutHeader.OffsetTableStart + OffsetTableBytes <= Reader.TotalSize();
+	}
+
 	FString GetCacheDir()
 	{
 		return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MobiusSimCache"));

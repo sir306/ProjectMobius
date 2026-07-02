@@ -63,6 +63,37 @@ namespace MobiusSimCache
 	static constexpr uint32 RecordSize = 4u /*EntityID*/ + 24u /*Pos*/ + 24u /*Rot*/ + 4u /*Speed*/ + 1u /*Bracket*/ + 1u /*ModeIndex*/;
 	static_assert(RecordSize == 58u, "SimDiskCache RecordSize must match the documented field layout");
 
+	/** Parsed .msc header — everything ahead of the offset table (see the format block above). */
+	struct FMscHeader
+	{
+		uint32 Magic = 0;
+		uint32 Version = 0;
+		uint64 SourceHash = 0;
+		uint32 NumTimesteps = 0;
+		uint32 RecordSize = 0;
+		float MaxTime = 0.f;
+		float TimeBetweenSteps = 0.f;
+		TArray<FString> ModeTable;
+		/** Absolute byte offset of the (NumTimesteps+1) x uint64 offset table (== first byte after the header). */
+		int64 OffsetTableStart = 0;
+
+		/** True when magic/version/record width match this build's writer layout. */
+		bool IsCompatible() const
+		{
+			return Magic == MobiusSimCache::Magic
+				&& Version == MobiusSimCache::Version
+				&& RecordSize == MobiusSimCache::RecordSize;
+		}
+	};
+
+	/**
+	 * Read + parse the header of an existing cache. Seeks to 0; on success the archive is left positioned
+	 * at the start of the offset table (== OutHeader.OffsetTableStart). Returns false on short/corrupt
+	 * files or an incompatible layout (parses no further than the fixed prefix in that case). Shared
+	 * decoder for the reuse check, the A4 streaming provider, and tests.
+	 */
+	PROJECTMOBIUS_API bool ReadCacheHeader(FArchive& Reader, FMscHeader& OutHeader);
+
 	/** Cache directory: <ProjectSaved>/MobiusSimCache. */
 	PROJECTMOBIUS_API FString GetCacheDir();
 
