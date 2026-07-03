@@ -232,8 +232,8 @@ bool FBRiskTenabilityModelTest::RunTest(const FString&)
 		TestEqual(TEXT("Test2 accumulated toxic FED += 0.07"), T.AccumulatedToxicFED, 0.07f, 1e-4f);
 	}
 
-	// Test 3 (doc: re-entry dose retention) lives in the QUARANTINED test below - known
-	// production bug, see Mobius.Quarantine.Tenability.ReentryDoseRetention.
+	// Test 3 (doc: re-entry dose retention) lives in
+	// ProjectMobius.BRisk.Tenability.ReentryDoseRetention below.
 
 	// Test 5 - display risk is MAX not SUM (risks driven through the sample/baselines).
 	{
@@ -313,41 +313,59 @@ bool FBRiskTenabilityModelTest::RunTest(const FString&)
 	return true;
 }
 
-// QUARANTINED 2026-07-03 (PRD 02 task T1). Doc Test 3 (BuildDocs/BRisk-Tenability-Model.md:
-// "on re-entry the baseline is reset - no subtraction, no re-add" + "cumulative state is
-// monotonic") exposes a REAL production bug: ClearCurrentHazardSample zeroes the FED baseline
-// fields without banking the current room's accrued dose into PriorRooms*, so an agent that
-// leaves all B-Risk rooms (e.g. transits an unmodelled corridor) and re-enters LOSES its accrued
-// dose - AccumulatedToxicFED recomputes to PriorRooms(0) + 0. The deliberate no-banking-on-exit
-// (see the NOTE in ClearCurrentHazardSample: banking on every exit double-banks under timeline
-// scrubbing) conflicts with dose retention; the fix needs a design decision on scrub semantics
-// (e.g. spurious-exit detection or deferred banking), not a test tweak.
-// The Mobius.Quarantine. prefix keeps this out of the default suite filter ("ProjectMobius.").
-// NOTE: automation filters are CONTAINS matches, so the quarantine name must not contain
-// "ProjectMobius." or any other default-filter fragment. Run it explicitly:
-//   Automation RunTests Mobius.Quarantine.
+// --- Algorithm: doc Test 3 - re-entry dose retention + exit-banking scrub safety ---
+// Leaving every B-Risk room (e.g. transiting an unmodelled corridor) banks the accrued
+// dose into PriorRooms* so re-entry retains it (doc: "cumulative state is monotonic").
+// Banking happens ONLY on a genuine forward-time exit: a rewind across a zone boundary
+// (sim time stepping backward) is a spurious exit and must bank nothing, or the replayed
+// span would be double-counted.
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBRiskTenabilityReentryDoseQuarantineTest,
-	"Mobius.Quarantine.Tenability.ReentryDoseRetention",
+	FBRiskTenabilityReentryDoseRetentionTest,
+	"ProjectMobius.BRisk.Tenability.ReentryDoseRetention",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FBRiskTenabilityReentryDoseQuarantineTest::RunTest(const FString&)
+bool FBRiskTenabilityReentryDoseRetentionTest::RunTest(const FString&)
 {
 	using namespace UE::Mobius::Tenability;
 	const FTenabilityAnalysisSettings Settings = MakeSettings();
 
-	// Doc Test 3 - re-entry: leave room (no sample), room FED rises, re-enter -> accrued dose
-	// retained, no historical add.
-	FAgentEgressTenabilityFragment T;
-	FAgentBRiskExposureFragment Ex;
-	UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
-	UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);  // +0.10
-	const float Accrued = T.AccumulatedToxicFED;
-	UE::Mobius::EgressHealth::ClearCurrentHazardSample(Ex);  // agent leaves all rooms
-	// Re-enter same room later; room cumulative now 0.80 (rose while absent).
-	UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.80, 0.0, 20.0), Settings, 200.0f);
-	TestEqual(TEXT("Test3 no exposure added on re-entry"), T.AccumulatedToxicFED, Accrued, 1e-4f);
-	TestEqual(TEXT("Test3 re-baselined to 0.80"), Ex.EntryRoomToxicFED, 0.80f, 1e-4f);
+	// Doc Test 3 - genuine exit: leave room (sim time moving forward), room FED rises
+	// while absent, re-enter -> accrued dose retained, no historical add.
+	{
+		FAgentEgressTenabilityFragment T;
+		FAgentBRiskExposureFragment Ex;
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);  // +0.10
+		const float Accrued = T.AccumulatedToxicFED;
+		TestEqual(TEXT("Test3 accrued 0.10 before exit"), Accrued, 0.10f, 1e-4f);
+		UE::Mobius::EgressHealth::ClearCurrentHazardSample(Ex, 131.0f);  // forward exit
+		TestEqual(TEXT("Test3 exit banks accrued dose"), Ex.PriorRoomsToxicFED, 0.10f, 1e-4f);
+		// Re-enter same room later; room cumulative now 0.80 (rose while absent).
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.80, 0.0, 20.0), Settings, 200.0f);
+		TestEqual(TEXT("Test3 no exposure added on re-entry"), T.AccumulatedToxicFED, Accrued, 1e-4f);
+		TestEqual(TEXT("Test3 re-baselined to 0.80"), Ex.EntryRoomToxicFED, 0.80f, 1e-4f);
+		// Dose resumes accruing from the re-entry baseline.
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.85, 0.0, 20.0), Settings, 230.0f);
+		TestEqual(TEXT("Test3 delta accrues after re-entry"), T.AccumulatedToxicFED, 0.15f, 1e-4f);
+	}
+
+	// Scrub safety - rewinding back across the zone boundary is a SPURIOUS exit (sim
+	// time moved backward): nothing banks, and replaying the span accrues it exactly once.
+	{
+		FAgentEgressTenabilityFragment T;
+		FAgentBRiskExposureFragment Ex;
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);
+		UE::Mobius::EgressHealth::ClearCurrentHazardSample(Ex, 90.0f);  // rewound out of the room
+		TestEqual(TEXT("Scrub spurious exit banks nothing"), Ex.PriorRoomsToxicFED, 0.0f, 1e-4f);
+		// Replay the same span: dose accrues once, not twice.
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
+		TestEqual(TEXT("Scrub replay entry starts at zero"), T.AccumulatedToxicFED, 0.0f, 1e-4f);
+		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);
+		TestEqual(TEXT("Scrub replay accrues the span once"), T.AccumulatedToxicFED, 0.10f, 1e-4f);
+	}
+
 	return true;
 }
 

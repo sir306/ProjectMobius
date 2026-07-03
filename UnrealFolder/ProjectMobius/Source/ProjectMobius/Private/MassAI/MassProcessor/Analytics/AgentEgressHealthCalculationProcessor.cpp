@@ -84,7 +84,7 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				if (Exposure.SourceScenarioGeneration != ScenarioGeneration)
 				{
 					UE::Mobius::EgressHealth::ResetAccumulatedExposure(Exposure, Health);
-					UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure);
+					UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure, CurrentSimulationTime);
 					Exposure.SourceScenarioGeneration = ScenarioGeneration;
 				}
 
@@ -99,9 +99,10 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 					HazardSample,
 					Exposure.CurrentRoomIndex))
 				{
-					// Agent is outside every B-Risk zone (no data here). Bank/reset the
-					// FED baseline so a later re-entry re-baselines.
-					UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure);
+					// Agent is outside every B-Risk zone (no data here). Bank the accrued
+					// dose (genuine forward exit only, see ClearCurrentHazardSample) and
+					// drop the FED baseline so a later re-entry re-baselines.
+					UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure, CurrentSimulationTime);
 					Health.InstantaneousHazard = 0.0f;
 
 					// Unless the agent has locked a tenability failure by the current

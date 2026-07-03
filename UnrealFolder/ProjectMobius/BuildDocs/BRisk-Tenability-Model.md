@@ -53,9 +53,13 @@ system keeps two distinct, separately-published tracks:
 - **Track B — per-agent accumulated FED.** A moving agent accrues only the **delta while
   present** in its current zone. On entering or changing zone the baseline is set to that
   zone's *current* cumulative value; the zone's earlier exposure is never inherited. On
-  re-entry (A→B→A) the baseline is reset again — no subtraction, no re-add. The B-RISK
-  curve is interpolated to the current time before differencing, so partial-interval
-  presence is time-weighted correctly (B-RISK samples at 10 s or 30 s).
+  re-entry (A→B→A) the baseline is reset again — no subtraction, no re-add. Leaving
+  **every** modelled zone (e.g. crossing an unmodelled corridor) banks the delta accrued
+  so far, so dose is retained across the gap and on re-entry. A zone exit seen while sim
+  time steps **backward** (timeline scrub) is spurious and banks nothing — replay
+  re-accrues the span from the re-entry baseline. The B-RISK curve is interpolated to the
+  current time before differencing, so partial-interval presence is time-weighted
+  correctly (B-RISK samples at 10 s or 30 s).
 
 ## Instantaneous vs accumulated criteria (cumulative-saturation caveat)
 
@@ -113,5 +117,6 @@ probabilistic) instead.
 - `FEDSum` crosses the 0.3 endpoint between 510 s (0.285) and 540 s (0.306).
 
 These are asserted by `ProjectMobius.BRisk.Tenability.ParserGoldenCurve`. The model rules
-(room entry baseline, delta accumulation, re-entry, simultaneous failure, MAX-not-SUM) are
-asserted by `ProjectMobius.BRisk.Tenability.Model`.
+(room entry baseline, delta accumulation, simultaneous failure, MAX-not-SUM) are asserted
+by `ProjectMobius.BRisk.Tenability.Model`; re-entry dose retention and the exit-banking
+scrub guard by `ProjectMobius.BRisk.Tenability.ReentryDoseRetention`.

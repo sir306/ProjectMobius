@@ -300,7 +300,9 @@ namespace UE::Mobius::EgressHealth
 		Exposure.bUpperLayer = Sample.bUpperLayer;
 	}
 
-	inline void ClearCurrentHazardSample(FAgentBRiskExposureFragment& Exposure)
+	inline void ClearCurrentHazardSample(
+		FAgentBRiskExposureFragment& Exposure,
+		const float CurrentSimTimeSeconds)
 	{
 		Exposure.CurrentRoomIndex = INDEX_NONE;
 		Exposure.CurrentRoomId = INDEX_NONE;
@@ -318,12 +320,23 @@ namespace UE::Mobius::EgressHealth
 		Exposure.bHasRoomSample = false;
 		Exposure.bUpperLayer = false;
 
-		// Agent occupies no B-Risk room: drop the baseline so a later room entry
-		// re-baselines. NOTE: we deliberately do NOT bank the just-left room's dose
-		// into PriorRooms here. Banking on every exit corrupts accumulation under
-		// timeline scrubbing, because rewinding an agent back across a zone boundary
-		// triggers a spurious "exit" and double-banks. Banking for genuine A->B room
-		// transitions is handled in UpdateAgentTenability, where both rooms are sampled.
+		// Agent occupies no B-Risk room: bank the current room's accrued dose, then
+		// drop the baseline so a later room entry re-baselines. Banking must be
+		// skipped on a SPURIOUS exit: rewinding the timeline back across a zone
+		// boundary also lands here, and banking then double-counts once playback
+		// re-accrues the same span. Sim-time direction distinguishes the cases —
+		// the agent was last sampled inside a room at LastTenabilitySampleTimeSeconds,
+		// so a forward step out of every room is a genuine departure (bank), while a
+		// backward step is a scrub (drop the baseline only; replay re-accrues from
+		// the re-entry baseline, matching UpdateAgentTenability's recompute).
+		if (Exposure.bHasCumulativeFEDBaseline
+			&& CurrentSimTimeSeconds > Exposure.LastTenabilitySampleTimeSeconds)
+		{
+			Exposure.PriorRoomsToxicFED +=
+				FMath::Max(Exposure.LastSeenRoomToxicFED - Exposure.EntryRoomToxicFED, 0.0f);
+			Exposure.PriorRoomsThermalFED +=
+				FMath::Max(Exposure.LastSeenRoomThermalFED - Exposure.EntryRoomThermalFED, 0.0f);
+		}
 		Exposure.LastExposureRoomId = INDEX_NONE;
 		Exposure.LastExposureRoomIndex = INDEX_NONE;
 		Exposure.bHasCumulativeFEDBaseline = false;
