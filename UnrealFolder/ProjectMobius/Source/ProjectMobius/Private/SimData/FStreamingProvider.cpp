@@ -152,26 +152,12 @@ FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 Ex
 		return;
 	}
 
-	// Offset table: (NumTimesteps + 1) absolute offsets; must be monotonic, record-aligned, and in-file.
-	const int32 NumOffsets = static_cast<int32>(Header.NumTimesteps) + 1;
-	Offsets.SetNumUninitialized(NumOffsets);
-	for (int32 i = 0; i < NumOffsets; ++i)
+	// Offset table: (NumTimesteps + 1) absolute offsets; monotonic, record-aligned, in-file (validated
+	// by the shared reader).
+	if (!MobiusSimCache::ReadOffsetTable(*Reader, Header, Offsets))
 	{
-		*Reader << Offsets[i];
-	}
-	if (Reader->IsError() || static_cast<int64>(Offsets.Last()) > Reader->TotalSize())
-	{
-		UE_LOG(LogMobiusStreaming, Warning, TEXT("[Streaming] Cache '%s' rejected (truncated offset table/records)"), *CacheFilePath);
+		UE_LOG(LogMobiusStreaming, Warning, TEXT("[Streaming] Cache '%s' rejected (truncated/corrupt offset table)"), *CacheFilePath);
 		return;
-	}
-	for (int32 i = 0; i + 1 < NumOffsets; ++i)
-	{
-		const uint64 BlockBytes = Offsets[i + 1] - Offsets[i];
-		if (Offsets[i + 1] < Offsets[i] || (BlockBytes % Header.RecordSize) != 0)
-		{
-			UE_LOG(LogMobiusStreaming, Warning, TEXT("[Streaming] Cache '%s' rejected (corrupt offset table)"), *CacheFilePath);
-			return;
-		}
 	}
 
 	// Always-resident coarse keyframes: every KeyframeStride-th timestep, loaded synchronously here
@@ -288,32 +274,9 @@ void FStreamingProvider::FReaderWorker::Stop()
 
 bool FStreamingProvider::DecodeBlock(FArchive& Reader, int64 ByteOffset, int32 Count, TArray<FSimMovementSample>& Out)
 {
-	// Field-by-field decode in the exact writer order (SimDiskCache.h format block) — never a struct
-	// memcpy; the stream is padding-free and FSimMovementSample is not.
-	Out.Reset(Count);
-	Reader.Seek(ByteOffset);
-	for (int32 i = 0; i < Count; ++i)
-	{
-		int32 EntityID = 0;
-		double PosX = 0, PosY = 0, PosZ = 0, RotPitch = 0, RotYaw = 0, RotRoll = 0;
-		float Speed = 0.f;
-		uint8 Bracket = 0, ModeIndex = 0;
-		Reader << EntityID;
-		Reader << PosX; Reader << PosY; Reader << PosZ;
-		Reader << RotPitch; Reader << RotYaw; Reader << RotRoll;
-		Reader << Speed;
-		Reader << Bracket;
-		Reader << ModeIndex;
-
-		FSimMovementSample& Sample = Out.AddDefaulted_GetRef();
-		Sample.EntityID = EntityID;
-		Sample.Position = FVector(PosX, PosY, PosZ);
-		Sample.Rotation = FRotator(RotPitch, RotYaw, RotRoll);
-		Sample.Speed = Speed;
-		Sample.MovementBracket = static_cast<EPedestrianMovementBracket>(Bracket);
-		Sample.ModeIndex = ModeIndex;
-	}
-	return !Reader.IsError();
+	// Shared decoder (SimDiskCache) — one implementation of the record layout for the provider, the
+	// A6 fast-reload path, and tests.
+	return MobiusSimCache::DecodeRecords(Reader, ByteOffset, Count, Out);
 }
 
 int32 FStreamingProvider::RecordCountForTs(int32 Ts) const

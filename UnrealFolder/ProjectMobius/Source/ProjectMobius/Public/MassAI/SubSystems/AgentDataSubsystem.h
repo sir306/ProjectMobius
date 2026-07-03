@@ -396,6 +396,11 @@ private:
 	/** Load the agent file through the importer facade */
 	bool LoadFileAndDeserialize();
 
+	/** A6: populate everything from a valid v2 .msc cache, skipping the source parse entirely.
+	 *  Returns false (with any partial state reset) on miss/stale-hash/corruption — the caller then
+	 *  runs the normal full import, which rewrites the cache. */
+	bool TryFastReloadFromCache();
+
 	/** Read metadata values from the imported data */
 	void ProcessMetadata(bool& bCalculateTimeBetweenSteps, bool& bCalculateMaxTime);
 

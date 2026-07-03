@@ -81,10 +81,22 @@ bool FSimDiskCacheRoundTripTest::RunTest(const FString& Parameters)
 	const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(FakeSource, SourceHash);
 	FileManager.Delete(*CacheFilePath, /*RequireExists*/ false, /*EvenReadOnly*/ true); // deterministic: force a fresh write
 
+	// --- v2 metadata (A6): known entity block to round-trip. ---
+	TArray<FMobiusAgentEntityData> Entities;
+	{
+		FMobiusAgentEntityData& E0 = Entities.AddDefaulted_GetRef();
+		E0.Id = 0; E0.Name = TEXT("agent_zero"); E0.SimTimeS = 0.3f; E0.MaxSpeed = 1.5f; E0.MPlane = TEXT("floor_0"); E0.Map = 2;
+		FMobiusAgentEntityData& E7 = Entities.AddDefaulted_GetRef();
+		E7.Id = 7; E7.Name = TEXT("agent_seven"); E7.SimTimeS = 0.2f; E7.MaxSpeed = 2.25f; E7.MPlane = TEXT(""); E7.Map = 0;
+	}
+	const int32 MaxAgents = 2;
+	const uint8 SourceFormat = 1;
+
 	// --- Write (core writer bypasses the cvar + reuse-skip). ---
 	FThreadSafeBool bShouldStop(false);
 	const bool bWrote = MobiusSimCache::WriteCacheFile(
-		CacheFilePath, SourceHash, SimulationData, MaxTime, TimeBetweenSteps, ModeTable, bShouldStop);
+		CacheFilePath, SourceHash, SimulationData, MaxTime, TimeBetweenSteps, ModeTable,
+		MaxAgents, SourceFormat, Entities, bShouldStop);
 	TestTrue(TEXT("WriteCacheFile succeeded"), bWrote);
 
 	// --- Re-parse and verify (reference decoder; must match SimDiskCache.h field order). ---
@@ -132,6 +144,40 @@ bool FSimDiskCacheRoundTripTest::RunTest(const FString& Parameters)
 			for (int32 i = 0; i < ModeTable.Num() && i < ReadModeTable.Num(); ++i)
 			{
 				TestEqual(FString::Printf(TEXT("ModeTable[%d]"), i), ReadModeTable[i], ModeTable[i]);
+			}
+
+			// --- v2 metadata block (A6): sits between the ModeTable and the offset table. ---
+			{
+				int32 ReadMaxAgents = 0;
+				uint8 ReadSourceFormat = 0;
+				uint32 ReadNumEntities = 0;
+				*Reader << ReadMaxAgents;
+				*Reader << ReadSourceFormat;
+				*Reader << ReadNumEntities;
+				TestEqual(TEXT("v2 MaxAgents"), ReadMaxAgents, MaxAgents);
+				TestEqual(TEXT("v2 SourceFormat"), static_cast<int32>(ReadSourceFormat), static_cast<int32>(SourceFormat));
+				TestEqual(TEXT("v2 NumEntities"), static_cast<int32>(ReadNumEntities), Entities.Num());
+				for (uint32 i = 0; i < ReadNumEntities && i < 1024u; ++i)
+				{
+					FMobiusAgentEntityData Read;
+					*Reader << Read.Id;
+					*Reader << Read.Name;
+					*Reader << Read.SimTimeS;
+					*Reader << Read.MaxSpeed;
+					*Reader << Read.MPlane;
+					*Reader << Read.Map;
+					if (Entities.IsValidIndex(static_cast<int32>(i)))
+					{
+						const FMobiusAgentEntityData& Expected = Entities[static_cast<int32>(i)];
+						const FString Where = FString::Printf(TEXT("v2 entity %u"), i);
+						TestEqual(Where + TEXT(" Id"), Read.Id, Expected.Id);
+						TestEqual(Where + TEXT(" Name"), Read.Name, Expected.Name);
+						TestEqual(Where + TEXT(" SimTimeS"), Read.SimTimeS, Expected.SimTimeS);
+						TestEqual(Where + TEXT(" MaxSpeed"), Read.MaxSpeed, Expected.MaxSpeed);
+						TestEqual(Where + TEXT(" MPlane"), Read.MPlane, Expected.MPlane);
+						TestEqual(Where + TEXT(" Map"), Read.Map, Expected.Map);
+					}
+				}
 			}
 
 			if (bHeaderOk)
@@ -236,9 +282,10 @@ bool FSimDiskCacheReuseTest::RunTest(const FString& Parameters)
 	const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(FakeSource, SourceHash);
 	FileManager.Delete(*CacheFilePath, /*RequireExists*/ false, /*EvenReadOnly*/ true);
 
-	// First import: writes a fresh cache.
+	// First import: writes a fresh cache (empty entity block is valid — metadata presence is what v2 adds).
 	const bool bWrote1 = MobiusSimCache::WriteCacheForImport(
-		FakeSource, SimulationData, 0.3f, 0.1f, ModeTable, bShouldStop);
+		FakeSource, SimulationData, 0.3f, 0.1f, ModeTable, /*MaxAgents*/ 2, /*SourceFormat*/ 1,
+		TArray<FMobiusAgentEntityData>(), bShouldStop);
 	TestTrue(TEXT("First WriteCacheForImport wrote/produced a cache"), bWrote1);
 
 	// Corrupt the LAST byte (a record byte; the 24-byte header prefix used by the reuse check stays valid).
@@ -253,7 +300,8 @@ bool FSimDiskCacheReuseTest::RunTest(const FString& Parameters)
 
 		// Second import of the same source: must detect the valid cache and SKIP the rewrite.
 		const bool bWrote2 = MobiusSimCache::WriteCacheForImport(
-			FakeSource, SimulationData, 0.3f, 0.1f, ModeTable, bShouldStop);
+			FakeSource, SimulationData, 0.3f, 0.1f, ModeTable, /*MaxAgents*/ 2, /*SourceFormat*/ 1,
+			TArray<FMobiusAgentEntityData>(), bShouldStop);
 		TestTrue(TEXT("Second WriteCacheForImport reports cache present"), bWrote2);
 
 		TArray<uint8> Bytes2;

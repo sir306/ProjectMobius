@@ -100,7 +100,8 @@ bool FSimProviderGoldenTest::RunTest(const FString& Parameters)
 
 	FThreadSafeBool bShouldStop(false);
 	const bool bWrote = MobiusSimCache::WriteCacheFile(
-		CacheFilePath, SourceHash, *SimulationData, MaxTime, TimeBetweenSteps, ModeTable, bShouldStop);
+		CacheFilePath, SourceHash, *SimulationData, MaxTime, TimeBetweenSteps, ModeTable,
+		/*MaxAgents*/ 5, /*SourceFormat*/ 1, TArray<FMobiusAgentEntityData>(), bShouldStop);
 	TestTrue(TEXT("WriteCacheFile succeeded"), bWrote);
 
 	if (bWrote)

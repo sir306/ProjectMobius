@@ -40,8 +40,9 @@
 #include "Subsystems/LoadingSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
+#include "HAL/FileManager.h"      // A6: cache file reader for the fast-reload path
 #include "HAL/PlatformTime.h"
-#include "SimData/SimDiskCache.h" // A3: post-conversion .msc disk-cache writer
+#include "SimData/SimDiskCache.h" // A3: post-conversion .msc disk-cache writer; A6: fast-reload reader
 
 namespace
 {
@@ -939,12 +940,18 @@ void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 		}
 		// ModeTable mirrors FFullyResidentProvider's default { "" }: the importer drops the source "mode"
 		// attribute at the FSimMovementSample conversion (A2), so every sample's ModeIndex is 0.
+		// v2 (A6): the metadata block (MaxAgents / source format / per-entity info) makes the cache
+		// self-sufficient for the fast-reload path. Entities is still populated here — the game thread
+		// moves it into CachedEntityData only after bIsDataLoaded is set below.
 		MobiusSimCache::WriteCacheForImport(
 			SimulationDataFilePath,
 			*AgentMovementInfoData.SimulationData,
 			AgentMovementInfoData.MaxTime,
 			TimeBetweenSteps,
 			{ FString() },
+			MaxAgents,
+			static_cast<uint8>(AgentFileFormat),
+			AgentSimulationData.Entities,
 			bShouldStop);
 	}
 
@@ -965,6 +972,81 @@ void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 	}
 }
 
+bool FProcessAgentSimulationDataRunnable::TryFastReloadFromCache()
+{
+	const double FastReloadStart = FPlatformTime::Seconds();
+
+	const uint64 SourceHash = MobiusSimCache::ComputeSourceHash(SimulationDataFilePath);
+	const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(SimulationDataFilePath, SourceHash);
+	TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*CacheFilePath));
+	if (!Reader)
+	{
+		return false; // no cache yet — first-ever import of this file
+	}
+
+	MobiusSimCache::FMscHeader Header;
+	TArray<uint64> Offsets;
+	if (!MobiusSimCache::ReadCacheHeader(*Reader, Header)
+		|| Header.SourceHash != SourceHash
+		|| Header.NumTimesteps == 0
+		|| !MobiusSimCache::ReadOffsetTable(*Reader, Header, Offsets))
+	{
+		return false; // stale hash / v1 / corrupt — the full import below rewrites it
+	}
+
+	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get();
+	if (Subsys)
+	{
+		Subsys->LoadingTaskQueue.Enqueue(TEXT("Fast-Reloading Simulation Cache..."));
+	}
+
+	// Decode every timestep block straight into the resident map. Brackets/rotation/speed are already
+	// baked into the records (the cache stores post-conversion data — Invariant 5), so none of the
+	// import post-processing needs to run.
+	TMap<int32, TArray<FSimMovementSample>>& SimMap = *AgentMovementInfoData.SimulationData;
+	SimMap.Empty(static_cast<int32>(Header.NumTimesteps));
+	NumOfAgentsPerTimeStep.Reset();
+	NumOfAgentsPerTimeStep.Reserve(static_cast<int32>(Header.NumTimesteps));
+
+	const int32 NumTimesteps = static_cast<int32>(Header.NumTimesteps);
+	int64 TotalSamples = 0;
+	for (int32 Ts = 0; Ts < NumTimesteps; ++Ts)
+	{
+		const int32 Count = static_cast<int32>((Offsets[Ts + 1] - Offsets[Ts]) / Header.RecordSize);
+		TArray<FSimMovementSample> Block;
+		if (bShouldStop || !MobiusSimCache::DecodeRecords(*Reader, static_cast<int64>(Offsets[Ts]), Count, Block))
+		{
+			// Reset any partial population so the full-import fallback starts clean.
+			AgentMovementInfoData = FSimulationFragment();
+			NumOfAgentsPerTimeStep.Reset();
+			return false;
+		}
+		TotalSamples += Count;
+		NumOfAgentsPerTimeStep.Add(Count);
+		SimMap.Add(Ts, MoveTemp(Block));
+
+		if (Subsys && (Ts % 64) == 0)
+		{
+			Subsys->ProgressQueue.Enqueue(static_cast<float>(Ts) / static_cast<float>(NumTimesteps));
+		}
+	}
+
+	AgentMovementInfoData.MaxTime = Header.MaxTime;
+	TimeBetweenSteps = Header.TimeBetweenSteps;
+	MaxAgents = Header.MaxAgents;
+	AgentFileFormat = static_cast<EMobiusAgentFileFormat>(Header.SourceFormat);
+	// Entities feed CachedEntityData on the game thread (BuildPedestrianMovementFragmentData) exactly
+	// as a full import's parse output would.
+	AgentSimulationData.Entities = MoveTemp(Header.Entities);
+	AgentSimulationData.Metadata.MaxNumEntities = MaxAgents;
+	AgentSimulationData.Metadata.Duration = Header.MaxTime;
+
+	UE_LOG(LogTemp, Display, TEXT("Agent data fast-reload finish: entities=%d samples=%lld timesteps=%d %.3f ms (skipped source parse, cache '%s')"),
+		AgentSimulationData.Entities.Num(), TotalSamples, NumTimesteps,
+		(FPlatformTime::Seconds() - FastReloadStart) * 1000.0, *CacheFilePath);
+	return true;
+}
+
 uint32 FProcessAgentSimulationDataRunnable:: Run()
 {
 	bIsRunning = true;
@@ -982,6 +1064,29 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 
 		// First loading task
 		Subsys->LoadingTaskQueue.Enqueue(TEXT("Loading Simulation Data From File..."));
+	}
+
+	// A6: fast-reload — a valid v2 cache makes the source parse unnecessary (measured: 22 s JSON parse
+	// vs ~1-2 s binary decode). Any failure (no cache, stale hash, v1, corruption) falls through
+	// silently to the normal full import, which rewrites the cache.
+	if (MobiusSimCache::IsFastReloadEnabled() && TryFastReloadFromCache())
+	{
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot::Take(TEXT("Run_FastReloadDecoded")).LogDelta(SnapRunStart);
+#endif
+		if (Subsys)
+		{
+			Subsys->MaxAgentsQueue.Enqueue(MaxAgents);
+		}
+		// Same completion semantics as the full path: FinalizeProgress's bracket pass no-ops (empty
+		// AgentDataArray — brackets are already baked into the cached records) and the A3 cache write
+		// reuse-check skips over the cache we just read.
+		FinalizeProgress();
+#if !UE_BUILD_SHIPPING
+		FMobiusMemSnapshot::Take(TEXT("Run_FastReloadComplete")).LogDelta(SnapRunStart);
+#endif
+		bIsRunning = false;
+		return 0;
 	}
 
 	// TODO: this has no way to know progress of loading file at the moment so we need to think on how to do this better

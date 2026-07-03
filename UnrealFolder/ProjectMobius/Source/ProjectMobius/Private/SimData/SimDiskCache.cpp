@@ -35,6 +35,15 @@ namespace
 		TEXT("If 1 (default), write a post-conversion .msc disk cache after each agent-data import (perf task A3, prerequisite for streaming). 0 disables the write."),
 		ECVF_Default);
 
+	/** mobius.SimCache.FastReload — A6: when a valid v2 cache exists for the selected source file, the
+	 *  import runnable decodes it directly and skips the JSON/HDF5 parse entirely (measured 22 s JSON
+	 *  parse -> ~1-2 s binary decode). Read on the import worker thread. 0 = always full import. */
+	static TAutoConsoleVariable<int32> CVarSimCacheFastReload(
+		TEXT("mobius.SimCache.FastReload"),
+		1,
+		TEXT("If 1 (default), re-opening an agent file with a valid .msc cache skips the source parse and loads from the cache (perf task A6). 0 forces the full import."),
+		ECVF_Default);
+
 	/** Read up to MaxBytes from Reader starting at SeekPos and CRC32 them. Returns 0 if nothing read. */
 	uint32 CrcChunk(FArchive& Reader, int64 SeekPos, int64 MaxBytes)
 	{
@@ -106,6 +115,30 @@ namespace MobiusSimCache
 			FString Mode;
 			Reader << Mode;
 			OutHeader.ModeTable.Add(MoveTemp(Mode));
+		}
+
+		// --- v2 metadata block (A6): MaxAgents, source format, per-entity info. Field order is the
+		// header-doc contract; keep in lockstep with the writer below. ---
+		Reader << OutHeader.MaxAgents;
+		Reader << OutHeader.SourceFormat;
+		uint32 NumEntities = 0;
+		Reader << NumEntities;
+		// Sanity bound: agents number in the thousands; a huge count means corruption.
+		if (NumEntities > 10'000'000u)
+		{
+			return false;
+		}
+		OutHeader.Entities.Reset();
+		OutHeader.Entities.Reserve(static_cast<int32>(NumEntities));
+		for (uint32 i = 0; i < NumEntities; ++i)
+		{
+			FMobiusAgentEntityData& Entity = OutHeader.Entities.AddDefaulted_GetRef();
+			Reader << Entity.Id;
+			Reader << Entity.Name;
+			Reader << Entity.SimTimeS;
+			Reader << Entity.MaxSpeed;
+			Reader << Entity.MPlane;
+			Reader << Entity.Map;
 		}
 
 		if (Reader.IsError())
@@ -199,6 +232,11 @@ namespace MobiusSimCache
 		return CVarSimCacheWriteOnImport.GetValueOnAnyThread() != 0;
 	}
 
+	bool IsFastReloadEnabled()
+	{
+		return CVarSimCacheFastReload.GetValueOnAnyThread() != 0;
+	}
+
 	bool WriteCacheFile(
 		const FString& OutFilePath,
 		uint64 SourceHash,
@@ -206,6 +244,9 @@ namespace MobiusSimCache
 		float MaxTime,
 		float TimeBetweenSteps,
 		const TArray<FString>& ModeTable,
+		int32 MaxAgents,
+		uint8 SourceFormat,
+		const TArray<FMobiusAgentEntityData>& Entities,
 		const FThreadSafeBool& bShouldStop)
 	{
 		IFileManager& FileManager = IFileManager::Get();
@@ -248,6 +289,30 @@ namespace MobiusSimCache
 		{
 			FString ModeStr = ModeTable[static_cast<int32>(i)]; // non-const copy: FArchive::operator<< takes FString&
 			*Ar << ModeStr;
+		}
+
+		// --- v2 metadata block (A6). Field order per the FMscHeader doc; non-const locals because
+		// FArchive::operator<< takes references. ---
+		int32 MaxAgentsLocal = MaxAgents;
+		uint8 SourceFormatLocal = SourceFormat;
+		uint32 NumEntities = static_cast<uint32>(Entities.Num());
+		*Ar << MaxAgentsLocal;
+		*Ar << SourceFormatLocal;
+		*Ar << NumEntities;
+		for (const FMobiusAgentEntityData& Entity : Entities)
+		{
+			int32 Id = Entity.Id;
+			FString Name = Entity.Name;
+			float SimTimeS = Entity.SimTimeS;
+			float MaxSpeed = Entity.MaxSpeed;
+			FString MPlane = Entity.MPlane;
+			int32 Map = Entity.Map;
+			*Ar << Id;
+			*Ar << Name;
+			*Ar << SimTimeS;
+			*Ar << MaxSpeed;
+			*Ar << MPlane;
+			*Ar << Map;
 		}
 
 		// --- Offset table (absolute byte offsets) ---
@@ -350,6 +415,9 @@ namespace MobiusSimCache
 		float MaxTime,
 		float TimeBetweenSteps,
 		const TArray<FString>& ModeTable,
+		int32 MaxAgents,
+		uint8 SourceFormat,
+		const TArray<FMobiusAgentEntityData>& Entities,
 		const FThreadSafeBool& bShouldStop)
 	{
 		if (!IsWriteOnImportEnabled())
@@ -366,7 +434,61 @@ namespace MobiusSimCache
 			return true;
 		}
 
-		return WriteCacheFile(CacheFilePath, SourceHash, SimulationData, MaxTime, TimeBetweenSteps, ModeTable, bShouldStop);
+		return WriteCacheFile(CacheFilePath, SourceHash, SimulationData, MaxTime, TimeBetweenSteps, ModeTable,
+			MaxAgents, SourceFormat, Entities, bShouldStop);
+	}
+
+	bool ReadOffsetTable(FArchive& Reader, const FMscHeader& Header, TArray<uint64>& OutOffsets)
+	{
+		const int32 NumOffsets = static_cast<int32>(Header.NumTimesteps) + 1;
+		OutOffsets.SetNumUninitialized(NumOffsets);
+		for (int32 i = 0; i < NumOffsets; ++i)
+		{
+			Reader << OutOffsets[i];
+		}
+		if (Reader.IsError() || static_cast<int64>(OutOffsets.Last()) > Reader.TotalSize())
+		{
+			return false;
+		}
+		for (int32 i = 0; i + 1 < NumOffsets; ++i)
+		{
+			const uint64 BlockBytes = OutOffsets[i + 1] - OutOffsets[i];
+			if (OutOffsets[i + 1] < OutOffsets[i] || (BlockBytes % Header.RecordSize) != 0)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool DecodeRecords(FArchive& Reader, int64 ByteOffset, int32 Count, TArray<FSimMovementSample>& Out)
+	{
+		// Field-by-field decode in the exact writer order (format block in SimDiskCache.h) — never a
+		// struct memcpy; the stream is padding-free and FSimMovementSample is not.
+		Out.Reset(Count);
+		Reader.Seek(ByteOffset);
+		for (int32 i = 0; i < Count; ++i)
+		{
+			int32 EntityID = 0;
+			double PosX = 0, PosY = 0, PosZ = 0, RotPitch = 0, RotYaw = 0, RotRoll = 0;
+			float Speed = 0.f;
+			uint8 Bracket = 0, ModeIndex = 0;
+			Reader << EntityID;
+			Reader << PosX; Reader << PosY; Reader << PosZ;
+			Reader << RotPitch; Reader << RotYaw; Reader << RotRoll;
+			Reader << Speed;
+			Reader << Bracket;
+			Reader << ModeIndex;
+
+			FSimMovementSample& Sample = Out.AddDefaulted_GetRef();
+			Sample.EntityID = EntityID;
+			Sample.Position = FVector(PosX, PosY, PosZ);
+			Sample.Rotation = FRotator(RotPitch, RotYaw, RotRoll);
+			Sample.Speed = Speed;
+			Sample.MovementBracket = static_cast<EPedestrianMovementBracket>(Bracket);
+			Sample.ModeIndex = ModeIndex;
+		}
+		return !Reader.IsError();
 	}
 }
 

@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeBool.h"                                  // FThreadSafeBool (abort flag, passed from the import runnable)
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h" // FSimMovementSample
+#include "MobiusAgentDataImporter.h"                             // FMobiusAgentEntityData (v2 metadata block, A6)
 
 /**
  * On-disk post-conversion movement-sample cache (".msc") — perf task A3.
@@ -53,17 +54,30 @@
  */
 namespace MobiusSimCache
 {
-	/** File magic 'MSC1' (Mobius Sim Cache v1). Fixed value; only round-trip consistency matters. */
+	/** File magic 'MSC1' (Mobius Sim Cache). Fixed value; only round-trip consistency matters. */
 	static constexpr uint32 Magic = 0x3143534Du; // bytes 'M','S','C','1' little-endian
 
-	/** Format version. Bump on ANY layout change so stale caches are rejected by the reuse check. */
-	static constexpr uint32 Version = 1u;
+	/** Format version. Bump on ANY layout change so stale caches are rejected by the reuse check.
+	 *  v2 (perf task A6): header gains a metadata block (MaxAgents, source format, per-entity info)
+	 *  after the ModeTable, making the cache self-sufficient for the import fast-reload path. v1
+	 *  caches are rejected by the reuse check and transparently rewritten on the next import. */
+	static constexpr uint32 Version = 2u;
 
 	/** Per-sample on-disk record width in bytes. Must equal the field-by-field layout documented above. */
 	static constexpr uint32 RecordSize = 4u /*EntityID*/ + 24u /*Pos*/ + 24u /*Rot*/ + 4u /*Speed*/ + 1u /*Bracket*/ + 1u /*ModeIndex*/;
 	static_assert(RecordSize == 58u, "SimDiskCache RecordSize must match the documented field layout");
 
-	/** Parsed .msc header — everything ahead of the offset table (see the format block above). */
+	/**
+	 * Parsed .msc header — everything ahead of the offset table (see the format block above).
+	 *
+	 * v2 METADATA BLOCK (A6), serialized directly after the ModeTable, in this exact order:
+	 *   int32   MaxAgents          spawn count (UAgentDataSubsystem::GetMaxAgents source)
+	 *   uint8   SourceFormat       EMobiusAgentFileFormat of the imported source
+	 *   uint32  NumEntities        then per entity, field-by-field:
+	 *     int32 Id / FString Name / float SimTimeS / float MaxSpeed / FString MPlane / int32 Map
+	 *     (mirrors FMobiusAgentEntityData — the data BuildPedestrianMovementFragmentData moves into
+	 *      UAgentDataSubsystem::CachedEntityData for InitMOP/entity-info lookups)
+	 */
 	struct FMscHeader
 	{
 		uint32 Magic = 0;
@@ -74,6 +88,10 @@ namespace MobiusSimCache
 		float MaxTime = 0.f;
 		float TimeBetweenSteps = 0.f;
 		TArray<FString> ModeTable;
+		// --- v2 metadata block (A6) ---
+		int32 MaxAgents = 0;
+		uint8 SourceFormat = 0;
+		TArray<FMobiusAgentEntityData> Entities;
 		/** Absolute byte offset of the (NumTimesteps+1) x uint64 offset table (== first byte after the header). */
 		int64 OffsetTableStart = 0;
 
@@ -125,6 +143,10 @@ namespace MobiusSimCache
 	/** True if the import-time write is enabled (cvar mobius.SimCache.WriteOnImport, default 1). */
 	PROJECTMOBIUS_API bool IsWriteOnImportEnabled();
 
+	/** True if the import fast-reload from a valid v2 cache is enabled (cvar mobius.SimCache.FastReload,
+	 *  default 1; 0 = always parse the source, perf task A6). */
+	PROJECTMOBIUS_API bool IsFastReloadEnabled();
+
 	/**
 	 * Core writer: serialise SimulationData to OutFilePath in the format above (writing atomically via a
 	 * .tmp + rename). Bypasses the cvar and the reuse check — used directly by tests. Honours bShouldStop
@@ -137,6 +159,9 @@ namespace MobiusSimCache
 		float MaxTime,
 		float TimeBetweenSteps,
 		const TArray<FString>& ModeTable,
+		int32 MaxAgents,
+		uint8 SourceFormat,
+		const TArray<FMobiusAgentEntityData>& Entities,
 		const FThreadSafeBool& bShouldStop);
 
 	/**
@@ -152,5 +177,23 @@ namespace MobiusSimCache
 		float MaxTime,
 		float TimeBetweenSteps,
 		const TArray<FString>& ModeTable,
+		int32 MaxAgents,
+		uint8 SourceFormat,
+		const TArray<FMobiusAgentEntityData>& Entities,
 		const FThreadSafeBool& bShouldStop);
+
+	/**
+	 * Read the (NumTimesteps + 1) offset table. The archive must be positioned at
+	 * Header.OffsetTableStart (where ReadCacheHeader leaves it). Validates monotonicity,
+	 * record alignment and that the final offset fits the file. Shared by the A4 streaming
+	 * provider and the A6 fast-reload path.
+	 */
+	PROJECTMOBIUS_API bool ReadOffsetTable(FArchive& Reader, const FMscHeader& Header, TArray<uint64>& OutOffsets);
+
+	/**
+	 * Decode Count records of the documented field layout starting at ByteOffset into Out
+	 * (field-by-field — never a struct memcpy). Any archive position on entry; safe on any thread
+	 * with a private archive.
+	 */
+	PROJECTMOBIUS_API bool DecodeRecords(FArchive& Reader, int64 ByteOffset, int32 Count, TArray<FSimMovementSample>& Out);
 }
