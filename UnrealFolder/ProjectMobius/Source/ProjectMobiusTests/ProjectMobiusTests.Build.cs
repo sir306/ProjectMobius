@@ -15,6 +15,7 @@ public class ProjectMobiusTests : ModuleRules
 			"AutomationController",
 			"ProjectMobius",
 			"MobiusDataImporter",
+			"UeHdf5Library", // Hdf5ImportMatrixTest writes .h5 fixtures via the HDF5 C API (T4)
 			"MassEntity",
 			"StructUtils",
 			"MassCommon",
