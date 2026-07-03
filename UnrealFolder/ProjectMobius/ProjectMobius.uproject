@@ -61,7 +61,7 @@
 		},
 		{
 			"Name": "ProjectMobiusTests",
-			"Type": "Editor",
+			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"
 		}
 	],
