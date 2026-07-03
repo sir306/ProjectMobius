@@ -27,13 +27,106 @@ bool FStreamingProvider::IsForceStreamingEnabled()
 	return CVarSimCacheForceStreaming.GetValueOnGameThread() != 0;
 }
 
+/** mobius.SimCache.AutoStreaming — A5's shipped switch: when the estimated resident footprint of a
+ *  freshly-imported dataset exceeds the RAM budget below, serve it from the .msc cache and free the
+ *  resident copy. Default 1; typical datasets stay comfortably under the budget and keep the resident
+ *  (bit-identical legacy) path. */
+static TAutoConsoleVariable<int32> CVarSimCacheAutoStreaming(
+	TEXT("mobius.SimCache.AutoStreaming"),
+	1,
+	TEXT("If 1 (default), agent datasets whose estimated resident RAM exceeds the budget (mobius.SimCache.BudgetFraction / BudgetCapGB) are served from the .msc disk cache instead of held fully resident (perf task A5)."),
+	ECVF_Default);
+
+/** Budget = min(BudgetFraction x available physical RAM, BudgetCapGB). Both ini-settable. */
+static TAutoConsoleVariable<float> CVarSimCacheBudgetFraction(
+	TEXT("mobius.SimCache.BudgetFraction"),
+	0.65f,
+	TEXT("Fraction of currently-available physical RAM the resident agent dataset may occupy before auto-streaming kicks in (perf task A5). Clamped to [0.05, 0.95]. Default 0.65."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarSimCacheBudgetCapGB(
+	TEXT("mobius.SimCache.BudgetCapGB"),
+	8.0f,
+	TEXT("Hard upper cap (GB) on the resident agent-dataset budget regardless of how much RAM is free (perf task A5). Default 8."),
+	ECVF_Default);
+
+/** Streaming window knobs (defaults match the A4 constants). Scaled by HddScale on seek-penalty drives. */
+static TAutoConsoleVariable<int32> CVarStreamingWindowSlots(
+	TEXT("mobius.Streaming.WindowSlots"),
+	96,
+	TEXT("FStreamingProvider slot-ring capacity (timestep blocks resident at once). Default 96."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<int32> CVarStreamingLookahead(
+	TEXT("mobius.Streaming.Lookahead"),
+	16,
+	TEXT("FStreamingProvider prefetch lookahead (timesteps) in the playback direction. Default 16."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<int32> CVarStreamingKeyframeTarget(
+	TEXT("mobius.Streaming.KeyframeTarget"),
+	512,
+	TEXT("FStreamingProvider always-resident keyframe count target (stride ~= NumTimesteps / this). Default 512."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarStreamingHddScale(
+	TEXT("mobius.Streaming.HddScale"),
+	2.0f,
+	TEXT("Multiplier applied to WindowSlots and Lookahead when the cache drive reports a seek penalty (HDD) — cold reads cost more there. Default 2.0."),
+	ECVF_Default);
+
+bool FStreamingProvider::IsAutoStreamingEnabled()
+{
+	return CVarSimCacheAutoStreaming.GetValueOnGameThread() != 0;
+}
+
+bool FStreamingProvider::ShouldStreamSimData(uint64 EstimatedResidentBytes, uint64 AvailablePhysicalBytes,
+                                             float BudgetFraction, uint64 BudgetCapBytes)
+{
+	// Clamp so a bad ini value can neither zero the budget (everything streams) nor disable the cap.
+	const float ClampedFraction = FMath::Clamp(BudgetFraction, 0.05f, 0.95f);
+	const uint64 FractionBudget = static_cast<uint64>(ClampedFraction * static_cast<double>(AvailablePhysicalBytes));
+	const uint64 Budget = FMath::Min(FractionBudget, BudgetCapBytes);
+	return EstimatedResidentBytes > Budget;
+}
+
+FStreamingProviderConfig FStreamingProvider::MakeConfigFromCVars(bool bCacheDriveHasSeekPenalty)
+{
+	FStreamingProviderConfig OutConfig;
+	OutConfig.WindowSlotCount = CVarStreamingWindowSlots.GetValueOnGameThread();
+	OutConfig.PrefetchLookahead = CVarStreamingLookahead.GetValueOnGameThread();
+	OutConfig.TargetKeyframeCount = CVarStreamingKeyframeTarget.GetValueOnGameThread();
+	if (bCacheDriveHasSeekPenalty)
+	{
+		const float Scale = FMath::Clamp(CVarStreamingHddScale.GetValueOnGameThread(), 1.0f, 8.0f);
+		OutConfig.WindowSlotCount = FMath::CeilToInt32(OutConfig.WindowSlotCount * Scale);
+		OutConfig.PrefetchLookahead = FMath::CeilToInt32(OutConfig.PrefetchLookahead * Scale);
+	}
+	return OutConfig; // final range clamps happen in the provider constructor
+}
+
+void FStreamingProvider::GetBudgetCVars(float& OutBudgetFraction, uint64& OutBudgetCapBytes)
+{
+	OutBudgetFraction = CVarSimCacheBudgetFraction.GetValueOnGameThread();
+	const float CapGB = FMath::Max(0.25f, CVarSimCacheBudgetCapGB.GetValueOnGameThread());
+	OutBudgetCapBytes = static_cast<uint64>(static_cast<double>(CapGB) * 1024.0 * 1024.0 * 1024.0);
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Construction / teardown
 // ---------------------------------------------------------------------------------------------------
 
-FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 ExpectedSourceHash)
+FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 ExpectedSourceHash,
+                                       const FStreamingProviderConfig& InConfig)
 	: CacheFilePath(InCacheFilePath)
+	, Config(InConfig)
 {
+	// Sanitize the knobs: a bad ini/cvar value must degrade to something workable, never to a stuck
+	// window (lookahead capped to half the ring so prefetch alone can't exhaust the evictable slots).
+	Config.WindowSlotCount = FMath::Clamp(Config.WindowSlotCount, 8, 4096);
+	Config.PrefetchLookahead = FMath::Clamp(Config.PrefetchLookahead, 0, Config.WindowSlotCount / 2);
+	Config.TargetKeyframeCount = FMath::Clamp(Config.TargetKeyframeCount, 16, 8192);
+
 	TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*CacheFilePath));
 	if (!Reader)
 	{
@@ -74,7 +167,7 @@ FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 Ex
 	// Always-resident coarse keyframes: every KeyframeStride-th timestep, loaded synchronously here
 	// (one-time cost at load, keeps the cross-thread surface to just the slot queues). Ts 0 is always
 	// a keyframe, so the spawn-time read (PedestrianInitializeMOP at t=0) is exact from frame one.
-	KeyframeStride = FMath::Max(1, static_cast<int32>(Header.NumTimesteps) / TargetKeyframeCount);
+	KeyframeStride = FMath::Max(1, static_cast<int32>(Header.NumTimesteps) / Config.TargetKeyframeCount);
 	for (int32 Ts = 0; Ts < static_cast<int32>(Header.NumTimesteps); Ts += KeyframeStride)
 	{
 		TArray<FSimMovementSample> Block;
@@ -89,7 +182,7 @@ FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 Ex
 
 	// Fixed slot pool — sized once BEFORE the reader thread starts so element addresses stay stable
 	// (the reader writes into Slots[i].Samples by index).
-	Slots.SetNum(WindowSlotCount);
+	Slots.SetNum(Config.WindowSlotCount);
 
 	WakeEvent = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset*/ false);
 	Worker = MakeUnique<FReaderWorker>(*this);
@@ -105,7 +198,7 @@ FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 Ex
 
 	bValid = true;
 	UE_LOG(LogMobiusStreaming, Log, TEXT("[Streaming] Serving '%s' (%u timesteps, keyframe stride %d, window %d slots)"),
-		*CacheFilePath, Header.NumTimesteps, KeyframeStride, WindowSlotCount);
+		*CacheFilePath, Header.NumTimesteps, KeyframeStride, Config.WindowSlotCount);
 }
 
 FStreamingProvider::~FStreamingProvider()
@@ -410,21 +503,21 @@ void FStreamingProvider::NotifyPlayhead(int32 Ts, int32 DirectionHint)
 	// already resident/pending, or a keyframe.
 	if (DirectionHint > 0)
 	{
-		for (int32 Ahead = 2; Ahead <= PrefetchLookahead; ++Ahead)
+		for (int32 Ahead = 2; Ahead <= Config.PrefetchLookahead; ++Ahead)
 		{
 			RequestLoad(Ts + Ahead);
 		}
 	}
 	else if (DirectionHint < 0)
 	{
-		for (int32 Behind = 1; Behind <= PrefetchLookahead; ++Behind)
+		for (int32 Behind = 1; Behind <= Config.PrefetchLookahead; ++Behind)
 		{
 			RequestLoad(Ts - Behind);
 		}
 	}
 	else
 	{
-		for (int32 Delta = 1; Delta <= PrefetchLookahead / 2; ++Delta)
+		for (int32 Delta = 1; Delta <= Config.PrefetchLookahead / 2; ++Delta)
 		{
 			RequestLoad(Ts + Delta);
 			RequestLoad(Ts - Delta);

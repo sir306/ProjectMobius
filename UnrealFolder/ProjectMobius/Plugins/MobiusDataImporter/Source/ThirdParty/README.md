@@ -40,6 +40,14 @@ cmake --build build --config Release
 cmake --install build --config Release
 ```
 
+## macOS status
+
+`UeHdf5Library.Build.cs` has a Mac branch expecting `install/lib/libhdf5.a`, `libhdf5_hl.a` and
+`libzlib-static.a` — **none are vendored yet**, so MobiusDataImporter does not link on Mac until an
+hdf5 build is run on a Mac (same CMake recipe as below, static libs) and its libs land in
+`install/lib`. `H5pubconf.h` is platform-generated too — a Mac build produces its own; do not reuse
+the Windows one for the Mac libs.
+
 Notes:
 - `ZLIB_USE_LOCALCONTENT=OFF` makes the superbuild download the zlib TGZ at configure time
   (URLs in `config/CacheURLs.cmake`) — network access required.

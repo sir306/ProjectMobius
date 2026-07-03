@@ -98,6 +98,13 @@ namespace MobiusSimCache
 	PROJECTMOBIUS_API FString GetCacheDir();
 
 	/**
+	 * True when the volume holding the cache dir reports a seek penalty (spinning disk). Used by the A5
+	 * residency decision to enlarge the streaming window/lookahead where cold reads cost more. Windows
+	 * only; other platforms return false (treat as SSD). Failure to query also returns false.
+	 */
+	PROJECTMOBIUS_API bool CacheDriveHasSeekPenalty();
+
+	/**
 	 * Fingerprint of the source agent-data file: combines size + modification time + a CRC of the first
 	 * and last 64 KB. Cheap (no full-file read) and good enough to detect "same file, unchanged" for the
 	 * reuse check; a fingerprint clash would only cause a stale cache to be reused, which A4's golden-frame

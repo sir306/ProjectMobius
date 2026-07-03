@@ -194,10 +194,75 @@ bool FSimProviderGoldenTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// --- A5 config plumbing: a custom (small) window must still be valid and serve exact data. The
+	// window (16) stays >= the dataset's distinct blocked reads here (2), so the same-frame eviction
+	// guard cannot starve it. ---
+	if (bWrote)
+	{
+		FStreamingProviderConfig SmallConfig;
+		SmallConfig.WindowSlotCount = 16;
+		SmallConfig.PrefetchLookahead = 4;
+		SmallConfig.TargetKeyframeCount = 64;
+		FStreamingProvider SmallWindow(CacheFilePath, SourceHash, SmallConfig);
+		TestTrue(TEXT("Custom-config provider valid"), SmallWindow.IsValidAndPopulated());
+		if (SmallWindow.IsValidAndPopulated())
+		{
+			TestEqual(TEXT("Custom-config NumTimesteps"), SmallWindow.GetNumTimesteps(), GoldenNumTimesteps);
+			const TArray<FSimMovementSample>* Block = SmallWindow.BlockUntilTimestepResident(3);
+			TestTrue(TEXT("Custom-config serves ts 3 exactly"), Block && Block->Num() == 4); // 1 + (3 % 5)
+			SmallWindow.NotifyPlayhead(3, 1);
+			const TArray<FSimMovementSample>* Next = SmallWindow.BlockUntilTimestepResident(4);
+			TestTrue(TEXT("Custom-config serves ts 4 exactly"), Next && Next->Num() == 5); // 1 + (4 % 5)
+		}
+	}
+
 	// --- Cleanup. ---
 	FileManager.Delete(*CacheFilePath, /*RequireExists*/ false, /*EvenReadOnly*/ true);
 	FileManager.Delete(*FakeSource, /*RequireExists*/ false, /*EvenReadOnly*/ true);
 	FileManager.DeleteDirectory(*TempDir, /*RequireExists*/ false, /*Tree*/ true);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// A5 residency decision — pure budget predicate (mirrors the B2 predicate-test pattern).
+// Budget = min(clamped-fraction x available physical, cap); stream when the estimate EXCEEDS it.
+// ---------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStreamingBudgetDecisionTest,
+	"ProjectMobius.SimData.StreamingBudgetDecision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FStreamingBudgetDecisionTest::RunTest(const FString& Parameters)
+{
+	using Provider = FStreamingProvider;
+	constexpr uint64 GB = 1024ull * 1024ull * 1024ull;
+
+	// Comfortably under budget -> resident (the everyday case).
+	TestFalse(TEXT("1 GB estimate, 16 GB free, cap 8 -> resident"),
+		Provider::ShouldStreamSimData(1 * GB, 16 * GB, 0.65f, 8 * GB));
+
+	// Fraction binds before the cap: 0.65 x 4 GB = 2.6 GB budget < 3 GB estimate.
+	TestTrue(TEXT("3 GB estimate, 4 GB free (fraction-bound) -> stream"),
+		Provider::ShouldStreamSimData(3 * GB, 4 * GB, 0.65f, 8 * GB));
+
+	// Cap binds on a big machine: 0.65 x 64 GB = 41.6 GB, but cap 8 GB < 10 GB estimate.
+	TestTrue(TEXT("10 GB estimate, 64 GB free (cap-bound) -> stream"),
+		Provider::ShouldStreamSimData(10 * GB, 64 * GB, 0.65f, 8 * GB));
+
+	// Exactly AT budget stays resident (strictly-greater threshold).
+	TestFalse(TEXT("Estimate == cap budget -> resident"),
+		Provider::ShouldStreamSimData(8 * GB, 64 * GB, 0.65f, 8 * GB));
+
+	// Low-fraction clamp (0.05 floor): a near-zero ini value must not zero the budget and stream
+	// everything — 0.05 x 100 GB = 5 GB budget > 1 GB estimate.
+	TestFalse(TEXT("Near-zero fraction clamps to 0.05 -> small dataset stays resident"),
+		Provider::ShouldStreamSimData(1 * GB, 100 * GB, 0.0001f, 8 * GB));
+
+	// High-fraction clamp (0.95 ceiling): an absurd ini value must not disable the fraction —
+	// 0.95 x 4 GB = 3.8 GB budget < 3.9 GB estimate (unclamped 5.0 would keep it resident).
+	TestTrue(TEXT("Absurd fraction clamps to 0.95 -> oversized dataset still streams"),
+		Provider::ShouldStreamSimData(static_cast<uint64>(3.9 * GB), 4 * GB, 5.0f, 8 * GB));
 
 	return true;
 }

@@ -10,6 +10,23 @@
 class FRunnableThread;
 
 /**
+ * Window sizing knobs for FStreamingProvider (perf task A5). Defaults match A4's original fixed
+ * constants; the spawn subsystem populates them from the mobius.Streaming.* cvars (ini-settable),
+ * scaled up on drives with a seek penalty (HDD) where cold reads cost more.
+ */
+struct FStreamingProviderConfig
+{
+	/** Ring capacity: playhead pins + prefetch + scrub slack. */
+	int32 WindowSlotCount = 96;
+
+	/** Timesteps prefetched in the playback direction on each playhead notify. */
+	int32 PrefetchLookahead = 16;
+
+	/** Always-resident keyframe count target: stride ~= NumTimesteps / this. */
+	int32 TargetKeyframeCount = 512;
+};
+
+/**
  * Disk-backed ISimSampleProvider streaming from an A3 ".msc" cache (perf task A4).
  *
  * Bounds resident RAM to a fixed slot window (plus a coarse keyframe stride) instead of the whole
@@ -44,7 +61,8 @@ public:
 	 * validation failure the provider is left invalid (IsValidAndPopulated() == false) and the caller
 	 * is expected to fall back to FFullyResidentProvider.
 	 */
-	FStreamingProvider(const FString& InCacheFilePath, uint64 ExpectedSourceHash);
+	FStreamingProvider(const FString& InCacheFilePath, uint64 ExpectedSourceHash,
+	                   const FStreamingProviderConfig& InConfig = FStreamingProviderConfig());
 	virtual ~FStreamingProvider() override;
 
 	FStreamingProvider(const FStreamingProvider&) = delete;
@@ -67,6 +85,23 @@ public:
 
 	/** True when cvar mobius.SimCache.ForceStreaming is 1 (A4 manual flag; default 0 = resident path). */
 	static bool IsForceStreamingEnabled();
+
+	/** True when cvar mobius.SimCache.AutoStreaming is 1 (A5 RAM-budget auto-detection, default 1). */
+	static bool IsAutoStreamingEnabled();
+
+	/**
+	 * A5 residency decision (pure; unit-tested): stream when the estimated resident footprint exceeds
+	 * the budget min(BudgetFraction x AvailablePhysicalBytes, CapBytes). Fraction is clamped to a sane
+	 * range so a bad ini value cannot produce a zero/absurd budget.
+	 */
+	static bool ShouldStreamSimData(uint64 EstimatedResidentBytes, uint64 AvailablePhysicalBytes,
+	                                float BudgetFraction, uint64 BudgetCapBytes);
+
+	/** Window config from the mobius.Streaming.* cvars, scaled up when the cache drive has a seek penalty. */
+	static FStreamingProviderConfig MakeConfigFromCVars(bool bCacheDriveHasSeekPenalty);
+
+	/** Current budget knobs from the mobius.SimCache.* cvars (fraction, cap in bytes). */
+	static void GetBudgetCVars(float& OutBudgetFraction, uint64& OutBudgetCapBytes);
 
 	/** Header MaxTime (seconds) — same value the resident path gets from FSimulationFragment. */
 	float GetMaxTime() const { return Header.MaxTime; }
@@ -123,6 +158,7 @@ private:
 
 	// --- immutable after construction (safe to read from both threads) ---
 	FString CacheFilePath;
+	FStreamingProviderConfig Config;
 	MobiusSimCache::FMscHeader Header;
 	TArray<uint64> Offsets;               // (NumTimesteps + 1) absolute byte offsets
 	TMap<int32, TArray<FSimMovementSample>> Keyframes; // every KeyframeStride-th ts, loaded at construction
@@ -146,8 +182,4 @@ private:
 	TUniquePtr<FReaderWorker> Worker;
 	FRunnableThread* WorkerThread = nullptr;
 
-	/** Window sizing. Constants for A4 (flag-forced testing); A5 moves these to ini-backed settings. */
-	static constexpr int32 WindowSlotCount = 96;  // ring capacity: playhead pins + prefetch + scrub slack
-	static constexpr int32 PrefetchLookahead = 16; // timesteps prefetched in the playback direction
-	static constexpr int32 TargetKeyframeCount = 512; // stride ~= NumTimesteps / this
 };

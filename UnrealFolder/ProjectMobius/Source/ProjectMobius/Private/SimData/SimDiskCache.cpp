@@ -8,6 +8,14 @@
 #include "Misc/DateTime.h"
 #include "Misc/Crc.h"
 
+#if PLATFORM_WINDOWS
+// Raw volume handle + IOCTL_STORAGE_QUERY_PROPERTY for the seek-penalty query (CacheDriveHasSeekPenalty).
+#include "Windows/WindowsHWrapper.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <winioctl.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
 // Import-time write is not a tick/latency-sensitive path (it runs once on the load worker thread while the
 // loading screen is up), so logging here is fine and is the PRD's sanctioned way to confirm write/reuse.
 DEFINE_LOG_CATEGORY_STATIC(LogMobiusSimCache, Log, All);
@@ -115,6 +123,39 @@ namespace MobiusSimCache
 	FString GetCacheDir()
 	{
 		return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MobiusSimCache"));
+	}
+
+	bool CacheDriveHasSeekPenalty()
+	{
+#if PLATFORM_WINDOWS
+		// Volume root of the cache dir (e.g. "E:"), queried via the seek-penalty storage property.
+		const FString FullPath = FPaths::ConvertRelativePathToFull(GetCacheDir());
+		if (FullPath.Len() < 2 || FullPath[1] != TEXT(':'))
+		{
+			return false; // UNC/odd path — assume no penalty
+		}
+		const FString VolumePath = FString::Printf(TEXT("\\\\.\\%c:"), FullPath[0]);
+
+		const HANDLE Volume = CreateFileW(*VolumePath, 0,
+			FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+		if (Volume == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		STORAGE_PROPERTY_QUERY Query = {};
+		Query.PropertyId = StorageDeviceSeekPenaltyProperty;
+		Query.QueryType = PropertyStandardQuery;
+		DEVICE_SEEK_PENALTY_DESCRIPTOR Descriptor = {};
+		DWORD BytesReturned = 0;
+		const bool bOk = DeviceIoControl(Volume, IOCTL_STORAGE_QUERY_PROPERTY,
+			&Query, sizeof(Query), &Descriptor, sizeof(Descriptor), &BytesReturned, nullptr) != 0;
+		CloseHandle(Volume);
+
+		return bOk && Descriptor.IncursSeekPenalty;
+#else
+		return false;
+#endif
 	}
 
 	uint64 ComputeSourceHash(const FString& SourceFilePath)

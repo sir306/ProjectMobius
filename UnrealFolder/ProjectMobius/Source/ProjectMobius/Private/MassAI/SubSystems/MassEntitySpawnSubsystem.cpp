@@ -751,33 +751,78 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	// fragment. ModeTable defaults to { "" } (perf task A2 — importer drops the source per-sample mode attribute).
 	SimulationFragment.Provider = MakeShared<FFullyResidentProvider>(SimulationFragment.SimulationData);
 
-	// A4 (flag-forced streaming): with mobius.SimCache.ForceStreaming=1, swap in the .msc-backed
-	// FStreamingProvider when a valid cache exists for the loaded source file (the A3 import hook wrote
-	// it just before this callback). Every validation failure falls back to the resident provider built
-	// above, and with the cvar at its default 0 this block is inert — the legacy path is untouched.
-	// NOTE: A4 changes only the READ path; the resident TMap is still built by the import. Dropping it
-	// for RAM savings is A5's residency decision, not this flag.
-	if (FStreamingProvider::IsForceStreamingEnabled())
+	// A4/A5: serve from the .msc disk cache instead of the resident TMap when either the manual force
+	// flag is on (A4, mobius.SimCache.ForceStreaming) or the auto residency decision finds the dataset
+	// over the RAM budget (A5, mobius.SimCache.AutoStreaming + BudgetFraction/BudgetCapGB). On streaming
+	// success the resident copy is FREED here: at this point it has a single owner (the runnable's
+	// fragment was MoveTemp'd into this local above, and the streaming provider holds no reference to
+	// it), so the Reset() returns the multi-GB block to the allocator before entities spawn. Consumers
+	// have been provider-only since A1 (InitMOP copies its spawn block from the provider; all-timestep
+	// analysis uses ForEachTimestep — a disk pass). Every validation failure falls back to the resident
+	// provider built above. NOTE: the transient import peak is unchanged (the data must exist once to be
+	// converted and cached); this bounds the STEADY-STATE playback footprint.
+	if (SimulationFragment.SimulationData.IsValid())
 	{
-		const FString SourcePath = AgentDataSubsystem ? AgentDataSubsystem->GetLoadedSimulationDataFilePath() : FString();
-		if (!SourcePath.IsEmpty())
+		const bool bForceStreaming = FStreamingProvider::IsForceStreamingEnabled();
+		bool bWantStreaming = bForceStreaming;
+
+		if (!bWantStreaming && FStreamingProvider::IsAutoStreamingEnabled())
 		{
-			const uint64 SourceHash = MobiusSimCache::ComputeSourceHash(SourcePath);
-			const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(SourcePath, SourceHash);
-			TSharedPtr<FStreamingProvider> StreamingProvider = MakeShared<FStreamingProvider>(CacheFilePath, SourceHash);
-			// Timestep-count parity with the just-imported data is the last stale-cache guard (the hash
-			// keys only source bytes — see the A4 forward-trap note in SimDiskCache.h).
-			if (StreamingProvider->IsValidAndPopulated()
-				&& SimulationFragment.SimulationData.IsValid()
-				&& StreamingProvider->GetNumTimesteps() == SimulationFragment.SimulationData->Num())
+			// Inline sample footprint only (64 B x samples; container overhead is small beside it).
+			int64 TotalSamples = 0;
+			for (const TPair<int32, TArray<FSimMovementSample>>& Pair : *SimulationFragment.SimulationData)
 			{
-				SimulationFragment.Provider = StreamingProvider;
+				TotalSamples += Pair.Value.Num();
 			}
-			else
+			const uint64 EstimatedResidentBytes = static_cast<uint64>(TotalSamples) * sizeof(FSimMovementSample);
+
+			float BudgetFraction = 0.f;
+			uint64 BudgetCapBytes = 0;
+			FStreamingProvider::GetBudgetCVars(BudgetFraction, BudgetCapBytes);
+			const uint64 AvailablePhysical = FPlatformMemory::GetStats().AvailablePhysical;
+			bWantStreaming = FStreamingProvider::ShouldStreamSimData(
+				EstimatedResidentBytes, AvailablePhysical, BudgetFraction, BudgetCapBytes);
+			if (bWantStreaming)
+			{
+				UE_LOG(LogTemp, Log, TEXT("Agent dataset estimated at %llu MB resident exceeds the RAM budget — auto-streaming (perf task A5)"),
+					EstimatedResidentBytes / (1024ull * 1024ull));
+			}
+		}
+
+		if (bWantStreaming)
+		{
+			const FString SourcePath = AgentDataSubsystem ? AgentDataSubsystem->GetLoadedSimulationDataFilePath() : FString();
+			bool bStreamingActive = false;
+			if (!SourcePath.IsEmpty())
+			{
+				const uint64 SourceHash = MobiusSimCache::ComputeSourceHash(SourcePath);
+				const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(SourcePath, SourceHash);
+				const FStreamingProviderConfig StreamConfig =
+					FStreamingProvider::MakeConfigFromCVars(MobiusSimCache::CacheDriveHasSeekPenalty());
+				TSharedPtr<FStreamingProvider> StreamingProvider =
+					MakeShared<FStreamingProvider>(CacheFilePath, SourceHash, StreamConfig);
+				// Timestep-count parity with the just-imported data is the last stale-cache guard (the
+				// hash keys only source bytes — see the A4 forward-trap note in SimDiskCache.h).
+				if (StreamingProvider->IsValidAndPopulated()
+					&& StreamingProvider->GetNumTimesteps() == SimulationFragment.SimulationData->Num())
+				{
+					SimulationFragment.Provider = StreamingProvider;
+#if !UE_BUILD_SHIPPING
+					FMobiusMemSnapshot SnapDropBefore = FMobiusMemSnapshot::Take(TEXT("BuildFrag_StreamingDropResident_Before"));
+#endif
+					// Single owner (see block comment) — this is the A5 RAM win.
+					SimulationFragment.SimulationData.Reset();
+#if !UE_BUILD_SHIPPING
+					FMobiusMemSnapshot::Take(TEXT("BuildFrag_StreamingDropResident_After")).LogDelta(SnapDropBefore);
+#endif
+					bStreamingActive = true;
+				}
+			}
+			if (!bStreamingActive)
 			{
 				UE_LOG(LogTemp, Warning,
-					TEXT("mobius.SimCache.ForceStreaming=1 but no usable .msc for '%s' — falling back to the resident provider"),
-					*SourcePath);
+					TEXT("Streaming requested (%s) but no usable .msc for '%s' — keeping the resident provider"),
+					bForceStreaming ? TEXT("ForceStreaming=1") : TEXT("auto RAM budget"), *SourcePath);
 			}
 		}
 	}
