@@ -24,6 +24,14 @@ struct FStreamingProviderConfig
 
 	/** Always-resident keyframe count target: stride ~= NumTimesteps / this. */
 	int32 TargetKeyframeCount = 512;
+
+	/**
+	 * Byte cap on the always-resident keyframe set. The count target alone breaks down on short-but-fat
+	 * sims (few hundred timesteps x thousands of agents): stride rounds to 1 and the "keyframes" become
+	 * the whole dataset resident again — observed 2026-07-03 with a 600-timestep / 176 MB file. The
+	 * effective stride is max(count-based, ceil(TotalRecordBytes / this)).
+	 */
+	int32 KeyframeByteBudgetMB = 64;
 };
 
 /**

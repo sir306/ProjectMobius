@@ -810,8 +810,17 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 #if !UE_BUILD_SHIPPING
 					FMobiusMemSnapshot SnapDropBefore = FMobiusMemSnapshot::Take(TEXT("BuildFrag_StreamingDropResident_Before"));
 #endif
-					// Single owner (see block comment) — this is the A5 RAM win.
+					// Single owner (see block comment) — this is the A5 RAM win. The refcount log is the
+					// tiebreaker between "freed but the allocator retains the pages" (count 1) and "a
+					// hidden holder keeps it alive" (count > 1).
+					UE_LOG(LogTemp, Log, TEXT("Dropping resident sample map (shared refs at drop: %d)"),
+						SimulationFragment.SimulationData.GetSharedReferenceCount());
 					SimulationFragment.SimulationData.Reset();
+					// Hand the freed pages back to the OS: the samples are 64-byte-bin allocations the
+					// binned allocator otherwise pools indefinitely, so without this the working set
+					// never falls and the drop is invisible (the documented "baseline stays elevated"
+					// behaviour from the 2026-04 memory investigation). One-time cost at load.
+					FMemory::Trim();
 #if !UE_BUILD_SHIPPING
 					FMobiusMemSnapshot::Take(TEXT("BuildFrag_StreamingDropResident_After")).LogDelta(SnapDropBefore);
 #endif

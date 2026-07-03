@@ -69,6 +69,12 @@ static TAutoConsoleVariable<int32> CVarStreamingKeyframeTarget(
 	TEXT("FStreamingProvider always-resident keyframe count target (stride ~= NumTimesteps / this). Default 512."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<int32> CVarStreamingKeyframeBudgetMB(
+	TEXT("mobius.Streaming.KeyframeBudgetMB"),
+	64,
+	TEXT("Byte cap (MB) on FStreamingProvider's always-resident keyframe set; the stride grows to respect it. Prevents short-but-fat sims from re-residenting the whole dataset as keyframes. Default 64."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<float> CVarStreamingHddScale(
 	TEXT("mobius.Streaming.HddScale"),
 	2.0f,
@@ -96,6 +102,7 @@ FStreamingProviderConfig FStreamingProvider::MakeConfigFromCVars(bool bCacheDriv
 	OutConfig.WindowSlotCount = CVarStreamingWindowSlots.GetValueOnGameThread();
 	OutConfig.PrefetchLookahead = CVarStreamingLookahead.GetValueOnGameThread();
 	OutConfig.TargetKeyframeCount = CVarStreamingKeyframeTarget.GetValueOnGameThread();
+	OutConfig.KeyframeByteBudgetMB = CVarStreamingKeyframeBudgetMB.GetValueOnGameThread();
 	if (bCacheDriveHasSeekPenalty)
 	{
 		const float Scale = FMath::Clamp(CVarStreamingHddScale.GetValueOnGameThread(), 1.0f, 8.0f);
@@ -108,7 +115,9 @@ FStreamingProviderConfig FStreamingProvider::MakeConfigFromCVars(bool bCacheDriv
 void FStreamingProvider::GetBudgetCVars(float& OutBudgetFraction, uint64& OutBudgetCapBytes)
 {
 	OutBudgetFraction = CVarSimCacheBudgetFraction.GetValueOnGameThread();
-	const float CapGB = FMath::Max(0.25f, CVarSimCacheBudgetCapGB.GetValueOnGameThread());
+	// Floor guards against a zeroed ini (which would stream everything); kept low (50 MB) so modest
+	// caps stay usable for testing the auto path against mid-size datasets.
+	const float CapGB = FMath::Max(0.05f, CVarSimCacheBudgetCapGB.GetValueOnGameThread());
 	OutBudgetCapBytes = static_cast<uint64>(static_cast<double>(CapGB) * 1024.0 * 1024.0 * 1024.0);
 }
 
@@ -126,6 +135,7 @@ FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 Ex
 	Config.WindowSlotCount = FMath::Clamp(Config.WindowSlotCount, 8, 4096);
 	Config.PrefetchLookahead = FMath::Clamp(Config.PrefetchLookahead, 0, Config.WindowSlotCount / 2);
 	Config.TargetKeyframeCount = FMath::Clamp(Config.TargetKeyframeCount, 16, 8192);
+	Config.KeyframeByteBudgetMB = FMath::Clamp(Config.KeyframeByteBudgetMB, 8, 2048);
 
 	TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*CacheFilePath));
 	if (!Reader)
@@ -167,7 +177,13 @@ FStreamingProvider::FStreamingProvider(const FString& InCacheFilePath, uint64 Ex
 	// Always-resident coarse keyframes: every KeyframeStride-th timestep, loaded synchronously here
 	// (one-time cost at load, keeps the cross-thread surface to just the slot queues). Ts 0 is always
 	// a keyframe, so the spawn-time read (PedestrianInitializeMOP at t=0) is exact from frame one.
-	KeyframeStride = FMath::Max(1, static_cast<int32>(Header.NumTimesteps) / Config.TargetKeyframeCount);
+	// Stride is the LARGER of the count target and the byte budget: the count target alone collapses to
+	// stride 1 on short-but-fat sims and quietly re-residents the whole dataset (see config comment).
+	const uint64 TotalRecordBytes = Offsets.Last() - Offsets[0];
+	const uint64 KeyframeByteBudget = static_cast<uint64>(Config.KeyframeByteBudgetMB) * 1024ull * 1024ull;
+	const int32 CountStride = static_cast<int32>(Header.NumTimesteps) / Config.TargetKeyframeCount;
+	const int32 ByteStride = static_cast<int32>((TotalRecordBytes + KeyframeByteBudget - 1) / KeyframeByteBudget);
+	KeyframeStride = FMath::Max3(1, CountStride, ByteStride);
 	for (int32 Ts = 0; Ts < static_cast<int32>(Header.NumTimesteps); Ts += KeyframeStride)
 	{
 		TArray<FSimMovementSample> Block;
