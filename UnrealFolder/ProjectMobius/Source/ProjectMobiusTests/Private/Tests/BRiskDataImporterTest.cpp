@@ -155,6 +155,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FBRiskEgressHealthRewindHistoryTest::RunTest(const FString& Parameters)
 {
+	// Contract under test (redesigned in 6dc81c87, "Implement B-RISK tenability import and UI"):
+	// the rewind history stores compact (time, DisplayRisk, shown criterion) samples.
+	// RestoreAgentHealth lerps DisplayRisk, snaps the criterion to the nearer sample, and derives
+	// Health = 1 - clamp(DisplayRisk). Death state is NOT restored here - callers derive it from
+	// DeathTimeSeconds - so this test asserts only the restore contract.
 	UBRiskEgressSubsystem* EgressSubsystem = NewObject<UBRiskEgressSubsystem>();
 	TestNotNull(TEXT("Egress subsystem test object should be created"), EgressSubsystem);
 	if (!EgressSubsystem)
@@ -163,33 +168,46 @@ bool FBRiskEgressHealthRewindHistoryTest::RunTest(const FString& Parameters)
 	}
 
 	FAgentEgressTenabilityFragment Health;
+	Health.DisplayRisk = 0.0f;
+	Health.CurrentDominantCriterion = ETenabilityCriterion::Visibility;
 	EgressSubsystem->RecordAgentHealth(7, 0.0f, Health);
 
-	Health.Health = 0.5f;
-	Health.CombinedHazardDose = 0.5f;
+	Health.DisplayRisk = 0.5f;
 	EgressSubsystem->RecordAgentHealth(7, 5.0f, Health);
 
-	Health.Health = 0.0f;
-	Health.CombinedHazardDose = 1.0f;
-	Health.DeathTimeSeconds = 10.0f;
-	Health.bIsDead = true;
+	Health.DisplayRisk = 1.0f;
+	Health.bTenabilityFailed = true;
+	Health.FirstFailureCriterion = ETenabilityCriterion::ToxicFED;
 	EgressSubsystem->RecordAgentHealth(7, 10.0f, Health);
 
 	FAgentEgressTenabilityFragment RestoredHealth;
-	RestoredHealth.DeathTimeSeconds = 10.0f;
+	TestFalse(
+		TEXT("An unrecorded agent should not restore"),
+		EgressSubsystem->RestoreAgentHealth(99, 3.0f, RestoredHealth));
+
 	TestTrue(
 		TEXT("A recorded agent should restore at a rewind time"),
 		EgressSubsystem->RestoreAgentHealth(7, 3.0f, RestoredHealth));
 	TestTrue(
+		TEXT("Display risk at three seconds should interpolate to 0.3"),
+		FMath::IsNearlyEqual(RestoredHealth.DisplayRisk, 0.3f, 1e-4f));
+	TestTrue(
 		TEXT("Health at three seconds should interpolate to 70 percent"),
-		FMath::IsNearlyEqual(RestoredHealth.Health, 0.7f));
-	TestFalse(TEXT("Agent should be alive before its death time"), RestoredHealth.bIsDead);
+		FMath::IsNearlyEqual(RestoredHealth.Health, 0.7f, 1e-4f));
 
 	TestTrue(
-		TEXT("A recorded agent should restore at its death time"),
+		TEXT("A recorded agent should restore at its failure time"),
 		EgressSubsystem->RestoreAgentHealth(7, 10.0f, RestoredHealth));
-	TestEqual(TEXT("Health at death should be zero"), RestoredHealth.Health, 0.0f);
-	TestTrue(TEXT("Agent should be dead at its death time"), RestoredHealth.bIsDead);
+	TestTrue(
+		TEXT("Display risk at the failure time should be 1"),
+		FMath::IsNearlyEqual(RestoredHealth.DisplayRisk, 1.0f, 1e-4f));
+	TestTrue(
+		TEXT("Health at the failure time should be zero"),
+		FMath::IsNearlyEqual(RestoredHealth.Health, 0.0f, 1e-4f));
+	TestEqual(
+		TEXT("Criterion at the failure time should snap to the failure criterion"),
+		static_cast<uint8>(RestoredHealth.CurrentDominantCriterion),
+		static_cast<uint8>(ETenabilityCriterion::ToxicFED));
 	return true;
 }
 
@@ -272,11 +290,16 @@ bool FBRiskRoomMeshDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("One floor-sill vented single-sided room should produce thirty-two vertices"), Vertices.Num(), 32);
 	TestEqual(TEXT("One floor-sill vented single-sided room should produce forty-eight triangle indices"), Triangles.Num(), 48);
 
+	// Under the BRiskCoord X<->Y swap (commit 3f293c7b), B-Risk face 4 (-X) is the UE -Y wall
+	// (Y = 0) spanning X in [0, 550]. Offset 0.8 m puts the opening edge at X = 80 cm; head
+	// height 2.4 m puts the top corner at Z = 240 cm -> the head-strip vertex is (80, 0, 240).
+	// (The pre-swap test expected (2400, 80, 240); the bounds assertions above pin the new
+	// convention.)
 	bool bFoundOffsetVentEdge = false;
 	for (const FVector& Vertex : Vertices)
 	{
-		if (FMath::IsNearlyEqual(Vertex.X, 2400.0)
-			&& FMath::IsNearlyEqual(Vertex.Y, 80.0)
+		if (FMath::IsNearlyEqual(Vertex.X, 80.0)
+			&& FMath::IsNearlyEqual(Vertex.Y, 0.0)
 			&& FMath::IsNearlyEqual(Vertex.Z, 240.0))
 		{
 			bFoundOffsetVentEdge = true;
