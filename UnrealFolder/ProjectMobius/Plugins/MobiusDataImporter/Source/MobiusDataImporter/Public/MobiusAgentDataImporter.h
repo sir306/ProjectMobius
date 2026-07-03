@@ -69,4 +69,13 @@ class MOBIUSDATAIMPORTER_API FMobiusAgentDataImporter
 public:
 	static EMobiusAgentFileFormat DetectFileFormat(const FString& FilePath);
 	static bool ImportAgentFile(const FString& FilePath, FMobiusAgentSimulationData& OutData, FString* OutError = nullptr);
+
+	/**
+	 * The two JSON parse engines behind ImportAgentFile (perf task A7), exported so the
+	 * ProjectMobius.SimData.JsonParserParity test can drive each one independently and compare
+	 * results bit-for-bit. Production code should call ImportAgentFile, which runs simdjson first
+	 * (cvar mobius.Import.SimdJson) and retries with the pull-parser on ANY simdjson failure.
+	 */
+	static bool ParseJsonWithSimdjson(const FString& FilePath, FMobiusAgentSimulationData& OutData, FString* OutError = nullptr);
+	static bool ParseJsonWithPullParser(const FString& FilePath, FMobiusAgentSimulationData& OutData, FString* OutError = nullptr);
 };

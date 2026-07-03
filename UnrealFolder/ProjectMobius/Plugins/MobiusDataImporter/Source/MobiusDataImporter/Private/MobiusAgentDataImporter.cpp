@@ -3,145 +3,41 @@
 #include "MobiusAgentDataImporter.h"
 
 #include "Hdf5SimulationReader.h"
-#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
+#include "MobiusJsonParserCommon.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogMobiusAgentDataImporter, Log, All);
+DEFINE_LOG_CATEGORY(LogMobiusAgentDataImporter);
 
 namespace
 {
 	void SetMobiusAgentImportError(FString* OutError, const FString& Message)
 	{
-		if (OutError)
-		{
-			*OutError = Message;
-		}
+		MobiusJsonImport::SetError(OutError, Message);
 	}
 
+	/**
+	 * JSON dispatch (perf task A7): simdjson SAX over raw UTF-8 first; ANY simdjson failure
+	 * (malformed document, unsupported encoding, size limit) retries with the engine TJsonReader
+	 * pull-parser. The two engines live in MobiusJsonSimdParser.cpp / MobiusJsonPullParser.cpp and
+	 * produce bit-identical output (ProjectMobius.SimData.JsonParserParity).
+	 */
 	class FMobiusJsonAgentDataParser
 	{
 	public:
 		static bool ParseFile(const FString& FilePath, FMobiusAgentSimulationData& OutData, FString* OutError)
 		{
-			FString JsonString;
-			if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
+			if (MobiusJsonImport::IsSimdJsonEnabled())
 			{
-				SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Unable to read JSON data from: %s"), *FilePath));
-				return false;
-			}
-
-			TSharedPtr<FJsonObject> RootObject;
-			const TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(JsonString);
-			if (!FJsonSerializer::Deserialize(JsonReader, RootObject) || !RootObject.IsValid())
-			{
-				SetMobiusAgentImportError(OutError, FString::Printf(TEXT("Failed to deserialize JSON data from: %s"), *FilePath));
-				return false;
-			}
-
-			OutData = FMobiusAgentSimulationData();
-			OutData.SourceFormat = EMobiusAgentFileFormat::Json;
-
-			if (RootObject->HasTypedField<EJson::Object>(TEXT("metadata")))
-			{
-				const TSharedPtr<FJsonObject> Metadata = RootObject->GetObjectField(TEXT("metadata"));
-				Metadata->TryGetNumberField(TEXT("duration"), OutData.Metadata.Duration);
-				Metadata->TryGetNumberField(TEXT("sampling_rate"), OutData.Metadata.SamplingRate);
-				Metadata->TryGetNumberField(TEXT("max_num_entities"), OutData.Metadata.MaxNumEntities);
-
-				bool bBoolValue = true;
-				if (Metadata->TryGetBoolField(TEXT("isSI"), bBoolValue) || Metadata->TryGetBoolField(TEXT("is_si"), bBoolValue))
+				FString SimdJsonError;
+				if (FMobiusAgentDataImporter::ParseJsonWithSimdjson(FilePath, OutData, &SimdJsonError))
 				{
-					OutData.Metadata.bIsSI = bBoolValue;
+					return true;
 				}
-				if (Metadata->TryGetBoolField(TEXT("isDeg"), bBoolValue) || Metadata->TryGetBoolField(TEXT("is_deg"), bBoolValue))
-				{
-					OutData.Metadata.bIsDeg = bBoolValue;
-				}
+				UE_LOG(LogMobiusAgentDataImporter, Warning,
+				       TEXT("simdjson JSON parse failed (%s), retrying with the engine pull-parser: %s"),
+				       *SimdJsonError, *FilePath);
 			}
-
-			const TArray<TSharedPtr<FJsonValue>>* JsonEntities = nullptr;
-			if (RootObject->TryGetArrayField(TEXT("entities"), JsonEntities))
-			{
-				OutData.Entities.Reserve(JsonEntities->Num());
-				for (const TSharedPtr<FJsonValue>& EntityValue : *JsonEntities)
-				{
-					const TSharedPtr<FJsonObject> EntityObject = EntityValue.IsValid() ? EntityValue->AsObject() : nullptr;
-					if (!EntityObject.IsValid())
-					{
-						continue;
-					}
-
-					FMobiusAgentEntityData& Entity = OutData.Entities.AddDefaulted_GetRef();
-					EntityObject->TryGetNumberField(TEXT("id"), Entity.Id);
-					EntityObject->TryGetStringField(TEXT("name"), Entity.Name);
-					FString SimTimeString;
-					if (EntityObject->TryGetStringField(TEXT("simTimeS"), SimTimeString))
-					{
-						Entity.SimTimeS = FCString::Atof(*SimTimeString);
-					}
-					else
-					{
-						EntityObject->TryGetNumberField(TEXT("simTimeS"), Entity.SimTimeS);
-					}
-					EntityObject->TryGetNumberField(TEXT("max_speed"), Entity.MaxSpeed);
-					EntityObject->TryGetStringField(TEXT("m_plane"), Entity.MPlane);
-					EntityObject->TryGetNumberField(TEXT("map"), Entity.Map);
-				}
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* JsonTimesteps = nullptr;
-			if (RootObject->TryGetArrayField(TEXT("simulation"), JsonTimesteps))
-			{
-				for (int32 TimestepIndex = 0; TimestepIndex < JsonTimesteps->Num(); ++TimestepIndex)
-				{
-					const TSharedPtr<FJsonObject> TimestepObject = (*JsonTimesteps)[TimestepIndex].IsValid()
-						                                               ? (*JsonTimesteps)[TimestepIndex]->AsObject()
-						                                               : nullptr;
-					if (!TimestepObject.IsValid())
-					{
-						continue;
-					}
-
-					const TArray<TSharedPtr<FJsonValue>>* JsonSamples = nullptr;
-					if (!TimestepObject->TryGetArrayField(TEXT("samples"), JsonSamples))
-					{
-						continue;
-					}
-
-					for (const TSharedPtr<FJsonValue>& SampleValue : *JsonSamples)
-					{
-						const TSharedPtr<FJsonObject> SampleObject = SampleValue.IsValid() ? SampleValue->AsObject() : nullptr;
-						if (!SampleObject.IsValid())
-						{
-							continue;
-						}
-
-						FMobiusAgentSampleData& Sample = OutData.Samples.AddDefaulted_GetRef();
-						Sample.TimestepIndex = TimestepIndex;
-						SampleObject->TryGetNumberField(TEXT("entity"), Sample.EntityId);
-						SampleObject->TryGetNumberField(TEXT("rotation"), Sample.Rotation);
-						SampleObject->TryGetNumberField(TEXT("speed"), Sample.Speed);
-						SampleObject->TryGetStringField(TEXT("mode"), Sample.Mode);
-
-						const TSharedPtr<FJsonObject>* PositionObject = nullptr;
-						if (SampleObject->TryGetObjectField(TEXT("position"), PositionObject) && PositionObject && PositionObject->IsValid())
-						{
-							(*PositionObject)->TryGetNumberField(TEXT("x"), Sample.PositionX);
-							(*PositionObject)->TryGetNumberField(TEXT("y"), Sample.PositionY);
-							(*PositionObject)->TryGetNumberField(TEXT("z"), Sample.PositionZ);
-						}
-					}
-				}
-			}
-
-			if (OutData.Metadata.MaxNumEntities == 0)
-			{
-				OutData.Metadata.MaxNumEntities = OutData.Entities.Num();
-			}
-
-			return true;
+			return FMobiusAgentDataImporter::ParseJsonWithPullParser(FilePath, OutData, OutError);
 		}
 	};
 

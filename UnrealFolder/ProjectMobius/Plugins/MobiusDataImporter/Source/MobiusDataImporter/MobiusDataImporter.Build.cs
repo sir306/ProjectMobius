@@ -7,7 +7,19 @@ public class MobiusDataImporter : ModuleRules
 	public MobiusDataImporter(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
+
+		// simdjson (ThirdParty/simdjson, perf task A7): the amalgamated .cpp is compiled inside this
+		// module (MobiusSimdJsonAmalgamation.cpp), so keep it out of unity blobs where UE headers and
+		// their macros would leak into it.
+		bUseUnity = false;
+		PrivateIncludePaths.Add(System.IO.Path.Combine(PluginDirectory, "Source", "ThirdParty", "simdjson"));
+		// UE builds without C++ exceptions; restrict simdjson to its error-code API.
+		PrivateDefinitions.Add("SIMDJSON_EXCEPTIONS=0");
+		// UE's default /fp:fast lets MSVC fold simdjson's sign-of-zero handling
+		// ("negative ? -0.0 : 0.0" becomes +0.0), silently breaking bit-parity with the CRT-parsed
+		// pull-parser path. Parsers must be IEEE-exact; this module does no hot FP math.
+		FPSemantics = FPSemanticsMode.Precise;
+
 		PublicIncludePaths.AddRange(
 			new string[] {
 				// ... add public include paths required here ...

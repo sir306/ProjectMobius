@@ -1,4 +1,19 @@
-# ThirdParty — vendored HDF5
+# ThirdParty — vendored libraries
+
+## simdjson (JSON import fast path, perf task A7)
+
+- `simdjson/` — the upstream amalgamated release of [simdjson](https://github.com/simdjson/simdjson)
+  **v4.6.4** (`simdjson.h` + `simdjson.cpp` + `LICENSE`, Apache-2.0), byte-identical to the release
+  assets — never edit these files; to upgrade, replace both with a newer amalgamation and re-run the
+  `ProjectMobius.SimData.JsonParserParity` automation test.
+- Compiled inside the MobiusDataImporter module via `Private/MobiusSimdJsonAmalgamation.cpp`
+  (wrapped in `THIRD_PARTY_INCLUDES_START/END`); consumed only through
+  `Private/MobiusSimdJson.h`. `SIMDJSON_EXCEPTIONS=0` is forced in `MobiusDataImporter.Build.cs`
+  because UE compiles without exception support — only simdjson's error-code API may be used.
+- Runtime CPU dispatch is automatic (SSE4.2/AVX2 on x64, NEON on arm64), so the same source works
+  for the future macOS target.
+
+## HDF5
 
 ## Layout
 
