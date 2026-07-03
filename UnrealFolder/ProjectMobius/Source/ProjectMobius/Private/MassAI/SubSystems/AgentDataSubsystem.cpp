@@ -355,7 +355,7 @@ void UAgentDataSubsystem::CreateJsonReaderAndString(FString& OutJsonString, TSha
 	OutJsonReader = TJsonReaderFactory<TCHAR>::Create(OutJsonString);
 }
 
-FProcessAgentSimulationDataRunnable::FProcessAgentSimulationDataRunnable(FString InAgentDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner)
+FProcessAgentSimulationDataRunnable::FProcessAgentSimulationDataRunnable(FString InAgentDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner, bool bAutoStartThread)
 {
 	// Set the owner subsystem if valid
 	if (Owner.IsValid())
@@ -383,6 +383,13 @@ FProcessAgentSimulationDataRunnable::FProcessAgentSimulationDataRunnable(FString
 	}
 
 
+
+	// Test seam (PRD 02 T5): automation tests pass bAutoStartThread=false and call Run() on their
+	// own thread so the import runs synchronously and its structures can be inspected.
+	if (!bAutoStartThread)
+	{
+		return;
+	}
 
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
 #if !UE_BUILD_SHIPPING
@@ -919,7 +926,9 @@ void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 		Subsys->LoadingTaskQueue.Enqueue(TEXT("Calculating Smoothed Step Movement Brackets..."));
 	}
 
+	const double BracketStart = FPlatformTime::Seconds();
 	CalcSmoothedStepMovementBrackets(AgentDataArray);
+	ImportTimings.BracketSeconds = FPlatformTime::Seconds() - BracketStart;
 
 	if (bShouldStop)
 	{
@@ -943,6 +952,7 @@ void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 		// v2 (A6): the metadata block (MaxAgents / source format / per-entity info) makes the cache
 		// self-sufficient for the fast-reload path. Entities is still populated here — the game thread
 		// moves it into CachedEntityData only after bIsDataLoaded is set below.
+		const double CacheWriteStart = FPlatformTime::Seconds();
 		MobiusSimCache::WriteCacheForImport(
 			SimulationDataFilePath,
 			*AgentMovementInfoData.SimulationData,
@@ -953,6 +963,7 @@ void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 			static_cast<uint8>(AgentFileFormat),
 			AgentSimulationData.Entities,
 			bShouldStop);
+		ImportTimings.CacheWriteSeconds = FPlatformTime::Seconds() - CacheWriteStart;
 	}
 
 	if (bShouldStop)
@@ -1050,6 +1061,8 @@ bool FProcessAgentSimulationDataRunnable::TryFastReloadFromCache()
 uint32 FProcessAgentSimulationDataRunnable:: Run()
 {
 	bIsRunning = true;
+	ImportTimings = FMobiusImportTimings();
+	const double RunTotalStart = FPlatformTime::Seconds();
 
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot SnapRunStart = FMobiusMemSnapshot::Take(TEXT("Run_Start"));
@@ -1069,8 +1082,11 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 	// A6: fast-reload — a valid v2 cache makes the source parse unnecessary (measured: 22 s JSON parse
 	// vs ~1-2 s binary decode). Any failure (no cache, stale hash, v1, corruption) falls through
 	// silently to the normal full import, which rewrites the cache.
+	const double FastReloadStart = FPlatformTime::Seconds();
 	if (MobiusSimCache::IsFastReloadEnabled() && TryFastReloadFromCache())
 	{
+		ImportTimings.bUsedFastReload = true;
+		ImportTimings.FastReloadSeconds = FPlatformTime::Seconds() - FastReloadStart;
 #if !UE_BUILD_SHIPPING
 		FMobiusMemSnapshot::Take(TEXT("Run_FastReloadDecoded")).LogDelta(SnapRunStart);
 #endif
@@ -1085,16 +1101,19 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 #if !UE_BUILD_SHIPPING
 		FMobiusMemSnapshot::Take(TEXT("Run_FastReloadComplete")).LogDelta(SnapRunStart);
 #endif
+		ImportTimings.TotalSeconds = FPlatformTime::Seconds() - RunTotalStart;
 		bIsRunning = false;
 		return 0;
 	}
 
 	// TODO: this has no way to know progress of loading file at the moment so we need to think on how to do this better
+	const double ParseStart = FPlatformTime::Seconds();
 	if (!LoadFileAndDeserialize())
 	{
 		bIsRunning = false;
 		return 0;
 	}
+	ImportTimings.ParseSeconds = FPlatformTime::Seconds() - ParseStart;
 
 #if !UE_BUILD_SHIPPING
 	FMobiusMemSnapshot::Take(TEXT("Run_AfterDeserialize")).LogDelta(SnapRunStart);
@@ -1140,6 +1159,7 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 	RunSimulationDataGatheringLoop(bCalculateTimeBetweenSteps, bCalculateMaxTime);
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogTemp, Display, TEXT("Agent data gather loop finish %.3f ms"), (FPlatformTime::Seconds() - GatherLoopStart) * 1000.0);
+	ImportTimings.ConvertSeconds = FPlatformTime::Seconds() - GatherLoopStart;
 #endif
 
 #if !UE_BUILD_SHIPPING
@@ -1197,6 +1217,7 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 	FMobiusMemSnapshot::Take(TEXT("Run_FinalizeComplete")).LogDelta(SnapRunStart);
 #endif
 
+	ImportTimings.TotalSeconds = FPlatformTime::Seconds() - RunTotalStart;
 	bIsRunning = false;
 	return 0; // return 0 to indicate that the thread has ended
 }
@@ -1324,6 +1345,16 @@ void FProcessAgentSimulationDataRunnable::CalcSmoothedStepMovementBrackets(const
 			WriteAnimData(t, EPedestrianMovementBracket::Emb_NotMoving);
 		}
 		if (bShouldStop) break;
+
+		// Agent never reached walking speed (stationary throughout, or too few records to derive
+		// motion): every sample is already bracketed Emb_NotMoving above and there is no step to
+		// assess — without this guard RecordVectors[t] below indexes one past the end (found by
+		// ProjectMobius.SimData.ImportPipelineStructure, PRD 02 T5).
+		if (t >= RecordVectors.Num())
+		{
+			continue;
+		}
+
 		// Calculate the sum-vector speed for the next rolling block of timed records to more accurately estimate gait speed
 		// Note: we increase and decrease tSpan (rough timesteps in a step) depending on the required step duration
 		//
@@ -1387,11 +1418,25 @@ int FProcessAgentSimulationDataRunnable::CalculateSrcVectors(TArray<FVector>& Ve
 		}
 		Vec3D[i] = Vec3D[i - 1]; // set the last vector to the previous vector to avoid out of bounds error
 	}
+	else
+	{
+		// Too few records to derive motion. The scratch array is REUSED across agents, so these
+		// entries must be zeroed explicitly or the previous agent's vectors leak into this
+		// agent's brackets (found by ProjectMobius.SimData.ImportPipelineStructure, PRD 02 T5).
+		for (FVector& Vec : Vec3D)
+		{
+			Vec = FVector::ZeroVector;
+		}
+	}
 	return (int)Sample.MovementData.Num();
 }
 void FProcessAgentSimulationDataRunnable::AddManyVectors(TArray<FVector>& Vec3D, int TStartStep, int TSpanStepPts, FVector& SumVec)
 {
-	for (int i = TStartStep; i < TStartStep + TSpanStepPts; i++){
+	// Clamp to the array: the caller's step span (minTimedSrcRecordsForStep, ~6 records at 10 Hz)
+	// can exceed a short trajectory, which walked off the end here (import crash on agents with
+	// fewer records than one step span — found by PRD 02 T5's structure test).
+	const int EndStep = FMath::Min(TStartStep + TSpanStepPts, Vec3D.Num());
+	for (int i = FMath::Max(TStartStep, 0); i < EndStep; i++){
 		SumVec = SumVec + Vec3D[i];
 	}
 }

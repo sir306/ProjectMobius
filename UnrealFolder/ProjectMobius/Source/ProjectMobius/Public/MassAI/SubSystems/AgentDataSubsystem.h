@@ -240,9 +240,32 @@ struct FVatAnimDataMB
 //#pragma pack(pop)   // Restore previous alignment
 
 /**
+ * Wall-clock phase timings of one import run (PRD 02 T6). Filled by
+ * FProcessAgentSimulationDataRunnable::Run; consumed by the Mobius.Timing.* automation tests
+ * (ratio assertions + trend CSV). All values in seconds; phases that did not run stay 0.
+ */
+struct FMobiusImportTimings
+{
+	/** LoadFileAndDeserialize: source bytes -> FMobiusAgentSimulationData (JSON/HDF5 parse). */
+	double ParseSeconds = 0.0;
+	/** RunSimulationDataGatheringLoop: dense per-timestep map build + unit conversions. */
+	double ConvertSeconds = 0.0;
+	/** CalcSmoothedStepMovementBrackets. */
+	double BracketSeconds = 0.0;
+	/** WriteCacheForImport (A3; includes the reuse-check when it skips). */
+	double CacheWriteSeconds = 0.0;
+	/** TryFastReloadFromCache (A6) when it succeeded. */
+	double FastReloadSeconds = 0.0;
+	/** Whole Run(). */
+	double TotalSeconds = 0.0;
+	/** True when this run served the .msc cache instead of parsing the source. */
+	bool bUsedFastReload = false;
+};
+
+/**
  * Runnable class to process simulation data in a separate thread
  */
-class FProcessAgentSimulationDataRunnable : public FRunnable
+class PROJECTMOBIUS_API FProcessAgentSimulationDataRunnable : public FRunnable
 {
 public:
 	/**
@@ -250,8 +273,12 @@ public:
 	 * It will broadcast the percentage of the data loaded and when complete
 	 *
 	 * @param[FString] InJsonDataFile: The JSON data file to load
+	 * @param bAutoStartThread When false, no worker thread is spawned and the caller drives Run()
+	 *        itself — automation tests use this to execute the import synchronously and inspect
+	 *        the produced structures before destruction (the destructor resets them). Production
+	 *        code always uses the default.
 	 */
-	explicit FProcessAgentSimulationDataRunnable(FString InAgentDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner);
+	explicit FProcessAgentSimulationDataRunnable(FString InAgentDataFile, TWeakObjectPtr<UAgentDataSubsystem> Owner, bool bAutoStartThread = true);
 
 	/** Destructor */
 	virtual ~FProcessAgentSimulationDataRunnable() override;
@@ -372,6 +399,9 @@ public:
 
 	/** Imported agent simulation data (public for subsystem access) */
 	FMobiusAgentSimulationData AgentSimulationData = FMobiusAgentSimulationData();
+
+	/** Phase timings of the last Run() (PRD 02 T6) — see FMobiusImportTimings. */
+	FMobiusImportTimings ImportTimings;
 
 protected:
 	/** Pointer to a thread */
