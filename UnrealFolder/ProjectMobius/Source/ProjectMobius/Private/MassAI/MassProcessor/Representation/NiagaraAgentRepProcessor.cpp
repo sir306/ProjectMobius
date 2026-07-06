@@ -47,6 +47,20 @@
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "Async/ParallelFor.h"
+#include "HAL/IConsoleManager.h"
+
+// The header keeps a plain literal to preserve its forward declarations — hold the two in sync here
+static_assert(UNiagaraAgentRepProcessor::DemographicSlotCount == MobiusNiagaraDemographics::NumSlots,
+	"DemographicSlotCount must match MobiusNiagaraDemographics::NumSlots");
+
+// Gates the per-demographic Niagara array uploads on content changes; 0 = legacy upload-every-frame.
+// Default stays 0 until the scripted camera+scrub A/B verifies identical rendered output (PRD B8).
+static TAutoConsoleVariable<int32> CVarMobiusChangedOnlyUpload(
+	TEXT("mobius.Render.ChangedOnlyUpload"),
+	0,
+	TEXT("1 = re-upload a demographic's Niagara agent arrays only when their content changed since its last upload (paused/idle frames skip all 15 SetNiagaraArray marshals). 0 = upload every frame (legacy)."),
+	ECVF_Default);
 
 
 UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
@@ -157,11 +171,30 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	}));
 	UNiagaraComponent* NiagaraComp = NiagaraAgentRepActor ? NiagaraAgentRepActor->GetNiagaraComponent() : nullptr;
 
-	SetNiagaraAgentData(NiagaraComp, TEXT("MaleAdultAgent"), MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("ElderlyMaleAgent"), ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+	// Changed-only upload (mobius.Render.ChangedOnlyUpload): skip a demographic's three array
+	// re-marshals while nothing in it changed since its last upload. Off (0) = legacy every-frame path.
+	const bool bChangedOnlyUpload = CVarMobiusChangedOnlyUpload.GetValueOnGameThread() != 0;
+	auto UploadAgentData = [&](const int32 Slot, const TCHAR* BaseName,
+		const TArray<FVector4>& Locations, const TArray<FQuat>& Rotations, const TArray<int32>& AnimationStates)
+	{
+		if (bChangedOnlyUpload && !DemographicDirty[Slot].load(std::memory_order_relaxed))
+		{
+			return;
+		}
+		SetNiagaraAgentData(NiagaraComp, BaseName, Locations, Rotations, AnimationStates);
+		// Mirror SetNiagaraAgentData's early-out: only mark clean when the upload actually ran
+		if (NiagaraComp && Locations.Num() > 0)
+		{
+			DemographicDirty[Slot].store(false, std::memory_order_relaxed);
+		}
+	};
+
+	// Slot indices follow MobiusNiagaraDemographics::ComputeSlot; call order preserved from the legacy path
+	UploadAgentData(0, TEXT("MaleAdultAgent"), MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
+	UploadAgentData(2, TEXT("ElderlyMaleAgent"), ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
+	UploadAgentData(1, TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
+	UploadAgentData(3, TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
+	UploadAgentData(4, TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
 
 }
 
@@ -175,65 +208,83 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 
 	auto Entities = Context.GetEntities();
 
-	for (int i = 0; i < Entities.Num(); i++)
+	// Slot-indexed dispatch tables replace the legacy per-agent gender/age branch; the slot was
+	// routed once at spawn (AgentRepresentation_MOP). Table order = MobiusNiagaraDemographics::ComputeSlot.
+	TArray<FVector4>* const LocationsBySlot[MobiusNiagaraDemographics::NumSlots] = {
+		&MaleAdultAgentLocationAndScales, &FemaleAdultAgentLocationAndScales,
+		&ElderlyMaleAdultAgentLocationAndScales, &ElderlyFemaleAdultAgentLocationAndScales,
+		&ChildrenAgentLocationAndScales };
+	TArray<FQuat>* const RotationsBySlot[MobiusNiagaraDemographics::NumSlots] = {
+		&MaleAdultAgentRotations, &FemaleAdultAgentRotations,
+		&ElderlyMaleAdultAgentRotations, &ElderlyFemaleAdultAgentRotations,
+		&ChildrenAgentRotations };
+	TArray<int32>* const AnimationStatesBySlot[MobiusNiagaraDemographics::NumSlots] = {
+		&MaleAnimationStates, &FemaleAnimationStates,
+		&ElderlyMaleAnimationStates, &ElderlyFemaleAnimationStates,
+		&ChildrenAnimationStates };
+
+	// Safe to run parallel: every routed entity writes only its own (slot, InstanceID) array element
+	// (InstanceID is unique within a demographic and every routed agent has a distinct one) plus its own
+	// rendering-fragment element — all write targets disjoint. Unrouted agents (Slot >= NumSlots, i.e.
+	// InvalidSlot) are skipped below, so they can't alias index 0. The Niagara SetNiagaraArray* uploads
+	// stay on the game thread after the loop (see Execute).
+	ParallelFor(Entities.Num(), [&](const int32 i)
 	{
-		auto EntityMovement = EntityMovementFragment[i];
-		auto& EntityRendering = EntityRenderingFragment[i];
+		FEntityRenderingFragment& EntityRendering = EntityRenderingFragment[i];
+
+		const uint8 Slot = EntityRendering.NiagaraDemographicSlot;
+		if (Slot >= MobiusNiagaraDemographics::NumSlots)
+		{
+			// Agent was never routed into a demographic array at spawn (only Ead_Default today,
+			// currently unreachable) — nothing to write. Guards the dispatch index too.
+			return;
+		}
+
+		const FEntityMovementFragment& EntityMovement = EntityMovementFragment[i];
 		const bool bIsDead = AgentHealthFragments[i].bIsDead;
 
 		// Get the entity instance index
-		int32 EntityInstanceID = EntityRendering.InstanceID;
+		const int32 EntityInstanceID = EntityRendering.InstanceID;
 
-		// check if the entity is a child
-		if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
+		if (SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead,
+			*LocationsBySlot[Slot], *RotationsBySlot[Slot], *AnimationStatesBySlot[Slot]))
 		{
-			SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+			// relaxed is enough: racing writers all store true; read/clear happens game-thread-only
+			DemographicDirty[Slot].store(true, std::memory_order_relaxed);
 		}
-		// check if elderly
-		else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
-		{
-			if (EntityRendering.bIsMale)
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
-			}
-			else
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
-			}
-
-		}
-		else // entity is an adult
-		{
-			if (EntityRendering.bIsMale)
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
-			}
-			else
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
-			}
-		}
-	}
+	});
 }
 
-void UNiagaraAgentRepProcessor::SetAgentData(
-	int32 Index,
-	const FEntityMovementFragment EntityMovementFragment,
+bool UNiagaraAgentRepProcessor::SetAgentData(
+	const int32 Index,
+	const FEntityMovementFragment& EntityMovementFragment,
 	FEntityRenderingFragment& EntityRenderingFragment,
 	const bool bIsDead,
 	TArray<FVector4>& LocationAndScales,
 	TArray<FQuat>& Rotations,
 	TArray<int32>& AnimationStates)
 {
-	LocationAndScales[Index] = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, EntityRenderingFragment.bRenderAgent ? 1.0f : 0.0f);
-	Rotations[Index] = EntityMovementFragment.CurrentRotation.Quaternion();
+	const FVector4 NewLocationAndScale = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, EntityRenderingFragment.bRenderAgent ? 1.0f : 0.0f);
+	const FQuat NewRotation = EntityMovementFragment.CurrentRotation.Quaternion();
 	// TODO: Replace the stopped death animation with hiding the mesh and placing a death marker at the agent location.
-	AnimationStates[Index] = bIsDead
+	const int32 NewAnimationState = bIsDead
 		? GetIntAnimState(EPedestrianMovementBracket::Emb_NotMoving)
 		: GetIntAnimState(EntityMovementFragment.CurrentMovementBracket);
 
+	// Exact (bitwise-value) compare before write: an unchanged agent must not dirty its
+	// demographic's upload — this is what makes paused/idle frames upload nothing
+	const bool bChanged = LocationAndScales[Index] != NewLocationAndScale
+		|| Rotations[Index] != NewRotation
+		|| AnimationStates[Index] != NewAnimationState;
+
+	LocationAndScales[Index] = NewLocationAndScale;
+	Rotations[Index] = NewRotation;
+	AnimationStates[Index] = NewAnimationState;
+
 	// update entity destroy state
 	EntityRenderingFragment.bReadyToDestroy = !EntityRenderingFragment.bRenderAgent;
+
+	return bChanged;
 }
 
 int32 UNiagaraAgentRepProcessor::GetIntAnimState(EPedestrianMovementBracket AnimState)
@@ -315,6 +366,12 @@ void UNiagaraAgentRepProcessor::RegisterProperties(FMassExecutionContext& Contex
 
 	// Map the agent count to the array
 	MapAgentCountToArray(Context.GetMutableSharedFragment<FNiagaraStatsFragment>());
+
+	// Freshly (re)copied arrays must upload regardless of past content compares
+	for (std::atomic<bool>& Dirty : DemographicDirty)
+	{
+		Dirty.store(true, std::memory_order_relaxed);
+	}
 
 	bRegisteredProperties = true;
 }
@@ -472,6 +529,12 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 
 	// If we are paused then we need to pause the animations and vice versa
 	PauseResumeAnimations(bLastPauseLoop);
+
+	// A recreated system instance must get the next regular upload even if agent content is unchanged
+	for (std::atomic<bool>& Dirty : DemographicDirty)
+	{
+		Dirty.store(true, std::memory_order_relaxed);
+	}
 
 	// Activate the Niagara System
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);

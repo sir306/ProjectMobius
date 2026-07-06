@@ -109,6 +109,53 @@ struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
 };
 
 /**
+ * Niagara demographic slot routing — render dispatch only.
+ * Slot order matches UNiagaraAgentRepProcessor::MapAgentCountToArray:
+ * 0 = male adult, 1 = female adult, 2 = elderly male, 3 = elderly female, 4 = child.
+ */
+namespace MobiusNiagaraDemographics
+{
+	/** Number of demographic slots (and Niagara array triplets) */
+	inline constexpr uint8 NumSlots = 5;
+
+	/** Sentinel for an agent that was NOT routed into any demographic array at spawn — the extract
+	 *  skips it (Slot >= NumSlots). Any value >= NumSlots works; 0xFF is chosen to be obviously invalid. */
+	inline constexpr uint8 InvalidSlot = 0xFF;
+
+	/**
+	 * Compute the render dispatch slot for an agent. For the three demographics the spawn path actually
+	 * routes (child / elderly / adult, each ×gender) this reproduces the legacy per-frame extract branch
+	 * exactly — verified by ProjectMobius.Render.SlotDispatchMatchesBranch.
+	 *
+	 * Ead_Default is the ONLY case the spawn switch (AgentRepresentation_MOP::ProcessEntity) leaves
+	 * unrouted: it assigns no InstanceID (stays 0) and Adds the agent to no array. Returning InvalidSlot
+	 * makes the parallel extract skip it, which (1) keeps the per-(slot,InstanceID) write targets truly
+	 * unique so ParallelFor is race-free by construction, and (2) stops an unrouted agent aliasing the
+	 * real adult holding InstanceID 0. The legacy sequential extract instead wrote such an agent into the
+	 * adult arrays at index 0 (deterministic last-writer-wins) — a latent bug that is currently
+	 * unreachable (no runtime path assigns Ead_Default; fragment default is Ead_Adult). Skipping it is a
+	 * defensive hardening of that unreachable path, so reachable output is unchanged (Invariant 4).
+	 */
+	FORCEINLINE uint8 ComputeSlot(const bool bIsMale, const EAgeDemographic AgeDemographic)
+	{
+		if (AgeDemographic == EAgeDemographic::Ead_Child)
+		{
+			return 4;
+		}
+		if (AgeDemographic == EAgeDemographic::Ead_Elderly)
+		{
+			return bIsMale ? 2 : 3;
+		}
+		if (AgeDemographic == EAgeDemographic::Ead_Adult)
+		{
+			return bIsMale ? 0 : 1;
+		}
+		// Ead_Default (or any future unrouted demographic): not rendered — see doc comment above
+		return InvalidSlot;
+	}
+}
+
+/**
  * For every entity that is rendered, we need to have a rendering fragment, this tells the system whether the
  * entity should be rendered, and if so what properties it has, such as:
  * - what instance ID it is associated with
@@ -153,6 +200,19 @@ struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
 	/** show this pedestrian details */
 	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
 	uint8 showPedestrianStats = 0;// 0 = don't show, 1 = show, TODO: 2 = show and highlight
+
+	/**
+	 * Render-only camera visibility (default true = drawn). Written by the camera cull (B7),
+	 * read by EXACTLY ONE consumer: the Niagara W term. NEVER an analysis gate — analysis gates
+	 * on bRenderAgent above (sample presence + tenability), which culling must never touch.
+	 */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	bool bVisibleToCamera = true;
+
+	/** Demographic dispatch slot for the Niagara arrays, set once at spawn alongside InstanceID
+	 *  (see MobiusNiagaraDemographics::ComputeSlot) */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	uint8 NiagaraDemographicSlot = 0;
 };
 
 /**

@@ -27,6 +27,7 @@
 #include "CoreMinimal.h"
 #include "MassProcessor.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
+#include <atomic>
 #include "NiagaraAgentRepProcessor.generated.h"
 
 
@@ -49,7 +50,12 @@ class PROJECTMOBIUS_API UNiagaraAgentRepProcessor : public UMassProcessor
 
 public:
 	UNiagaraAgentRepProcessor();
-	
+
+	/** Demographic slot count — must equal MobiusNiagaraDemographics::NumSlots (static_assert in the .cpp);
+	 *  kept as a plain literal here so the header keeps its forward declarations. Public so the file-scope
+	 *  static_assert in the .cpp can read it. */
+	static constexpr int32 DemographicSlotCount = 5;
+
 protected:
 	virtual void ConfigureQueries() override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
 
@@ -71,11 +77,12 @@ protected:
 	 * @param[TArray<FVector4>] LocationAndScales - The array to set the data at for the location and scales
 	 * @param[TArray<FQuat>] Rotations - The array to set the data at for the rotations
 	 * @param[TArray<int32>] AnimationStates - The array to set the data at for the animation states
-	 * 
+	 *
+	 * @return[bool] True if any written array value changed (feeds the per-demographic upload dirty bit)
 	 */
-	static void SetAgentData(
+	static bool SetAgentData(
 		int32 Index,
-		FEntityMovementFragment EntityMovementFragment,
+		const FEntityMovementFragment& EntityMovementFragment,
 		FEntityRenderingFragment& EntityRenderingFragment,
 		bool bIsDead,
 		TArray<FVector4>& LocationAndScales,
@@ -253,4 +260,12 @@ private:
 	// last current time value
 	UPROPERTY()
 	float LastUpdatedCurrentTime = 0.0f;
+
+	/**
+	 * Per-demographic upload dirty bits, indexed by MobiusNiagaraDemographics slot order.
+	 * Set (relaxed) from the parallel extract when an agent's extracted values changed — every racing
+	 * writer stores the same value (true) — and read + cleared only on the game thread when that
+	 * demographic uploads. Start dirty so the first frame always uploads.
+	 */
+	std::atomic<bool> DemographicDirty[DemographicSlotCount] = { true, true, true, true, true };
 };

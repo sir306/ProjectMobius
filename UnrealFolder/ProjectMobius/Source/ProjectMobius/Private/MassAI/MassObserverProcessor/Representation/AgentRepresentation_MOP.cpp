@@ -272,6 +272,11 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 	FQuat RotationQuat = EntityMovementFrag.CurrentRotation.Quaternion();
 	int32 AnimationState = 0;
 
+	// Route once at spawn: the per-frame extract (UNiagaraAgentRepProcessor) dispatches by this slot
+	// instead of re-branching on gender/age for every agent every frame
+	EntityRenderingFrag.NiagaraDemographicSlot =
+		MobiusNiagaraDemographics::ComputeSlot(EntityRenderingFrag.bIsMale, EntityRenderingFrag.AgeDemographic);
+
 	if (EntityRenderingFrag.bIsMale)
 	{
 		switch (EntityRenderingFrag.AgeDemographic)
