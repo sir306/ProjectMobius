@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -30,34 +30,34 @@
 
 class UTextBlock;
 /**
- * 
+ *
  */
 UCLASS()
 class MOBIUSWIDGETS_API UButtonWithText : public UBaseButton
 {
 	GENERATED_BODY()
 
-	
+
 public:
 	UButtonWithText();
-	
+
 	/**
 	 * The SynchronizeProperties function is called when the widget is constructed,
 	 * this is where we can apply our custom style to the button.
 	 */
 	virtual void SynchronizeProperties() override;
-	
+
 	/**
 	 * By overriding the ApplyMobiusButtonStyle method, which is called in the synchronised method in the parent,
 	 * the properties of the button text can be set or modified.
 	 */
 	virtual void ApplyMobiusButtonStyle() override;
-	
+
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
 	UFUNCTION(BlueprintCallable)
 	void SetButtonWithNewText(FText NewButtonText);
-	
+
 	/**
 	 * To change the style of the button from default to clicked to give the ribbon appearance on the widget,
 	 * we can bind to the on clicked method to flip between the two style sheets */
@@ -71,7 +71,7 @@ public:
 	/** Slate style for the text */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
 	TObjectPtr<USlateWidgetStyleAsset> MobiusButtonTextStyle;
-	
+
 	/** Slate style for the button - the default startup phase */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
 	TObjectPtr<USlateWidgetStyleAsset> ButtonStyleDefault;

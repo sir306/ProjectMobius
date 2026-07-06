@@ -23,16 +23,20 @@
 
 #include "Core/MobiusWidgets.h"
 
+#include "Style/MobiusStyle.h"
+
 #define LOCTEXT_NAMESPACE "FMobiusWidgetsModule"
 
 void FMobiusWidgetsModule::StartupModule()
 {
-    
+    // Register before any widget constructs (module is Runtime/Default-phase) so native widgets can
+    // rely on FMobiusStyle::Get() as their style fallback.
+    FMobiusStyle::Initialize();
 }
 
 void FMobiusWidgetsModule::ShutdownModule()
 {
-    
+    FMobiusStyle::Shutdown();
 }
 
 #undef LOCTEXT_NAMESPACE

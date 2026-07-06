@@ -24,6 +24,7 @@
 
 #include "UI/Components/ButtonWithText.h"
 #include "Components/TextBlock.h"
+#include "Style/MobiusStyle.h"
 #include "Widgets/SWidget.h"
 #include "Slate.h"
 #include "Components/ButtonSlot.h"
@@ -51,20 +52,21 @@ void UButtonWithText::ApplyMobiusButtonStyle()
 TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 {
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	// Custom Button Text
+	// Custom Button Text. Editor-assigned SWS_* style assets take precedence; the shared Mobius
+	// style set is the fallback so unstyled buttons still match the app theme (was FCoreStyle).
 	MyButtonText =
 		SNew(STextBlock)
 		.Text(ButtonTextValue)
-		.TextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>() 
-			           : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+		.TextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>()
+			           : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"))
 		.TextShapingMethod(ETextShapingMethod::FullShaping);
-	
+
 	MyButton = SNew(SButton)
-		.ButtonStyle(ButtonStyleDefault ? ButtonStyleDefault->GetStyle<FButtonStyle>() 
-			             : &FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button"))
+		.ButtonStyle(ButtonStyleDefault ? ButtonStyleDefault->GetStyle<FButtonStyle>()
+			             : &FMobiusStyle::Get().GetWidgetStyle<FButtonStyle>("Mobius.Button"))
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Center)
-		.ContentPadding(FMargin(4.f, 2.f))
+		.ContentPadding(FMobiusStyle::Get().GetMargin("Mobius.Padding.Button"))
 		[
 			MyButtonText.ToSharedRef()
 		]

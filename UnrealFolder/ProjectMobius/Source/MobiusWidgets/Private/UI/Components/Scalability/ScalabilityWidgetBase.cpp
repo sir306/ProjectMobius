@@ -29,8 +29,23 @@ void UScalabilityWidgetBase::NativeConstruct()
 
 void UScalabilityWidgetBase::InitializeScalabilityLevel()
 {
+	// Design-time contexts (UMG Designer preview, asset thumbnails, FWidgetRenderer) have no valid
+	// game world or world subsystems. NativePreConstruct runs this in those contexts, where
+	// GetWorld()->GetSubsystem<>() dereferences a torn-down subsystem collection and crashes
+	// (GetSubsystemInternal -> TMapBase::FindRef). Only touch the subsystem in a real game/PIE world.
+	if (IsDesignTime())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld())
+	{
+		return;
+	}
+
 	// Ensure the widget is initialized with the current scalability level
-	if (auto PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
+	if (auto PerformanceUtilSubsystem = World->GetSubsystem<UPerformanceUtilSubsystem>())
 	{
 		ScalabilityLevel = PerformanceUtilSubsystem->GetScalabilityLevel(ScalabilityCategory);
 
@@ -51,7 +66,20 @@ void UScalabilityWidgetBase::InitializeScalabilityLevel()
 
 void UScalabilityWidgetBase::UpdateScalabilityLevel()
 {
-	if (auto PerformanceUtilSubsystem = GetWorld()->GetSubsystem<UPerformanceUtilSubsystem>())
+	// Same design-time / world guard as InitializeScalabilityLevel — NativeConstruct can also fire
+	// in preview/render contexts with no valid game world.
+	if (IsDesignTime())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld())
+	{
+		return;
+	}
+
+	if (auto PerformanceUtilSubsystem = World->GetSubsystem<UPerformanceUtilSubsystem>())
 	{
 		if (ScalabilityCategory != ESc_Resolution)
 		{

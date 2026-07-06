@@ -3,17 +3,20 @@
 
 #include "UI/Components/FieldAndTextWidget.h"
 #include "Slate/Components/SFieldAndTitleText.h"
+#include "Style/MobiusStyle.h"
 
 TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 {
+	// Editor-assigned SWS_* style assets take precedence; shared Mobius style set is the fallback
+	// so unstyled instances still match the app theme (was FCoreStyle NormalText for both).
 	FieldAndTextWidget = SNew(SFieldAndTitleText)
 		.FieldText(FieldText)
 		.TitleText(TitleText)
 		.VerticalStacking(bIsTitleAboveField)
 		.AutoCenterTextToWidget(bAutoCenter)
-		.TitleTextStyle(TitleTextStyle ? TitleTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-		.FieldTextStyle(FieldTextStyle ? FieldTextStyle->GetStyle<FTextBlockStyle>() : &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"));
-	
+		.TitleTextStyle(TitleTextStyle ? TitleTextStyle->GetStyle<FTextBlockStyle>() : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Header"))
+		.FieldTextStyle(FieldTextStyle ? FieldTextStyle->GetStyle<FTextBlockStyle>() : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field"));
+
 	return FieldAndTextWidget.ToSharedRef();
 }
 
