@@ -183,6 +183,9 @@ UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0
 UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/lib/libhdf5.settings
 UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/share/
 
+# Old renamed plugin fully removed (Hdf5DataPlugin -> MobiusDataImporter); ignore any stray regeneration.
+UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/
+
 # HDF5 third-party (scoped to vendored path)
 UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/**/java/.classes
 UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/**/*~
