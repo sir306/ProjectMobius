@@ -28,13 +28,12 @@
 #include "UI/LoadSave/LoadDataParentWidget.h"
 #include "LoadBRiskDataWidget.generated.h"
 
-class UCheckBox;
-
 /**
- * Load widget for B-Risk .smv scenarios, plus the B-Risk visualization toggles.
+ * Load widget for B-Risk .smv scenarios.
  * Mirrors ULoadAgentDataWidget / ULoadMeshWidget but uses the B-Risk file dialog and the game
- * instance's B-Risk path (which drives the existing load chain). It also hosts toggles that set
- * UBRiskDataSubsystem load-time flags (timeline timing, room geometry).
+ * instance's B-Risk path (which drives the existing load chain). The B-Risk load-time toggles
+ * (playback timing, room geometry) now live in USimulationSettingsWidget so they can be laid out
+ * beside the file inputs rather than nested in this loader.
  */
 UCLASS()
 class MOBIUSWIDGETS_API ULoadBRiskDataWidget : public ULoadDataParentWidget
@@ -42,9 +41,6 @@ class MOBIUSWIDGETS_API ULoadBRiskDataWidget : public ULoadDataParentWidget
 	GENERATED_BODY()
 
 public:
-	// Constructor
-	virtual void NativeConstruct() override;
-
 	/**
 	 * Method to call when the SelectFileButton is clicked.
 	 * Overridden from the parent to open the B-Risk .smv file dialog.
@@ -74,22 +70,4 @@ public:
 	/** Handler for file dialog errors. Displays error popup to user. */
 	UFUNCTION()
 	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
-
-protected:
-	/** Toggle: use the B-Risk zone-CSV Time column to drive shared playback timing on the next load. */
-	UFUNCTION()
-	void OnUseBRiskTimingChanged(bool bIsChecked);
-
-	/** Toggle: generate solid room-wall geometry from the B-Risk scenario on the next load. */
-	UFUNCTION()
-	void OnLoadRoomGeometryChanged(bool bIsChecked);
-
-private:
-	/** "Use B-Risk playback timing" toggle. Optional so the C++ works before the WBP adds the control. */
-	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
-	TObjectPtr<UCheckBox> UseBRiskTimingCheckBox;
-
-	/** "Load room geometry" toggle. Optional so the C++ works before the WBP adds the control. */
-	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
-	TObjectPtr<UCheckBox> LoadRoomGeometryCheckBox;
 };

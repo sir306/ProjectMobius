@@ -23,38 +23,9 @@
  */
 
 #include "UI/LoadSave/LoadBRiskDataWidget.h"
-#include "Components/CheckBox.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
-#include "BRisk/BRiskDataSubsystem.h"
-
-void ULoadBRiskDataWidget::NativeConstruct()
-{
-	Super::NativeConstruct();
-
-	UBRiskDataSubsystem* BRiskSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UBRiskDataSubsystem>() : nullptr;
-
-	// Toggles are optional (added in the WBP designer). Bind change events + seed the initial
-	// checked state from the subsystem so the UI reflects the current flags.
-	if (UseBRiskTimingCheckBox)
-	{
-		UseBRiskTimingCheckBox->OnCheckStateChanged.AddDynamic(this, &ULoadBRiskDataWidget::OnUseBRiskTimingChanged);
-		if (BRiskSubsystem)
-		{
-			UseBRiskTimingCheckBox->SetIsChecked(BRiskSubsystem->GetConfigureSharedPlaybackOnLoad());
-		}
-	}
-
-	if (LoadRoomGeometryCheckBox)
-	{
-		LoadRoomGeometryCheckBox->OnCheckStateChanged.AddDynamic(this, &ULoadBRiskDataWidget::OnLoadRoomGeometryChanged);
-		if (BRiskSubsystem)
-		{
-			LoadRoomGeometryCheckBox->SetIsChecked(BRiskSubsystem->GetAutoGenerateRoomGeometryOnLoad());
-		}
-	}
-}
 
 void ULoadBRiskDataWidget::OnSelectFileButtonClicked()
 {
@@ -157,30 +128,4 @@ void ULoadBRiskDataWidget::OnBRiskFileDialogClosed(const FString& SmvFilePath, b
 void ULoadBRiskDataWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
 {
 	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
-}
-
-void ULoadBRiskDataWidget::OnUseBRiskTimingChanged(bool bIsChecked)
-{
-	if (UWorld* World = GetWorld())
-	{
-		if (UBRiskDataSubsystem* BRiskSubsystem = World->GetSubsystem<UBRiskDataSubsystem>())
-		{
-			// Live: sets the flag AND re-evaluates the active clock source now (no reload),
-			// preserving the current play position and play/pause state.
-			BRiskSubsystem->SetUseBRiskTiming(bIsChecked);
-		}
-	}
-}
-
-void ULoadBRiskDataWidget::OnLoadRoomGeometryChanged(bool bIsChecked)
-{
-	if (UWorld* World = GetWorld())
-	{
-		if (UBRiskDataSubsystem* BRiskSubsystem = World->GetSubsystem<UBRiskDataSubsystem>())
-		{
-			// Live: sets the flag AND generates/tears down room geometry immediately when a
-			// scenario is already loaded.
-			BRiskSubsystem->SetRoomGeometryEnabled(bIsChecked);
-		}
-	}
 }
