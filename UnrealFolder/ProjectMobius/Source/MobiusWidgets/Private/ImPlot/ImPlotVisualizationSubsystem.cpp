@@ -13,6 +13,7 @@
 #include "InputCoreTypes.h"
 #include "Layout/Clipping.h"
 #include "Misc/App.h"
+#include "Misc/Paths.h"
 #include "Rendering/DrawElementTypes.h"
 #include "Rendering/RenderingCommon.h"
 #include "Widgets/SWindow.h"
@@ -469,11 +470,11 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
         ImGui::SetCurrentContext(State->ImGuiContext);
         ImPlot::SetCurrentContext(State->ImPlotContext);
-        EnsureSharedFontAtlas();
 
         ImGuiIO& IO = ImGui::GetIO();
         // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
         FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
+        float WindowDpiScale = 1.0f;
         if (FSlateApplication::IsInitialized())
         {
                 const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
@@ -482,6 +483,7 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 {
                         const FSlateRect ClientRect = Window->GetClientRectInScreen();
                         const float DpiScale = Window->GetDPIScaleFactor();
+                        WindowDpiScale = DpiScale;
                         const FVector2f ClientOrigin = FVector2f(ClientRect.Left, ClientRect.Top);
                         const FVector2f LocalCursorPos = (CursorPos - ClientOrigin) / DpiScale;
                         IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
@@ -497,6 +499,25 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
                 IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
         }
+
+        // (Re)bake the shared glyph atlas at this window's DPI scale. Must happen BEFORE NewFrame —
+        // the atlas is shared across all chart contexts and cannot change mid-frame. Mirrors the
+        // release logic in DestroyOverlayContext.
+        if (SharedFontBrush.IsValid() && !FMath::IsNearlyEqual(WindowDpiScale, SharedFontAtlasDpiScale, 0.05f))
+        {
+                SharedFontBrush.Reset();
+                SharedFontTextureId = 0;
+                SharedFontTextureName = NAME_None; // new name per bake — dynamic brush textures are keyed by name
+                SharedFontAtlas->Clear();
+        }
+        EnsureSharedFontAtlas(WindowDpiScale);
+
+        // Glyphs are baked at 13px * atlas scale; draw them at 13 logical units so layout metrics stay
+        // unchanged — the vertex upscale in RenderDrawData maps them 1:1 to physical pixels. Do NOT
+        // touch FontScaleDpi/CurrentDpiScale: the logical-units-in / vertex-upscale-out pipeline would
+        // double-scale.
+        ImGui::GetStyle().FontScaleMain = 1.0f / SharedFontAtlasDpiScale;
+
         // Use the same DisplaySize for both IO and ImGui window
         IO.DisplaySize = ImVec2(DisplaySize.X, DisplaySize.Y);
         IO.DeltaTime = FMath::Max(1.0e-6f, static_cast<float>(FApp::GetDeltaTime()));
@@ -678,7 +699,7 @@ void UImPlotVisualizationSubsystem::DestroyOverlayContext(FImPlotOverlayState& S
         State.bWindowOpen = true;
 }
 
-void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas()
+void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas(float InDpiScale)
 {
         if (SharedFontBrush.IsValid() || !FSlateApplication::IsInitialized())
         {
@@ -687,6 +708,29 @@ void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas()
         if (!SharedFontAtlas)
         {
                 SharedFontAtlas = IM_NEW(ImFontAtlas)();
+        }
+
+        // Bake glyphs at the window's DPI scale so they are rasterized at their final on-screen pixel
+        // size. They draw at 13 logical units (FontScaleMain = 1/scale in PaintOverlayForChart) and the
+        // vertex upscale in RenderDrawData maps them 1:1 to physical pixels. Without this the default
+        // 13px bake gets bitmap-stretched 4x at 400% OS scaling.
+        SharedFontAtlasDpiScale = FMath::Max(InDpiScale, 1.0f);
+        if (SharedFontAtlas->Fonts.Size == 0)
+        {
+                const float FontPixelSize = FMath::RoundToFloat(13.0f * SharedFontAtlasDpiScale);
+                // Prefer the engine-shipped Roboto over ImGui's embedded ProggyClean: Proggy is a
+                // pixel font designed for exactly 13px and rasterizes poorly at other sizes.
+                const FString RobotoPath = FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf");
+                if (FPaths::FileExists(RobotoPath))
+                {
+                        SharedFontAtlas->AddFontFromFileTTF(TCHAR_TO_UTF8(*RobotoPath), FontPixelSize);
+                }
+                else
+                {
+                        ImFontConfig FontConfig;
+                        FontConfig.SizePixels = FontPixelSize;
+                        SharedFontAtlas->AddFontDefault(&FontConfig);
+                }
         }
 
         unsigned char* Pixels = nullptr;
@@ -704,7 +748,10 @@ void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas()
 
         if (SharedFontTextureName.IsNone())
         {
-                SharedFontTextureName = FName(*FString::Printf(TEXT("ImGuiFontAtlas_Shared_%p"), this));
+                // Unique per bake: dynamic image brushes register their texture under this name, so
+                // reusing it after a DPI rebake could resolve to the stale texture.
+                static uint32 AtlasBakeCounter = 0;
+                SharedFontTextureName = FName(*FString::Printf(TEXT("ImGuiFontAtlas_Shared_%p_%u"), this, ++AtlasBakeCounter));
         }
 
         SharedFontBrush = FSlateDynamicImageBrush::CreateWithImageData(SharedFontTextureName, FVector2D(Width, Height), ImageData);

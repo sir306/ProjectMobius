@@ -11,27 +11,17 @@ AMobiusGameMode::AMobiusGameMode(const FObjectInitializer& ObjectInitializer)
 
 void AMobiusGameMode::OnConstruction(const FTransform& Transform)
 {
-	// Ensure we have the GameUserSetting so we can apply user preferences upon launch
+	// Cache the settings object for Blueprint access only. Resolution/window-mode restore is the engine's
+	// job (PreloadResolutionSettings before window creation, UGameEngine::Init for the rest). Re-applying
+	// here ran on every GameMode spawn (including PIE) with override checks enabled, which routes through
+	// DetermineGameWindowResolution: that clamps to the primary monitor and substitutes a "convenient"
+	// resolution when the saved one exceeds it, and the subsequent save persisted the clobbered value on
+	// dual-monitor/high-DPI machines. It also forced Windowed mode, erasing the saved window mode each launch.
 	if (GEngine)
 	{
-		auto GameUserSettings = GEngine->GetGameUserSettings();
-		
-		if (GameUserSettings)
-		{
-			ProjectUserSettings = Cast<UUserProjectSettings>(GameUserSettings);
-			
-			if (ProjectUserSettings)
-			{
-				// Apply windowed mode by default -> till we add setting fields for this
-				ProjectUserSettings->SetFullscreenMode(EWindowMode::Type::Windowed);
-				// Apply the Last Screen Resolution
-				ProjectUserSettings->SetScreenResolution(ProjectUserSettings->GetScreenResolution());
-				// Apply all settings
-				ProjectUserSettings->ApplySettings(true);
-			}
-		}
+		ProjectUserSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings());
 	}
-	
+
 	Super::OnConstruction(Transform);
 }
 

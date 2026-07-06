@@ -185,21 +185,21 @@ void UPedestrianDataDisplay::ResizeGridPanelParentSlotToFitLargeText(FVector2D& 
 		return;
 	}
 
-	// Calculate the grid size
-	FVector2D BoxSize = ScreenGrid->GetDesiredSize();// Desired size may not be the value we want
-
-	// 0.13 is slot width percent for screen 0.18 is the slot height percent
-
-	BoxSize = ScreenGrid->GetPaintSpaceGeometry().GetAbsoluteSize();
-
-	if (BoxSize == FVector2D::ZeroVector)
+	// LOCAL size: the fill coefficients below are ratios of text extents (logical units) to panel
+	// size, so the panel size must be logical too — GetAbsoluteSize() is physical px including DPI
+	// scale and skewed the coefficients on scaled monitors. Zero until first prepass: bail, caller
+	// re-enters on the next data update once geometry exists.
+	const FVector2D BoxSize = ScreenGrid->GetPaintSpaceGeometry().GetLocalSize();
+	if (BoxSize.IsNearlyZero())
 	{
-		BoxSize = ScreenGrid->GetPaintSpaceGeometry().GetRenderBoundingRect().GetSize();
+		return;
 	}
 
-	// calculate the required size for the TitleFieldWidgets to fit the text and what the coefficient will be for the row and column
-	float RequiredWidth = InTextSize.X *2 / BoxSize.X; // This will be the coefficient for the column
-	float RequiredHeight = InTextSize.Y *1.5f * 8 / BoxSize.Y; // This will be the coefficient for the row
+	// calculate the required size for the TitleFieldWidgets to fit the text and what the coefficient will be for the row and column.
+	// Clamped to a sane band around the design defaults (0.13 / 0.18): the coefficients feed back into
+	// the fit's target cell indirectly, and unclamped values collapsed or ballooned the panel.
+	float RequiredWidth = FMath::Clamp(InTextSize.X * 2 / BoxSize.X, 0.10f, 0.25f); // This will be the coefficient for the column
+	float RequiredHeight = FMath::Clamp(InTextSize.Y * 1.5f * 8 / BoxSize.Y, 0.12f, 0.30f); // This will be the coefficient for the row
 
 	// Check if the the required width and height are not the same as the current coefficients -> TODO: add a tolerance check here so we don't resize if the values are very close
 	if (ScreenGrid->ColumnFill.Num() > 1 && ScreenGrid->RowFill.Num() > 2)
@@ -241,143 +241,104 @@ void UPedestrianDataDisplay::ResizeScreenGridToDefaultSize() const
 	}
 }
 
-void UPedestrianDataDisplay::GetScreenGridCoefficients(int32 Col, int32 Row, float& OutWidthCoefficient,
-                                                       float& OutHeightCoefficient) const
-{
-	/* The Assumption is if a fill is not set then the coefficient is 0.0f @note: this isn't technically true though
-	 * as the default fill is 0.0f, but we know that this widget never has a fill of 0.0f */
-	
-	// Set the out coefficients to 0.0f by default -> this will be used if the row or column is invalid
-	OutWidthCoefficient = 0.0f;
-	OutHeightCoefficient = 0.0f;
-	
-	// valid row
-	if (ScreenGrid && ScreenGrid->RowFill.Num() > Row)
-	{
-		OutWidthCoefficient = ScreenGrid->RowFill[Row];
-	}
-	// valid column
-	if (ScreenGrid && ScreenGrid->ColumnFill.Num() > Col)
-	{
-		OutHeightCoefficient = ScreenGrid->ColumnFill[Col];	
-	}
-
-}
-
 void UPedestrianDataDisplay::SetupTitleFieldWidgetFontSize() const
 {
 	// Insights scope for the whole font-fit (always pays the 8x GetTextSize measure). Compiled out of shipping.
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("PedData::FontFit");
 
-	// // Reset Grid Panel to default size
-	// ResizeScreenGridToDefaultSize();
-	
-	// Array of all title field widgets
-	const TArray<UFieldAndTextWidget*> LocalWidgets = TitleFieldWidgets;
+	if (!WidgetHeadGridPanel || !ScreenGrid)
+	{
+		return;
+	}
+
+	// Fit against the TARGET cell (screen grid size x the default fill coefficients), never against
+	// WidgetHeadGridPanel's own current size: this method resizes that panel from the fitted text,
+	// so measuring it back created a feedback loop that collapsed the panel to a micro box (fit to
+	// tiny box -> tiny font -> resize slot smaller -> tinier box). The screen grid is the stable
+	// fullscreen parent. LOCAL size = logical units, the space font sizes live in (GetAbsoluteSize
+	// was physical px and over-scaled text on scaled monitors).
+	const FVector2D ScreenBox = ScreenGrid->GetPaintSpaceGeometry().GetLocalSize();
+
+	// Geometry is zero until the first prepass after construction. Bail — this runs on every data
+	// update, so it re-enters with real geometry within a frame of first paint.
+	if (ScreenBox.IsNearlyZero())
+	{
+		return;
+	}
+
+	// Default allocation of the header cell within the screen grid (see ResizeScreenGridToDefaultSize).
+	const FVector2D PanelBox(ScreenBox.X * 0.13f, ScreenBox.Y * 0.18f);
+
+	// Widest current text across the 8 field widgets — half of the D4 cache key.
+	const TArray<TObjectPtr<UFieldAndTextWidget>>& LocalWidgets = TitleFieldWidgets;
 	FVector2D TextSize(0.0f, 0.0f);
-	
-	// loop through all the title field widgets and get the largest text measurement size
-	for (UFieldAndTextWidget* Widget : LocalWidgets)
+	for (const TObjectPtr<UFieldAndTextWidget>& Widget : LocalWidgets)
 	{
 		if (Widget)
 		{
-			FVector2D CurrentTextSize = Widget->GetTextSize();
+			const FVector2D CurrentTextSize = Widget->GetTextSize();
 			TextSize.X = FMath::Max(TextSize.X, CurrentTextSize.X);
 			TextSize.Y = FMath::Max(TextSize.Y, CurrentTextSize.Y);
 		}
 	}
-
-	float DefaultFontSize = LocalWidgets[0] ? LocalWidgets[0]->GetFontSize() : 10.f; // Get the default font size from the first widget
-	//TODO: this is not right?? maybe being called before the widget is fully constructed? or a prepass has been completed
-	// Calculate the box width from the grid panel
-	FVector2D BoxSize = WidgetHeadGridPanel->GetDesiredSize();// Desired size may not be the value we want
-
-	// 0.13 is slot width percent for screen 0.18 is the slot height percent
-
-	BoxSize = WidgetHeadGridPanel->GetPaintSpaceGeometry().GetAbsoluteSize();
-
-	if (BoxSize == FVector2D::ZeroVector)
+	if (TextSize.IsNearlyZero())
 	{
-		BoxSize = WidgetHeadGridPanel->GetPaintSpaceGeometry().GetRenderBoundingRect().GetSize();
-		// log fallback size
-		//UE_LOG(LogTemp, Warning, TEXT("BoxSize is zero, using bounding rect size: %s"), *BoxSize.ToString());
-
-		if (BoxSize == FVector2D::ZeroVector)
-		{
-			BoxSize = FVector2D(50.0f, 50.0f); // Fallback size if the bounding rect is also zero
-		}
+		// Underlying Slate text blocks not built yet — nothing measurable to fit.
+		return;
 	}
 
 	// D4 geometry cache: the fitted font + grid-slot resize below are a pure function of the panel's
-	// paint-space size (BoxSize) and the widest field text (TextSize). When both are unchanged since the
-	// last fit, skip the rest of this method — it otherwise calls SetFont x8 (each invalidates a text
-	// block) and resizes the grid slot every update, forcing a Slate prepass/paint. Text size is part of
-	// the key (not box alone) because these fields change during playback/hover, so a box-only key could
-	// skip a real refit and clip text; keying on both keeps visuals identical. Converges to a no-op once
-	// the panel size and displayed text settle.
-	if (BoxSize.Equals(CachedFontFitBoxSize, 0.5f) && TextSize.Equals(CachedFontFitTextSize, 0.5f))
+	// paint-space size and the widest field text. When both are unchanged since the last fit, skip —
+	// it otherwise calls SetFont x8 (each invalidates a text block) and resizes the grid slot every
+	// update, forcing a Slate prepass/paint. Text size is part of the key (not box alone) because
+	// these fields change during playback/hover. Converges to a no-op once panel size and text settle.
+	if (PanelBox.Equals(CachedFontFitBoxSize, 0.5f) && TextSize.Equals(CachedFontFitTextSize, 0.5f))
 	{
 		return;
 	}
-	CachedFontFitBoxSize = BoxSize;
+	CachedFontFitBoxSize = PanelBox;
 	CachedFontFitTextSize = TextSize;
 
-	// Insights scope for the part the D4 cache should make RARE: SetFont x8 + grid-slot resize. If this
-	// scope's Count tracks FontFit's Count (i.e. fires almost every call), the early-return is NOT engaging
-	// and we have a bug to fix before touching the WBP. If it's a small fraction, the C++ half is working.
+	// Insights scope for the part the D4 cache should make RARE: the binary-search fit + SetFont x8 +
+	// grid-slot resize. If this scope's Count tracks FontFit's Count, the early-return is NOT engaging.
 	TRACE_CPUPROFILER_EVENT_SCOPE_STR("PedData::FontFit_Recompute");
 
-	BoxSize *= 0.5f; // each text slot takes up 50% of the box size, so we scale down to fit
-	
-	// Compute scale factor to fit in box (maintain aspect ratio)
-	float ScaleX = (BoxSize.X / TextSize.X) ? BoxSize.X / TextSize.X : 0.0f; // Avoid division by zero
-	float ScaleY = (BoxSize.Y / TextSize.Y) ? BoxSize.Y / TextSize.Y : 0.0f; // Avoid division by zero
-	float UniformScale = FMath::Min( FMath::Clamp(ScaleX, 0, ScaleX),  FMath::Clamp(ScaleY, 0, ScaleY)); // Ensure scale is non-negative and min val of 0
-	
-	// Adjust font size
-	float FinalFontSize = FMath::Clamp((DefaultFontSize * UniformScale), 1, 12); // Text should never be allowed to be bigger than 12
-	//TODO: we don't want to increase font size if the increase is less that 1px as this will cause the text to flicker/pop
-	if (FMath::IsNearlyEqual(FinalFontSize, DefaultFontSize, 0.5f) && FinalFontSize > DefaultFontSize || // as the the font is increasing we need to update the final font more frequently to avoid clipping
-		FMath::IsNearlyEqual(FinalFontSize, DefaultFontSize, 1.5f) && FinalFontSize < DefaultFontSize) 
+	// Each title+field pair measures combined (side by side), so it gets the full panel width and
+	// one of the 8 rows of height. The previous half-box budget forced the fit to the floor and the
+	// whole panel rendered undersized at fullscreen.
+	const FVector2D SlotBox(PanelBox.X * 0.95f, PanelBox.Y / 8.0f);
+
+	// Largest INTEGER size that fits every widget: integer because fractional sizes defeat the Slate
+	// font cache and shimmer; min across widgets so all 8 rows share one size and all fit. Replaces
+	// the old ratio-scale + hysteresis math (whose flicker the :339 TODO complained about — integer
+	// quantization plus the D4 cache provides that stability structurally). Floor of 8: readability
+	// beats strict fit — below that the panel is useless anyway, and the slot resize below grows the
+	// cell to hold the text instead. Ceiling 14 = the shared Label size.
+	int32 FittedSize = 14;
+	for (const TObjectPtr<UFieldAndTextWidget>& Widget : LocalWidgets)
 	{
-		FinalFontSize = DefaultFontSize; // If the font size is nearly equal to the default font size, we keep it as is
-	}
-	
-	if (FinalFontSize < 10)
-	{
-		// Recalculate Text size for a font size of 10
-		// loop through all the title field widgets and get the largest text measurement size
-		for (UFieldAndTextWidget* Widget : LocalWidgets)
+		if (Widget)
 		{
-			if (Widget)
-			{
-				// Only push the font when it actually differs — SetFontSize invalidates the text block.
-				if (!FMath::IsNearlyEqual(Widget->GetFontSize(), 10.0f))
-				{
-					Widget->SetFontSize(10);
-				}
-				FVector2D CurrentTextSize = Widget->GetTextSize();
-				TextSize.X = FMath::Max(TextSize.X, CurrentTextSize.X);
-				TextSize.Y = FMath::Max(TextSize.Y, CurrentTextSize.Y);
-			}
+			FittedSize = FMath::Min(FittedSize,
+				UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(Widget, SlotBox, 8, 14));
 		}
 	}
-	else
+
+	FVector2D FittedTextSize(0.0f, 0.0f);
+	for (const TObjectPtr<UFieldAndTextWidget>& Widget : LocalWidgets)
 	{
-		// Set the font size for each title field widget
-		for (UFieldAndTextWidget* Widget : LocalWidgets)
+		if (Widget)
 		{
-			if (Widget)
+			// Only push the font when it actually differs — SetFontSize invalidates the text block.
+			if (!FMath::IsNearlyEqual(Widget->GetFontSize(), static_cast<float>(FittedSize)))
 			{
-				// Only push the font when it actually differs — SetFontSize invalidates the text block.
-				if (!FMath::IsNearlyEqual(Widget->GetFontSize(), FinalFontSize))
-				{
-					Widget->SetFontSize(FinalFontSize);
-				}
+				Widget->SetFontSize(static_cast<float>(FittedSize));
 			}
+			const FVector2D CurrentTextSize = Widget->GetTextSize();
+			FittedTextSize.X = FMath::Max(FittedTextSize.X, CurrentTextSize.X);
+			FittedTextSize.Y = FMath::Max(FittedTextSize.Y, CurrentTextSize.Y);
 		}
 	}
-	
-	ResizeGridPanelParentSlotToFitLargeText(TextSize);
-	
+
+	ResizeGridPanelParentSlotToFitLargeText(FittedTextSize);
 }

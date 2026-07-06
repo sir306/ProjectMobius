@@ -41,8 +41,6 @@ protected:
 
 	void ResizeScreenGridToDefaultSize() const;
 
-	void GetScreenGridCoefficients(int32 Col, int32 Row, float& OutWidthCoefficient, float& OutHeightCoefficient) const;
-	
 	void SetupTitleFieldWidgetFontSize() const;
 
 	/** Font-fit cache (D4) for SetupTitleFieldWidgetFontSize: the panel paint-space size and the widest

@@ -195,54 +195,49 @@ bool UFlowCounterWidget::UpdateFlowSectionCountersStyleInternal(const FGeometry&
 	// TODO: implement scroll logic
 
 	// Use geometry passed from NativeTick (always valid) instead of stale PaintSpaceGeometry
-	FVector2D DrawSize = WidgetGeometry.GetLocalSize();
+	const FVector2D DrawSize = WidgetGeometry.GetLocalSize();
 
-	UE_LOG(LogTemp, Warning, TEXT("FlowSectionCounters count: %d"), FlowSectionCounters.Num());
-	UE_LOG(LogTemp, Warning, TEXT("Difference count: %d"), Difference);
-	UE_LOG(LogTemp, Warning, TEXT("CurrentFlowDataSections: %d"), CurrentFlowDataSections);
-	UE_LOG(LogTemp, Warning, TEXT("DrawSize: %s"), *DrawSize.ToString());
+	// Each section's text gets 80% of its uniform-grid cell width; full panel height as before.
+	const FVector2D FitBox(DrawSize.X / CurrentFlowDataSections * 0.8f, DrawSize.Y);
 
-	float CellWidth = DrawSize.X / CurrentFlowDataSections;
-	UE_LOG(LogTemp, Warning, TEXT("CellWidth: %f"), CellWidth);
-
-	FVector2D TextSize = FVector2D::ZeroVector;
-	float CurrentFontSize = 14.0f;
-
+	// Largest INTEGER size that fits every section's flow-value text (the wider of the two rows),
+	// via the shared binary-search helper — same fit as FlowSectionCounter::InitializeFromParent.
+	// Integer replaces the previous 0.1pt rounding, which defeated the Slate font cache and
+	// shimmered as values changed during playback.
+	int32 FittedSize = 14; // ceiling matches the previous clamp
+	bool bMeasuredAny = false;
 	for (UFlowSectionCounter* Widget : FlowSectionCounters)
 	{
-		if (Widget)
+		if (Widget && Widget->FlowTypeAndValueFieldAndTextWidget)
 		{
-			FVector2D CurrentTextSize = Widget->FlowTypeAndValueFieldAndTextWidget->GetTextSize();
-			TextSize.X = FMath::Max(TextSize.X, CurrentTextSize.X);
-			TextSize.Y = FMath::Max(TextSize.Y, CurrentTextSize.Y);
-			CurrentFontSize = Widget->FlowTypeAndValueFieldAndTextWidget->GetFontSize();
+			if (Widget->FlowTypeAndValueFieldAndTextWidget->GetTextSize().IsNearlyZero())
+			{
+				continue; // Slate text not built yet for this section
+			}
+			bMeasuredAny = true;
+			FittedSize = FMath::Min(FittedSize,
+				UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(
+					Widget->FlowTypeAndValueFieldAndTextWidget, FitBox, 1, 14));
 		}
 	}
 
 	// Child widgets not yet measured — retry next tick
-	if (TextSize == FVector2D::ZeroVector) { return false; }
+	if (!bMeasuredAny) { return false; }
 
-	UE_LOG(LogTemp, Warning, TEXT("CurrentFontSize: %f"), CurrentFontSize);
-	UE_LOG(LogTemp, Warning, TEXT("TextSize: %s"), *TextSize.ToString());
-
-	CellWidth *= 0.8f;
-
-	float ScaleX = (CellWidth / TextSize.X) ? CellWidth / TextSize.X : 0.0f;
-	float ScaleY = (DrawSize.Y / TextSize.Y) ? DrawSize.Y / TextSize.Y : 0.0f;
-	float UniformScale = FMath::Min(FMath::Clamp(ScaleX, 0, ScaleX), FMath::Clamp(ScaleY, 0, ScaleY));
-
-	float FinalFontSize = FMath::Clamp((CurrentFontSize * UniformScale), 1, 14);
-	FinalFontSize = FMath::RoundToFloat(FinalFontSize * 10.0f) / 10.0f;
-
+	const float FinalFontSize = static_cast<float>(FittedSize);
 	for (int32 i = 0; i < CurrentFlowDataSections; i++)
 	{
 		if (FlowSectionCounters[i] == nullptr) { continue; }
-		FlowSectionCounters[i]->SectionHeaderFieldAndTextWidget->SetFontSize(FinalFontSize);
-		FlowSectionCounters[i]->FlowTypeAndValueFieldAndTextWidget->SetFontSize(FinalFontSize);
+		// Only push the font when it differs — SetFontSize invalidates the text block.
+		if (!FMath::IsNearlyEqual(FlowSectionCounters[i]->SectionHeaderFieldAndTextWidget->GetFontSize(), FinalFontSize))
+		{
+			FlowSectionCounters[i]->SectionHeaderFieldAndTextWidget->SetFontSize(FinalFontSize);
+		}
+		if (!FMath::IsNearlyEqual(FlowSectionCounters[i]->FlowTypeAndValueFieldAndTextWidget->GetFontSize(), FinalFontSize))
+		{
+			FlowSectionCounters[i]->FlowTypeAndValueFieldAndTextWidget->SetFontSize(FinalFontSize);
+		}
 	}
-
-	UE_LOG(LogTemp, Warning, TEXT("FinalFontSize: %f"), FinalFontSize);
-	UE_LOG(LogTemp, Warning, TEXT("UniformScale: %f"), UniformScale);
 
 	return true;
 }

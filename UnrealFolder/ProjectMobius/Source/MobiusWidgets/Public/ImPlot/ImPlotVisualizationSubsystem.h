@@ -211,7 +211,7 @@ private:
         void InvalidateOverlay(const FName& ChartId) const;
         void EnsureOverlayContext(FImPlotOverlayState& State);
         void DestroyOverlayContext(FImPlotOverlayState& State);
-        void EnsureSharedFontAtlas();
+        void EnsureSharedFontAtlas(float InDpiScale = 1.0f);
         bool TryGetNearestPointForChart(const FName& ChartId, double TimeSeconds, FVector2D& OutPoint) const;
         void RenderDrawData(const ImDrawData* DrawData, const FVector2f& WindowOffset,
                 float DpiScale, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
@@ -220,6 +220,10 @@ private:
         TSharedPtr<FSlateDynamicImageBrush> SharedFontBrush;
         FName SharedFontTextureName;
         uint64 SharedFontTextureId = 0;
+        /** DPI scale the shared atlas glyphs were last baked at. Glyphs rasterize at 13px * scale
+         *  and draw at 13 logical units (style.FontScaleMain = 1/scale); the existing vertex upscale
+         *  then maps them 1:1 to physical pixels — crisp at any OS scaling instead of bitmap-stretched. */
+        float SharedFontAtlasDpiScale = 1.0f;
 
 };
 

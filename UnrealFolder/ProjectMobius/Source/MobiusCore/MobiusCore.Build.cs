@@ -28,6 +28,7 @@ public class MobiusCore : ModuleRules
 			"Engine",
 			"Slate",
 			"SlateCore",
+			"ApplicationCore", /* FPlatformApplicationMisc / FDisplayMetrics for the DPI scaling rule + monitor-aware resolution helpers */
 			"HTTP",
 			"Json",
 			"JsonUtilities",

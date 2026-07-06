@@ -61,8 +61,20 @@ public:
 	/** Initialize the Game Instance */
 	virtual void Init() override;
 
+	/** Called when the game starts (viewport window exists). Handles first-run window sizing. */
+	virtual void OnStart() override;
+
 	/** Shutdown the Game Instance */
 	virtual void Shutdown() override;
+
+private:
+	/** Keeps the persisted maximized flag current (the window is gone by Shutdown, so it cannot be
+	 *  queried there). Bound to FViewport::ViewportResizedEvent in OnStart, standalone game only. */
+	void HandleGameViewportResized(class FViewport* Viewport, uint32 Unused);
+
+	FDelegateHandle ViewportResizedHandle;
+
+public:
 
 	/**
 	 * Report an error through the central feedback subsystem.

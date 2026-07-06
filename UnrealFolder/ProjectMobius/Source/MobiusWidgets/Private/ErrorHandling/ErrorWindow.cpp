@@ -5,6 +5,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Slate/Components/SWindowContentPanel.h"
+#include "Style/MobiusStyle.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -82,21 +83,16 @@ void SErrorWindowWidget::OpenErrorWindow()
                 return;
         }
 
-        ErrorWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
-        ErrorWindowStyle.ActiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.8f, 0.1f, 0.1f));
-        ErrorWindowStyle.InactiveTitleBrush.TintColor = FSlateColor(FLinearColor(0.6f, 0.1f, 0.1f));
-        ErrorWindowStyle.FlashTitleBrush.TintColor = FSlateColor(FLinearColor(0.9f, 0.2f, 0.2f));
-        ErrorWindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::Red);
-        const FTextBlockStyle TitleStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-                .SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 18));
-        const FTextBlockStyle MessageStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-                .SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 12));
-        const FTextBlockStyle LocationStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
-                .SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 11))
-                .SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.1f, 0.1f)));
+        // Theme + typography come from the shared style set. Style pointers passed to the content
+        // panel now reference set-owned styles with static lifetime — the previous stack-local
+        // FTextBlockStyle instances dangled if the panel kept the pointer past this scope.
+        ErrorWindowStyle = FMobiusStyle::Get().GetWidgetStyle<FWindowStyle>("Mobius.Window.Error");
+        const FTextBlockStyle& TitleStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Title");
+        const FTextBlockStyle& MessageStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Body");
+        const FTextBlockStyle& LocationStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Error.Location");
 
         TSharedRef<SWidget> WindowPanel = SNew(SBorder)
-                .Padding(FMargin(16.0f))
+                .Padding(FMobiusStyle::Get().GetMargin("Mobius.Padding.Window"))
                 .BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
                 [
                         SNew(SVerticalBox)
