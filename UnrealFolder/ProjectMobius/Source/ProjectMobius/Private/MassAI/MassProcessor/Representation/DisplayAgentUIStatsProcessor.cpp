@@ -133,7 +133,7 @@ void UDisplayAgentUIStatsProcessor::Execute(FMassEntityManager& EntityManager, F
 					SelectedAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
 					SelectedAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;// todo: no gait speed implemented yet
 					SelectedAgentData.AgentHeight = AgentHeight;
-					SelectedAgentData.AgentSpeedFlux = EntityMovement.CurrentSpeed / EntityInfo.EntityMaxSpeed;
+					SelectedAgentData.SpeedFractionOfMax = EntityMovement.CurrentSpeed / EntityInfo.EntityMaxSpeed;
 				}
 			}
 		}
@@ -198,7 +198,7 @@ void UDisplayAgentUIStatsProcessor::UpdateUIStats(const FEntityInfoFragment& Ent
 		NewAgentData.AgentSpeed = EntityMovement.CurrentSpeed;
 		NewAgentData.GaitDirectionalSpeed = EntityMovement.GaitDirectionalSpeed;
 		NewAgentData.AgentHeight = AgentHeight;
-		NewAgentData.AgentSpeedFlux = EntityMovement.CurrentSpeed / EntityInfo.EntityMaxSpeed;
+		NewAgentData.SpeedFractionOfMax = EntityMovement.CurrentSpeed / EntityInfo.EntityMaxSpeed;
 		AgentData.Add(NewAgentData);
 	}
 }

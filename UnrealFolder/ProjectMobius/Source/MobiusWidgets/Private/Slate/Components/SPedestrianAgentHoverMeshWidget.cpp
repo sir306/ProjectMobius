@@ -22,8 +22,12 @@ int32 SPedestrianAgentHoverMeshWidget::OnPaint(
 	const FWidgetStyle& InWidgetStyle,
 	bool bParentEnabled) const
 {
-	//TODO: need to nullptr check for ParentWidget->this shouldn't happen as it is a child widget of the parent but improper removal may lead to this
-	
+	if (!ParentWidget)
+	{
+		// Shouldn't happen (child widget of ParentWidget), but improper removal could leave this dangling.
+		return SMeshWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+	}
+
 	const int32 MeshId = ParentWidget->HoverWidgetMeshViewerID;
 
 	// Get all the pedestrian agent data from the parent widget that we need for rendering

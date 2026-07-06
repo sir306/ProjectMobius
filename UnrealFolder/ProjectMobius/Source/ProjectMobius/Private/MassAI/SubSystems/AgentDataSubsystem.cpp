@@ -902,7 +902,6 @@ void FProcessAgentSimulationDataRunnable::CalculateSpeedFromMovement()
 
 void FProcessAgentSimulationDataRunnable::FinalizeProgress()
 {
-	// TODO: CHECK IF ANY HDF5 SPECIFIC FINALIZATION IS NEEDED
 	if (bShouldStop)
 	{
 		return;
@@ -1069,7 +1068,7 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 	SnapRunStart.LogAbsolute();
 #endif
 
-	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get(); //TODO: this may need to be a weak ptr check/and/or variable
+	UAgentDataSubsystem* Subsys = OwnerSubsystem.Get();
 	// Broadcast the current percentage of the data loaded
 	if (Subsys)
 	{

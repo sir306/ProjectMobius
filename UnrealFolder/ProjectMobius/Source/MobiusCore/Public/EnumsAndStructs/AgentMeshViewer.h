@@ -7,10 +7,10 @@ public:
 	{}
 	FAgentMeshViewer(int32 InAgentID, const FText& InAgentName, const FText& InGender, const FText& InDemographic,
 	                 const FVector& InAgentWorldPosition, float InAgentSpeed, float InGaitDirectionalSpeed,
-	                 float InAgentHeight, float InAgentSpeedFlux)
+	                 float InAgentHeight, float InSpeedFractionOfMax)
 		: AgentID(InAgentID), AgentName(InAgentName), Gender(InGender), Demographic(InDemographic),
 		  AgentWorldPosition(InAgentWorldPosition), AgentSpeed(InAgentSpeed), GaitDirectionalSpeed(InGaitDirectionalSpeed),
-		  AgentHeight(InAgentHeight), AgentSpeedFlux(InAgentSpeedFlux)
+		  AgentHeight(InAgentHeight), SpeedFractionOfMax(InSpeedFractionOfMax)
 	{}
 
 	int32 AgentID = -1; // Unique identifier for the agent - -1 indicates no agent or invalid data
@@ -23,7 +23,7 @@ public:
 	float AgentHeight = 180.0f; // Height of the agent in cm(this is calculated from mesh size * scale)
 	/** Speed flux of the agent, this is the percentage difference between the current speed and the max speed
 	i.e. if the value is 1 then the agent is moving at max speed */
-	float AgentSpeedFlux = 0.0f;// TODO: name of variable doesn't make sense
+	float SpeedFractionOfMax = 0.0f;
 
 	//TODO: // Add more properties as needed, such as direction, health, etc.
 	// And possibly a flag to indicate if it is visible to the camera - as we don't want to render widgets that are not visible

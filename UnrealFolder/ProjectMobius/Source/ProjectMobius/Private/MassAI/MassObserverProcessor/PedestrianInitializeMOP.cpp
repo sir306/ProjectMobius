@@ -144,7 +144,7 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 	int32 MaxAgentCount = AgentDataSubsystem->GetMaxAgents();
 	
 	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, &EntityIndexOffset, CurrentTimeStep, &UniqueZValues, LoadingSubsystem, MaxAgentCount, BRiskEgressSubsystem](FMassExecutionContext& Context) {
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, &EntityIndexOffset, CurrentTimeStep, &UniqueZValues, LoadingSubsystem, MaxAgentCount, BRiskEgressSubsystem, AgentDataSubsystem](FMassExecutionContext& Context) {
 
 		//UE_LOG(LogTemp, Warning, TEXT("PedestrianInitializeMOP::Execute"));
 
@@ -184,7 +184,6 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 		auto Entities = Context.GetEntities();
 		const TArrayView<FEntityCollisionFragment>& EntityCollisions = Context.GetMutableFragmentView<FEntityCollisionFragment>();
 
-		//TODO: We have two methods that rely on the agent subsystem we should assign it to a variable and use it
 		for (int i = 0; i < Entities.Num(); i++)
 		{
 			auto Entity = Entities[i];
@@ -236,7 +235,6 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 				EntityRendering.bRenderAgent = false;// setting to false should prevent any rendering issues at start but our check in processor could be a problem
 			}
 			
-			UAgentDataSubsystem* AgentDataSubsystem = GetWorld()->GetSubsystem<UAgentDataSubsystem>();			
 			AgentDataSubsystem->SetEntityRenderingByIndex(EntityIndexOffset, EntityRendering);
 
 			FAgentBRiskExposureFragment& AgentExposure = AgentExposureFragments[i];

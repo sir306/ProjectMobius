@@ -28,8 +28,12 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
                                      const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
                                      const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-	//TODO: need to nullptr check for ParentWidget->this shouldn't happen as it is a child widget of the parent but improper removal may lead to this
-	
+	if (!ParentWidget)
+	{
+		// Shouldn't happen (child widget of ParentWidget), but improper removal could leave this dangling.
+		return SMeshWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+	}
+
 	const int32 MeshId = ParentWidget->HoverWidgetMeshViewerID;
 
 	// Get all the pedestrian agent data from the parent widget that we need for rendering
@@ -79,23 +83,23 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 		
 		// there is 6 colour bands for a given agent flux speed
 		// Colour bands are the same as fruins LOS -> blue to red
-		if (PedestrianAgentData.AgentSpeedFlux >= 0.8335f) // fastest band
+		if (PedestrianAgentData.SpeedFractionOfMax >= 0.8335f) // fastest band
 		{
 			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 0.0f, 1.0f, 1.0f)); // Blue
 		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.6668f) // second fastest
+		else if (PedestrianAgentData.SpeedFractionOfMax >= 0.6668f) // second fastest
 		{
 			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 1.0f, 1.0f)); // Cyan
 		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.5001f) // third fastest
+		else if (PedestrianAgentData.SpeedFractionOfMax >= 0.5001f) // third fastest
 		{
 			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 1.0f, 0.0f, 1.0f)); // Green
 		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.3334f) // fourth fastest
+		else if (PedestrianAgentData.SpeedFractionOfMax >= 0.3334f) // fourth fastest
 		{
 			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 1.0f, 0.0f, 1.0f)); // Yellow
 		}
-		else if (PedestrianAgentData.AgentSpeedFlux >= 0.1667f) // fifth fastest
+		else if (PedestrianAgentData.SpeedFractionOfMax >= 0.1667f) // fifth fastest
 		{
 			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(1.0f, 0.25f, 0.0f, 1.0f)); // Orange
 		}
