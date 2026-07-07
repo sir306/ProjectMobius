@@ -59,6 +59,15 @@ public:
 	 * DirectionHint: -1 rewind, 0 scrub/paused, +1 forward.
 	 */
 	virtual void NotifyPlayhead(int32 /*Ts*/, int32 /*DirectionHint*/) {}
+
+	/**
+	 * True when GetSamplesForTimestep(Ts) would return the EXACT block for Ts rather than a
+	 * cosmetic stand-in (a streaming cold miss serves last-good/keyframe data from a DIFFERENT
+	 * timestep). Time-integrating analysis (tenability FED banking) must hold state on frames
+	 * where this is false — stand-in positions fabricate room changes. Must be side-effect free:
+	 * never triggers a load. The resident provider is always exact.
+	 */
+	virtual bool HasExactSamplesForTimestep(int32 /*Ts*/) const { return true; }
 };
 
 /**

@@ -268,4 +268,80 @@ bool FStreamingBudgetDecisionTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Stand-in exactness contract: analysis consumers gate on HasExactSamplesForTimestep so a cold-miss
+// stand-in block (different timestep's data) can never feed time-integrating analysis (tenability
+// FED banking). Resident provider is always exact; streaming is exact iff the true block is resident.
+// ---------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimProviderStandInExactnessTest,
+	"ProjectMobius.SimData.StandInExactness",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FSimProviderStandInExactnessTest::RunTest(const FString& Parameters)
+{
+	IFileManager& FileManager = IFileManager::Get();
+	TSharedPtr<TMap<int32, TArray<FSimMovementSample>>> SimulationData =
+		MakeShared<TMap<int32, TArray<FSimMovementSample>>>(MakeGoldenSimData());
+
+	// Resident provider: exactness is unconditional.
+	FFullyResidentProvider Resident(SimulationData, { FString() });
+	TestTrue(TEXT("Resident always exact"), Resident.HasExactSamplesForTimestep(5));
+
+	const FString TempDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MobiusStandInTest"));
+	FileManager.MakeDirectory(*TempDir, true);
+	const FString FakeSource = FPaths::Combine(TempDir, TEXT("StandInSource.json"));
+	FFileHelper::SaveStringToFile(TEXT("{\"fake\":\"standin source\"}"), *FakeSource);
+	const uint64 SourceHash = MobiusSimCache::ComputeSourceHash(FakeSource);
+	const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(FakeSource, SourceHash);
+	FileManager.Delete(*CacheFilePath, false, true);
+
+	FThreadSafeBool bShouldStop(false);
+	const bool bWrote = MobiusSimCache::WriteCacheFile(
+		CacheFilePath, SourceHash, *SimulationData, 4.8f, 0.1f, { FString() },
+		/*MaxAgents*/ 5, /*SourceFormat*/ 1, TArray<FMobiusAgentEntityData>(), bShouldStop);
+	TestTrue(TEXT("WriteCacheFile succeeded"), bWrote);
+
+	if (bWrote)
+	{
+		// Sparse keyframes so a fresh provider genuinely cold-misses a mid-stride timestep.
+		// Stride verification (GoldenNumTimesteps=48, TargetKeyframeCount=4): total dataset is 138
+		// records x 58 bytes/record = 8004 bytes, far under the 64 MB keyframe byte budget, so
+		// ByteStride rounds up to 1 and CountStride = 48/4 = 12 dominates -> KeyframeStride = 12.
+		// Ts 5 is NOT a multiple of 12, so it genuinely cold-misses on a fresh provider.
+		FStreamingProviderConfig Config;
+		Config.WindowSlotCount = 16;
+		Config.PrefetchLookahead = 0;
+		Config.TargetKeyframeCount = 4; // stride 48/4 = 12 -> Ts 5 is NOT a keyframe
+		FStreamingProvider Streaming(CacheFilePath, SourceHash, Config);
+		TestTrue(TEXT("Streaming provider valid"), Streaming.IsValidAndPopulated());
+		if (Streaming.IsValidAndPopulated())
+		{
+			// Fresh provider, non-keyframe Ts: NOT exact, yet the windowed accessor still serves a
+			// non-null cosmetic stand-in — that pairing is the bug surface this API closes.
+			TestFalse(TEXT("Cold miss reports not-exact"), Streaming.HasExactSamplesForTimestep(5));
+			TestNotNull(TEXT("Cold miss still serves a stand-in block"), Streaming.GetSamplesForTimestep(5));
+
+			// After the real block lands, the same Ts reports exact. Verify sample count against the
+			// fixture formula (1 + Ts % 5) to prove the served block is the TRUE block, not a stand-in.
+			const TArray<FSimMovementSample>* Exact = Streaming.BlockUntilTimestepResident(5);
+			TestNotNull(TEXT("Blocking wait lands the true block"), Exact);
+			TestTrue(TEXT("Exact after load"), Streaming.HasExactSamplesForTimestep(5));
+			if (Exact)
+			{
+				TestEqual(TEXT("True block sample count"), Exact->Num(), 1 + (5 % 5));
+			}
+
+			// Out-of-range is never "exact".
+			TestFalse(TEXT("Out-of-range not exact"), Streaming.HasExactSamplesForTimestep(GoldenNumTimesteps));
+			TestFalse(TEXT("Negative not exact"), Streaming.HasExactSamplesForTimestep(-1));
+		}
+	}
+
+	FileManager.Delete(*CacheFilePath, false, true);
+	FileManager.Delete(*FakeSource, false, true);
+	FileManager.DeleteDirectory(*TempDir, false, true);
+	return true;
+}
+
 #endif // !UE_BUILD_SHIPPING

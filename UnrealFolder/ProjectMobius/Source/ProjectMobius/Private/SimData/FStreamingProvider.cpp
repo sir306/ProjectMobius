@@ -420,6 +420,18 @@ const TArray<FSimMovementSample>* FStreamingProvider::GetSamplesForTimestep(int3
 	return Keyframes.Find(NearestKf);
 }
 
+bool FStreamingProvider::HasExactSamplesForTimestep(const int32 Ts) const
+{
+	if (!bValid || Ts < 0 || Ts >= static_cast<int32>(Header.NumTimesteps))
+	{
+		return false;
+	}
+	DrainCompletions();
+	// Exact residency only — deliberately NO RequestLoad here (side-effect-free contract); the
+	// paired GetSamplesForTimestep call (if any) is what kicks the load.
+	return FindExactResident(Ts) != nullptr;
+}
+
 int32 FStreamingProvider::GetNumTimesteps() const
 {
 	return bValid ? static_cast<int32>(Header.NumTimesteps) : 0;

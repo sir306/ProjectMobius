@@ -203,6 +203,14 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 			// Avoid repeated lookups and copy only if needed
 			const TArray<FSimMovementSample>& NextMovementSamples = bSamplesTheSame ? CurrentMovementSamples : *NextSamplesPtr;
 
+			// Stand-in window detection: if either served block is not the exact block for its
+			// timestep (streaming cold miss), poses this frame are cosmetic — flag every agent so
+			// analysis (tenability) holds instead of sampling wrong-timestep locations. Side-effect
+			// free query (no RequestLoad); the GetSamplesForTimestep calls above already kicked any load.
+			const bool bCurrentExact = !Provider || Provider->HasExactSamplesForTimestep(CurrentTimeStep);
+			const bool bNextExact = bSamplesTheSame || !Provider || Provider->HasExactSamplesForTimestep(CurrentTimeStep + 1);
+			const bool bApproximateWindow = !(bCurrentExact && bNextExact);
+
 			// B2: the maps are keyed chunk-independently (by EntityID), so rebuilding them every chunk every
 			// frame is pure redundancy (O(NumChunks * N) game-thread insertions). Rebuild only when the data
 			// window changes — composite (DataGeneration, timestep, served-block identities) key, NOT
@@ -271,6 +279,10 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
 
+					// Stamp BEFORE the failure-pose early-out: a frozen agent's stand-in status must
+					// still be current (the health processor reads it independently of movement).
+					MoveFrag.bSampleApproximate = bApproximateWindow;
+
 					const FAgentEgressTenabilityFragment& Tenability = AgentTenabilityFragments[i];
 
 					// Agents that have failed tenability freeze at their failure pose and skip the lookup.
@@ -306,6 +318,10 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					// Get mutable fragments for the entity
 					FEntityMovementFragment& MoveFrag = EntityMovementFragment[i];
 					FEntityRenderingFragment& RenderFrag = EntityRenderingFragment[i];
+
+					// Stamp BEFORE the failure-pose early-out: a frozen agent's stand-in status must
+					// still be current (the health processor reads it independently of movement).
+					MoveFrag.bSampleApproximate = bApproximateWindow;
 
 					const FAgentEgressTenabilityFragment& Tenability = AgentTenabilityFragments[i];
 

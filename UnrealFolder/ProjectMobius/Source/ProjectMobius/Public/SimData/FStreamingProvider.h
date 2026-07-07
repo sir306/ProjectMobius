@@ -83,6 +83,7 @@ public:
 	virtual const TArray<FString>& GetModeTable() const override;
 	virtual void ForEachTimestep(TFunctionRef<void(int32, const TArray<FSimMovementSample>&)> Fn) const override;
 	virtual void NotifyPlayhead(int32 Ts, int32 DirectionHint) override;
+	virtual bool HasExactSamplesForTimestep(int32 Ts) const override;
 
 	/**
 	 * TEST/TOOLING ONLY — request Ts and wait (sleep-poll) until its exact block is resident, then
