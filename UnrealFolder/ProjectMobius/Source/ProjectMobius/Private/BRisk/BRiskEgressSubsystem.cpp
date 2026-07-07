@@ -2,8 +2,12 @@
 
 #include "BRisk/BRiskEgressSubsystem.h"
 
+#include "Async/Async.h"                                   // Async / AsyncTask (background build + game-thread apply)
+#include "BRisk/AgentTenabilityTimeline.h"
 #include "BRisk/BRiskDataSubsystem.h"
 #include "BRiskDataImporter.h"
+#include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"    // GetSimulationFragment / GetAgentTimeBetweenSteps
+#include "SimData/ISimSampleProvider.h"                    // ISimSampleProvider::ForEachTimestep (build source)
 #include "Subsystems/TimeDilationSubSystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskEgressSubsystem, Log, All);
@@ -71,6 +75,14 @@ void UBRiskEgressSubsystem::Deinitialize()
 			&UBRiskEgressSubsystem::HandleSimulationTimeChanged);
 	}
 
+	// Cancel any in-flight timeline build so the worker stops early. The job captures everything it
+	// needs by value/shared-ptr, so it is self-contained if it does run to completion; the game-thread
+	// apply is guarded by a weak pointer to this subsystem and no-ops once we are gone.
+	if (AgentTimelineBuildCancel.IsValid())
+	{
+		*AgentTimelineBuildCancel = true;
+	}
+
 	ClearCachedData();
 	BRiskDataSubsystem = nullptr;
 	TimeDilationSubsystem = nullptr;
@@ -135,156 +147,21 @@ const FBRiskEgressRoomState* UBRiskEgressSubsystem::FindRoomStateAtLocation(
 	const FVector& WorldLocation,
 	const int32 PreferredRoomIndex) const
 {
-	if (RoomStates.IsValidIndex(PreferredRoomIndex)
-		&& RoomStates[PreferredRoomIndex].WorldBounds.IsInsideOrOn(WorldLocation))
-	{
-		return &RoomStates[PreferredRoomIndex];
-	}
-
-	// When rooms overlap (e.g. a corridor modelled inside a larger B-Risk zone),
-	// the smallest enclosing volume is the most specific spatial match for the agent.
-	const FBRiskEgressRoomState* BestMatch = nullptr;
-	double BestVolume = TNumericLimits<double>::Max();
-
+	// Room containment is single-sourced through ResolveRoomIndexAtLocation so the
+	// offline timeline builder and this live sampler always agree on which room a
+	// location falls in (scientific-integrity invariant 4). RoomWorldBounds is built
+	// parallel to RoomStates, so the returned index maps straight back.
+	TArray<FBox, TInlineAllocator<16>> RoomWorldBounds;
+	RoomWorldBounds.Reserve(RoomStates.Num());
 	for (const FBRiskEgressRoomState& RoomState : RoomStates)
 	{
-		if (RoomState.RoomIndex == PreferredRoomIndex)
-		{
-			continue;
-		}
-
-		if (!RoomState.WorldBounds.IsInsideOrOn(WorldLocation))
-		{
-			continue;
-		}
-
-		const double Volume = RoomState.WorldBounds.GetVolume();
-		if (Volume < BestVolume)
-		{
-			BestVolume = Volume;
-			BestMatch = &RoomState;
-		}
+		RoomWorldBounds.Add(RoomState.WorldBounds);
 	}
 
-	return BestMatch;
-}
+	const int32 RoomIndex = UE::Mobius::Tenability::ResolveRoomIndexAtLocation(
+		RoomWorldBounds, WorldLocation, PreferredRoomIndex);
 
-void UBRiskEgressSubsystem::RecordAgentHealth(
-	const int32 AgentId,
-	const float TimeSeconds,
-	const FAgentEgressTenabilityFragment& Health)
-{
-	if (AgentId < 0 || TimeSeconds < 0.0f)
-	{
-		return;
-	}
-
-	TArray<FAgentEgressHealthHistorySample>& History = AgentHealthHistory.FindOrAdd(AgentId);
-	FAgentEgressHealthHistorySample NewSample;
-	NewSample.TimeSeconds = TimeSeconds;
-	NewSample.DisplayRisk = Health.DisplayRisk;
-	NewSample.ShownCriterion = static_cast<uint8>(
-		Health.bTenabilityFailed ? Health.FirstFailureCriterion : Health.CurrentDominantCriterion);
-
-	if (!History.IsEmpty())
-	{
-		FAgentEgressHealthHistorySample& LastSample = History.Last();
-		if (FMath::IsNearlyEqual(LastSample.TimeSeconds, TimeSeconds, UE_KINDA_SMALL_NUMBER))
-		{
-			LastSample = NewSample;
-			return;
-		}
-
-		if (TimeSeconds < LastSample.TimeSeconds)
-		{
-			return;
-		}
-	}
-
-	// Collapse collinear samples: if the new risk rate equals the previous interval's
-	// rate AND the shown criterion is unchanged, overwrite the tail rather than
-	// appending. Keeps the rewind history compact while preserving criterion changes.
-	if (History.Num() >= 2)
-	{
-		const FAgentEgressHealthHistorySample& PreviousSample = History[History.Num() - 2];
-		const FAgentEgressHealthHistorySample& LastSample = History.Last();
-		const float PreviousDuration = LastSample.TimeSeconds - PreviousSample.TimeSeconds;
-		const float NewDuration = NewSample.TimeSeconds - LastSample.TimeSeconds;
-		if (PreviousDuration > UE_KINDA_SMALL_NUMBER && NewDuration > UE_KINDA_SMALL_NUMBER
-			&& LastSample.ShownCriterion == NewSample.ShownCriterion
-			&& PreviousSample.ShownCriterion == LastSample.ShownCriterion)
-		{
-			const float PreviousRiskRate =
-				(LastSample.DisplayRisk - PreviousSample.DisplayRisk) / PreviousDuration;
-			const float NewRiskRate =
-				(NewSample.DisplayRisk - LastSample.DisplayRisk) / NewDuration;
-			if (FMath::IsNearlyEqual(PreviousRiskRate, NewRiskRate, 0.0001f))
-			{
-				History.Last() = NewSample;
-				return;
-			}
-		}
-	}
-
-	History.Add(NewSample);
-}
-
-bool UBRiskEgressSubsystem::RestoreAgentHealth(
-	const int32 AgentId,
-	const float TimeSeconds,
-	FAgentEgressTenabilityFragment& InOutHealth) const
-{
-	const TArray<FAgentEgressHealthHistorySample>* History = AgentHealthHistory.Find(AgentId);
-	if (!History || History->IsEmpty())
-	{
-		return false;
-	}
-
-	const FAgentEgressHealthHistorySample* LowerSample = &(*History)[0];
-	const FAgentEgressHealthHistorySample* UpperSample = LowerSample;
-
-	if (TimeSeconds <= (*History)[0].TimeSeconds)
-	{
-		UpperSample = LowerSample;
-	}
-	else if (TimeSeconds >= History->Last().TimeSeconds)
-	{
-		LowerSample = &History->Last();
-		UpperSample = LowerSample;
-	}
-	else
-	{
-		int32 LowerIndex = 0;
-		int32 UpperIndex = History->Num() - 1;
-		while (UpperIndex - LowerIndex > 1)
-		{
-			const int32 MidIndex = (LowerIndex + UpperIndex) / 2;
-			if ((*History)[MidIndex].TimeSeconds <= TimeSeconds)
-			{
-				LowerIndex = MidIndex;
-			}
-			else
-			{
-				UpperIndex = MidIndex;
-			}
-		}
-
-		LowerSample = &(*History)[LowerIndex];
-		UpperSample = &(*History)[UpperIndex];
-	}
-
-	const float Duration = UpperSample->TimeSeconds - LowerSample->TimeSeconds;
-	const float Alpha = Duration > UE_KINDA_SMALL_NUMBER
-		? FMath::Clamp((TimeSeconds - LowerSample->TimeSeconds) / Duration, 0.0f, 1.0f)
-		: 0.0f;
-
-	// Restore the bar's display risk by interpolation; the shown criterion is a
-	// discrete label, so snap it to the bracket the scrub time falls in.
-	InOutHealth.DisplayRisk = FMath::Lerp(LowerSample->DisplayRisk, UpperSample->DisplayRisk, Alpha);
-	InOutHealth.CurrentDominantCriterion =
-		static_cast<ETenabilityCriterion>(Alpha < 0.5f ? LowerSample->ShownCriterion : UpperSample->ShownCriterion);
-	InOutHealth.Health = 1.0f - FMath::Clamp(InOutHealth.DisplayRisk, 0.0f, 1.0f);
-	return true;
+	return RoomStates.IsValidIndex(RoomIndex) ? &RoomStates[RoomIndex] : nullptr;
 }
 
 void UBRiskEgressSubsystem::HandleScenarioLoaded(const bool bSuccess)
@@ -301,6 +178,19 @@ void UBRiskEgressSubsystem::HandleScenarioLoaded(const bool bSuccess)
 
 void UBRiskEgressSubsystem::HandleScenarioCleared()
 {
+	// Immediate teardown of any built/in-flight timelines (invalidation matrix: B-Risk cleared ->
+	// cancel in-flight build, drop timelines, tenability inert). ClearCachedData also bumps
+	// ScenarioGeneration so a straggler apply that re-derives the key would discard anyway, but we do
+	// not rely on that alone: cancel the worker so it stops reading the (about-to-be-freed) provider,
+	// drop the set, and reset BuiltKey to the all-zero sentinel that never matches a real key.
+	if (AgentTimelineBuildCancel.IsValid())
+	{
+		*AgentTimelineBuildCancel = true;
+	}
+	bAgentTimelineBuildInFlight = false;
+	InFlightKey = UE::Mobius::Tenability::FAgentTimelineKey();
+	AgentTimelines = UE::Mobius::Tenability::FAgentTimelineSet(); // clears map + resets BuiltKey to sentinel
+
 	ClearCachedData();
 }
 
@@ -427,7 +317,6 @@ void UBRiskEgressSubsystem::ClearCachedData()
 {
 	RoomStates.Reset();
 	RoomSeriesCaches.Reset();
-	AgentHealthHistory.Reset();
 	SampleTimeSeconds = 0.0f;
 	++Revision;
 	++ScenarioGeneration;
@@ -670,6 +559,373 @@ FBRiskTenabilitySample UBRiskEgressSubsystem::SampleTenabilityTableAtTime(
 	Result.bHasFEDSum = Lo.bHasFEDSum && Hi.bHasFEDSum;
 	Result.bHasFEDRadSum = Lo.bHasFEDRadSum && Hi.bHasFEDRadSum;
 	return Result;
+}
+
+void UBRiskEgressSubsystem::SampleTenabilityDoseAtRoomIndex(
+	const int32 RoomIndex,
+	const double TimeSeconds,
+	double& OutToxicFED,
+	double& OutThermalFED) const
+{
+	OutToxicFED = 0.0;
+	OutThermalFED = 0.0;
+
+	if (!BRiskDataSubsystem || !RoomStates.IsValidIndex(RoomIndex))
+	{
+		return;
+	}
+
+	// Same RoomIndex -> RoomId -> table lookup as ApplyTenabilityCalcToRoom, so the live processor's
+	// DoseAt query and the offline timeline build agree on which curve backs a given room index.
+	const int32 RoomId = RoomStates[RoomIndex].RoomId;
+	const TArray<FBRiskTenabilityRoomTable>& Tables = BRiskDataSubsystem->GetTenabilityTables();
+	const FBRiskTenabilityRoomTable* Table = Tables.FindByPredicate(
+		[RoomId](const FBRiskTenabilityRoomTable& Candidate) { return Candidate.RoomId == RoomId; });
+	if (!Table)
+	{
+		return; // no curve for this room -> no dose contribution (never fabricate)
+	}
+
+	const FBRiskTenabilitySample Sample = SampleTenabilityTableAtTime(*Table, TimeSeconds);
+	OutToxicFED = Sample.FEDSum;
+	OutThermalFED = Sample.FEDRadSum;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Agent-timeline build orchestration + file-change invalidation (Task 2)
+// ---------------------------------------------------------------------------------------------------
+
+uint32 UBRiskEgressSubsystem::HashTenabilitySettings(const FTenabilityAnalysisSettings& Settings)
+{
+	// Field-by-field HashCombine — NOT a memcpy hash: FTenabilityAnalysisSettings has bool members and
+	// float members, so the struct carries indeterminate padding bytes that would make a byte hash
+	// non-deterministic across builds/instances. Fold each field explicitly. Floats are folded via
+	// their exact bit pattern (GetTypeHash(float) already does this) so two settings with bitwise-equal
+	// endpoints hash identically and a genuine endpoint change (any bit) changes the hash.
+	uint32 Hash = 0;
+	Hash = HashCombine(Hash, GetTypeHash(Settings.MonitorHeightM));
+	Hash = HashCombine(Hash, GetTypeHash(Settings.EndpointVisibilityM));
+	Hash = HashCombine(Hash, GetTypeHash(Settings.ReferenceVisibilityM));
+	Hash = HashCombine(Hash, GetTypeHash(Settings.EndpointToxicFED));
+	Hash = HashCombine(Hash, GetTypeHash(Settings.EndpointThermalFED));
+	Hash = HashCombine(Hash, GetTypeHash(Settings.EndpointTemperatureC));
+	// Fold the criterion-enable bools as one packed byte via an explicit uint32 cast (no reliance on a
+	// GetTypeHash(bool) overload). Order is fixed, so any toggle flips a distinct bit -> a distinct hash.
+	uint32 Flags = 0;
+	Flags |= (Settings.bUseVisibilityCriterion  ? 1u : 0u) << 0;
+	Flags |= (Settings.bUseToxicFEDCriterion     ? 1u : 0u) << 1;
+	Flags |= (Settings.bUseThermalFEDCriterion   ? 1u : 0u) << 2;
+	Flags |= (Settings.bUseTemperatureCriterion  ? 1u : 0u) << 3;
+	Flags |= (Settings.bUseLayerHeightCriterion  ? 1u : 0u) << 4;
+	Hash = HashCombine(Hash, GetTypeHash(Flags));
+	return Hash;
+}
+
+UE::Mobius::Tenability::FAgentTimelineKey UBRiskEgressSubsystem::MakeCurrentTimelineKey() const
+{
+	using namespace UE::Mobius::Tenability;
+
+	// Both datasets must be present for a real key. Either absent -> all-zero sentinel: real agent
+	// generations start at 1 (SimDataGenerationCounter is pre-incremented) and ClearCachedData bumps
+	// ScenarioGeneration, so a sentinel can never accidentally equal a genuine built key.
+	const UWorld* World = GetWorld();
+	const UMassEntitySpawnSubsystem* SpawnSubsystem =
+		World ? World->GetSubsystem<UMassEntitySpawnSubsystem>() : nullptr;
+	const FSimulationFragment* SimFragment =
+		SpawnSubsystem ? SpawnSubsystem->GetSimulationFragment() : nullptr;
+
+	const bool bAgentDataPresent =
+		SimFragment && SimFragment->Provider.IsValid() && SimFragment->Provider->IsValidAndPopulated();
+	const bool bScenarioDataPresent =
+		BRiskDataSubsystem && BRiskDataSubsystem->HasTenabilityData() && !RoomStates.IsEmpty();
+
+	if (!bAgentDataPresent || !bScenarioDataPresent)
+	{
+		return FAgentTimelineKey(); // sentinel
+	}
+
+	FAgentTimelineKey Key;
+	Key.AgentDataGeneration = SimFragment->DataGeneration;
+	Key.ScenarioGeneration = ScenarioGeneration;
+	Key.SettingsHash = HashTenabilitySettings(BuildTenabilitySettingsFromEndpoints());
+	return Key;
+}
+
+bool UBRiskEgressSubsystem::AreAgentTimelinesCurrent() const
+{
+	const UE::Mobius::Tenability::FAgentTimelineKey Current = MakeCurrentTimelineKey();
+	// A sentinel current key (dataset absent) is never "current": nothing valid to show.
+	if (Current == UE::Mobius::Tenability::FAgentTimelineKey())
+	{
+		return false;
+	}
+	return AgentTimelines.BuiltKey == Current;
+}
+
+const UE::Mobius::Tenability::FAgentTenabilityTimeline*
+UBRiskEgressSubsystem::FindCurrentAgentTimeline(const int32 EntityID) const
+{
+	// Only ever hand out timelines from a set whose key matches the live triple. Stale, building or
+	// absent -> nullptr, so the caller renders the no-data state and never a mismatched number.
+	if (!AreAgentTimelinesCurrent())
+	{
+		return nullptr;
+	}
+	return AgentTimelines.Timelines.Find(EntityID);
+}
+
+void UBRiskEgressSubsystem::RequestAgentTimelineRebuild(const UE::Mobius::Tenability::FAgentTimelineKey& Key)
+{
+	using namespace UE::Mobius::Tenability;
+
+	// Debounce 1: never build for the sentinel key (a dataset is absent — nothing to build).
+	if (Key == FAgentTimelineKey())
+	{
+		return;
+	}
+	// Debounce 2: the built set already matches this key — nothing to do.
+	if (AgentTimelines.BuiltKey == Key)
+	{
+		return;
+	}
+	// Debounce 3: a build for an equal key is already in flight. A build for a DIFFERENT key
+	// (a newer request) is allowed to supersede: it cancels the older job and dispatches afresh.
+	if (bAgentTimelineBuildInFlight && InFlightKey == Key)
+	{
+		return;
+	}
+
+	// Snapshot everything the build needs by value / shared-immutable so the worker touches no
+	// subsystem state (integrity: no UObject access off the game thread).
+	const UWorld* World = GetWorld();
+	const UMassEntitySpawnSubsystem* SpawnSubsystem =
+		World ? World->GetSubsystem<UMassEntitySpawnSubsystem>() : nullptr;
+	const FSimulationFragment* SimFragment =
+		SpawnSubsystem ? SpawnSubsystem->GetSimulationFragment() : nullptr;
+	if (!SimFragment || !SimFragment->Provider.IsValid() || !SimFragment->Provider->IsValidAndPopulated())
+	{
+		return; // agent data gone since the caller derived the key — next-frame poll re-requests
+	}
+	if (!BRiskDataSubsystem || !BRiskDataSubsystem->HasTenabilityData())
+	{
+		return;
+	}
+
+	// TSharedPtr copy keeps the sample allocation alive for the job's lifetime regardless of a file
+	// swap on the game thread (which builds a NEW fragment/provider, never mutates this one).
+	TSharedPtr<ISimSampleProvider> Provider = SimFragment->Provider;
+
+	// Room bounds + ids parallel to RoomStates (same order the live sampler resolves against), copied.
+	TArray<FBox> RoomBounds;
+	TArray<int32> RoomIds;
+	RoomBounds.Reserve(RoomStates.Num());
+	RoomIds.Reserve(RoomStates.Num());
+	for (const FBRiskEgressRoomState& RoomState : RoomStates)
+	{
+		RoomBounds.Add(RoomState.WorldBounds);
+		RoomIds.Add(RoomState.RoomId);
+	}
+
+	// Value copy of the tenability tables (rooms x samples — small), so the FED sampler reads a
+	// private, immutable snapshot instead of live subsystem data. Indexed parallel to RoomBounds/Ids
+	// via RoomId so the builder's RoomIndex (into RoomBounds) maps to the right table. Non-const so it
+	// can be MoveTemp'd into the async capture below (MoveTemp static-asserts against a const source).
+	TArray<FBRiskTenabilityRoomTable> Tables = BRiskDataSubsystem->GetTenabilityTables();
+
+	// Timestep index -> seconds. The provider's ForEachTimestep yields the agent-grid index; multiply
+	// by the agent sample interval to recover seconds (the same clock the live sampler uses).
+	const float TimeBetweenSteps = SpawnSubsystem->GetAgentTimeBetweenSteps();
+
+		// Analysis-settings snapshot for Layer 2 (failure precompute). Captured by value so the worker
+		// evaluates the SAME endpoints/criteria that produced Key.SettingsHash: a settings change bumps
+		// the hash, mismatches the built key, and the apply discards (then the next-frame poll rebuilds).
+		const FTenabilityAnalysisSettings SettingsSnapshot = BuildTenabilitySettingsFromEndpoints();
+
+	// Fresh cancel flag for this dispatch; supersede any older in-flight job.
+	if (AgentTimelineBuildCancel.IsValid())
+	{
+		*AgentTimelineBuildCancel = true; // tell the previous worker to stop
+	}
+	TSharedRef<FThreadSafeBool> Cancel = MakeShared<FThreadSafeBool>(false);
+	AgentTimelineBuildCancel = Cancel;
+	InFlightKey = Key;
+	bAgentTimelineBuildInFlight = true;
+	const uint32 Serial = ++AgentTimelineBuildSerial;
+
+	TWeakObjectPtr<UBRiskEgressSubsystem> WeakThis(this);
+
+	Async(EAsyncExecution::ThreadPool,
+		[WeakThis, Serial, Cancel, Provider, RoomBounds = MoveTemp(RoomBounds), RoomIds = MoveTemp(RoomIds),
+		 Tables = MoveTemp(Tables), Key, TimeBetweenSteps, SettingsSnapshot]() mutable
+	{
+		FAgentTimelineSet BuiltSet;
+
+		// The build reads *Cancel before starting the pass and again per-timestep, so a cancel that
+		// arrives before or during the sweep short-circuits the work and yields an empty set (which the
+		// apply then discards on the cancel check).
+		if (!*Cancel && Provider.IsValid() && Provider->IsValidAndPopulated())
+		{
+			// The FED sampler backs the builder with the SAME curve evaluation the live room state uses
+			// (SampleTenabilityTableAtTime) so offline dose and live display agree (integrity invariant 4).
+			// RoomIndex indexes RoomBounds/RoomIds; map it to the matching table via RoomId. Captures
+			// Tables + a private copy of the RoomIndex->RoomId map BY VALUE: RoomIds is MoveTemp'd into
+			// the builder below, so a by-reference capture would dangle. Tables is captured by value into
+			// the sampler's own copy (owned by the enclosing async body) so it outlives every AddTimestep.
+			TArray<int32> SamplerRoomIds = RoomIds; // private copy for the sampler
+			auto FEDSampler = [Tables, SamplerRoomIds = MoveTemp(SamplerRoomIds)]
+				(int32 RoomIndex, double TimeSeconds, double& OutToxic, double& OutThermal)
+			{
+				OutToxic = 0.0;
+				OutThermal = 0.0;
+				if (!SamplerRoomIds.IsValidIndex(RoomIndex))
+				{
+					return;
+				}
+				const int32 RoomId = SamplerRoomIds[RoomIndex];
+				const FBRiskTenabilityRoomTable* Table = Tables.FindByPredicate(
+					[RoomId](const FBRiskTenabilityRoomTable& Candidate) { return Candidate.RoomId == RoomId; });
+				if (!Table)
+				{
+					return;
+				}
+				const FBRiskTenabilitySample Sample = SampleTenabilityTableAtTime(*Table, TimeSeconds);
+				OutToxic = Sample.FEDSum;
+				OutThermal = Sample.FEDRadSum;
+			};
+
+			// RoomIndex -> table-index map, parallel to RoomBounds/RoomIds, resolved via RoomId. Layer 2
+			// walks each interval's RoomIndex through this to reach the room's tenability curve. Built from
+			// a private RoomIds copy because RoomIds is MoveTemp'd into the builder just below.
+			TArray<int32> RoomIndexToTableIndex;
+			RoomIndexToTableIndex.Reserve(RoomIds.Num());
+			for (const int32 MapRoomId : RoomIds)
+			{
+				RoomIndexToTableIndex.Add(Tables.IndexOfByPredicate(
+					[MapRoomId](const FBRiskTenabilityRoomTable& Candidate) { return Candidate.RoomId == MapRoomId; }));
+			}
+
+			// Per-agent pose track recorded DURING the same guaranteed-complete pass. The builder keeps only
+			// a single last-seen pose per open interval (discarded on Finish()), so the failure pose at an
+			// arbitrary crossing time needs its own record. Recording it here keeps pose resolution off the
+			// game thread and uses the exact trajectory samples the intervals were built from (no second read).
+			struct FPoseKey { float TimeSeconds; FVector Location; FRotator Rotation; };
+			TMap<int32, TArray<FPoseKey>> PoseTracks;
+
+			FAgentTimelineSetBuilder Builder(MoveTemp(RoomBounds), MoveTemp(RoomIds), MoveTemp(FEDSampler));
+
+			// Guaranteed-complete ascending pass (Invariant 5). Both providers implement ForEachTimestep
+			// with their own storage/reader and touch no UObject state, so this is safe off the game
+			// thread (FFullyResidentProvider iterates a shared-immutable TMap held alive by the captured
+			// TSharedPtr; FStreamingProvider opens its own FArchive and never touches the windowed ring).
+			Provider->ForEachTimestep(
+				[&Builder, &Cancel, &PoseTracks, TimeBetweenSteps](int32 Timestep, const TArray<FSimMovementSample>& Samples)
+				{
+					if (*Cancel)
+					{
+						return;
+					}
+					const float TimeSeconds = static_cast<float>(Timestep) * TimeBetweenSteps;
+					Builder.AddTimestep(TimeSeconds, Samples);
+					for (const FSimMovementSample& Sample : Samples)
+					{
+						PoseTracks.FindOrAdd(Sample.EntityID).Add({ TimeSeconds, Sample.Position, Sample.Rotation });
+					}
+				});
+
+			if (!*Cancel)
+			{
+				BuiltSet = Builder.Finish();
+				BuiltSet.BuiltKey = Key;
+
+				// Layer 2: per-agent failure precompute over the same captured tables + settings, still off
+				// the game thread. The PoseSampler interpolates that agent's recorded pose track at the
+				// crossing time (ascending times -> binary search + linear lerp; clamps at the ends).
+				for (auto& TimelinePair : BuiltSet.Timelines)
+				{
+					const int32 EntityID = TimelinePair.Key;
+					const TArray<FPoseKey>* Track = PoseTracks.Find(EntityID);
+					TFunction<bool(float, FVector&, FRotator&)> PoseSampler;
+					if (Track && Track->Num() > 0)
+					{
+						PoseSampler = [Track](float TimeSeconds, FVector& OutLoc, FRotator& OutRot) -> bool
+						{
+							const TArray<FPoseKey>& Keys = *Track;
+							if (TimeSeconds <= Keys[0].TimeSeconds)
+							{
+								OutLoc = Keys[0].Location;
+								OutRot = Keys[0].Rotation;
+								return true;
+							}
+							if (TimeSeconds >= Keys.Last().TimeSeconds)
+							{
+								OutLoc = Keys.Last().Location;
+								OutRot = Keys.Last().Rotation;
+								return true;
+							}
+							int32 LoIdx = 0;
+							int32 HiIdx = Keys.Num() - 1;
+							while (HiIdx - LoIdx > 1)
+							{
+								const int32 MidIdx = (LoIdx + HiIdx) / 2;
+								if (Keys[MidIdx].TimeSeconds <= TimeSeconds) { LoIdx = MidIdx; } else { HiIdx = MidIdx; }
+							}
+							const float Span = Keys[HiIdx].TimeSeconds - Keys[LoIdx].TimeSeconds;
+							const float Alpha = Span > UE_SMALL_NUMBER
+								? FMath::Clamp((TimeSeconds - Keys[LoIdx].TimeSeconds) / Span, 0.0f, 1.0f)
+								: 0.0f;
+							OutLoc = FMath::Lerp(Keys[LoIdx].Location, Keys[HiIdx].Location, Alpha);
+							OutRot = FMath::Lerp(Keys[LoIdx].Rotation, Keys[HiIdx].Rotation, Alpha);
+							return true;
+						};
+					}
+					ComputeFailureData(
+						TimelinePair.Value, Tables, RoomIndexToTableIndex, SettingsSnapshot, PoseSampler);
+				}
+			}
+		}
+
+		// Hand the result back to the game thread. The apply re-derives the live key and discards on
+		// any mismatch (a file swapped mid-build), on cancel, or if a newer job superseded this one.
+		AsyncTask(ENamedThreads::GameThread,
+			[WeakThis, Serial, Cancel, BuiltSet = MoveTemp(BuiltSet)]() mutable
+		{
+			if (UBRiskEgressSubsystem* Self = WeakThis.Get())
+			{
+				Self->ApplyAgentTimelineBuildResult(Serial, Cancel, MoveTemp(BuiltSet));
+			}
+		});
+	});
+}
+
+void UBRiskEgressSubsystem::ApplyAgentTimelineBuildResult(
+	const uint32 Serial,
+	const TSharedRef<FThreadSafeBool>& Cancel,
+	UE::Mobius::Tenability::FAgentTimelineSet&& BuiltSet)
+{
+	// Clear the in-flight flag only if THIS is still the latest dispatched job. A newer request bumped
+	// AgentTimelineBuildSerial and set its own InFlightKey; leaving those alone lets it complete.
+	const bool bIsLatestJob = (Serial == AgentTimelineBuildSerial);
+	if (bIsLatestJob)
+	{
+		bAgentTimelineBuildInFlight = false;
+	}
+
+	// Discard if cancelled (scenario cleared / superseded) or superseded by a newer job.
+	if (*Cancel || !bIsLatestJob)
+	{
+		return;
+	}
+
+	// Re-derive the CURRENT key and keep the result only if the built key still matches it (a file
+	// swapped DURING the build bumps a generation, so the captured BuiltKey no longer matches -> drop;
+	// the processor's next-frame poll re-requests against the fresh key).
+	const UE::Mobius::Tenability::FAgentTimelineKey CurrentKey = MakeCurrentTimelineKey();
+	if (BuiltSet.BuiltKey != CurrentKey || CurrentKey == UE::Mobius::Tenability::FAgentTimelineKey())
+	{
+		return;
+	}
+
+	AgentTimelines = MoveTemp(BuiltSet);
 }
 
 void UBRiskEgressSubsystem::ApplyTenabilityCalcToRoom(const int32 RoomIndex)

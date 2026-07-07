@@ -148,68 +148,13 @@ bool FBRiskDataImporterSuccessTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FBRiskEgressHealthRewindHistoryTest,
-	"ProjectMobius.BRisk.EgressHealth.RewindHistory",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-bool FBRiskEgressHealthRewindHistoryTest::RunTest(const FString& Parameters)
-{
-	// Contract under test (redesigned in 6dc81c87, "Implement B-RISK tenability import and UI"):
-	// the rewind history stores compact (time, DisplayRisk, shown criterion) samples.
-	// RestoreAgentHealth lerps DisplayRisk, snaps the criterion to the nearer sample, and derives
-	// Health = 1 - clamp(DisplayRisk). Death state is NOT restored here - callers derive it from
-	// DeathTimeSeconds - so this test asserts only the restore contract.
-	UBRiskEgressSubsystem* EgressSubsystem = NewObject<UBRiskEgressSubsystem>();
-	TestNotNull(TEXT("Egress subsystem test object should be created"), EgressSubsystem);
-	if (!EgressSubsystem)
-	{
-		return false;
-	}
-
-	FAgentEgressTenabilityFragment Health;
-	Health.DisplayRisk = 0.0f;
-	Health.CurrentDominantCriterion = ETenabilityCriterion::Visibility;
-	EgressSubsystem->RecordAgentHealth(7, 0.0f, Health);
-
-	Health.DisplayRisk = 0.5f;
-	EgressSubsystem->RecordAgentHealth(7, 5.0f, Health);
-
-	Health.DisplayRisk = 1.0f;
-	Health.bTenabilityFailed = true;
-	Health.FirstFailureCriterion = ETenabilityCriterion::ToxicFED;
-	EgressSubsystem->RecordAgentHealth(7, 10.0f, Health);
-
-	FAgentEgressTenabilityFragment RestoredHealth;
-	TestFalse(
-		TEXT("An unrecorded agent should not restore"),
-		EgressSubsystem->RestoreAgentHealth(99, 3.0f, RestoredHealth));
-
-	TestTrue(
-		TEXT("A recorded agent should restore at a rewind time"),
-		EgressSubsystem->RestoreAgentHealth(7, 3.0f, RestoredHealth));
-	TestTrue(
-		TEXT("Display risk at three seconds should interpolate to 0.3"),
-		FMath::IsNearlyEqual(RestoredHealth.DisplayRisk, 0.3f, 1e-4f));
-	TestTrue(
-		TEXT("Health at three seconds should interpolate to 70 percent"),
-		FMath::IsNearlyEqual(RestoredHealth.Health, 0.7f, 1e-4f));
-
-	TestTrue(
-		TEXT("A recorded agent should restore at its failure time"),
-		EgressSubsystem->RestoreAgentHealth(7, 10.0f, RestoredHealth));
-	TestTrue(
-		TEXT("Display risk at the failure time should be 1"),
-		FMath::IsNearlyEqual(RestoredHealth.DisplayRisk, 1.0f, 1e-4f));
-	TestTrue(
-		TEXT("Health at the failure time should be zero"),
-		FMath::IsNearlyEqual(RestoredHealth.Health, 0.0f, 1e-4f));
-	TestEqual(
-		TEXT("Criterion at the failure time should snap to the failure criterion"),
-		static_cast<uint8>(RestoredHealth.CurrentDominantCriterion),
-		static_cast<uint8>(ETenabilityCriterion::ToxicFED));
-	return true;
-}
+// NOTE: FBRiskEgressHealthRewindHistoryTest (ProjectMobius.BRisk.EgressHealth.RewindHistory) was
+// removed in the tenability-timeline v2 refactor (Task 4): it exercised
+// UBRiskEgressSubsystem::RecordAgentHealth/RestoreAgentHealth and FAgentEgressHealthHistorySample,
+// which are deleted (runtime-dead — tenability is now a precomputed per-agent timeline queried via
+// FAgentTenabilityTimeline::DoseAt, with no rewind-history recording/restoring step). See
+// BRiskTenabilityTest.cpp's FBRiskTenabilityFailureProjectionTest for the successor coverage of the
+// failure-lock display contract this test partially exercised.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBRiskIndependentLoadDefaultsTest,

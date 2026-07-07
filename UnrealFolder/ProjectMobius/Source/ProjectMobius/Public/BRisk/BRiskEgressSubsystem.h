@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "MassEntitySubsystem.h"
 #include "BRiskDataImporter.h"
+#include "BRisk/AgentTenabilityTimeline.h" // FAgentTimelineKey/Set/Timeline (Task 1 core)
+#include "HAL/ThreadSafeBool.h"            // cancel flag shared with the background build job
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "Subsystems/WorldSubsystem.h"
 #include <initializer_list>
@@ -69,16 +71,6 @@ struct FBRiskEgressRoomState
 	FBRiskEgressLayerState LowerLayer;
 };
 
-/** Compact timeline sample used to restore tenability state when playback is rewound. */
-struct FAgentEgressHealthHistorySample
-{
-	float TimeSeconds = 0.0f;
-	/** Display risk (max of enabled category risks) at this time; drives the bar fill. */
-	float DisplayRisk = 0.0f;
-	/** Shown criterion as uint8 (dominant before failure, first-failure after). */
-	uint8 ShownCriterion = 0;
-};
-
 /**
  * Bridges parsed B-Risk time-series data into a compact per-room snapshot for
  * Mass processors. All B-Risk series are sampled once per room/time update.
@@ -125,17 +117,71 @@ public:
 	 */
 	static int32 ExtractRoomIdSuffix(const FString& SeriesName);
 
-	/** Records a forward-playback health sample, compressing linear runs. */
-	void RecordAgentHealth(
-		int32 AgentId,
-		float TimeSeconds,
-		const FAgentEgressTenabilityFragment& Health);
+	/**
+	 * Linear-interpolate a tenability room table at a time, clamping to the
+	 * recorded range. Public static so the offline timeline builder can back its
+	 * FED sampler with the SAME curve evaluation the live room state uses
+	 * (scientific-integrity invariant 4).
+	 */
+	static FBRiskTenabilitySample SampleTenabilityTableAtTime(
+		const FBRiskTenabilityRoomTable& Table,
+		double TimeSeconds);
 
-	/** Restores health/dose at an already evaluated point on the playback timeline. */
-	bool RestoreAgentHealth(
-		int32 AgentId,
-		float TimeSeconds,
-		FAgentEgressTenabilityFragment& InOutHealth) const;
+	// --- Precomputed per-agent tenability timelines (Task 2: build orchestration + invalidation) ---
+	// The timelines are a pure function of the (agent file, B-Risk file, settings) triple, identified by
+	// FAgentTimelineKey. The health processor polls AreAgentTimelinesCurrent() every frame (three int
+	// compares) and drives an async rebuild on mismatch; stale/building timelines are NEVER displayed
+	// (FindCurrentAgentTimeline returns nullptr), so navigation and file swaps can never show old numbers.
+
+	/**
+	 * Current timeline key derived from the LIVE generations + settings:
+	 *   AgentDataGeneration = FSimulationFragment::DataGeneration (bumped on every agent-file build),
+	 *   ScenarioGeneration  = this->ScenarioGeneration (bumped on B-Risk load/clear),
+	 *   SettingsHash        = HashTenabilitySettings(BuildTenabilitySettingsFromEndpoints()).
+	 * A sentinel key (all zero) is returned when either dataset is absent (no provider / no scenario),
+	 * so it never compares equal to a real built key (real agent generations start at 1).
+	 */
+	UE::Mobius::Tenability::FAgentTimelineKey MakeCurrentTimelineKey() const;
+
+	/**
+	 * True when the built timelines match the CURRENT (agent gen, scenario gen, settings) triple.
+	 * False while stale, building, or when either dataset is absent — callers must render the no-data
+	 * state in every false case.
+	 */
+	bool AreAgentTimelinesCurrent() const;
+
+	/**
+	 * Request an async rebuild for the given key. Debounced: a no-op if the key already matches the
+	 * built set OR a build for an equal key is already in flight. Never blocks the game thread.
+	 */
+	void RequestAgentTimelineRebuild(const UE::Mobius::Tenability::FAgentTimelineKey& Key);
+
+	/**
+	 * Timeline for an agent, ONLY when the built set is current — nullptr when stale, building, or the
+	 * agent has no timeline. Callers must render the no-data state on nullptr, never stale numbers.
+	 */
+	const UE::Mobius::Tenability::FAgentTenabilityTimeline* FindCurrentAgentTimeline(int32 EntityID) const;
+
+	/**
+	 * Live-side backing for FAgentTenabilityTimeline::DoseAt's FRoomFEDSampler. RoomIndex is the SAME
+	 * index a timeline's intervals were built against (an index into RoomStates/GetRoomStates(), set by
+	 * the build job from a parallel snapshot — see RequestAgentTimelineRebuild). Resolves RoomIndex ->
+	 * RoomId -> the matching tenability table (the same RoomId-keyed lookup ApplyTenabilityCalcToRoom
+	 * uses) and samples it via SampleTenabilityTableAtTime, so live dose queries and the offline build use
+	 * the identical curve evaluation (scientific-integrity invariant 4). Out params are zeroed and the
+	 * function is a no-op when the room index is out of range or has no matching table (never fabricated).
+	 */
+	void SampleTenabilityDoseAtRoomIndex(
+		int32 RoomIndex,
+		double TimeSeconds,
+		double& OutToxicFED,
+		double& OutThermalFED) const;
+
+	/**
+	 * Field-by-field hash of the analysis settings (NOT a struct memcpy — padding bytes are
+	 * indeterminate). Public/static so tests can lock the mapping and the async apply can re-derive it.
+	 */
+	static uint32 HashTenabilitySettings(const FTenabilityAnalysisSettings& Settings);
 
 private:
 	struct FRoomSeriesCache
@@ -167,11 +213,6 @@ private:
 
 	/** Interpolate B-Risk calculated tenability output (Track A) into a room state at SampleTimeSeconds. */
 	void ApplyTenabilityCalcToRoom(int32 RoomIndex);
-
-	/** Linear-interpolate a tenability room table at a time, clamping to the recorded range. */
-	static FBRiskTenabilitySample SampleTenabilityTableAtTime(
-		const FBRiskTenabilityRoomTable& Table,
-		double TimeSeconds);
 
 	static FName NormalizeSeriesName(const FString& SeriesName);
 	static bool SampleAlignedSeries(
@@ -206,11 +247,38 @@ private:
 
 	TArray<FBRiskEgressRoomState> RoomStates;
 	TArray<FRoomSeriesCache> RoomSeriesCaches;
-	TMap<int32, TArray<FAgentEgressHealthHistorySample>> AgentHealthHistory;
 	float SampleTimeSeconds = 0.0f;
 	// Revision increments on every state change (time scrub, reload, clear).
 	// ScenarioGeneration increments only when a new scenario is fully loaded;
 	// processors use it to detect when per-agent accumulated exposure must reset.
 	uint64 Revision = 0;
 	uint64 ScenarioGeneration = 0;
+
+	// --- Agent-timeline build state (Task 2) ---
+	// The currently-applied set (built on a worker thread, swapped in on the game thread once its
+	// captured key still matches the live key). BuiltKey identifies which triple it was built for.
+	UE::Mobius::Tenability::FAgentTimelineSet AgentTimelines;
+
+	// The key of the build currently in flight, and a flag that a build is in flight, so
+	// RequestAgentTimelineRebuild can debounce (one build per key at a time). Cleared on the
+	// game-thread apply. Read/written only on the game thread.
+	UE::Mobius::Tenability::FAgentTimelineKey InFlightKey;
+	bool bAgentTimelineBuildInFlight = false;
+
+	// Monotonic id stamped on each dispatched build; the game-thread apply compares it to the latest
+	// to drop a superseded job even before the key re-derivation (a second RequestAgentTimelineRebuild
+	// for a newer key while the first still runs). Never reset; game-thread only.
+	uint32 AgentTimelineBuildSerial = 0;
+
+	// Shared cancel flag handed to the in-flight build job (by TSharedRef so the job keeps it alive).
+	// HandleScenarioCleared / a superseding request set it true; the worker checks it each timestep and
+	// the apply discards a cancelled result. A fresh flag is minted per dispatch.
+	TSharedPtr<FThreadSafeBool> AgentTimelineBuildCancel;
+
+	/** Runs the completed build's result onto the game thread: re-derives MakeCurrentTimelineKey() and
+	 *  keeps the set only if it still matches (and the job was not cancelled/superseded). */
+	void ApplyAgentTimelineBuildResult(
+		uint32 Serial,
+		const TSharedRef<FThreadSafeBool>& Cancel,
+		UE::Mobius::Tenability::FAgentTimelineSet&& BuiltSet);
 };
