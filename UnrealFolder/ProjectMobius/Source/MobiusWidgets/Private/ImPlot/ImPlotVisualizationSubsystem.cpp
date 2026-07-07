@@ -16,6 +16,7 @@
 #include "Misc/Paths.h"
 #include "Rendering/DrawElementTypes.h"
 #include "Rendering/RenderingCommon.h"
+#include "UserConfig/UserProjectSettings.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/SWidget.h"
 
@@ -470,6 +471,23 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
         ImGui::SetCurrentContext(State->ImGuiContext);
         ImPlot::SetCurrentContext(State->ImPlotContext);
+
+        // Match the Mobius UI theme (light = design 4b, dark = 7a). Applied per frame: it is a
+        // trivial colour-table fill, covers freshly created contexts, and follows a runtime theme
+        // toggle without any change tracking. FontScaleMain is set again after this each frame.
+        {
+                const UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
+                if (!UserSettings || UserSettings->GetUseLightUITheme())
+                {
+                        ImGui::StyleColorsLight();
+                        ImPlot::StyleColorsLight();
+                }
+                else
+                {
+                        ImGui::StyleColorsDark();
+                        ImPlot::StyleColorsDark();
+                }
+        }
 
         ImGuiIO& IO = ImGui::GetIO();
         // Calculate display size - will be used for both IO.DisplaySize and ImGui window size

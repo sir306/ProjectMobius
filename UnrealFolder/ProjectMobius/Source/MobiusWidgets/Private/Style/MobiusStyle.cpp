@@ -6,6 +6,7 @@
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Font.h"
 
 TSharedPtr<FSlateStyleSet> FMobiusStyle::StyleInstance = nullptr;
@@ -98,7 +99,25 @@ TSharedRef<FSlateStyleSet> FMobiusStyle::Create()
 		.SetColorAndOpacity(FSlateColor(ErrorColor)));
 
 	// ---- Widget styles --------------------------------------------------------------------------
-	Style->Set("Mobius.Button", FButtonStyle(FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Button")));
+	// 7a "AutoCAD dark" toolbar button (drives ButtonWithText Browse etc.; ribbon tabs override their
+	// brush via the tab material at runtime so they are unaffected). #4a4a4a fill / #5a5a5a 1px outline
+	// / #e0e0e0 label, with subtle hover/press.
+	const FLinearColor BtnFill    = FLinearColor::FromSRGBColor(FColor(0x4A, 0x4A, 0x4A));
+	const FLinearColor BtnHover   = FLinearColor::FromSRGBColor(FColor(0x56, 0x56, 0x56));
+	const FLinearColor BtnPress   = FLinearColor::FromSRGBColor(FColor(0x3A, 0x3A, 0x3A));
+	const FLinearColor BtnOutline = FLinearColor::FromSRGBColor(FColor(0x5A, 0x5A, 0x5A));
+	const FLinearColor BtnText    = FLinearColor::FromSRGBColor(FColor(0xE0, 0xE0, 0xE0));
+	FButtonStyle MobiusButton = FButtonStyle()
+		.SetNormal(FSlateRoundedBoxBrush(BtnFill,   2.0f, BtnOutline, 1.0f))
+		.SetHovered(FSlateRoundedBoxBrush(BtnHover, 2.0f, BtnOutline, 1.0f))
+		.SetPressed(FSlateRoundedBoxBrush(BtnPress, 2.0f, BtnOutline, 1.0f))
+		.SetDisabled(FSlateRoundedBoxBrush(BtnFill, 2.0f, BtnOutline, 1.0f))
+		.SetNormalForeground(FSlateColor(BtnText))
+		.SetHoveredForeground(FSlateColor(FLinearColor::White))
+		.SetPressedForeground(FSlateColor(BtnText))
+		.SetNormalPadding(FMargin(8.0f, 3.0f))
+		.SetPressedPadding(FMargin(8.0f, 3.0f));
+	Style->Set("Mobius.Button", MobiusButton);
 
 	// Red-themed window chrome for the error window (previously hand-built in ErrorWindow.cpp).
 	FWindowStyle ErrorWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");

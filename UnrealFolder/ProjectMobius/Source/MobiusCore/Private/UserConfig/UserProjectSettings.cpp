@@ -119,6 +119,16 @@ void UUserProjectSettings::ResetConfig()
 	bEnableMobiusLoggerAtStartup = true;
 	bDisplayMobiusLogWindowAtStartup = false;
 	RenderPerformanceTierOverride = ERpt_Auto;
+	bUseLightUITheme = true;
+}
+
+void UUserProjectSettings::SetUseLightUITheme(const bool bLight)
+{
+	bUseLightUITheme = bLight;
+
+	// Persist via SaveSettings() -> UGameUserSettings::SaveSettings -> real UObject::SaveConfig
+	// (same reasoning as SetRenderPerformanceTierOverride below).
+	SaveSettings();
 }
 
 void UUserProjectSettings::SetRenderPerformanceTierOverride(TEnumAsByte<ERenderPerformanceTier> NewOverride)

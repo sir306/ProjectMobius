@@ -72,6 +72,11 @@ private:
 	 *  so closing the app maximized reopens it maximized like a normal desktop application. */
 	UPROPERTY(Config)
 	bool bWasWindowMaximized = false;
+
+	/** UI theme choice (design doc: light = turn 4b "Windows white", dark = 7a "AutoCAD dark").
+	 *  Light is the product default. Serialized via SaveSettings()/LoadSettings() like the flags above. */
+	UPROPERTY(Config)
+	bool bUseLightUITheme = true;
 #pragma endregion PRIVATE_VARIABLES
 	
 public:
@@ -109,6 +114,14 @@ public:
 	/** Push the persisted UIScaleFactor into UUserInterfaceSettings::ApplicationScale without saving.
 	 *  Called once at startup (GameInstance::Init). */
 	void ApplyUIScaleFactorToSlate() const;
+
+	UFUNCTION(BlueprintCallable, Category="UserSettings|Display")
+	bool GetUseLightUITheme() const { return bUseLightUITheme; }
+
+	/** Set + persist the UI theme choice. Does NOT itself repaint the UI —
+	 *  UUIThemeSubsystem::SetTheme() persists AND applies. */
+	UFUNCTION(BlueprintCallable, Category="UserSettings|Display")
+	void SetUseLightUITheme(bool bLight);
 
 	UFUNCTION(BlueprintCallable, Category="UserSettings|Display")
 	bool HasCompletedFirstRun() const { return bHasCompletedFirstRun; }

@@ -25,6 +25,8 @@
 #include "UI/Components/ButtonWithText.h"
 #include "Components/TextBlock.h"
 #include "Style/MobiusStyle.h"
+#include "TimerManager.h"
+#include "UI/Theme/UIThemeSubsystem.h"
 #include "Widgets/SWidget.h"
 #include "Slate.h"
 #include "Components/ButtonSlot.h"
@@ -86,7 +88,9 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 	{
 		Cast<UButtonSlot>(GetContentSlot())->BuildSlot(MyButton.ToSharedRef());
 	}
-	
+
+	OnClicked.AddUniqueDynamic(this, &UButtonWithText::HandleThemeRefreshAfterClick);
+
 	return MyButton.ToSharedRef();
 }
 
@@ -97,6 +101,32 @@ void UButtonWithText::SetButtonWithNewText(FText NewButtonText)
 	if (MyButtonText.IsValid())
 	{
 		MyButtonText->SetText(NewButtonText);
+	}
+}
+
+void UButtonWithText::RefreshTextStyle()
+{
+	if (MyButtonText.IsValid())
+	{
+		MyButtonText->SetTextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>()
+			                           : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"));
+	}
+}
+
+void UButtonWithText::HandleThemeRefreshAfterClick()
+{
+	// Deferred one tick so every Blueprint OnClicked handler (including the ribbon's
+	// SetActiveRibbonTabMaterial / ResetOldRibbonTabMaterial material swaps) has run first.
+	if (UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UUIThemeSubsystem* ThemeSubsystem = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				World->GetTimerManager().SetTimerForNextTick(
+					FTimerDelegate::CreateUObject(ThemeSubsystem, &UUIThemeSubsystem::ReapplyTheme));
+			}
+		}
 	}
 }
 

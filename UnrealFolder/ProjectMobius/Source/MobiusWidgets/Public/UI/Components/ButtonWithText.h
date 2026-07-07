@@ -59,6 +59,21 @@ public:
 	void SetButtonWithNewText(FText NewButtonText);
 
 	/**
+	 * Re-push the label's text style to the live Slate widget. STextBlock COPIES its style at
+	 * construction, so runtime changes to the shared style set (e.g. a UIThemeSubsystem light/dark
+	 * switch) do not reach existing labels without this.
+	 */
+	void RefreshTextStyle();
+
+	/**
+	 * Blueprint click handlers may re-assign hard-referenced DarkTheme materials (the ribbon
+	 * tab-swap logic does) — re-run the theme walk next tick so those brushes are re-themed.
+	 * No-op in practice when the dark theme is active.
+	 */
+	UFUNCTION()
+	void HandleThemeRefreshAfterClick();
+
+	/**
 	 * To change the style of the button from default to clicked to give the ribbon appearance on the widget,
 	 * we can bind to the on clicked method to flip between the two style sheets */
 	UFUNCTION()
