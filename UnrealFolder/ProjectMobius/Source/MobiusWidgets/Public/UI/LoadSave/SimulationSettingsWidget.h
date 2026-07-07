@@ -41,10 +41,11 @@ class MOBIUSWIDGETS_API USimulationSettingsWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
+
+protected:
 	// Constructor
 	virtual void NativeConstruct() override;
 
-protected:
 	/** Toggle: use the B-Risk zone-CSV Time column to drive shared playback timing on the next load. */
 	UFUNCTION()
 	void OnUseBRiskTimingChanged(bool bIsChecked);
