@@ -22,24 +22,17 @@
 // hiding the navigation-dependence bug this test must expose).
 //
 // CONTEXT (like MobiusInGameTests): a full processor/subsystem tick chain needs a REAL game world,
-// so this is a ClientContext test — it exists in `-game` runs (UnrealEditor-Cmd -game via
-// MobiusPerf\RunTests.ps1 -InGame) and is INVISIBLE to the headless-editor / default correctness
-// automation lists. The plan's `ProjectMobius.BRisk` editor filter therefore will NOT pick it up;
-// it is deliberately gated on ClientContext because there is no way to tick PedestrianMovement/
-// AgentEgressHealth processors without a live world. Test name kept as the plan specifies
-// (ProjectMobius.BRisk.Tenability.ScrubReplayInvariants) so the plan's verification-matrix
-// references resolve.
+// so this is a ClientContext test — it runs under `-game` (MobiusPerf\RunTests.ps1 -InGame, which
+// filters Mobius.InGame.*) and is INVISIBLE to the headless-editor / default correctness automation
+// lists. It is deliberately gated on ClientContext because there is no way to tick
+// PedestrianMovement/AgentEgressHealth processors without a live world.
 //
-// !!! PENDING VERIFICATION (DEFERRED per Task 6 execution directive) — the plan's Step 2 retro-fail
-// check has NOT been run: this executor was instructed to write code ONLY (no build / no test run /
-// no git write, including no `git stash`). Before this test is trusted as a regression net, someone
-// MUST perform the plan's Step 2:
-//   git stash push -- Source/ProjectMobius/Private/MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.cpp
-//   <build + run ProjectMobius.BRisk.Tenability.ScrubReplayInvariants under -game>
-//   -> Scenario 1 MUST FAIL (the deleted state machine reappears / stale latch survives the scrub).
-//   git stash pop
-// then confirm it goes green on HEAD. Until that round-trip is done + the test is compiled/run,
-// this file is UNVERIFIED (authored against a careful end-to-end re-read of the current APIs only).
+// VERIFIED as a regression net (2026-07-07): the retro-fail check ran via a temporary one-line
+// latch sabotage in the health processor's projection block
+// (`bTenabilityFailed = bTenabilityFailed || bFailedByNow`) — Scenario 1 failed on
+// "S1@T0: not failed (scrubbed before failure time)" for every agent, then went green on restore.
+// (A `git stash` of the processor cpp cannot serve as the retro-fail: the pre-timeline processor
+// no longer compiles against the current fragments header.)
 //
 // Run: MobiusPerf\RunTests.ps1 -InGame
 //
@@ -595,11 +588,11 @@ namespace
 }
 
 // ===================================================================================================
-// ProjectMobius.BRisk.Tenability.ScrubReplayInvariants
+// Mobius.InGame.TenabilityScrubReplay
 // ===================================================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FInGameTenabilityScrubReplayTest,
-	"ProjectMobius.BRisk.Tenability.ScrubReplayInvariants",
+	"Mobius.InGame.TenabilityScrubReplay",
 	EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 
 bool FInGameTenabilityScrubReplayTest::RunTest(const FString& Parameters)
