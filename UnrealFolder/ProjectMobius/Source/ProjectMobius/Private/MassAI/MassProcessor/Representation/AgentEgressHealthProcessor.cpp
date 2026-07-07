@@ -81,9 +81,7 @@ void UAgentEgressHealthProcessor::Execute(
 				Viewer.AccumulatedToxicFED = Tenability.AccumulatedToxicFED;
 				Viewer.AccumulatedThermalFED = Tenability.AccumulatedThermalFED;
 				Viewer.CurrentVisibilityM = Tenability.CurrentVisibilityM;
-				Viewer.WorstVisibilityM = Tenability.WorstVisibilityM;
 				Viewer.CurrentTemperatureC = Tenability.CurrentTemperatureC;
-				Viewer.WorstTemperatureC = Tenability.WorstTemperatureC;
 				Viewer.CurrentLayerHeightM = Tenability.CurrentLayerHeightM;
 				Viewer.CurrentHeatReleaseKW = Tenability.CurrentHeatReleaseKW;
 				Viewer.CurrentDominantCriterion = static_cast<uint8>(Tenability.CurrentDominantCriterion);

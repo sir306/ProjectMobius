@@ -3,6 +3,7 @@
 #include "MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.h"
 
 #include "MassCommonTypes.h"
+#include "BRisk/AgentTenabilityTimeline.h"
 #include "BRisk/BRiskEgressSubsystem.h"
 #include "MassExecutionContext.h"
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
@@ -49,17 +50,67 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 	const float CurrentSimulationTime = TimeSubsystem->GetCurrentSimTime();
 	const uint64 ScenarioGeneration = EgressSubsystem->GetScenarioGeneration();
 
-	// Rebuild analysis settings from the scenario's B-Risk endpoints once per load.
+	// Rebuild analysis settings from the scenario's B-Risk endpoints once per load. Still needed:
+	// ComputeInstantaneousTenability's Track-A risks/criteria read these every frame, and the timeline's
+	// Layer-2 failure precompute is keyed on a hash of these same settings (SettingsHash).
 	if (ScenarioGeneration != TenabilitySettingsGeneration)
 	{
 		TenabilitySettings = EgressSubsystem->BuildTenabilitySettingsFromEndpoints();
 		TenabilitySettingsGeneration = ScenarioGeneration;
 	}
 
+	// Stale-timeline gate (three int compares — see FAgentTimelineKey): while the built agent-timeline
+	// set doesn't match the CURRENT (agent file, B-Risk file, settings) triple, request a rebuild and
+	// render the no-data state for every entity THIS frame. Never display a value computed from a
+	// mismatched triple (scientific-integrity invariant 2) — there is no partial/interpolated fallback.
+	if (!EgressSubsystem->AreAgentTimelinesCurrent())
+	{
+		EgressSubsystem->RequestAgentTimelineRebuild(EgressSubsystem->MakeCurrentTimelineKey());
+
+		EntityQuery.ForEachEntityChunk(
+			EntityManager,
+			ExecutionContext,
+			[](FMassExecutionContext& Context)
+			{
+				const TArrayView<FAgentEgressTenabilityFragment> HealthFragments =
+					Context.GetMutableFragmentView<FAgentEgressTenabilityFragment>();
+
+				// EVERY entity, rendered or not: the movement processor's failure-pose freeze keys
+				// off DeathTimeSeconds alone (and re-shows hidden agents), so a stale death pose
+				// left on ANY entity would snap it frozen during the rebuild window.
+				for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
+				{
+					FAgentEgressTenabilityFragment& Health = HealthFragments[EntityIndex];
+					Health.DisplayRisk = 0.0f;
+					Health.VisibilityRisk = 0.0f;
+					Health.ToxicFEDRisk = 0.0f;
+					Health.ThermalFEDRisk = 0.0f;
+					Health.TemperatureRisk = 0.0f;
+					Health.LayerHeightRisk = 0.0f;
+					Health.CurrentDominantCriterion = ETenabilityCriterion::None;
+					Health.Health = 1.0f;
+					Health.bVisibilityFailed = false;
+					Health.bToxicFEDFailed = false;
+					Health.bThermalFEDFailed = false;
+					Health.bTemperatureFailed = false;
+					Health.bLayerHeightFailed = false;
+					Health.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
+					Health.bTenabilityFailed = false;
+					Health.bIsDead = false;
+					Health.FirstFailureTimeSeconds = -1.0f;
+					Health.FirstFailureCriterion = ETenabilityCriterion::None;
+					Health.DeathTimeSeconds = -1.0f;
+					Health.DeathLocation = FVector::ZeroVector;
+					Health.DeathRotation = FRotator::ZeroRotator;
+				}
+			});
+		return;
+	}
+
 	EntityQuery.ForEachEntityChunk(
 		EntityManager,
 		ExecutionContext,
-		[this, EgressSubsystem, CurrentSimulationTime, ScenarioGeneration](FMassExecutionContext& Context)
+		[this, EgressSubsystem, CurrentSimulationTime](FMassExecutionContext& Context)
 		{
 			const TConstArrayView<FEntityMovementFragment> MovementFragments =
 				Context.GetFragmentView<FEntityMovementFragment>();
@@ -81,38 +132,42 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				FAgentBRiskExposureFragment& Exposure = ExposureFragments[EntityIndex];
 				FAgentEgressTenabilityFragment& Health = HealthFragments[EntityIndex];
 
-				if (Exposure.SourceScenarioGeneration != ScenarioGeneration)
-				{
-					UE::Mobius::EgressHealth::ResetAccumulatedExposure(Exposure, Health);
-					UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure, CurrentSimulationTime);
-					Exposure.SourceScenarioGeneration = ScenarioGeneration;
-				}
+				// No per-agent reset on scenario swap: dose is a closed-form query over the
+				// precomputed timeline, and AreAgentTimelinesCurrent() above already gated on
+				// the (agent file, B-Risk file, settings) triple.
+				const UE::Mobius::Tenability::FAgentTenabilityTimeline* Timeline =
+					EgressSubsystem->FindCurrentAgentTimeline(Rendering.EntityID);
 
-				// Stateless per-frame recompute: evaluate tenability at the CURRENT time
-				// only. FED dose is recomputed from room-entry baselines (see
-				// UpdateAgentTenability), so scrubbing the timeline forward OR backward
-				// yields the correct value with no separate rewind/restore path.
-				FAgentBRiskHazardSample HazardSample;
-				if (!EgressSubsystem->SampleAgentEnvironment(
-					MovementFragments[EntityIndex].CurrentLocation,
-					Exposure.BreathingHeightCm,
-					HazardSample,
-					Exposure.CurrentRoomIndex))
+				// Stand-in frame (streaming cold miss): CurrentLocation belongs to a different
+				// timestep. Hold the INSTANTANEOUS sample/display at its last-good value — sampling
+				// now would fabricate a room change from a wrong-timestep position. The dose and
+				// failure projection below still run unconditionally: they are timeline-backed
+				// (closed-form DoseAt / precomputed FirstFailureTimeSeconds), built from
+				// ForEachTimestep's guaranteed-complete pass, so stand-in frames can never reach
+				// them. One accepted side effect: the timeline dose used for DisplayRisk normalisation
+				// inside ComputeInstantaneousTenability is also held for this one frame (it lives
+				// inside this same skipped block) — self-heals the next frame the exact block lands,
+				// same as the instantaneous display.
+				if (!MovementFragments[EntityIndex].bSampleApproximate)
 				{
-					// Agent is outside every B-Risk zone (no data here). Bank the accrued
-					// dose (genuine forward exit only, see ClearCurrentHazardSample) and
-					// drop the FED baseline so a later re-entry re-baselines.
-					UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure, CurrentSimulationTime);
-					Health.InstantaneousHazard = 0.0f;
-
-					// Unless the agent has locked a tenability failure by the current
-					// time (its "cause of stop"), clear the bar to empty. Without this a
-					// rewound or escaped agent keeps a STALE frozen bar from a time when
-					// it was inside a zone (the visible "wrong bar outside the zone" bug).
-					const bool bLockedFailure = Health.bTenabilityFailed
-						&& CurrentSimulationTime + UE_SMALL_NUMBER >= Health.FirstFailureTimeSeconds;
-					if (!bLockedFailure)
+					// Stateless per-frame recompute: evaluate tenability at the CURRENT time only.
+					// FED dose comes from the timeline's closed-form DoseAt query (Prior + curve delta
+					// since room entry), so scrubbing the timeline forward OR backward yields the exact
+					// same value with no separate rewind/restore path.
+					FAgentBRiskHazardSample HazardSample;
+					if (!EgressSubsystem->SampleAgentEnvironment(
+						MovementFragments[EntityIndex].CurrentLocation,
+						Exposure.BreathingHeightCm,
+						HazardSample,
+						Exposure.CurrentRoomIndex))
 					{
+						// Agent is outside every B-Risk zone: no instantaneous (Track-A) data here.
+						// Dose/failure projection below still runs unconditionally from the timeline
+						// (occupancy gaps are already baked into the precomputed intervals), so a
+						// corridor-transiting agent's dose and failure state stay correct without a
+						// separate "banked exposure" path.
+						UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure);
+						Health.InstantaneousHazard = 0.0f;
 						Health.DisplayRisk = 0.0f;
 						Health.VisibilityRisk = 0.0f;
 						Health.ToxicFEDRisk = 0.0f;
@@ -121,29 +176,83 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 						Health.LayerHeightRisk = 0.0f;
 						Health.CurrentDominantCriterion = ETenabilityCriterion::None;
 						Health.Health = 1.0f;
+						// Current-frame criterion flags/mask are only written by
+						// ComputeInstantaneousTenability, which does not run outside a zone — clear
+						// them here or the viewer shows a zero bar with a non-empty failure mask.
+						Health.bVisibilityFailed = false;
+						Health.bToxicFEDFailed = false;
+						Health.bThermalFEDFailed = false;
+						Health.bTemperatureFailed = false;
+						Health.bLayerHeightFailed = false;
+						Health.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
 					}
-					continue;
+					else
+					{
+						UE::Mobius::EgressHealth::ApplyCurrentHazardSample(Exposure, HazardSample);
+
+						float ToxicDose = 0.0f;
+						float ThermalDose = 0.0f;
+						if (Timeline)
+						{
+							auto RoomSampler = [EgressSubsystem](
+								int32 RoomIndex, double TimeSeconds, double& OutToxic, double& OutThermal)
+							{
+								EgressSubsystem->SampleTenabilityDoseAtRoomIndex(
+									RoomIndex, TimeSeconds, OutToxic, OutThermal);
+							};
+							UE::Mobius::Tenability::FRoomFEDSampler SamplerRef(RoomSampler);
+							Timeline->DoseAt(CurrentSimulationTime, SamplerRef, ToxicDose, ThermalDose);
+						}
+						// No timeline for this agent (never occupied a B-Risk room) -> zero dose; still
+						// sample instantaneous Track-A values below (visibility/temperature/layer).
+
+						UE::Mobius::Tenability::ComputeInstantaneousTenability(
+							Health,
+							HazardSample,
+							TenabilitySettings,
+							CurrentSimulationTime,
+							ToxicDose,
+							ThermalDose);
+					}
 				}
 
-				UE::Mobius::EgressHealth::ApplyCurrentHazardSample(Exposure, HazardSample);
+				// --- Failure state: PROJECTED from the timeline's precomputed Layer-2 fields, not
+				// derived from a runtime latch. Navigation-independent by construction: the same
+				// TL->FirstFailureTimeSeconds compared against the same CurrentSimulationTime always
+				// yields the same bFailedByNow, regardless of how playback reached this time. ---
+				const bool bTimelineHasFailure = Timeline && Timeline->FirstFailureTimeSeconds >= 0.0f;
+				const bool bFailedByNow = bTimelineHasFailure
+					&& CurrentSimulationTime + UE_SMALL_NUMBER >= Timeline->FirstFailureTimeSeconds;
 
-				UE::Mobius::Tenability::UpdateAgentTenability(
-					Health,
-					Exposure,
-					HazardSample,
-					TenabilitySettings,
-					CurrentSimulationTime);
+				Health.bTenabilityFailed = bFailedByNow;
+				Health.bIsDead = bFailedByNow;
+				Health.FirstFailureTimeSeconds = Timeline ? Timeline->FirstFailureTimeSeconds : -1.0f;
+				Health.FirstFailureCriterion = Timeline ? Timeline->FirstFailureCriterion : ETenabilityCriterion::None;
+				Health.FailureMask = bFailedByNow ? Timeline->FirstFailureMask : Health.FailureMask;
+				Health.VisibilityFailureTimeSeconds = Timeline ? Timeline->VisibilityFailureTimeSeconds : -1.0f;
+				Health.ToxicFEDFailureTimeSeconds = Timeline ? Timeline->ToxicFEDFailureTimeSeconds : -1.0f;
+				Health.ThermalFEDFailureTimeSeconds = Timeline ? Timeline->ThermalFEDFailureTimeSeconds : -1.0f;
+				Health.TemperatureFailureTimeSeconds = Timeline ? Timeline->TemperatureFailureTimeSeconds : -1.0f;
+				Health.LayerHeightFailureTimeSeconds = Timeline ? Timeline->LayerHeightFailureTimeSeconds : -1.0f;
+				// Death pose only when the timeline actually records a failure — a no-failure
+				// timeline's FailureLocation is a meaningless default, not a pose.
+				Health.DeathTimeSeconds = bTimelineHasFailure ? Timeline->FirstFailureTimeSeconds : -1.0f;
+				Health.DeathLocation = bTimelineHasFailure ? Timeline->FailureLocation : FVector::ZeroVector;
+				Health.DeathRotation = bTimelineHasFailure ? Timeline->FailureRotation : FRotator::ZeroRotator;
 
-				// Legacy death-marker fields: "death" = first tenability failure (the
-				// reported ASET cause), not biological death.
-				Health.InstantaneousHazard = Health.DisplayRisk;
-				Health.bIsDead = Health.bTenabilityFailed;
-				if (Health.bTenabilityFailed && Health.DeathTimeSeconds < 0.0f)
+				if (bFailedByNow)
 				{
-					Health.DeathTimeSeconds = Health.FirstFailureTimeSeconds;
-					Health.DeathLocation = MovementFragments[EntityIndex].CurrentLocation;
-					Health.DeathRotation = MovementFragments[EntityIndex].CurrentRotation;
+					// Freeze the bar on the failure cause: full bar, criterion locked to the
+					// first-failure criterion. This is what a reviewer needs at the end of a
+					// scenario ("what made this agent stop"), not the conditions afterward.
+					// Scrubbing to a time BEFORE the (fixed) failure time falls through to the
+					// live pre-failure state computed above instead.
+					Health.DisplayRisk = 1.0f;
+					Health.CurrentDominantCriterion = Health.FirstFailureCriterion;
+					Health.Health = 0.0f;
 				}
+
+				Health.InstantaneousHazard = Health.DisplayRisk;
 			}
 		});
 }

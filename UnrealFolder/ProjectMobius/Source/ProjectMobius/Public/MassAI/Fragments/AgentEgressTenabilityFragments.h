@@ -183,28 +183,6 @@ struct PROJECTMOBIUS_API FAgentBRiskExposureFragment : public FMassFragment
 	float CumulativeHydrogenCyanideDose = 0.0f;
 	float CumulativeOxygenDeficitDose = 0.0f;
 
-	// --- Track B per-zone FED accumulation (B-Risk cumulative FED model) ---
-	// B-Risk FEDSum/FEDRadSum are cumulative-per-room since t0. A moving agent must
-	// accrue only the portion gained while it occupies a room. Rather than summing
-	// per-frame deltas (which is wrong under timeline scrubbing/rewind, where a
-	// single time jump would dump a whole cumulative step), the agent's dose is
-	// RECOMPUTED every frame as: PriorRooms + max(CurrentRoomFED - EntryRoomFED, 0).
-	// This is a pure function of the current interpolated room value, so it rises
-	// smoothly and decreases correctly when the timeline is rewound.
-	int32 LastExposureRoomId = INDEX_NONE;
-	int32 LastExposureRoomIndex = INDEX_NONE;
-	bool bHasCumulativeFEDBaseline = false;
-	// Room cumulative FED captured when the agent entered the current room.
-	float EntryRoomToxicFED = 0.0f;
-	float EntryRoomThermalFED = 0.0f;
-	// Current room cumulative FED as of the last update (banked on room change).
-	float LastSeenRoomToxicFED = 0.0f;
-	float LastSeenRoomThermalFED = 0.0f;
-	// Dose banked from previous rooms the agent has fully passed through.
-	float PriorRoomsToxicFED = 0.0f;
-	float PriorRoomsThermalFED = 0.0f;
-	float LastTenabilitySampleTimeSeconds = -1.0f;
-
 	uint16 AvailableChannels = 0;
 	bool bHasRoomSample = false;
 	bool bUpperLayer = false;
@@ -240,10 +218,6 @@ struct PROJECTMOBIUS_API FAgentEgressTenabilityFragment : public FMassFragment
 	float CurrentHeatReleaseKW = 0.0f;
 	float CurrentFEDSum = 0.0f;
 	float CurrentFEDRadSum = 0.0f;
-
-	// --- Worst observed values ---
-	float WorstVisibilityM = 20.0f;
-	float WorstTemperatureC = 24.0f;
 
 	// --- Independent failure flags ---
 	bool bTenabilityFailed = false;
@@ -300,9 +274,14 @@ namespace UE::Mobius::EgressHealth
 		Exposure.bUpperLayer = Sample.bUpperLayer;
 	}
 
-	inline void ClearCurrentHazardSample(
-		FAgentBRiskExposureFragment& Exposure,
-		const float CurrentSimTimeSeconds)
+	/**
+	 * Clears the CURRENT-sample fields only (agent occupies no B-Risk room this frame).
+	 * No dose banking here: dose is a closed-form query over the precomputed per-agent
+	 * timeline (FAgentTenabilityTimeline::DoseAt), so there is nothing to bank and no
+	 * baseline to drop — the timeline already accounts for every room-occupancy interval
+	 * regardless of how playback reaches the current time (play/skip/rewind/replay).
+	 */
+	inline void ClearCurrentHazardSample(FAgentBRiskExposureFragment& Exposure)
 	{
 		Exposure.CurrentRoomIndex = INDEX_NONE;
 		Exposure.CurrentRoomId = INDEX_NONE;
@@ -319,75 +298,32 @@ namespace UE::Mobius::EgressHealth
 		Exposure.AvailableChannels = 0;
 		Exposure.bHasRoomSample = false;
 		Exposure.bUpperLayer = false;
-
-		// Agent occupies no B-Risk room: bank the current room's accrued dose, then
-		// drop the baseline so a later room entry re-baselines. Banking must be
-		// skipped on a SPURIOUS exit: rewinding the timeline back across a zone
-		// boundary also lands here, and banking then double-counts once playback
-		// re-accrues the same span. Sim-time direction distinguishes the cases —
-		// the agent was last sampled inside a room at LastTenabilitySampleTimeSeconds,
-		// so a forward step out of every room is a genuine departure (bank), while a
-		// backward step is a scrub (drop the baseline only; replay re-accrues from
-		// the re-entry baseline, matching UpdateAgentTenability's recompute).
-		if (Exposure.bHasCumulativeFEDBaseline
-			&& CurrentSimTimeSeconds > Exposure.LastTenabilitySampleTimeSeconds)
-		{
-			Exposure.PriorRoomsToxicFED +=
-				FMath::Max(Exposure.LastSeenRoomToxicFED - Exposure.EntryRoomToxicFED, 0.0f);
-			Exposure.PriorRoomsThermalFED +=
-				FMath::Max(Exposure.LastSeenRoomThermalFED - Exposure.EntryRoomThermalFED, 0.0f);
-		}
-		Exposure.LastExposureRoomId = INDEX_NONE;
-		Exposure.LastExposureRoomIndex = INDEX_NONE;
-		Exposure.bHasCumulativeFEDBaseline = false;
-		Exposure.EntryRoomToxicFED = 0.0f;
-		Exposure.EntryRoomThermalFED = 0.0f;
-		Exposure.LastSeenRoomToxicFED = 0.0f;
-		Exposure.LastSeenRoomThermalFED = 0.0f;
 	}
 
-	inline void ResetAccumulatedExposure(
-		FAgentBRiskExposureFragment& Exposure,
-		FAgentEgressTenabilityFragment& Health)
-	{
-		Exposure.CumulativeSmokeDose = 0.0f;
-		Exposure.CumulativeHeatDose = 0.0f;
-		Exposure.CumulativeCarbonMonoxideDose = 0.0f;
-		Exposure.CumulativeCarbonDioxideDose = 0.0f;
-		Exposure.CumulativeHydrogenCyanideDose = 0.0f;
-		Exposure.CumulativeOxygenDeficitDose = 0.0f;
-		Exposure.CurrentDirectGasFed = 0.0f;
-		Exposure.CurrentDirectThermalFed = 0.0f;
-
-		Exposure.LastExposureRoomId = INDEX_NONE;
-		Exposure.LastExposureRoomIndex = INDEX_NONE;
-		Exposure.bHasCumulativeFEDBaseline = false;
-		Exposure.EntryRoomToxicFED = 0.0f;
-		Exposure.EntryRoomThermalFED = 0.0f;
-		Exposure.LastSeenRoomToxicFED = 0.0f;
-		Exposure.LastSeenRoomThermalFED = 0.0f;
-		Exposure.PriorRoomsToxicFED = 0.0f;
-		Exposure.PriorRoomsThermalFED = 0.0f;
-		Exposure.LastTenabilitySampleTimeSeconds = -1.0f;
-
-		Health = FAgentEgressTenabilityFragment();
-	}
 }
 
 /**
  * Defensible B-Risk tenability model. Each category is tracked independently and
  * the single display value is the MAX of enabled risks, never their sum.
  *
- * Two tracks (see refactor docs):
- *  - Track B (cumulative dose): toxic/thermal FED accrue ONLY the per-frame delta
- *    of the room's cumulative B-Risk FEDSum/FEDRadSum while the agent is present.
- *    A late entrant never inherits the room's earlier exposure.
+ * Two tracks:
+ *  - Track B (cumulative dose): toxic/thermal FED. Precomputed OFFLINE as a
+ *    per-agent room-occupancy timeline (AgentTenabilityTimeline.h) — dose at any
+ *    time is a closed-form query (FAgentTenabilityTimeline::DoseAt) over that
+ *    timeline, supplied to ComputeInstantaneousTenability as an input. A late
+ *    entrant never inherits the room's earlier exposure (see the timeline
+ *    builder's entry-baseline rule). Nothing accumulates at runtime, so the value
+ *    at time t is identical regardless of navigation (play/skip/rewind/replay).
  *  - Track A (instantaneous): visibility, layer height and temperature are read
  *    from the room's current calculated values at the monitor height. The
  *    instantaneous Temperature criterion is the correct signal for "this zone is
  *    thermally untenable now" — cumulative FEDRadSum saturates at 1.0 in B-Risk
  *    output, so its per-frame delta cannot flag a zone that was already lethal at
  *    entry. Enable the Temperature criterion for scenarios where FEDRadSum saturates.
+ *
+ * Failure state (bTenabilityFailed, FirstFailureTimeSeconds/Criterion, per-criterion
+ * failure times) is likewise precomputed offline (Layer 2 — ComputeFailureData) and
+ * PROJECTED by the caller at the current time; it is not derived in this namespace.
  */
 namespace UE::Mobius::Tenability
 {
@@ -422,59 +358,35 @@ namespace UE::Mobius::Tenability
 	}
 
 	/**
-	 * Advance one agent's tenability state for the current sample.
+	 * Compute one agent's INSTANTANEOUS tenability at the current sample. Stateless: every
+	 * output is a pure function of the inputs, so calling this twice with the same arguments
+	 * yields bitwise-identical results regardless of navigation (play/skip/rewind/replay).
 	 *
-	 * @param Tenability        Per-agent result fragment (separate risks + failure state).
-	 * @param Exposure          Per-agent exposure fragment (FED delta baselines).
+	 * Toxic/thermal FED dose is no longer accumulated here — it is an INPUT, supplied by the
+	 * caller from the precomputed per-agent timeline's closed-form query
+	 * (FAgentTenabilityTimeline::DoseAt). Failure state (bTenabilityFailed, FirstFailureTime/
+	 * Criterion, per-criterion failure times) is likewise NOT computed here: it is PROJECTED by
+	 * the caller from the timeline's precomputed Layer-2 failure fields, which are the
+	 * authoritative first-crossing times (see AgentTenabilityTimeline.h, ComputeFailureData).
+	 *
+	 * @param Tenability        Per-agent result fragment (separate risks + current values).
 	 * @param Sample            Current B-Risk room sample at the agent (Track A calc values).
 	 * @param Settings          Endpoints + which criteria are enabled.
-	 * @param CurrentSimTime    Simulation time in seconds (for failure-time stamping).
+	 * @param CurrentSimTime    Simulation time in seconds (reserved for future instantaneous use).
+	 * @param InToxicDose       Toxic FED dose at CurrentSimTime, from FAgentTenabilityTimeline::DoseAt.
+	 * @param InThermalDose     Thermal FED dose at CurrentSimTime, from FAgentTenabilityTimeline::DoseAt.
 	 */
-	inline void UpdateAgentTenability(
+	inline void ComputeInstantaneousTenability(
 		FAgentEgressTenabilityFragment& Tenability,
-		FAgentBRiskExposureFragment& Exposure,
 		const FAgentBRiskHazardSample& Sample,
 		const FTenabilityAnalysisSettings& Settings,
-		const float CurrentSimTime)
+		const float CurrentSimTime,
+		const float InToxicDose,
+		const float InThermalDose)
 	{
-		// --- Track B: per-room FED dose, RECOMPUTED from baselines each frame ---
-		// Total dose = PriorRooms + max(CurrentRoomFED - EntryRoomFED, 0). Because
-		// this is a pure function of the current interpolated room value (not a
-		// running sum of per-frame deltas), it rises smoothly with playback and
-		// decreases correctly under rewind/scrub. Entering a new room banks the
-		// previous room's contribution and re-baselines (no historical exposure).
-		const bool bSameRoomSource =
-			Exposure.bHasCumulativeFEDBaseline
-			&& Exposure.LastExposureRoomId == Sample.RoomId
-			&& Exposure.LastExposureRoomIndex == Sample.RoomIndex;
-
-		if (Sample.bHasCalcFEDSum || Sample.bHasCalcFEDRadSum)
-		{
-			if (!bSameRoomSource)
-			{
-				if (Exposure.bHasCumulativeFEDBaseline)
-				{
-					Exposure.PriorRoomsToxicFED +=
-						FMath::Max(Exposure.LastSeenRoomToxicFED - Exposure.EntryRoomToxicFED, 0.0f);
-					Exposure.PriorRoomsThermalFED +=
-						FMath::Max(Exposure.LastSeenRoomThermalFED - Exposure.EntryRoomThermalFED, 0.0f);
-				}
-				Exposure.EntryRoomToxicFED = Sample.CalcFEDSum;
-				Exposure.EntryRoomThermalFED = Sample.CalcFEDRadSum;
-				Exposure.LastExposureRoomId = Sample.RoomId;
-				Exposure.LastExposureRoomIndex = Sample.RoomIndex;
-				Exposure.bHasCumulativeFEDBaseline = true;
-			}
-
-			Exposure.LastSeenRoomToxicFED = Sample.CalcFEDSum;
-			Exposure.LastSeenRoomThermalFED = Sample.CalcFEDRadSum;
-
-			const float CurrentRoomToxic = FMath::Max(Sample.CalcFEDSum - Exposure.EntryRoomToxicFED, 0.0f);
-			const float CurrentRoomThermal = FMath::Max(Sample.CalcFEDRadSum - Exposure.EntryRoomThermalFED, 0.0f);
-			Tenability.AccumulatedToxicFED = Exposure.PriorRoomsToxicFED + CurrentRoomToxic;
-			Tenability.AccumulatedThermalFED = Exposure.PriorRoomsThermalFED + CurrentRoomThermal;
-		}
-		Exposure.LastTenabilitySampleTimeSeconds = CurrentSimTime;
+		// --- Dose: supplied by the caller (closed-form timeline query), not accumulated here. ---
+		Tenability.AccumulatedToxicFED = InToxicDose;
+		Tenability.AccumulatedThermalFED = InThermalDose;
 
 		// --- Track A: instantaneous current values for UI/criteria ---
 		Tenability.CurrentFEDSum = Sample.CalcFEDSum;
@@ -492,9 +404,6 @@ namespace UE::Mobius::Tenability
 		Tenability.CurrentTemperatureC = Sample.bHasCalcTemperature
 			? (bMonitorInUpperLayer ? Sample.CalcUpperTemperatureC : Sample.CalcLowerTemperatureC)
 			: Sample.TemperatureC;
-
-		Tenability.WorstVisibilityM = FMath::Min(Tenability.WorstVisibilityM, Tenability.CurrentVisibilityM);
-		Tenability.WorstTemperatureC = FMath::Max(Tenability.WorstTemperatureC, Tenability.CurrentTemperatureC);
 
 		// --- Separate normalized risks (enabled criteria only) ---
 		Tenability.VisibilityRisk = 0.0f;
@@ -557,54 +466,19 @@ namespace UE::Mobius::Tenability
 			Tenability.CurrentDominantCriterion = BestRisk > 0.0f ? Best : ETenabilityCriterion::None;
 		}
 
-		// --- Per-criterion failure-time stamping (first crossing per category) ---
-		const auto StampFailure = [CurrentSimTime](bool bFailed, float& FailureTime)
-		{
-			if (bFailed && FailureTime < 0.0f)
-			{
-				FailureTime = CurrentSimTime;
-			}
-		};
-		StampFailure(Tenability.bVisibilityFailed, Tenability.VisibilityFailureTimeSeconds);
-		StampFailure(Tenability.bToxicFEDFailed, Tenability.ToxicFEDFailureTimeSeconds);
-		StampFailure(Tenability.bThermalFEDFailed, Tenability.ThermalFEDFailureTimeSeconds);
-		StampFailure(Tenability.bTemperatureFailed, Tenability.TemperatureFailureTimeSeconds);
-		StampFailure(Tenability.bLayerHeightFailed, Tenability.LayerHeightFailureTimeSeconds);
-
-		// --- Failure bitmask preserves ALL simultaneous failures ---
+		// --- Failure bitmask: CURRENT-frame indicators only (no latch). Preserves ALL
+		// simultaneous failures at THIS instant; the caller (health processor) overrides
+		// bTenabilityFailed/FirstFailureCriterion/FailureMask with the PROJECTED values
+		// from the agent's precomputed timeline once it has failed by the current time,
+		// per scientific-integrity invariant 1 (navigation-independent tenability). The
+		// per-criterion *FailureTimeSeconds fields are likewise projected by the caller
+		// from the timeline's Layer-2 first-crossing times, not stamped here.
 		Tenability.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
 		if (Tenability.bVisibilityFailed) { Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::Visibility; }
 		if (Tenability.bToxicFEDFailed) { Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::ToxicFED; }
 		if (Tenability.bThermalFEDFailed) { Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::ThermalFED; }
 		if (Tenability.bTemperatureFailed) { Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::Temperature; }
 		if (Tenability.bLayerHeightFailed) { Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::LayerHeight; }
-
-		// --- Lock the first failed criterion using the display priority order ---
-		const bool bAnyFailed = Tenability.FailureMask != UE::Mobius::TenabilityFailureFlags::None;
-		if (bAnyFailed && !Tenability.bTenabilityFailed)
-		{
-			Tenability.bTenabilityFailed = true;
-			Tenability.FirstFailureTimeSeconds = CurrentSimTime;
-			Tenability.FirstFailureCriterion =
-				Tenability.bVisibilityFailed ? ETenabilityCriterion::Visibility :
-				Tenability.bToxicFEDFailed ? ETenabilityCriterion::ToxicFED :
-				Tenability.bThermalFEDFailed ? ETenabilityCriterion::ThermalFED :
-				Tenability.bTemperatureFailed ? ETenabilityCriterion::Temperature :
-				ETenabilityCriterion::LayerHeight;
-		}
-
-		// --- Lock to the failure cause once the agent has failed by this time ---
-		// After reaching its first tenability failure an agent is treated as stopped,
-		// so the bar FREEZES on the cause: first-failure criterion + full bar. This is
-		// what a reviewer needs at the end of a scenario ("what made this agent stop"),
-		// not the conditions it would have seen afterward. Scrubbing to a time BEFORE
-		// the (fixed) failure time shows the live pre-failure state again.
-		if (Tenability.bTenabilityFailed
-			&& CurrentSimTime + UE_SMALL_NUMBER >= Tenability.FirstFailureTimeSeconds)
-		{
-			Tenability.DisplayRisk = 1.0f;
-			Tenability.CurrentDominantCriterion = Tenability.FirstFailureCriterion;
-		}
 
 		// --- Backwards-compatible display-only Health (NOT analytical) ---
 		Tenability.Health = 1.0f - FMath::Clamp(Tenability.DisplayRisk, 0.0f, 1.0f);

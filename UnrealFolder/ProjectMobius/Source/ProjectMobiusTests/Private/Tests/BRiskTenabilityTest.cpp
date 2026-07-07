@@ -2,6 +2,7 @@
 
 #if !UE_BUILD_SHIPPING
 
+#include "BRisk/AgentTenabilityTimeline.h"
 #include "BRiskDataImporter.h"
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "CoreMinimal.h"
@@ -207,6 +208,22 @@ bool FBRiskTenabilityParserGoldenTest::RunTest(const FString&)
 }
 
 // --- Algorithm: doc Tests 1-5 + FIX A -----------------------------------------
+//
+// MIGRATION NOTE (Task 4, tenability-timeline v2): UpdateAgentTenability's runtime FED
+// banking (Track B: LastExposureRoomId/EntryRoomToxicFED/PriorRoomsToxicFED/etc. on
+// FAgentBRiskExposureFragment) and its one-way failure latch (bTenabilityFailed lock,
+// StampFailure) are DELETED — dose is now a closed-form query over a precomputed
+// per-agent FAgentTenabilityTimeline (FAgentTimelineSetBuilder + DoseAt), and failure
+// state is precomputed (ComputeFailureData) and PROJECTED by the caller, not derived by
+// this function. UpdateAgentTenability -> ComputeInstantaneousTenability(Tenability,
+// Sample, Settings, CurrentSimTime, InToxicDose, InThermalDose): dose is now an INPUT.
+// The dose-banking assertions below (Tests 1-3, scrub safety) are re-expressed against
+// FAgentTimelineSetBuilder-shaped intervals + DoseAt, keeping the SAME golden numbers.
+// The failure-latch assertions (Test 4's FirstFailureCriterion/Time, FIX A's
+// bTenabilityFailed, the failure-lock sub-test) are re-expressed as PROJECTION checks
+// in FBRiskTenabilityFailureProjectionTest below, replicating the health processor's
+// projection arithmetic (bFailedByNow = TL.FirstFailureTimeSeconds >= 0 && t >= that)
+// since the processor itself needs a live UWorld to execute.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBRiskTenabilityModelTest,
@@ -218,107 +235,154 @@ bool FBRiskTenabilityModelTest::RunTest(const FString&)
 	using namespace UE::Mobius::Tenability;
 	const FTenabilityAnalysisSettings Settings = MakeSettings();
 
-	// Test 1 - room entry baseline: entering at FEDSum 0.20 adds no exposure.
+	// Test 5 - display risk is MAX not SUM. Dose is now supplied directly as an input
+	// (no baseline bookkeeping needed): toxic dose 0.09 (endpoint 0.3) and thermal dose
+	// 0.2 (endpoint 1.0) are passed straight through.
 	{
 		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
-		TestEqual(TEXT("Test1 accumulated toxic FED 0 at entry"), T.AccumulatedToxicFED, 0.0f, 1e-4f);
-		TestTrue(TEXT("Test1 baseline set"), Ex.bHasCumulativeFEDBaseline);
-		TestEqual(TEXT("Test1 baseline == 0.20"), Ex.EntryRoomToxicFED, 0.20f, 1e-4f);
-
-		// Test 2 - delta while present: 0.20 -> 0.27 adds 0.07.
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.27, 0.0, 20.0), Settings, 130.0f);
-		TestEqual(TEXT("Test2 accumulated toxic FED += 0.07"), T.AccumulatedToxicFED, 0.07f, 1e-4f);
-	}
-
-	// Test 3 (doc: re-entry dose retention) lives in
-	// ProjectMobius.BRisk.Tenability.ReentryDoseRetention below.
-
-	// Test 5 - display risk is MAX not SUM (risks driven through the sample/baselines).
-	{
-		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
 		// Vis risk 0.4 => vis 16 (ref 20, endpoint 10): (20-16)/(20-10) = 0.4.
-		// Toxic 0.3 via accumulated 0.09 (endpoint 0.3). Thermal 0.2 via accumulated 0.2 (endpoint 1.0).
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 0.0, 16.0), Settings, 10.0f);  // room entry, baseline 0
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.09, 0.2, 16.0), Settings, 11.0f);
+		// Toxic risk 0.09/0.3 = 0.3. Thermal risk 0.2/1.0 = 0.2. Max = 0.4 (visibility).
+		ComputeInstantaneousTenability(T, MakeCalcSample(1, 0.09, 0.2, 16.0), Settings, 11.0f, 0.09f, 0.2f);
 		TestEqual(TEXT("Test5 DisplayRisk == max 0.4"), T.DisplayRisk, 0.4f, 1e-3f);
 		TestTrue(TEXT("Test5 not additive 0.9"), T.DisplayRisk < 0.5f);
 	}
 
-	// Test 4 - simultaneous visibility + thermal FED failure in one frame.
+	// Test 4 - simultaneous visibility + thermal FED CURRENT-FRAME failure indicators.
+	// (FirstFailureCriterion/FirstFailureTimeSeconds/bTenabilityFailed are no longer set
+	// by ComputeInstantaneousTenability -- they are PROJECTED by the caller from the
+	// timeline; see FBRiskTenabilityFailureProjectionTest for that half of doc Test 4.)
 	{
 		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
-		// Frame 1: enter room clear (vis 20, thermal baseline 0.0) -> no failure yet.
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 0.0, 20.0), Settings, 60.0f);
-		TestFalse(TEXT("Test4 no failure on clear frame"), T.bTenabilityFailed);
-		// Frame 2: vis collapses to 5 AND thermal FED reaches its endpoint (FEDRadSum 1.0).
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 1.0, 5.0), Settings, 61.0f);
+		// Frame 1: clear (vis 20, thermal dose 0.0) -> no current-frame failure.
+		ComputeInstantaneousTenability(T, MakeCalcSample(1, 0.0, 0.0, 20.0), Settings, 60.0f, 0.0f, 0.0f);
+		TestFalse(TEXT("Test4 no visibility failure on clear frame"), T.bVisibilityFailed);
+		TestFalse(TEXT("Test4 no thermal failure on clear frame"), T.bThermalFEDFailed);
+		// Frame 2: vis collapses to 5 AND thermal FED dose reaches its endpoint (1.0).
+		ComputeInstantaneousTenability(T, MakeCalcSample(1, 0.0, 1.0, 5.0), Settings, 61.0f, 0.0f, 1.0f);
 		TestTrue(TEXT("Test4 visibility failed"), T.bVisibilityFailed);
 		TestTrue(TEXT("Test4 thermal failed"), T.bThermalFEDFailed);
 		const bool bMaskVis = (T.FailureMask & UE::Mobius::TenabilityFailureFlags::Visibility) != 0;
 		const bool bMaskThermal = (T.FailureMask & UE::Mobius::TenabilityFailureFlags::ThermalFED) != 0;
 		TestTrue(TEXT("Test4 mask holds both failures"), bMaskVis && bMaskThermal);
-		TestEqual(TEXT("Test4 first failure = Visibility (priority)"),
-			static_cast<uint8>(T.FirstFailureCriterion),
-			static_cast<uint8>(ETenabilityCriterion::Visibility));
-		TestEqual(TEXT("Test4 first failure time set once"), T.FirstFailureTimeSeconds, 61.0f, 1e-3f);
 	}
 
-	// FIX A - late entry into a thermally-saturated zone.
-	// Pure per-agent delta would read 0 (FEDRadSum flat at 1.0). The instantaneous
-	// Temperature criterion is the correct untenability signal; verify it trips.
+	// FIX A - late entry into a thermally-saturated zone. Dose is now a direct input
+	// (0.30, already past the room's earlier saturation -- no banking needed to express
+	// "late entrant"). The instantaneous Temperature criterion is the correct
+	// untenability signal for an already-lethal zone; verify it trips (current-frame).
 	{
 		FTenabilityAnalysisSettings TempSettings = MakeSettings();
 		TempSettings.bUseTemperatureCriterion = true;
 		TempSettings.EndpointTemperatureC = 60.0f;
 
 		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
 		FAgentBRiskHazardSample S = MakeCalcSample(1, 0.30, 1.0, 0.8);  // saturated zone
 		S.bHasCalcLayerHeight = true;
 		S.CalcLayerHeightM = 1.3f;          // interface below monitor height (2 m) -> upper layer
 		S.bHasCalcTemperature = true;
 		S.CalcUpperTemperatureC = 218.0f;   // lethal upper layer
-		UpdateAgentTenability(T, Ex, S, TempSettings, 510.0f);
+		ComputeInstantaneousTenability(T, S, TempSettings, 510.0f, 0.30f, 1.0f);
 		TestTrue(TEXT("FIXA temperature failure flagged"), T.bTemperatureFailed);
-		TestTrue(TEXT("FIXA tenability failed"), T.bTenabilityFailed);
-	}
-
-	// Failure lock - after the first failure the bar freezes on the cause; scrubbing
-	// to a time before the failure shows the live pre-failure state again.
-	{
-		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
-		// Enter room clear; visibility then fails at t=60 (vis 5 <= endpoint 10).
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 0.0, 20.0), Settings, 50.0f);
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 0.0, 5.0), Settings, 60.0f);
-		TestTrue(TEXT("Lock failed at 60"), T.bTenabilityFailed);
-		TestEqual(TEXT("Lock criterion = Visibility"),
-			static_cast<uint8>(T.CurrentDominantCriterion),
-			static_cast<uint8>(ETenabilityCriterion::Visibility));
-		// Later, thermal FED would dominate, but the bar must STAY locked on Visibility.
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 1.0, 5.0), Settings, 200.0f);
-		TestEqual(TEXT("Lock bar full after failure"), T.DisplayRisk, 1.0f, 1e-3f);
-		TestEqual(TEXT("Lock criterion stays Visibility (cause), not Thermal"),
-			static_cast<uint8>(T.CurrentDominantCriterion),
-			static_cast<uint8>(ETenabilityCriterion::Visibility));
-		// Scrub BEFORE the failure time -> live pre-failure state (clear, no risk).
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.0, 0.0, 20.0), Settings, 55.0f);
-		TestTrue(TEXT("Scrub before failure shows live low risk"), T.DisplayRisk < 0.5f);
+		const bool bMaskTemp = (T.FailureMask & UE::Mobius::TenabilityFailureFlags::Temperature) != 0;
+		TestTrue(TEXT("FIXA temperature in failure mask"), bMaskTemp);
 	}
 
 	return true;
 }
 
-// --- Algorithm: doc Test 3 - re-entry dose retention + exit-banking scrub safety ---
-// Leaving every B-Risk room (e.g. transiting an unmodelled corridor) banks the accrued
-// dose into PriorRooms* so re-entry retains it (doc: "cumulative state is monotonic").
-// Banking happens ONLY on a genuine forward-time exit: a rewind across a zone boundary
-// (sim time stepping backward) is a spurious exit and must bank nothing, or the replayed
-// span would be double-counted.
+// --- Projection: failure-lock display (doc Test 4's latch half + old "Failure lock" sub-test) ---
+// The processor projects failure state from a precomputed timeline:
+//   bFailedByNow = TL.FirstFailureTimeSeconds >= 0 && t + eps >= TL.FirstFailureTimeSeconds;
+//   if (bFailedByNow) { DisplayRisk = 1; CurrentDominantCriterion = TL.FirstFailureCriterion; Health = 0; }
+// This test replicates that arithmetic directly (the processor itself needs a live UWorld to
+// execute), against a hand-built timeline with FirstFailureTimeSeconds = 60 / Visibility -- the
+// same failure time and criterion the old runtime latch reached in doc Test 4 / the old
+// "Failure lock" sub-test. Same golden expectations (locked DisplayRisk 1.0, criterion Visibility,
+// live pre-failure state before the failure time), expressed against the new API.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskTenabilityFailureProjectionTest,
+	"ProjectMobius.BRisk.Tenability.FailureLockProjection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskTenabilityFailureProjectionTest::RunTest(const FString&)
+{
+	using namespace UE::Mobius::Tenability;
+	const FTenabilityAnalysisSettings Settings = MakeSettings();
+
+	FAgentTenabilityTimeline Timeline;
+	Timeline.FirstFailureTimeSeconds = 60.0f;
+	Timeline.FirstFailureCriterion = ETenabilityCriterion::Visibility;
+	Timeline.FirstFailureMask = UE::Mobius::TenabilityFailureFlags::Visibility;
+
+	// Replicates AgentEgressHealthCalculationProcessor::Execute's projection block exactly.
+	auto ProjectFailure = [](FAgentEgressTenabilityFragment& T, const FAgentTenabilityTimeline& TL, float CurrentSimTime)
+	{
+		const bool bFailedByNow = TL.FirstFailureTimeSeconds >= 0.0f
+			&& CurrentSimTime + UE_SMALL_NUMBER >= TL.FirstFailureTimeSeconds;
+		T.bTenabilityFailed = bFailedByNow;
+		T.FirstFailureTimeSeconds = TL.FirstFailureTimeSeconds;
+		T.FirstFailureCriterion = TL.FirstFailureCriterion;
+		T.FailureMask = bFailedByNow ? TL.FirstFailureMask : T.FailureMask;
+		if (bFailedByNow)
+		{
+			T.DisplayRisk = 1.0f;
+			T.CurrentDominantCriterion = T.FirstFailureCriterion;
+			T.Health = 0.0f;
+		}
+		return bFailedByNow;
+	};
+
+	// At t=55 (BEFORE the failure time): live pre-failure state -- vis clear (20 m), no dose.
+	// ComputeInstantaneousTenability computes the live risk; the projection must NOT override it.
+	{
+		FAgentEgressTenabilityFragment T;
+		ComputeInstantaneousTenability(T, MakeCalcSample(1, 0.0, 0.0, 20.0), Settings, 55.0f, 0.0f, 0.0f);
+		const bool bFailedByNow = ProjectFailure(T, Timeline, 55.0f);
+		TestFalse(TEXT("t=55 not failed yet (before failure time)"), bFailedByNow);
+		TestTrue(TEXT("t=55 live low risk shown"), T.DisplayRisk < 0.5f);
+	}
+
+	// At t=200 (AFTER the failure time): bar freezes on the cause -- full bar, criterion
+	// locked to Visibility -- regardless of what the live (thermal-saturated) frame would show.
+	{
+		FAgentEgressTenabilityFragment T;
+		// Live frame at t=200 would show thermal FED dose at its endpoint (1.0) and vis 5 m;
+		// the projection must override DisplayRisk/CurrentDominantCriterion to the locked cause.
+		ComputeInstantaneousTenability(T, MakeCalcSample(1, 0.0, 1.0, 5.0), Settings, 200.0f, 0.0f, 1.0f);
+		const bool bFailedByNow = ProjectFailure(T, Timeline, 200.0f);
+		TestTrue(TEXT("t=200 failed (after failure time)"), bFailedByNow);
+		TestEqual(TEXT("Lock bar full after failure"), T.DisplayRisk, 1.0f, 1e-3f);
+		TestEqual(TEXT("Lock criterion stays Visibility (cause), not Thermal"),
+			static_cast<uint8>(T.CurrentDominantCriterion),
+			static_cast<uint8>(ETenabilityCriterion::Visibility));
+		TestEqual(TEXT("Health zero when failed"), T.Health, 0.0f, 1e-4f);
+	}
+
+	// Exactly AT the failure time: bFailedByNow must be true (>= comparison, UE_SMALL_NUMBER epsilon).
+	{
+		FAgentEgressTenabilityFragment T;
+		ComputeInstantaneousTenability(T, MakeCalcSample(1, 0.0, 0.0, 5.0), Settings, 60.0f, 0.0f, 0.0f);
+		const bool bFailedByNow = ProjectFailure(T, Timeline, 60.0f);
+		TestTrue(TEXT("t=60 (== failure time) is failed"), bFailedByNow);
+	}
+
+	return true;
+}
+
+// --- Algorithm: doc Test 3 - re-entry dose retention + navigation-independence -----------
+// Leaving every B-Risk room (e.g. transiting an unmodelled corridor) closes the agent's
+// occupancy interval; a later re-entry opens a NEW interval whose Prior is the closed
+// interval's prefix-summed contribution (FAgentTimelineSetBuilder's entry-baseline rule --
+// see AgentTenabilityTimelineTest.cpp's TimelineCore suite for the builder itself). Dose at
+// any time is then a closed-form DoseAt query, so replaying/rewinding the same span can never
+// double- or under-count (the old runtime "spurious exit on rewind" bug class is structurally
+// impossible here -- there is no exit-time-direction check to get wrong because there is no
+// runtime banking at all). This test re-expresses doc Test 3's exact numbers as a hand-built
+// two-interval timeline (mirroring what FAgentTimelineSetBuilder would produce for entry at
+// t=100 (room FED 0.20), forward exit at t=131 (room FED 0.30), re-entry at t=200 (room FED
+// 0.80), still-present at t=230 (room FED 0.85)) and proves DoseAt reproduces the SAME goldens,
+// plus a shuffled-order query proving navigation independence on this exact data.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBRiskTenabilityReentryDoseRetentionTest,
@@ -328,42 +392,87 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBRiskTenabilityReentryDoseRetentionTest::RunTest(const FString&)
 {
 	using namespace UE::Mobius::Tenability;
-	const FTenabilityAnalysisSettings Settings = MakeSettings();
 
-	// Doc Test 3 - genuine exit: leave room (sim time moving forward), room FED rises
-	// while absent, re-enter -> accrued dose retained, no historical add.
+	// Synthetic room FED curve hitting exactly the doc Test 3 checkpoints:
+	//   t=100 -> 0.20 (entry), t=130..131 -> 0.30 (dose-check / forward-exit sample),
+	//   t=200 -> 0.80 (re-entry), t=230 -> 0.85 (still-present sample).
+	// DoseAt only ever queries the sampler at an exact requested time or (for interval
+	// construction) an entry/exit time, so a small checkpoint table is exact and sufficient.
+	auto RoomCurve = [](int32 /*RoomIndex*/, double TimeSeconds, double& OutToxic, double& OutThermal)
 	{
-		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);  // +0.10
-		const float Accrued = T.AccumulatedToxicFED;
-		TestEqual(TEXT("Test3 accrued 0.10 before exit"), Accrued, 0.10f, 1e-4f);
-		UE::Mobius::EgressHealth::ClearCurrentHazardSample(Ex, 131.0f);  // forward exit
-		TestEqual(TEXT("Test3 exit banks accrued dose"), Ex.PriorRoomsToxicFED, 0.10f, 1e-4f);
-		// Re-enter same room later; room cumulative now 0.80 (rose while absent).
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.80, 0.0, 20.0), Settings, 200.0f);
-		TestEqual(TEXT("Test3 no exposure added on re-entry"), T.AccumulatedToxicFED, Accrued, 1e-4f);
-		TestEqual(TEXT("Test3 re-baselined to 0.80"), Ex.EntryRoomToxicFED, 0.80f, 1e-4f);
-		// Dose resumes accruing from the re-entry baseline.
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.85, 0.0, 20.0), Settings, 230.0f);
-		TestEqual(TEXT("Test3 delta accrues after re-entry"), T.AccumulatedToxicFED, 0.15f, 1e-4f);
+		OutThermal = 0.0;
+		if (TimeSeconds <= 100.0)      { OutToxic = 0.20; }
+		else if (TimeSeconds <= 131.0) { OutToxic = 0.30; } // room curve through the genuine exit sample
+		else if (TimeSeconds < 200.0)  { OutToxic = 0.30; } // flat in the corridor gap (no room data)
+		else if (TimeSeconds < 230.0)  { OutToxic = 0.80; } // room curve at/just after re-entry
+		else                            { OutToxic = 0.85; }
+	};
+
+	// Interval 0: room A, [100, 131], entry FED 0.20, exit FED sampled at 131 -> 0.30.
+	// Interval 1 (re-entry): room A, [200, 999 (still open/far future)], entry FED 0.80,
+	// Prior = Interval0.Prior(0) + max(Interval0.Exit - Interval0.Entry, 0) = 0.10.
+	FAgentTenabilityTimeline Timeline;
+	{
+		FAgentRoomOccupancyInterval I0;
+		I0.RoomIndex = 0;
+		I0.RoomId = 1;
+		I0.EntryTimeSeconds = 100.0f;
+		I0.ExitTimeSeconds = 131.0f;
+		I0.EntryToxicFED = 0.20f;
+		I0.ExitToxicFED = 0.30f;   // room curve at the genuine forward exit time (131)
+		I0.PriorToxicFED = 0.0f;
+		Timeline.Intervals.Add(I0);
+
+		FAgentRoomOccupancyInterval I1;
+		I1.RoomIndex = 0;
+		I1.RoomId = 1;
+		I1.EntryTimeSeconds = 200.0f;
+		I1.ExitTimeSeconds = 999.0f; // still occupied at every query time below
+		I1.EntryToxicFED = 0.80f;
+		I1.ExitToxicFED = 0.85f;    // unused while queries stay inside [200, 999)
+		I1.PriorToxicFED = I0.PriorToxicFED + FMath::Max(I0.ExitToxicFED - I0.EntryToxicFED, 0.0f); // 0.10
+		Timeline.Intervals.Add(I1);
 	}
 
-	// Scrub safety - rewinding back across the zone boundary is a SPURIOUS exit (sim
-	// time moved backward): nothing banks, and replaying the span accrues it exactly once.
+	auto DoseToxicAt = [&](float T)
 	{
-		FAgentEgressTenabilityFragment T;
-		FAgentBRiskExposureFragment Ex;
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);
-		UE::Mobius::EgressHealth::ClearCurrentHazardSample(Ex, 90.0f);  // rewound out of the room
-		TestEqual(TEXT("Scrub spurious exit banks nothing"), Ex.PriorRoomsToxicFED, 0.0f, 1e-4f);
-		// Replay the same span: dose accrues once, not twice.
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.20, 0.0, 20.0), Settings, 100.0f);
-		TestEqual(TEXT("Scrub replay entry starts at zero"), T.AccumulatedToxicFED, 0.0f, 1e-4f);
-		UpdateAgentTenability(T, Ex, MakeCalcSample(1, 0.30, 0.0, 20.0), Settings, 130.0f);
-		TestEqual(TEXT("Scrub replay accrues the span once"), T.AccumulatedToxicFED, 0.10f, 1e-4f);
+		float Toxic = -1.0f, Thermal = -1.0f;
+		FRoomFEDSampler SamplerRef(RoomCurve);
+		Timeline.DoseAt(T, SamplerRef, Toxic, Thermal);
+		return Toxic;
+	};
+
+	// Doc Test 3 goldens, reproduced via DoseAt:
+	//   dose@130 (inside I0) = Prior(0) + max(Sampler(130)-Entry(0.20),0) = 0.30-0.20 = 0.10.
+	const float Accrued = DoseToxicAt(130.0f);
+	TestEqual(TEXT("Test3 accrued 0.10 before exit"), Accrued, 0.10f, 1e-4f);
+	//   dose@131 (== exit time -> flat completed total) = Prior(0) + max(0.30-0.20,0) = 0.10.
+	TestEqual(TEXT("Test3 exit banks accrued dose"), DoseToxicAt(131.0f), 0.10f, 1e-4f);
+	//   dose@200 (inside I1, at entry) = Prior(0.10) + max(Sampler(200)-Entry(0.80),0) = 0.10+0 = 0.10.
+	TestEqual(TEXT("Test3 no exposure added on re-entry"), DoseToxicAt(200.0f), Accrued, 1e-4f);
+	//   dose@230 (inside I1) = Prior(0.10) + max(Sampler(230)-Entry(0.80),0) = 0.10 + (0.85-0.80) = 0.15.
+	TestEqual(TEXT("Test3 delta accrues after re-entry"), DoseToxicAt(230.0f), 0.15f, 1e-4f);
+
+	// Navigation independence on this exact data: shuffled-order queries reproduce bitwise-identical
+	// values per time (the old "spurious exit on rewind" bug class -- this is the proof it cannot
+	// recur, since DoseAt has no notion of query order or direction at all).
+	{
+		const TArray<float> ShuffledTimes({230.0f, 130.0f, 200.0f, 130.0f, 131.0f, 230.0f});
+		TMap<float, float> FirstSeen;
+		FRoomFEDSampler SamplerRef(RoomCurve);
+		for (float T : ShuffledTimes)
+		{
+			float Toxic = 0.0f, Thermal = 0.0f;
+			Timeline.DoseAt(T, SamplerRef, Toxic, Thermal);
+			if (const float* Prior = FirstSeen.Find(T))
+			{
+				TestTrue(FString::Printf(TEXT("shuffled DoseAt(%.0f) bitwise-repeatable"), T), *Prior == Toxic);
+			}
+			else
+			{
+				FirstSeen.Add(T, Toxic);
+			}
+		}
 	}
 
 	return true;

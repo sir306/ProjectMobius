@@ -77,11 +77,9 @@ struct FAgentEgressTenabilityViewer
 	float AccumulatedToxicFED = 0.0f;
 	float AccumulatedThermalFED = 0.0f;
 
-	// Current / worst sampled tenability values.
+	// Current sampled tenability values.
 	float CurrentVisibilityM = 20.0f;
-	float WorstVisibilityM = 20.0f;
 	float CurrentTemperatureC = 24.0f;
-	float WorstTemperatureC = 24.0f;
 	float CurrentLayerHeightM = 0.0f;
 	float CurrentHeatReleaseKW = 0.0f;
 
