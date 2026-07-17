@@ -141,6 +141,18 @@ public:
 	/** Clears all egress health instances and advances the snapshot revision. */
 	void ClearAgentEgressHealthData();
 
+	/**
+	 * Q48/R3 B-RISK gate. True only while a B-RISK scenario's per-agent tenability timelines are
+	 * loaded AND current. Set each frame by AgentEgressHealthProcessor from
+	 * UBRiskEgressSubsystem::AreAgentTimelinesCurrent(). The agent-stats UI gates its B-RISK section
+	 * on this: the egress-health snapshot is non-empty even with NO B-RISK loaded (every pedestrian
+	 * carries FAgentEgressTenabilityFragment by default -> all-zero entries), so "has an entry" is not
+	 * a valid "B-RISK loaded" signal. Gating on this flag stops the UI showing zeros as data
+	 * (CLAUDE.md: flag missing, never substitute).
+	 */
+	void SetBRiskTenabilityActive(bool bInActive) { bBRiskTenabilityActive = bInActive; }
+	bool IsBRiskTenabilityActive() const { return bBRiskTenabilityActive; }
+
 	/** */
 	UFUNCTION()
 	void UpdateFlowCounters();
@@ -229,6 +241,9 @@ private:
 	FAgentMeshViewer HoveredAgentData = FAgentMeshViewer(); // Holds the currently selected agent data for the mesh viewer
 	TArray<FAgentEgressTenabilityViewer> AgentEgressHealthData;
 	uint64 AgentEgressHealthRevision = 0;
+
+	/** Q48/R3: whether B-RISK tenability timelines are loaded+current this frame. See setter above. */
+	bool bBRiskTenabilityActive = false;
 
 	/** Reference to the FlowCounter actor, if needed for statistics gathering */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StatisticSubsystem|FlowCounter", meta = (AllowPrivateAccess = "true"))

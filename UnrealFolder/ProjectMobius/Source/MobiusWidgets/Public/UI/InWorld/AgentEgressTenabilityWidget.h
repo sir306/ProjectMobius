@@ -32,17 +32,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability")
 	TObjectPtr<USlateVectorArtData> AgentEgressTenabilityMeshAsset;
 
-	/**
-	 * Screen-space vertical lift, in pixels at marker scale 1, raising the marker above each
-	 * agent's projected position. Scaled per-agent by InstanceScale so the gap tracks the
-	 * agent's apparent size — a consistent "just above the head" look at any camera distance.
-	 *
-	 * Replaces the former world-space Z offset, which (run through a tilted camera) projected
-	 * to a screen offset that drifted with the agent's position in the frustum. Tune live in
-	 * the widget Details; no rebuild needed.
-	 */
+	/** World-space vertical offset from each agent origin, in centimetres. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "0.0"))
-	float ScreenSpaceHeadOffset = 140.0f;
+	float WorldHeightOffset = 200.0f;
 
 	/** Distance at which the vector-art mesh is rendered at scale 1. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "1.0"))

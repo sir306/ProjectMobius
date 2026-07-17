@@ -2,9 +2,12 @@
 
 
 #include "Slate/Components/SMoveableWindow.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GenericPlatform/GenericWindow.h"
 #include "InputCoreTypes.h"
 #include "Slate/Components/SWindowTitleBarWidget.h"
+#include "Styling/StyleDefaults.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
@@ -434,6 +437,24 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 	// Call parent construct FIRST - window must be ready before we can set content
 	SWindow::Construct(WindowArgs);
 
+	// Open animation (spec §5): 160ms fade + 8u rise, ease-out. The content is wrapped in an SBorder
+	// whose ColorAndOpacity/RenderTransform read this curve; the sequence is played at the end of Construct.
+	OpenCurve = OpenAnimation.AddCurve(0.0f, 0.16f, ECurveEaseFunction::CubicOut);
+
+	// Wrap any content in the animation border so the fade/rise applies uniformly.
+	auto WrapAnimated = [this](TSharedRef<SWidget> InContent) -> TSharedRef<SWidget>
+	{
+		return SNew(SBorder)
+			.BorderImage(FStyleDefaults::GetNoBrush())
+			.Padding(FMargin(0.0f))
+			.ColorAndOpacity_Lambda([this]() { return GetOpenAnimationColorAndOpacity(); })
+			.RenderTransform_Lambda([this]() { return GetOpenAnimationRenderTransform(); })
+			.RenderTransformPivot(FVector2D(0.5f, 0.5f))
+			[
+				InContent
+			];
+	};
+
 	// Create and set up our custom title bar if requested
 	if (bWantTitleBar)
 	{
@@ -476,8 +497,8 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 		];
 
 		
-		// Set the wrapped content on the window
-		SWindow::SetContent(ContentWrapper);
+		// Set the wrapped content on the window (through the open-animation border)
+		SWindow::SetContent(WrapAnimated(ContentWrapper));
 
 		// Register the title bar interface for hit-testing and flash effects
 		if (TitleBarContent.IsValid())
@@ -493,11 +514,11 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 		// No title bar - set WindowPanelContent if provided, otherwise fall back to default Content slot
 		if (InArgs._WindowPanelContent.IsValid())
 		{
-			SWindow::SetContent(InArgs._WindowPanelContent.ToSharedRef());
+			SWindow::SetContent(WrapAnimated(InArgs._WindowPanelContent.ToSharedRef()));
 		}
 		else
 		{
-			SWindow::SetContent(InArgs._Content.Widget);
+			SWindow::SetContent(WrapAnimated(InArgs._Content.Widget));
 		}
 	}
 
@@ -510,6 +531,42 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
 			.ResizeBorder(UserResizeBorder)
 		];
 	}
+
+	// Fade + rise the window in. Play on this window (SharedThis) so the active timer repaints it and the
+	// content border's bound ColorAndOpacity/RenderTransform re-evaluate each frame.
+	OpenAnimation.Play(SharedThis(this));
+}
+
+FLinearColor SMoveableWindow::GetOpenAnimationColorAndOpacity() const
+{
+	// GetLerp() ends at (and holds) 1.0, so a completed window is fully opaque.
+	return FLinearColor(1.0f, 1.0f, 1.0f, FMath::Clamp(OpenCurve.GetLerp(), 0.0f, 1.0f));
+}
+
+TOptional<FSlateRenderTransform> SMoveableWindow::GetOpenAnimationRenderTransform() const
+{
+	const float Rise = (1.0f - FMath::Clamp(OpenCurve.GetLerp(), 0.0f, 1.0f)) * 8.0f; // 8u sink→settle
+	return FSlateRenderTransform(FVector2f(0.0f, Rise));
+}
+
+void SMoveableWindow::PlayCloseAnimationThenDestroy()
+{
+	// Reverse the open animation (fade out + 8u sink), then destroy when it finishes.
+	OpenAnimation.PlayReverse(SharedThis(this));
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SMoveableWindow::HandleCloseAnimationTick));
+}
+
+EActiveTimerReturnType SMoveableWindow::HandleCloseAnimationTick(double /*InCurrentTime*/, float /*InDeltaTime*/)
+{
+	if (OpenAnimation.IsPlaying())
+	{
+		return EActiveTimerReturnType::Continue;
+	}
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().RequestDestroyWindow(SharedThis(this));
+	}
+	return EActiveTimerReturnType::Stop;
 }
 
 

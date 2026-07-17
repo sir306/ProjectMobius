@@ -7,9 +7,11 @@
 
 void SRotatedText::Construct(const FArguments& InArgs)
 {
+	// BW7/D138: rail labels fall back to "Mobius.Text.RailButton" (Inter Regular 10), decoupled from the
+	// shared "Mobius.Text.Label" (12) so the vertical rail text reads at the owner's 10 without shrinking tabs.
 	const FTextBlockStyle* Style = InArgs._TextStyle
 		? InArgs._TextStyle
-		: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label");
+		: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
 
 	ChildSlot
 	[

@@ -37,6 +37,15 @@ protected:
 
 	void UpdateFieldTextBlocks() const;
 
+	/**
+	 * §3.4/D69: populate + visibility-gate the B-RISK tenability rows for the currently displayed agent.
+	 * Gate = whether SelectedAgentID has an entry in UStatisticSubsystem's egress-health snapshot; that
+	 * array is empty unless a B-RISK sim is loaded (the tenability Mass fragment/processor only publishes
+	 * then), which is the module-safe "B-RISK loaded" signal (MobiusWidgets must not depend on the
+	 * ProjectMobius BRiskDataSubsystem). No defaulting: when absent the whole section stays collapsed.
+	 */
+	void UpdateBRiskTenabilitySection(int32 SelectedAgentID) const;
+
 	void ResizeGridPanelParentSlotToFitLargeText(FVector2D& InTextSize) const;
 
 	void ResizeScreenGridToDefaultSize() const;
@@ -52,6 +61,14 @@ protected:
 	 *  (an impossible real size) so the first call always computes. Mutable: the method is const. */
 	mutable FVector2D CachedFontFitBoxSize = FVector2D(-1.0f, -1.0f);
 	mutable FVector2D CachedFontFitTextSize = FVector2D(-1.0f, -1.0f);
+
+	/** D143: number of rows the font-fit last budgeted for. The header grid holds 8 agent rows PLUS 5
+	 *  optional B-RISK rows (BindWidgetOptional) that toggle visible only when tenability data is loaded.
+	 *  The row budget (panel height / row count) and the panel-grow factor must track the number of VISIBLE
+	 *  rows, not a hard-coded 8, or the extra B-RISK rows steal the fixed panel height and collapse the agent
+	 *  rows to zero. Part of the D4 cache key so a B-RISK toggle forces a refit even when box+text are steady.
+	 *  Floored at 8 so the agent-only case is pixel-identical to the pre-B-RISK behaviour. */
+	mutable int32 CachedVisibleRowCount = -1;
 public:
 	/** Grid Panel to arrange sizing for the whole screen */
 	UPROPERTY(EditAnywhere,BlueprintReadWrite, meta = (BindWidget))
@@ -94,4 +111,26 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintAssignable)
 	FOnSelectedAgentComponentVisibilityChanged OnSelectedAgentComponentNowVisible;
+
+	/**
+	 * §3.4/D69 B-RISK tenability section. OPTIONAL rows appended to WBP_SelectAgentStats, shown only when
+	 * the displayed agent has a B-RISK tenability entry (see UpdateBRiskTenabilitySection). BindWidgetOptional
+	 * so this C++ builds/ships before the asset gains the widgets; when absent the window is unchanged.
+	 * Caption used title-only ("B-RISK tenability" — B-RISK caps kept per C2). Values Mono (JetBrains).
+	 * Field titles/units follow B-RISK exactly: Visibility (m), Toxic FED, Thermal FED, Temperature (C).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UFieldAndTextWidget> BRiskSectionCaption;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UFieldAndTextWidget> BRiskVisibilityField;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UFieldAndTextWidget> BRiskToxicFEDField;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UFieldAndTextWidget> BRiskThermalFEDField;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UFieldAndTextWidget> BRiskTemperatureField;
 };

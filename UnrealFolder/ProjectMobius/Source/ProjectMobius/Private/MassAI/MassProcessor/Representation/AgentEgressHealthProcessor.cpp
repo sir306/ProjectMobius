@@ -3,6 +3,7 @@
 #include "MassAI/MassProcessor/Representation/AgentEgressHealthProcessor.h"
 
 #include "MassExecutionContext.h"
+#include "BRisk/BRiskEgressSubsystem.h"
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.h"
@@ -28,6 +29,8 @@ void UAgentEgressHealthProcessor::ConfigureQueries()
 	EntityQuery.RegisterWithProcessor(*this);
 
 	ProcessorRequirements.AddSubsystemRequirement<UStatisticSubsystem>(EMassFragmentAccess::ReadWrite);
+	// Q48/R3: read the B-RISK egress subsystem to publish a module-safe "timelines loaded+current" flag.
+	ProcessorRequirements.AddSubsystemRequirement<UBRiskEgressSubsystem>(EMassFragmentAccess::ReadOnly);
 }
 
 void UAgentEgressHealthProcessor::Execute(
@@ -39,6 +42,15 @@ void UAgentEgressHealthProcessor::Execute(
 	{
 		return;
 	}
+
+	// Q48/R3: publish whether B-RISK tenability is actually live this frame. AreAgentTimelinesCurrent()
+	// is false while stale, building, or when either dataset (agent file / B-RISK scenario) is absent —
+	// exactly the "no B-RISK loaded" case. The UI (UPedestrianDataDisplay::UpdateBRiskTenabilitySection)
+	// gates its B-RISK section on this so it never shows the all-zero default-fragment entries as data.
+	const UBRiskEgressSubsystem* EgressSubsystem =
+		ExecutionContext.GetSubsystem<UBRiskEgressSubsystem>();
+	StatisticSubsystem->SetBRiskTenabilityActive(
+		EgressSubsystem != nullptr && EgressSubsystem->AreAgentTimelinesCurrent());
 
 	AgentEgressHealthData.Reset();
 	AgentEgressHealthData.Reserve(EntityQuery.GetNumMatchingEntities(EntityManager));

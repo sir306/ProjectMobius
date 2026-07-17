@@ -65,6 +65,8 @@ SLATE_END_ARGS()
 	void SetTitleText(FText InTitleText);
 	void SetFieldText(FText InFieldText);
 	void SetFontSize(float InFontSize) const;
+	/** Set the FIELD text block's typeface face on the composite Font_Inter (e.g. "Mono"); title untouched. */
+	void SetFieldFontFace(FName InTypeface);
 	/**
 	 * Gets the size of the text in this widget, used for layout calculations
 	 * 

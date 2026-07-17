@@ -91,6 +91,14 @@ void UFieldAndTextWidget::SetFontSize(float InFontSize) const
 	}
 }
 
+void UFieldAndTextWidget::SetFieldFontFace(FName InTypeface) const
+{
+	if (FieldAndTextWidget.IsValid())
+	{
+		FieldAndTextWidget->SetFieldFontFace(InTypeface);
+	}
+}
+
 float UFieldAndTextWidget::GetFontSize()
 {
 	return FieldAndTextWidget.IsValid() ? FieldAndTextWidget->GetFontSize() : 0.f;

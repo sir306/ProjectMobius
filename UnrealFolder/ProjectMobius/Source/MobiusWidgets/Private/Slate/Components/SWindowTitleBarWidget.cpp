@@ -1,14 +1,54 @@
 #include "Slate/Components/SWindowTitleBarWidget.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Framework/Application/SWindowTitleBar.h"
 #include "Input/Events.h"
 #include "InputCoreTypes.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+#include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/SNullWidget.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
 {
+	// D8/Q3: the SWindow chrome is Slate, not UMG, so it can't ride the palette walker. Resolve the theme
+	// subsystem from any live game world and poll it per-paint (matches the codebase's per-frame ImGui
+	// StyleColors / combo OnGenerate idiom) so the title bar follows a live theme toggle.
+	UUIThemeSubsystem* FindMobiusThemeSubsystem()
+	{
+		if (!GEngine)
+		{
+			return nullptr;
+		}
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			if (UWorld* World = Context.World())
+			{
+				if (UGameInstance* GameInstance = World->GetGameInstance())
+				{
+					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+					{
+						return Theme;
+					}
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	FLinearColor MobiusThemeColor(EMobiusPaletteRole Role, const FLinearColor& Fallback)
+	{
+		if (const UUIThemeSubsystem* Theme = FindMobiusThemeSubsystem())
+		{
+			return Theme->GetPaletteColor(Role);
+		}
+		return Fallback;
+	}
+
 	class SMoveableWindowTitleBar final : public SWindowTitleBar
 	{
 	public:
@@ -128,9 +168,20 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
                 ? *InArgs._TitleTextStyle
                 : FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window").TitleTextStyle;
 
+        // D8/Q3: suppress the engine title-bar background brushes so our theme-polled SColorBlock behind
+        // the bar is what shows — that way the title chrome follows a live theme toggle instead of staying
+        // stuck on the (dark) style the window was created with.
+        WindowStyle.ActiveTitleBrush = *FStyleDefaults::GetNoBrush();
+        WindowStyle.InactiveTitleBrush = *FStyleDefaults::GetNoBrush();
+        WindowStyle.FlashTitleBrush = *FStyleDefaults::GetNoBrush();
+
         SAssignNew(TitleTextBlock, STextBlock)
         .Text(InArgs._TitleText)
-        .TextStyle(&TitleTextStyle);
+        .TextStyle(&TitleTextStyle)
+        .ColorAndOpacity_Lambda([]()
+        {
+                return FSlateColor(MobiusThemeColor(EMobiusPaletteRole::TitlebarText, FLinearColor(0.55201f, 0.55201f, 0.55201f)));
+        });
 
 	if (!InArgs._OwnerWindow.IsValid())
 	{
@@ -150,7 +201,20 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
 
         ChildSlot
         [
-                TitleBarWidget.ToSharedRef()
+                SNew(SOverlay)
+                + SOverlay::Slot()
+                [
+                        SNew(SColorBlock)
+                        .Visibility(EVisibility::HitTestInvisible) // never intercept title-bar drag
+                        .Color_Lambda([]()
+                        {
+                                return MobiusThemeColor(EMobiusPaletteRole::TitlebarBg, FLinearColor(0.03955f, 0.03955f, 0.03955f));
+                        })
+                ]
+                + SOverlay::Slot()
+                [
+                        TitleBarWidget.ToSharedRef()
+                ]
         ];
 }
 

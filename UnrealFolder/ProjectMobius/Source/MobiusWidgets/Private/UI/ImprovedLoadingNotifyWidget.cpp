@@ -23,12 +23,28 @@ void UImprovedLoadingNotifyWidget::NativeConstruct()
 		MobiusWidgetSubsystem->AddLoadingWidget(this);
 	}
 
+	// §5/P6 intro curve: 150ms, ease-out. Built once; (re)played on each show (PlayIntroAnimation).
+	if (!IntroCurve.IsInitialized())
+	{
+		IntroCurve = IntroAnimation.AddCurve(0.0f, 0.15f, ECurveEaseFunction::CubicOut);
+	}
+
 	IsLoadingComplete();
 }
 
 void UImprovedLoadingNotifyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// §5/P6: drive the entrance fade+scale from the curve while it plays (see PlayIntroAnimation). The
+	// active timer guarantees a final tick at Lerp=1, so the popup settles fully opaque at 1.0 scale.
+	if (IntroAnimation.IsPlaying())
+	{
+		const float T = FMath::Clamp(IntroCurve.GetLerp(), 0.0f, 1.0f);
+		SetRenderOpacity(T);
+		const float Scale = 0.97f + 0.03f * T; // .97 -> 1.0, centred (RenderTransformPivot default 0.5,0.5)
+		SetRenderScale(FVector2D(Scale, Scale));
+	}
 }
 
 void UImprovedLoadingNotifyWidget::SynchronizeProperties()
@@ -72,8 +88,11 @@ void UImprovedLoadingNotifyWidget::IsLoadingComplete()
 			{
 				bIsLoadingComplete = false;
 				UpdateGameInstanceLoadingState();
-				
+
 				this->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+
+				// §5/P6: this is the show path (Collapsed -> visible) — play the entrance intro.
+				PlayIntroAnimation();
 			}
 		}
 	}
@@ -178,6 +197,22 @@ void UImprovedLoadingNotifyWidget::UpdateLoadingWidgets()
 	UpdateLoadingTitleText();
 	UpdateLoadingTitleTextWidget();
 	IsLoadingComplete();
+}
+
+void UImprovedLoadingNotifyWidget::PlayIntroAnimation()
+{
+	// The curve owns its clock through the active timer of the owning Slate widget, so it needs the
+	// cached SWidget. If the tree isn't built yet, skip the flourish (no visual regression).
+	const TSharedPtr<SWidget> Safe = GetCachedWidget();
+	if (!Safe.IsValid() || !IntroCurve.IsInitialized())
+	{
+		return;
+	}
+
+	// Start from the hidden pose so there is no full-size opaque first frame, then play forward.
+	SetRenderOpacity(0.0f);
+	SetRenderScale(FVector2D(0.97f, 0.97f));
+	IntroAnimation.Play(Safe.ToSharedRef());
 }
 
 void UImprovedLoadingNotifyWidget::SetLoadingWidgetVisibility(TObjectPtr<UBaseLoadingWidget> LoadingWidget,

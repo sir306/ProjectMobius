@@ -66,6 +66,14 @@ public:
 	void RefreshTextStyle();
 
 	/**
+	 * Q49/R4: re-land the label colour DIRECTLY on the live STextBlock. RefreshTextStyle()/SetTextStyle
+	 * re-pushes the style struct but does NOT update the STextBlock's resolved ColorAndOpacity, so ribbon
+	 * tab + Browse labels keep their light-mode colour after a theme flip. SetColorAndOpacity bypasses the
+	 * construction-time style copy. Called from UUIThemeSubsystem::ApplyToWidget for theme-managed labels.
+	 */
+	void ApplyThemedLabelColor(FLinearColor Color);
+
+	/**
 	 * Blueprint click handlers may re-assign hard-referenced DarkTheme materials (the ribbon
 	 * tab-swap logic does) — re-run the theme walk next tick so those brushes are re-themed.
 	 * No-op in practice when the dark theme is active.

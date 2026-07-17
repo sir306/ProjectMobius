@@ -88,11 +88,29 @@ TSharedRef<FSlateStyleSet> FMobiusStyle::Create()
 	// Ramp trimmed ~2px (2026-07-05): the ribbon tabs / ButtonWithText read "Mobius.Text.Label",
 	// which felt oversized at design scale (1080p). Sizes are logical px; the UI scaling rule scales
 	// them per-display on top.
-	Style->Set("Mobius.Text.Title", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Bold", 16)));
-	Style->Set("Mobius.Text.Header", FTextBlockStyle(NormalText).SetFont(InterFontStyle("SemiBold", 14)));
-	Style->Set("Mobius.Text.Label", FTextBlockStyle(NormalText).SetFont(InterFontStyle("SemiBold", 12)));
-	Style->Set("Mobius.Text.Body", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 11)));
-	Style->Set("Mobius.Text.Field", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 11)));
+	Style->Set("Mobius.Text.Title", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Bold", 12)));   // BW6 density: 16->12
+	Style->Set("Mobius.Text.Header", FTextBlockStyle(NormalText).SetFont(InterFontStyle("SemiBold", 11))); // BW6 density: 14->11
+	// Q28 (P4/D40 font sweep): "Mobius.Text.Label" → token `label` Font_Inter Regular 15. This is the
+	// ButtonWithText fallback (used when no SWS text style is assigned). Its live consumer is the three
+	// ribbon tabs (FilesPanelBtn / DisplaylPanelBTN / HelpPanelBtn all have MobiusButtonTextStyle=None);
+	// Browse / Add / Remove / Reset carry their own SWS text style and are unaffected. NOTE: the tab
+	// token is 16 SemiBold(active)/Regular(inactive); a single shared fallback style cannot express the
+	// per-state weight, and tab active-emphasis is already carried by the accent underline+text colour,
+	// so tabs land on Regular 15 here — for exact SemiBold-16 tabs, give them a dedicated tab text style
+	// (SWS or a new "Mobius.Text.Tab" key) as follow-up asset/BP work. (Was SemiBold 12, a 2026-07-05 trim.)
+	// BW2/B8: tab label token size = 16 (spec §2 tab token). Single fallback style can't do per-state
+	// weight (active SemiBold / inactive Regular), so it lands Regular 16; tab active-emphasis rides the
+	// accent underline + colour. A dedicated tab text style remains the exact-SemiBold follow-up.
+	// BW6 density: Label (ribbon tabs + Browse) 16->12; Body 11->10; Field 11->10. Owner map 16->12/14->11/13->10/12->10 floor 10.
+	Style->Set("Mobius.Text.Label", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 12)));
+	// BW7/D138: dedicated rail-button label style (Floor Stats / Flow Counter VerticalTextBlock rails).
+	// Decoupled from "Mobius.Text.Label" (ribbon tabs + Browse = 12) so the vertical rail labels land on
+	// the owner's 10 without shrinking the tabs. Retinted per theme in UIThemeSubsystem::ApplySharedStyles
+	// alongside "Mobius.Text.Label" (VerticalTextBlock has no per-widget colour handling; it reads this
+	// shared style on rebuild).
+	Style->Set("Mobius.Text.RailButton", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 10)));
+	Style->Set("Mobius.Text.Body", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 10)));
+	Style->Set("Mobius.Text.Field", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 10)));
 	Style->Set("Mobius.Text.Caption", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Medium", 9)));
 	Style->Set("Mobius.Text.Error.Location", FTextBlockStyle(NormalText)
 		.SetFont(InterFontStyle("Regular", 10))

@@ -34,6 +34,7 @@ class UButton;
 class USlider;
 class UImage;
 class UTextBlock;
+class UProgressBar;
 class USimulationPlayBar;
 
 /** Broadcasts when simulation play bars are created or destroyed. */
@@ -205,6 +206,16 @@ private:
 	void PauseSimulationAndUpdateTimeBegin();
 	void PauseSimulationAndUpdateTimeEnd();
 
+	/**
+	 * Q51/C4 scrub-fill: sync the optional ScrubFillBar progress bar's Percent to the current slider
+	 * value / max value so the accent fill left of the thumb tracks playback. Guards divide-by-zero.
+	 */
+	void UpdateScrubFill() const;
+
+	/** Bound to PlaybackSlider->OnValueChanged so the scrub fill updates during live user dragging. */
+	UFUNCTION()
+	void OnPlaybackSliderValueChanged(float NewValue);
+
 	static FORCEINLINE float Round3DP( float In )
 	{
 		// scale up, round, scale back down
@@ -230,6 +241,13 @@ public:
 	/** Slider to represent simulation playback */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SimComponents", meta = (BindWidget))
 	TObjectPtr<USlider> PlaybackSlider;
+
+	/**
+	 * Optional accent scrub-fill drawn BEHIND PlaybackSlider (Q51/C4: filled portion accent @35% alpha
+	 * over a grey track). Bound by widget name; absent on bars that don't provide it (BindWidgetOptional).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SimComponents", meta = (BindWidgetOptional))
+	TObjectPtr<UProgressBar> ScrubFillBar;
 
 	/** Text block that represents the current simulation time step */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SimComponents", meta = (BindWidget))

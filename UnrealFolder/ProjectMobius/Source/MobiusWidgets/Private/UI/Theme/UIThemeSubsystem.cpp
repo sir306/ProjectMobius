@@ -32,10 +32,14 @@
 #include "Components/Button.h"
 #include "Components/CheckBox.h"
 #include "Components/ComboBoxString.h"
+#include "Components/EditableTextBox.h"
 #include "Components/Image.h"
+#include "Components/ProgressBar.h"
 #include "Components/Slider.h"
 #include "Components/TextBlock.h"
+#include "Engine/Font.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Styling/CoreStyle.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Engine/Engine.h"
@@ -56,6 +60,133 @@ namespace MobiusTheme
 		FLinearColor Light;
 	};
 
+	// -------------------------------------------------------------------------------------------
+	// AUTHORITATIVE PALETTE (P1) — one entry per mockup CSS var, design-tokens.json v2 linearRGBA
+	// VERBATIM (never hex/255). Indexed by EMobiusPaletteRole; read via GetPaletteColor(). This is
+	// the single source of truth for phases P2-P7. The value-remap SurfaceMap/TextMap arrays BELOW
+	// are the curated subset the by-value theme walker can distinguish; roles absent from those
+	// arrays are applied EXPLICITLY per theme by style code (see EMobiusPaletteRole docs).
+	// -------------------------------------------------------------------------------------------
+	struct FThemeColor
+	{
+		FLinearColor Light;
+		FLinearColor Dark;
+	};
+
+	static const FThemeColor GMobiusPalette[] =
+	{
+		/* TitlebarBg        */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.03955f, 0.03955f, 0.03955f) },
+		/* TitlebarBorder    */ { FLinearColor(0.76052f, 0.76052f, 0.76052f),     FLinearColor(0.01938f, 0.01938f, 0.01938f) },
+		/* TitlebarText      */ { FLinearColor(0.0331f, 0.0331f, 0.0331f),        FLinearColor(0.55201f, 0.55201f, 0.55201f) },
+		/* TabstripBg        */ { FLinearColor(0.7913f, 0.7913f, 0.7913f),        FLinearColor(0.02843f, 0.02843f, 0.02843f) },
+		/* TabstripBorder    */ { FLinearColor(0.63076f, 0.63076f, 0.63076f),     FLinearColor(0.01764f, 0.01764f, 0.01764f) },
+		/* TabActiveBg       */ { FLinearColor(0.9131f, 0.9131f, 0.9131f),        FLinearColor(0.04519f, 0.04519f, 0.04519f) },
+		/* TabActiveText     */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.82279f, 0.82279f, 0.82279f) },
+		/* TabInactiveText   */ { FLinearColor(0.05781f, 0.05781f, 0.05781f),     FLinearColor(0.32314f, 0.32314f, 0.32314f) },
+		/* TabActiveOutline  */ { FLinearColor(0.63076f, 0.63076f, 0.63076f),     FLinearColor(0.01764f, 0.01764f, 0.01764f) }, // dark: no tab outline; = dark line
+		/* Accent            */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
+		/* RibbonBg          */ { FLinearColor(0.9131f, 0.9131f, 0.9131f),        FLinearColor(0.03955f, 0.03955f, 0.03955f) },
+		/* PanelHeaderBg     */ { FLinearColor(0.82279f, 0.82279f, 0.82279f),     FLinearColor(0.05286f, 0.05286f, 0.05286f) },
+		/* PanelHeaderText   */ { FLinearColor(0.05781f, 0.05781f, 0.05781f),     FLinearColor(0.46208f, 0.46208f, 0.46208f) },
+		/* PanelHeaderBorder */ { FLinearColor(0.7454f, 0.7454f, 0.7454f),        FLinearColor(0.06848f, 0.06848f, 0.06848f) },
+		/* PanelDivider      */ { FLinearColor(0.76815f, 0.76815f, 0.76815f),     FLinearColor(0.05951f, 0.05951f, 0.05951f) },
+		/* LabelText         */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.62396f, 0.62396f, 0.62396f) },
+		/* SublabelText      */ { FLinearColor(0.13287f, 0.13287f, 0.13287f),     FLinearColor(0.32314f, 0.32314f, 0.32314f) },
+		/* MicroText         */ { FLinearColor(0.2462f, 0.2462f, 0.2462f),        FLinearColor(0.25818f, 0.25818f, 0.25818f) },
+		/* InputBg           */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.02416f, 0.02416f, 0.02416f) },
+		/* InputBorder       */ { FLinearColor(0.19462f, 0.19462f, 0.19462f),     FLinearColor(0.09084f, 0.09084f, 0.09084f) },
+		/* InputText         */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.62396f, 0.62396f, 0.62396f) },
+		/* InputPlaceholder  */ { FLinearColor(0.40198f, 0.40198f, 0.40198f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
+		/* InputMonoText     */ { FLinearColor(0.09084f, 0.09084f, 0.09084f),     FLinearColor(0.32314f, 0.32314f, 0.32314f) },
+		/* ButtonBg          */ { FLinearColor(0.93869f, 0.93869f, 0.93869f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
+		/* ButtonBorder      */ { FLinearColor(0.41789f, 0.41789f, 0.41789f),     FLinearColor(0.10224f, 0.10224f, 0.10224f) },
+		/* ButtonText        */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.7454f, 0.7454f, 0.7454f) },
+		/* ButtonHoverBg     */ { FLinearColor(0.81485f, 0.87962f, 0.95597f),     FLinearColor(0.09306f, 0.09306f, 0.09306f) },
+		/* ButtonHoverBorder */ { FLinearColor(0.25415f, 0.47932f, 0.72306f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
+		/* ButtonPressedBg   */ { FLinearColor(0.69387f, 0.7991f, 0.9131f),       FLinearColor(0.04971f, 0.04971f, 0.04971f) },
+		/* CheckboxBg        */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.02416f, 0.02416f, 0.02416f) },
+		/* CheckboxBorder    */ { FLinearColor(0.19462f, 0.19462f, 0.19462f),     FLinearColor(0.13287f, 0.13287f, 0.13287f) },
+		/* CheckboxCheckedBg */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
+		/* CheckboxCheckmark */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(1.0f, 1.0f, 1.0f) },
+		/* SliderTrack       */ { FLinearColor(0.58408f, 0.58408f, 0.58408f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
+		/* SliderThumb       */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
+		/* KbdBg             */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.05951f, 0.05951f, 0.05951f) },
+		/* KbdBorder         */ { FLinearColor(0.41789f, 0.41789f, 0.41789f),     FLinearColor(0.10224f, 0.10224f, 0.10224f) },
+		/* KbdText           */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.7454f, 0.7454f, 0.7454f) },
+		/* HelpRowDivider    */ { FLinearColor(0.7913f, 0.7913f, 0.7913f),        FLinearColor(0.05951f, 0.05951f, 0.05951f) },
+		/* HelpRowText       */ { FLinearColor(0.0331f, 0.0331f, 0.0331f),        FLinearColor(0.62396f, 0.62396f, 0.62396f) },
+		/* Zebra             */ { FLinearColor(0.85499f, 0.85499f, 0.85499f),     FLinearColor(0.04971f, 0.04971f, 0.04971f) },
+		/* ChipOutline       */ { FLinearColor(0.0f, 0.0f, 0.0f, 0.25f),          FLinearColor(1.0f, 1.0f, 1.0f, 0.30f) },
+		/* WellBg            */ { FLinearColor(0.85499f, 0.87137f, 0.88792f),     FLinearColor(0.05286f, 0.05286f, 0.05286f) },
+		/* IconTint          */ { FLinearColor(0.04374f, 0.04374f, 0.04374f),     FLinearColor(0.69387f, 0.69387f, 0.69387f) },
+		/* HoverBg           */ { FLinearColor(0.69387f, 0.69387f, 0.69387f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
+		/* HintText          */ { FLinearColor(0.31855f, 0.31855f, 0.31855f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
+		/* WindowBorder      */ { FLinearColor(0.43415f, 0.43415f, 0.43415f),     FLinearColor(0.01033f, 0.01033f, 0.01033f) },
+	};
+
+	static_assert(UE_ARRAY_COUNT(GMobiusPalette) == static_cast<int32>(EMobiusPaletteRole::Count),
+		"GMobiusPalette must have exactly one entry per EMobiusPaletteRole (order must match).");
+
+	static FLinearColor PaletteColor(const EMobiusPaletteRole Role, const bool bLight)
+	{
+		const int32 Index = static_cast<int32>(Role);
+		if (Index < 0 || Index >= UE_ARRAY_COUNT(GMobiusPalette))
+		{
+			return FLinearColor::Black;
+		}
+		return bLight ? GMobiusPalette[Index].Light : GMobiusPalette[Index].Dark;
+	}
+
+	// -------------------------------------------------------------------------------------------
+	// NAME -> ROLE explicit-reapply table (D25/D26 + P3/P4 EXPLICIT-REAPPLY queues). These roles the
+	// value-remap walker CANNOT distinguish: the dark-grey chrome region collapses several roles into
+	// one bucket at Epsilon (zebra/hairline), the neutral-white guard skips them (kbd bg), or they
+	// carry alpha (chip outline). So they are set EXPLICITLY per theme, keyed by widget-name substring
+	// (all these targets are UBorders). Substrings are distinctive — verified against the live trees
+	// (WBP_HeatmapColourBands, WBP_HelpPanel, WBP_LoadDataFiles, WBP_DisplayPanel, WBP_HeatmapSettingPanel).
+	// P5: append rows here for HoverBg / control-state roles as those controls are authored.
+	// -------------------------------------------------------------------------------------------
+	enum class EThemeRoleTarget : uint8
+	{
+		BorderFill,     // UBorder brush TintColor (SetBrushColor)
+		BorderOutline,  // UBorder brush OutlineSettings.Color (fill left untouched — e.g. LoS data chips)
+	};
+
+	struct FNameRole
+	{
+		const TCHAR* Substr;
+		EMobiusPaletteRole Role;
+		EThemeRoleTarget Target;
+	};
+
+	static const FNameRole GNameRoleMap[] =
+	{
+		{ TEXT("Zebra"),             EMobiusPaletteRole::Zebra,             EThemeRoleTarget::BorderFill },    // LoS ZebraA/C/E row tints
+		{ TEXT("HdrLine"),           EMobiusPaletteRole::PanelHeaderBorder, EThemeRoleTarget::BorderFill },    // panel-header hairlines: HdrLine_* / LosHdrLine / HeatHdrLine / HHdrLine_*
+		{ TEXT("HeatmapColourBand"), EMobiusPaletteRole::ChipOutline,       EThemeRoleTarget::BorderOutline }, // LoS chips 1..6 (outline only; fill is data colour)
+		{ TEXT("HChip"),             EMobiusPaletteRole::KbdBg,             EThemeRoleTarget::BorderFill },    // Help keycap chip backgrounds
+		// P6/BW2: WellBg (#eef0f2 / #414141) is NOT a SurfaceMap value bucket → the value walker skips
+		// it. Any Border whose name contains "Well" (floor-stats Total-occupants well, flow-counter
+		// "Move markers" well) gets the well fill explicitly per theme.
+		{ TEXT("Well"),              EMobiusPaletteRole::WellBg,            EThemeRoleTarget::BorderFill },
+		// BW3/Q34: collapse-pill (WBP_MobiusBottomBar CollapsePillBg, D80) fill = ButtonBg (#f8f8f8 /
+		// #4a4a4a). Authored light-only in the asset; the value walker has no button_bg bucket, so flip
+		// it here. Outline is already value-walker covered (chip-line). Substring "PillBg" hits only
+		// CollapsePillBg (CollapsePillOverlay/CollapsePillBox do not contain it).
+		{ TEXT("PillBg"),            EMobiusPaletteRole::ButtonBg,          EThemeRoleTarget::BorderFill },
+	};
+
+	/** App typeface (composite Inter/JetBrains-Mono UFont). Cached; loaded once game content is mounted. */
+	static UFont* GetInterFont()
+	{
+		static TWeakObjectPtr<UFont> Cached;
+		if (!Cached.IsValid())
+		{
+			Cached = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter"));
+		}
+		return Cached.Get();
+	}
+
 	// Linear-space role pairs, dark (7a) <-> light (4b). Values must match the literals applied to
 	// the widgets exactly (within Epsilon) or the walker will skip them.
 	static const FColorPair SurfaceMap[] =
@@ -70,15 +201,18 @@ namespace MobiusTheme
 		{ FLinearColor(0.0243f, 0.0243f, 0.0243f),  FLinearColor(0.973f, 0.973f, 0.973f) },    // field bg     #2b2b2b -> #fcfcfc
 		{ FLinearColor(0.091f, 0.091f, 0.091f),     FLinearColor(0.1945f, 0.1945f, 0.1945f) }, // field line   #555555 -> #7a7a7a
 		{ FLinearColor(0.1023f, 0.1023f, 0.1023f),  FLinearColor(0.4179f, 0.4179f, 0.4179f) }, // chip line    #5a5a5a -> #adadad
-		{ FLinearColor(0.068f, 0.068f, 0.068f),     FLinearColor(0.6307f, 0.6307f, 0.6307f) }, // slider track #4a4a4a -> #d0d0d0
+		{ FLinearColor(0.068f, 0.068f, 0.068f),     FLinearColor(0.58408f, 0.58408f, 0.58408f) }, // slider track #4a4a4a -> #c9c9c9 (D22: token slider_track, was #d0d0d0)
 		{ FLinearColor(0.045f, 0.045f, 0.045f),     FLinearColor(0.9131f, 0.9131f, 0.9131f) }, // active tab   #3c3c3c -> #f5f5f5
 		{ FLinearColor(0.010f, 0.012f, 0.015f),     FLinearColor(0.973f, 0.973f, 0.973f) },    // legacy field / combo bg #1a1c20 -> #fcfcfc
 		{ FLinearColor(0.007f, 0.007f, 0.009f),     FLinearColor(0.7913f, 0.7913f, 0.7913f) }, // bottom bar   -> #e6e6e6
 		{ FLinearColor(0.172f, 0.172f, 0.172f),     FLinearColor(0.4179f, 0.4179f, 0.4179f) }, // icon border  -> #adadad
 		{ FLinearColor(0.132f, 0.132f, 0.132f),     FLinearColor(0.4179f, 0.4179f, 0.4179f) }, // box outline  #666666 -> #adadad
 		{ FLinearColor(0.100f, 0.330f, 0.661f),     FLinearColor(0.0f, 0.1356f, 0.5271f) },    // accent       #5a9bd5 -> #0067c0
-		{ FLinearColor(0.135f, 0.405f, 0.750f),     FLinearColor(0.0f, 0.1800f, 0.6200f) },    // accent hover
-		{ FLinearColor(0.070f, 0.240f, 0.500f),     FLinearColor(0.0f, 0.1000f, 0.4200f) },    // accent press
+		// CR item C (SYSTEMIC_AUDIT rank-11): these two rows were hand-derived/invented "accent hover/press"
+		// values with no matching token. Corrected to the authoritative GMobiusPalette button hover/press
+		// tokens ({dark, light}) — button_hover_bg #e9f1fa / button_pressed_bg #d9e7f5 (light). Reversible.
+		{ FLinearColor(0.09306f, 0.09306f, 0.09306f), FLinearColor(0.81485f, 0.87962f, 0.95597f) }, // button hover bg  (ButtonHoverBg token)
+		{ FLinearColor(0.04971f, 0.04971f, 0.04971f), FLinearColor(0.69387f, 0.7991f, 0.9131f) },   // button pressed bg (ButtonPressedBg token)
 	};
 
 	static const FColorPair TextMap[] =
@@ -91,6 +225,7 @@ namespace MobiusTheme
 		{ FLinearColor(0.745f, 0.745f, 0.745f),              FLinearColor(0.0331f, 0.0331f, 0.0331f) }, // chip/button   #e0e0e0 -> #333333
 		{ FLinearColor(0.6867f, 0.7084f, 0.7454f),           FLinearColor(0.0160f, 0.0160f, 0.0160f) }, // legacy body text
 		{ FLinearColor(0.925f, 0.933f, 0.945f),              FLinearColor(0.0160f, 0.0160f, 0.0160f) }, // bright mono   #e6e8eb -> #222222
+		{ FLinearColor(0.100f, 0.330f, 0.661f),              FLinearColor(0.0f, 0.13563f, 0.52712f) },  // accent text/link (CR item D) #5a9bd5 <-> #0067c0
 	};
 
 	static bool NearlyEqual(const FLinearColor& A, const FLinearColor& B)
@@ -198,8 +333,13 @@ namespace MobiusTheme
 		// ("Inset Inner Button Texture", "TextureSize", ...) are geometry and must stay at the
 		// parent instance's values.
 		Mid->ClearParameterValues();
-		Mid->SetVectorParameterValue(TEXT("Texture Colour"), bLight ? FLinearColor(0.016f, 0.016f, 0.016f) : FLinearColor::White);
+		// Glyph tint = icon_tint token per theme (D24): light #3b3b3b, dark #d9d9d9 (was #0a0a0a / pure white).
+		Mid->SetVectorParameterValue(TEXT("Texture Colour"), PaletteColor(EMobiusPaletteRole::IconTint, bLight));
 		Mid->SetVectorParameterValue(TEXT("BackgroundColour"), bLight ? FLinearColor(0.9131f, 0.9131f, 0.9131f) : FLinearColor(0.007f, 0.007f, 0.009f));
+		// BW7 (D135/Q55 — OWNER RULING): the play/pause accent-ring mockup design is OVERRULED. The play/pause
+		// MIDs get the SAME grey border as every other bottom-bar icon (no accent BorderColour, no pinned
+		// BorderThickness). The former BW3/D86 special-case (accent ring + thickness 2) is removed so a theme
+		// flip can never re-introduce the ring. Do NOT restore the ring without an owner say-so.
 		Mid->SetVectorParameterValue(TEXT("BorderColour"), bLight ? FLinearColor(0.4179f, 0.4179f, 0.4179f) : FLinearColor(0.172f, 0.172f, 0.172f));
 		return true;
 	}
@@ -247,6 +387,36 @@ namespace MobiusTheme
 		}
 		return true;
 	}
+
+	/**
+	 * Agent-visibility pill toggle (D51): M_RadialToggleButton / MI_AgentToggleViewer exposes
+	 * InnerTrackColourOn / InnerTrackColourOff / ThumbColour. Theme them per CurrentTheme:
+	 * On = accent, Off = slider_track, Thumb = white. NEVER ClearParameterValues here — the pill's
+	 * SliderState (BP-driven on/off) and geometry params must survive; we only override the 3 colours.
+	 */
+	static bool ThemePillBrush(FSlateBrush& Brush, UObject* MidOuter, const bool bLight)
+	{
+		UMaterialInterface* Material = Cast<UMaterialInterface>(Brush.GetResourceObject());
+		if (!Material)
+		{
+			return false;
+		}
+		UMaterialInstanceDynamic* Mid = Cast<UMaterialInstanceDynamic>(Material);
+		const FString SourcePath = Mid ? (Mid->Parent ? Mid->Parent->GetPathName() : FString()) : Material->GetPathName();
+		if (!SourcePath.Contains(TEXT("RadialToggleButton")) && !SourcePath.Contains(TEXT("AgentToggleViewer")))
+		{
+			return false;
+		}
+		if (!Mid)
+		{
+			Mid = UMaterialInstanceDynamic::Create(Material, MidOuter);
+			Brush.SetResourceObject(Mid);
+		}
+		Mid->SetVectorParameterValue(TEXT("InnerTrackColourOn"), PaletteColor(EMobiusPaletteRole::Accent, bLight));
+		Mid->SetVectorParameterValue(TEXT("InnerTrackColourOff"), PaletteColor(EMobiusPaletteRole::SliderTrack, bLight));
+		Mid->SetVectorParameterValue(TEXT("ThumbColour"), FLinearColor::White);
+		return true;
+	}
 }
 
 void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -286,6 +456,85 @@ void UUIThemeSubsystem::ToggleTheme()
 void UUIThemeSubsystem::ReapplyTheme()
 {
 	ApplyTheme(CurrentTheme == EMobiusUITheme::Light);
+}
+
+FLinearColor UUIThemeSubsystem::GetPaletteColor(const EMobiusPaletteRole Role) const
+{
+	return MobiusTheme::PaletteColor(Role, CurrentTheme == EMobiusUITheme::Light);
+}
+
+FLinearColor UUIThemeSubsystem::GetPaletteColorForTheme(const EMobiusPaletteRole Role, const EMobiusUITheme Theme) const
+{
+	return MobiusTheme::PaletteColor(Role, Theme == EMobiusUITheme::Light);
+}
+
+UMaterialInterface* UUIThemeSubsystem::GetThemedTabMaterial(const bool bSelected) const
+{
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+	const TCHAR* ThemeFolder = bLight ? TEXT("LightTheme") : TEXT("DarkTheme");
+	const TCHAR* Name = bSelected ? TEXT("MI_TabSelected") : TEXT("MI_TabDefault");
+	const FString Path = FString::Printf(
+		TEXT("/Game/01_Dev/Widgets/WidgetMaterials/Master/Instances/%s/%s.%s"),
+		ThemeFolder, Name, Name);
+	return LoadObject<UMaterialInterface>(nullptr, *Path);
+}
+
+FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected) const
+{
+	using namespace MobiusTheme;
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+
+	// Base off the shared tab SWS so padding / sound / non-brush params stay identical to today.
+	FButtonStyle Style;
+	if (const USlateWidgetStyleAsset* TabStyleAsset = LoadObject<USlateWidgetStyleAsset>(nullptr,
+		TEXT("/Game/01_Dev/Widgets/WidgetMaterials/SlateStyleSheets/UI_Styles/SWS_SettingButtonStyle.SWS_SettingButtonStyle")))
+	{
+		if (const FButtonStyle* Base = TabStyleAsset->GetStyle<FButtonStyle>())
+		{
+			Style = *Base;
+		}
+	}
+
+	// Swap each state's brush to the themed tab material (selected vs default) for the current theme.
+	if (UMaterialInterface* TabMaterial = GetThemedTabMaterial(bSelected))
+	{
+		FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
+		for (FSlateBrush* Brush : Brushes)
+		{
+			Brush->SetResourceObject(TabMaterial);
+			Brush->TintColor = FSlateColor(FLinearColor::White); // material carries the colour; tint neutral
+		}
+	}
+
+	// Foreground: selected tab = accent text (light) / bright (dark); inactive = muted.
+	const FLinearColor SelectedFg = PaletteColor(EMobiusPaletteRole::TabActiveText, bLight);
+	const FLinearColor InactiveFg = PaletteColor(EMobiusPaletteRole::TabInactiveText, bLight);
+	const FSlateColor Fg = FSlateColor(bSelected ? SelectedFg : InactiveFg);
+	Style.NormalForeground = Fg;
+	Style.HoveredForeground = FSlateColor(SelectedFg);
+	Style.PressedForeground = FSlateColor(SelectedFg);
+	Style.DisabledForeground = Fg;
+	return Style;
+}
+
+FWindowStyle UUIThemeSubsystem::GetThemedWindowStyle() const
+{
+	using namespace MobiusTheme;
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+
+	FWindowStyle Style = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+	const FLinearColor TitleBg = PaletteColor(EMobiusPaletteRole::TitlebarBg, bLight);
+	const FLinearColor Border = PaletteColor(EMobiusPaletteRole::WindowBorder, bLight);
+	const FLinearColor TitleText = PaletteColor(EMobiusPaletteRole::TitlebarText, bLight);
+
+	Style.ActiveTitleBrush.TintColor = FSlateColor(TitleBg);
+	Style.InactiveTitleBrush.TintColor = FSlateColor(TitleBg);
+	Style.FlashTitleBrush.TintColor = FSlateColor(TitleBg);
+	Style.BorderBrush.TintColor = FSlateColor(Border);
+	Style.BackgroundBrush.TintColor = FSlateColor(TitleBg);
+	Style.OutlineBrush.TintColor = FSlateColor(Border);
+	Style.TitleTextStyle.ColorAndOpacity = FSlateColor(TitleText);
+	return Style;
 }
 
 void UUIThemeSubsystem::ApplyTheme(const bool bLight)
@@ -335,6 +584,14 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 {
 	using namespace MobiusTheme;
 
+	// Roles the value walker can't reach are set explicitly per theme by widget name FIRST; if a name
+	// matches we fully own that widget and skip the generic walk (which would otherwise mis-remap it,
+	// e.g. a header hairline #4a4a4a colliding with the slider-track SurfaceMap row).
+	if (ApplyNameRoleOverride(Widget, bLight))
+	{
+		return;
+	}
+
 	if (UBorder* Border = Cast<UBorder>(Widget))
 	{
 		FLinearColor BrushColor = Border->GetBrushColor();
@@ -360,16 +617,27 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	}
 	else if (USlider* Slider = Cast<USlider>(Widget))
 	{
-		FLinearColor Bar = Slider->GetSliderBarColor();
-		if (Remap(Bar, bLight, SurfaceMap))
+		if (Slider->GetName() == TEXT("PlaybackSlider"))
 		{
-			Slider->SetSliderBarColor(Bar);
+			// Q51/C4 (CR item B): the scrub track + accent-@35% fill are now drawn by a UProgressBar
+			// (ScrubFillBar) layered BEHIND this slider, so the slider itself must be bar-transparent —
+			// only its accent thumb shows on top. Forced here (a plain transparent value would otherwise
+			// be pulled to grey by the SurfaceMap bottom-bar bucket on the value walk).
+			Slider->SetSliderBarColor(FLinearColor::Transparent);
 		}
-		FLinearColor Handle = Slider->GetSliderHandleColor();
-		if (Remap(Handle, bLight, SurfaceMap))
+		else
 		{
-			Slider->SetSliderHandleColor(Handle);
+			// Track stays on the value-walk so gradient/data bars (HSV colour pickers) are not flattened
+			// to grey; only greyscale tracks that match a SurfaceMap row are remapped.
+			FLinearColor Bar = Slider->GetSliderBarColor();
+			if (Remap(Bar, bLight, SurfaceMap))
+			{
+				Slider->SetSliderBarColor(Bar);
+			}
 		}
+		// Q24: force the thumb to the accent per theme (design: slider thumb = accent). Not a value
+		// remap — the stock thumbs are grey and match no accent bucket, so set it explicitly.
+		Slider->SetSliderHandleColor(PaletteColor(EMobiusPaletteRole::SliderThumb, bLight));
 	}
 	else if (UCheckBox* CheckBox = Cast<UCheckBox>(Widget))
 	{
@@ -385,6 +653,36 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		{
 			bChanged |= RemapBrush(*Brush, bLight);
 		}
+
+		// Q24 (C4): checkbox checked = accent fill; unchecked = input-bg box + checkbox border, radius 3.
+		// The ThemeToggle is a bespoke pill/slider control — leave its brushes to the value walk.
+		if (!Widget->GetName().Contains(TEXT("ThemeToggle")))
+		{
+			auto ApplyRoundedBox = [](FSlateBrush& B, const FLinearColor& Fill, const FLinearColor& Outline, float OutlineWidth)
+			{
+				// Mutate in place so the asset's authored ImageSize (D43 = 20x20) survives.
+				B.DrawAs = ESlateBrushDrawType::RoundedBox;
+				B.SetResourceObject(nullptr);
+				B.TintColor = FSlateColor(Fill);
+				B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+				B.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+				B.OutlineSettings.Color = FSlateColor(Outline);
+				B.OutlineSettings.Width = OutlineWidth;
+			};
+			const FLinearColor Accent = PaletteColor(EMobiusPaletteRole::CheckboxCheckedBg, bLight);
+			const FLinearColor BoxBg = PaletteColor(EMobiusPaletteRole::CheckboxBg, bLight);
+			const FLinearColor BoxBorder = PaletteColor(EMobiusPaletteRole::CheckboxBorder, bLight);
+			// Checked = accent fill + white 1u outline (accent-on signal; the white-check glyph needs a
+			// composite/checkmark brush asset — logged as the remaining Q24 limitation).
+			ApplyRoundedBox(Style.CheckedImage, Accent, FLinearColor::White, 1.0f);
+			ApplyRoundedBox(Style.CheckedHoveredImage, Accent, FLinearColor::White, 1.0f);
+			ApplyRoundedBox(Style.CheckedPressedImage, Accent, FLinearColor::White, 1.0f);
+			ApplyRoundedBox(Style.UncheckedImage, BoxBg, BoxBorder, 1.0f);
+			ApplyRoundedBox(Style.UncheckedHoveredImage, BoxBg, BoxBorder, 1.0f);
+			ApplyRoundedBox(Style.UncheckedPressedImage, BoxBg, BoxBorder, 1.0f);
+			bChanged = true;
+		}
+
 		if (bChanged)
 		{
 			CheckBox->SetWidgetStyle(Style);
@@ -400,6 +698,7 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 			bChanged |= RemapBrush(*Brush, bLight);
 			bChanged |= ThemeIconBrush(*Brush, Button, bLight);
 			bChanged |= ThemeBackgroundBrush(*Brush, Button, bLight);
+			bChanged |= ThemePillBrush(*Brush, Button, bLight); // agent-visibility pill toggle (D51)
 		}
 		bChanged |= RemapSlate(Style.NormalForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
 		bChanged |= RemapSlate(Style.HoveredForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
@@ -420,6 +719,38 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		if (UButtonWithText* ButtonWithText = Cast<UButtonWithText>(Widget))
 		{
 			ButtonWithText->RefreshTextStyle();
+
+			// Q49/R4: RefreshTextStyle()/SetTextStyle re-pushes the style struct but does NOT re-land the
+			// STextBlock's resolved ColorAndOpacity, so tab + Browse labels keep their light-mode colour in
+			// dark theme (D118). Re-land it directly. Only for labels using the shared Mobius.Text.Label
+			// fallback (MobiusButtonTextStyle == null); buttons carrying a custom SWS text style own their
+			// colour and must not be stomped (walker-style caution).
+			if (!ButtonWithText->MobiusButtonTextStyle)
+			{
+				const FString BtnName = ButtonWithText->GetName();
+				const bool bIsRibbonTab =
+					BtnName.Contains(TEXT("FilesPanelBtn")) ||
+					BtnName.Contains(TEXT("DisplaylPanelBTN")) || // sic: asset typo (D13)
+					BtnName.Contains(TEXT("HelpPanelBtn"));
+
+				if (bIsRibbonTab)
+				{
+					// Active tab = current Normal-brush material named "TabSelected" (name-based so it holds
+					// whichever theme folder the tab-material swap left on the brush).
+					const UObject* NormalRes = Style.Normal.GetResourceObject();
+					const bool bActive = NormalRes && NormalRes->GetName().Contains(TEXT("TabSelected"));
+					ButtonWithText->ApplyThemedLabelColor(PaletteColor(
+						bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText,
+						bLight));
+				}
+				else
+				{
+					// Browse et al: mirror the shared Mobius.Text.Label colour ApplySharedStyles just set.
+					const FSlateColor LabelColor =
+						FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label").ColorAndOpacity;
+					ButtonWithText->ApplyThemedLabelColor(LabelColor.GetSpecifiedColor());
+				}
+			}
 		}
 	}
 	else if (UComboBoxString* ComboBox = Cast<UComboBoxString>(Widget))
@@ -503,11 +834,97 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		bool bChanged = RemapBrush(Brush, bLight);
 		bChanged |= ThemeIconBrush(Brush, Image, bLight);
 		bChanged |= ThemeBackgroundBrush(Brush, Image, bLight);
+		bChanged |= ThemePillBrush(Brush, Image, bLight); // agent-visibility pill toggle (D51)
 		if (bChanged)
 		{
 			Image->SetBrush(Brush);
 		}
 	}
+	else if (UProgressBar* ProgressBar = Cast<UProgressBar>(Widget))
+	{
+		if (ProgressBar->GetName() == TEXT("ScrubFillBar"))
+		{
+			// Q51/C4 (CR item B): scrub fill behind PlaybackSlider — a flat SliderTrack-grey track with an
+			// accent @35%-alpha fill (NOT the §3.8 loading-bar look). Both themes via palette. The fill is
+			// white-tinted in the style and coloured via FillColorAndOpacity so the 0.35 alpha is exact.
+			FProgressBarStyle Style = ProgressBar->GetWidgetStyle();
+			Style.EnableFillAnimation = false;
+			Style.BackgroundImage.DrawAs = ESlateBrushDrawType::Box;
+			Style.BackgroundImage.SetResourceObject(nullptr);
+			Style.BackgroundImage.OutlineSettings.Width = 0.0f;
+			Style.BackgroundImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::SliderTrack, bLight));
+			Style.FillImage.DrawAs = ESlateBrushDrawType::Box;
+			Style.FillImage.SetResourceObject(nullptr);
+			Style.FillImage.OutlineSettings.Width = 0.0f;
+			Style.FillImage.TintColor = FSlateColor(FLinearColor::White);
+			ProgressBar->SetWidgetStyle(Style);
+			FLinearColor Fill = PaletteColor(EMobiusPaletteRole::Accent, bLight);
+			Fill.A = 0.35f;
+			ProgressBar->SetFillColorAndOpacity(Fill);
+			return;
+		}
+		// §3.8 (D55): progress bars = accent fill on an input-bg track with a 1u input-border. The fill
+		// image is a material/texture on some bars — tint it to accent (keeps any authored shape); the
+		// background becomes a rounded input-bg box. Height (11u) is asset geometry, not style.
+		FProgressBarStyle Style = ProgressBar->GetWidgetStyle();
+		Style.FillImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::Accent, bLight));
+		Style.BackgroundImage.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Style.BackgroundImage.SetResourceObject(nullptr);
+		Style.BackgroundImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBg, bLight));
+		Style.BackgroundImage.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Style.BackgroundImage.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+		Style.BackgroundImage.OutlineSettings.Color = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBorder, bLight));
+		Style.BackgroundImage.OutlineSettings.Width = 1.0f;
+		ProgressBar->SetWidgetStyle(Style);
+		ProgressBar->SetFillColorAndOpacity(PaletteColor(EMobiusPaletteRole::Accent, bLight));
+	}
+	else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(Widget))
+	{
+		// Q26: numeric/path edit boxes → Font_Inter Mono 14 (input_mono token). Font is
+		// theme-independent, but the walk is the only C++ hook that touches every live widget, and
+		// FEditableTextBoxStyle.Font is not settable from Python (protected). Convert only boxes not
+		// already on Inter, so a deliberate Inter face/size is never re-stomped (idempotent on toggle).
+		if (UFont* Inter = GetInterFont())
+		{
+			if (EditBox->WidgetStyle.TextStyle.Font.FontObject != Inter)
+			{
+				EditBox->WidgetStyle.TextStyle.Font = FSlateFontInfo(Inter, 11, FName(TEXT("Mono"))); // BW6 density: 14->11
+				EditBox->SynchronizeProperties(); // push the style to the live SEditableTextBox
+			}
+		}
+	}
+}
+
+bool UUIThemeSubsystem::ApplyNameRoleOverride(UWidget* Widget, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	UBorder* Border = Cast<UBorder>(Widget);
+	if (!Border)
+	{
+		return false;
+	}
+
+	const FString Name = Widget->GetName();
+	for (const FNameRole& Entry : GNameRoleMap)
+	{
+		if (Name.Contains(Entry.Substr))
+		{
+			const FLinearColor Color = PaletteColor(Entry.Role, bLight);
+			if (Entry.Target == EThemeRoleTarget::BorderFill)
+			{
+				Border->SetBrushColor(Color);
+			}
+			else // BorderOutline — recolour only the 1u outline; the fill is a data colour (LoS band).
+			{
+				FSlateBrush Brush = Border->Background;
+				Brush.OutlineSettings.Color = FSlateColor(Color);
+				Border->SetBrush(Brush);
+			}
+			return true;
+		}
+	}
+	return false;
 }
 
 void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
@@ -578,8 +995,11 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 						: FLinearColor(0.1023f, 0.1023f, 0.1023f);  // #5a5a5a
 					for (FSlateBrush* Brush : Brushes)
 					{
+						// Outline WIDTH is SWS-owned geometry (the asset carries Width=1 on all four
+						// brushes on disk); C++ sets only the theme-dependent outline COLOUR here. Do NOT
+						// re-add a Width clobber: it re-overwrites the asset geometry and breaks the
+						// owner's split (colours = C++, padding + sound + geometry = SWS asset).
 						Brush->OutlineSettings.Color = FSlateColor(OutlineColor);
-						Brush->OutlineSettings.Width = 1.0f;
 					}
 					bChanged = true;
 				}
@@ -601,12 +1021,36 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 					}
 					bChanged = true;
 				}
+				// Bottom-bar play/pause (§3.6 round-53 accent ring): the play/pause glyph is a MATERIAL brush
+				// (MI_PlayButton/MI_PauseButton). Slate's RoundedBox draw type routes materials through the
+				// material shader and does not apply the rounded-corner mask/outline, so converting DrawAs
+				// here would give no ring at best and a dropped glyph at worst. Deferred to asset/material
+				// work (round the MI background + bake an accent ring, OR a texture glyph on a RoundedBox).
+				// Only the ACCENT-RING colour is queued; the C++ swap path (SetPlayButtonStyle) stays intact.
 			}
 			// Button LABELS come from separate text-style assets (SWS_*TextStyle) — without this
 			// the light theme leaves white labels on light buttons.
 			else if (FTextBlockStyle* TextStyle = const_cast<FTextBlockStyle*>(StyleAsset->GetStyle<FTextBlockStyle>()))
 			{
 				bChanged |= RemapSlate(TextStyle->ColorAndOpacity, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+				// Q28/B8: SWS text styles (rail labels, agent-window rows, ButtonWithText labels) → Font_Inter.
+				// Idempotent (only converts non-Inter faces), preserving each asset's authored size; a "Mono"
+				// / "Field" / "Value" asset name picks the JetBrains-Mono face for numeric/path readouts.
+				if (UFont* Inter = GetInterFont())
+				{
+					if (TextStyle->Font.FontObject != Inter)
+					{
+						const FString AssetName = AssetData.AssetName.ToString();
+						const bool bMono = AssetName.Contains(TEXT("Mono")) || AssetName.Contains(TEXT("Field")) || AssetName.Contains(TEXT("Value"));
+						int32 Size = FMath::RoundToInt(static_cast<float>(TextStyle->Font.Size));
+						if (Size <= 0)
+						{
+							Size = 15;
+						}
+						TextStyle->Font = FSlateFontInfo(Inter, Size, FName(bMono ? TEXT("Mono") : TEXT("Regular")));
+						bChanged = true;
+					}
+				}
 			}
 			StyleAssetsThemed += bChanged ? 1 : 0;
 		}
@@ -626,11 +1070,15 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 
 	// "Mobius.Button" (Browse et al) — 4b light buttons are white-ish with #adadad outline, #222 label.
 	FButtonStyle& MobiusButton = const_cast<FButtonStyle&>(FMobiusStyle::Get().GetWidgetStyle<FButtonStyle>("Mobius.Button"));
-	const FLinearColor Fill = bLight ? FLinearColor(0.9647f, 0.9647f, 0.9647f) : FLinearColor::FromSRGBColor(FColor(0x4A, 0x4A, 0x4A));
-	const FLinearColor Hover = bLight ? FLinearColor(0.8714f, 0.8714f, 0.8714f) : FLinearColor::FromSRGBColor(FColor(0x56, 0x56, 0x56));
-	const FLinearColor Press = bLight ? FLinearColor(0.7867f, 0.7867f, 0.7867f) : FLinearColor::FromSRGBColor(FColor(0x3A, 0x3A, 0x3A));
-	const FLinearColor Line = bLight ? FLinearColor(0.4179f, 0.4179f, 0.4179f) : FLinearColor::FromSRGBColor(FColor(0x5A, 0x5A, 0x5A));
-	const FLinearColor Label = bLight ? FLinearColor(0.0160f, 0.0160f, 0.0160f) : FLinearColor::FromSRGBColor(FColor(0xE0, 0xE0, 0xE0));
+	// CR item C (SYSTEMIC_AUDIT rank-11): the light literals were neutral grey (Fill 0.9647 / Hover 0.8714 /
+	// Press 0.7867), off the design tokens. Sourced from GMobiusPalette VERBATIM now so light hover/press are
+	// the Win11-bluish button tokens (#e9f1fa / #d9e7f5); dark values are numerically identical to before.
+	// Owner-checkable/reversible.
+	const FLinearColor Fill  = PaletteColor(EMobiusPaletteRole::ButtonBg, bLight);
+	const FLinearColor Hover = PaletteColor(EMobiusPaletteRole::ButtonHoverBg, bLight);
+	const FLinearColor Press = PaletteColor(EMobiusPaletteRole::ButtonPressedBg, bLight);
+	const FLinearColor Line  = PaletteColor(EMobiusPaletteRole::ButtonBorder, bLight);
+	const FLinearColor Label = PaletteColor(EMobiusPaletteRole::ButtonText, bLight);
 	MobiusButton.Normal.TintColor = Fill;
 	MobiusButton.Hovered.TintColor = Hover;
 	MobiusButton.Pressed.TintColor = Press;
@@ -651,6 +1099,12 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 	LabelText.ColorAndOpacity = bLight
 		? FSlateColor(FLinearColor(0.0331f, 0.0331f, 0.0331f))  // #333333
 		: FSlateColor(FLinearColor(0.745f, 0.745f, 0.745f));    // #e0e0e0
+
+	// BW7/D138: the rail-button labels (Floor Stats / Flow Counter VerticalTextBlock) fall back to the
+	// dedicated "Mobius.Text.RailButton" style — retint it per theme alongside "Mobius.Text.Label" so both
+	// themes hold (the rails read this shared style on rebuild; they have no per-widget colour handling).
+	FTextBlockStyle& RailButtonText = const_cast<FTextBlockStyle&>(FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton"));
+	RailButtonText.ColorAndOpacity = LabelText.ColorAndOpacity;
 }
 
 UWidget* UUIThemeSubsystem::HandleGenerateThemedComboEntry(const FString Item)

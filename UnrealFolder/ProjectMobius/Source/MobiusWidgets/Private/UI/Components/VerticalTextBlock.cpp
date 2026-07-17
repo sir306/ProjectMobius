@@ -68,9 +68,12 @@ void UVerticalTextBlock::PushTextToSlate()
 
 TSharedRef<SWidget> UVerticalTextBlock::RebuildWidget()
 {
+	// BW7/D138: rail labels (Floor Stats / Flow Counter) fall back to the dedicated "Mobius.Text.RailButton"
+	// (Inter Regular 10) rather than the shared "Mobius.Text.Label" (12, ribbon tabs + Browse) so the rails
+	// read at the owner's 10 without shrinking the tabs.
 	const FTextBlockStyle* Style = TextStyle
 		? TextStyle->GetStyle<FTextBlockStyle>()
-		: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label");
+		: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
 
 	if (Mode == EVerticalTextMode::Rotated)
 	{

@@ -191,6 +191,13 @@ private:
         /** Per-chart overlay data keyed by chart id. */
         TMap<FName, FImPlotOverlayState> OverlayStates;
 
+        /**
+         * Themed SWindow chrome shared by all chart overlay windows (D8/Q3). SWindow keeps its style by
+         * pointer, so it must live at a stable address for the window's lifetime — a subsystem member,
+         * NOT a TMap value (which moves on rehash). Refreshed to the current theme each OpenOverlayWindow.
+         */
+        FWindowStyle ChartWindowStyle;
+
         FImPlotOverlayState& GetOrCreateOverlayState(const FName& ChartId);
         FImPlotOverlayState* FindOverlayState(const FName& ChartId);
         const FImPlotOverlayState* FindOverlayState(const FName& ChartId) const;

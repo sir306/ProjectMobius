@@ -16,6 +16,7 @@
 #include "Misc/Paths.h"
 #include "Rendering/DrawElementTypes.h"
 #include "Rendering/RenderingCommon.h"
+#include "UI/Theme/UIThemeSubsystem.h"
 #include "UserConfig/UserProjectSettings.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/SWidget.h"
@@ -342,8 +343,24 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 	{
 		const FText WindowTitle = FText::FromString(TEXT("UE Plot Overlay"));
 
+		// D8/Q3: themed window chrome held at a stable subsystem address (SWindow keeps the style by
+		// pointer). The SWindowTitleBarWidget also polls the theme per-paint so the title bar follows a
+		// live toggle; the border/background here theme at open time.
+		ChartWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+		if (const UWorld* World = GetWorld())
+		{
+			if (const UGameInstance* GameInstance = World->GetGameInstance())
+			{
+				if (const UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+				{
+					ChartWindowStyle = Theme->GetThemedWindowStyle();
+				}
+			}
+		}
+
 		SAssignNew(State.OverlayWindow, SMoveableWindow)
 			.Title(WindowTitle)
+			.Style(&ChartWindowStyle)
 			.SizingRule(ESizingRule::UserSized)
 			.FocusWhenFirstShown(false)
 			.ActivationPolicy(EWindowActivationPolicy::Never)
@@ -378,7 +395,9 @@ void UImPlotVisualizationSubsystem::CloseOverlayWindow(FImPlotOverlayState& Stat
                 DestroyOverlayContext(State);
                 return;
         }
-        FSlateApplication::Get().RequestDestroyWindow(State.OverlayWindow.ToSharedRef());
+        // Spec §5: play the close animation (reverse fade + sink) then self-destroy — the window is not
+        // dropped mid-anim. The plot area blanks during the fade (context torn down below, OnPaint guards).
+        State.OverlayWindow->PlayCloseAnimationThenDestroy();
         State.OverlayWindow.Reset();
         DestroyOverlayContext(State);
 }

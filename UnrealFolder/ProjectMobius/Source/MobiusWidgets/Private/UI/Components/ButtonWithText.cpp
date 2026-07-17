@@ -113,6 +113,16 @@ void UButtonWithText::RefreshTextStyle()
 	}
 }
 
+void UButtonWithText::ApplyThemedLabelColor(FLinearColor Color)
+{
+	// Direct Slate set — bypasses the STextBlock construction-time style copy that RefreshTextStyle()
+	// cannot re-land (see header + Q49/R4). No-op until the Slate label exists (RebuildWidget).
+	if (MyButtonText.IsValid())
+	{
+		MyButtonText->SetColorAndOpacity(FSlateColor(Color));
+	}
+}
+
 void UButtonWithText::HandleThemeRefreshAfterClick()
 {
 	// Deferred one tick so every Blueprint OnClicked handler (including the ribbon's

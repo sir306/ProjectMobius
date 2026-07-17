@@ -3,6 +3,8 @@
 
 #include "Fonts/FontMeasure.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Engine/Font.h" // BW3/D69: LoadObject<UFont> in SetFieldFontFace
 
 SFieldAndTitleText::SFieldAndTitleText()
 {
@@ -186,6 +188,22 @@ void SFieldAndTitleText::SetFontSize(float InFontSize) const
 	// Set the font size for the field text block
 	FontInfo = FieldTextBlock->GetFont();
 	FontInfo.Size = InFontSize;
+	FieldTextBlock->SetFont(FontInfo);
+}
+
+void SFieldAndTitleText::SetFieldFontFace(FName InTypeface)
+{
+	if (!FieldTextBlock.IsValid())
+	{
+		return;
+	}
+	FSlateFontInfo FontInfo = FieldTextBlock->GetFont();
+	// Ensure the composite Font_Inter is the font object so face names (Regular/Mono/...) resolve.
+	if (UFont* Inter = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter")))
+	{
+		FontInfo.FontObject = Inter;
+	}
+	FontInfo.TypefaceFontName = InTypeface;
 	FieldTextBlock->SetFont(FontInfo);
 }
 

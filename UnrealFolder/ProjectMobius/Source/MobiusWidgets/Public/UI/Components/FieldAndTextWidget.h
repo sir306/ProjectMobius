@@ -68,6 +68,12 @@ public:
 	 */
 	void SetFontSize(float InFontSize) const;
 
+	/**
+	 * Set the typeface face of the FIELD (value) text only, on the composite Font_Inter (e.g. "Mono" for
+	 * numeric/path/timecode readouts per spec §3.4). Title face is left alone. No-op until Slate is built.
+	 */
+	void SetFieldFontFace(FName InTypeface) const;
+
 	// Optional getters if you want to bind attributes rather than call setters
 	FText GetTitleText() const   { return TitleText; }
 	FText GetFieldText() const   { return FieldText; }

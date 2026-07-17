@@ -30,6 +30,7 @@
 #include "FloorStatsWidget.generated.h"
 
 class UBaseButton;
+class UBorder;
 class UTextBlock;
 class UImPlotDataSubsystem;
 /**
@@ -80,6 +81,14 @@ public:
         /** Build the floor label prefix text. */
         UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
         void BuildFloorText();
+
+        /**
+         * Push FloorPrefixText + CurrentLiveAgentCount to the row widgets (§3.2): label/value split when
+         * the optional blocks exist (label Regular, value Mono; Total row SemiBold; transit label muted),
+         * else the legacy combined FloorTextBlock. Also toggles the Total-row well and the row hover tint.
+         * Centralises what four call sites used to duplicate.
+         */
+        void RefreshFloorDisplay();
 
         /** Build and send the chart title for the ImPlot overlay. */
         void BuildImPlotChartTitle() const;
@@ -165,9 +174,25 @@ public:
 	UPROPERTY()
 	FText FloorPrefixText;
 
-	/** Current Active agent text block */
+	/** Current Active agent text block (legacy single combined "{Prefix}{Count}" block). */
 	UPROPERTY(meta= (BindWidget))
 	TObjectPtr<UTextBlock> FloorTextBlock;
+
+	/**
+	 * §3.2 row rework (D57): OPTIONAL label/value split. When WBP_NumberOfAgents provides FloorLabelText
+	 * + FloorValueText the row renders label (Font_Inter Regular; transit muted) + value (Mono) with the
+	 * combined FloorTextBlock collapsed; when they are absent the widget falls back to FloorTextBlock so
+	 * behaviour is unchanged. Optional so this C++ builds+ships before the asset gains the two blocks.
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> FloorLabelText;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> FloorValueText;
+
+	/** OPTIONAL WellBg well behind the Total-occupants row (name contains "Well" → themed by GNameRoleMap). */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UBorder> TotalRowWell;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UBaseButton> CurrentFloorBtn;

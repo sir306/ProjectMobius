@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Animation/CurveSequence.h" // BW3/P6: intro fade+scale (FCurveSequence, mirrors SMoveableWindow D67)
 #include "ImprovedLoadingNotifyWidget.generated.h"
 
 class UTextBlock;
@@ -82,6 +83,14 @@ protected:
 	void UpdateLoadingWidgets();
 
 	void SetLoadingWidgetVisibility(TObjectPtr<UBaseLoadingWidget> LoadingWidget, bool bIsVisible);
+
+	/**
+	 * §5/P6 entrance: (re)start the 150ms CubicOut intro (render-opacity 0->1 + centred scale .97->1)
+	 * on the popup root. Called from the Collapsed->visible transition in IsLoadingComplete(). Driven in
+	 * NativeTick from IntroCurve — same C++ pattern as SMoveableWindow's OpenAnimation (D67), which avoids
+	 * the UE 5.5 "WidgetAnimation can't be created via python" block (D78).
+	 */
+	void PlayIntroAnimation();
 #pragma endregion PROTECTED_METHODS
 	
 #pragma endregion METHODS
@@ -118,6 +127,10 @@ private:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	FText LoadingTitle;
+
+	/** §5/P6 intro animation (150ms CubicOut) + its lerp handle. Plain members (not UPROPERTY). */
+	FCurveSequence IntroAnimation;
+	FCurveHandle IntroCurve;
 
 #pragma endregion PROPERTIES
 

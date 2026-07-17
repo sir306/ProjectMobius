@@ -109,6 +109,9 @@ void UStatisticSubsystem::ClearAgentEgressHealthData()
 {
 	AgentEgressHealthData.Reset();
 	++AgentEgressHealthRevision;
+	// Q48/R3: no snapshot -> no live B-RISK; the processor re-asserts this each frame it runs, but
+	// reset on clear (file switch) so the UI collapses the B-RISK section immediately.
+	bBRiskTenabilityActive = false;
 }
 
 void UStatisticSubsystem::UpdateFlowCounters()

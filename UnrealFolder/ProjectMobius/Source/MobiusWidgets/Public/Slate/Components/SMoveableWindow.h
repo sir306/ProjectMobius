@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Animation/CurveSequence.h"
+#include "Rendering/SlateRenderTransform.h"
 #include "Types/SlateEnums.h"
 #include "Widgets/SWindow.h"
 
@@ -98,6 +100,13 @@ public:
 	/** Constructs this widget with InArgs */
 	void Construct(const FArguments& InArgs);
 
+	/**
+	 * P6 plumbing (spec §5): play the open animation in reverse (fade + 8u sink) then RequestDestroyWindow
+	 * once it finishes — so the window is never dropped mid-animation. Programmatic closers (the ImPlot
+	 * overlay subsystem) call this instead of destroying the window directly.
+	 */
+	void PlayCloseAnimationThenDestroy();
+
 private:
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	
@@ -111,4 +120,16 @@ private:
 	
 	TSharedPtr<SWindowTitleBarWidget> TitleBarContent;
 	EHorizontalAlignment TitleBarContentAlignment = HAlign_Fill;
+
+	// Open/close animation (spec §5: 160ms fade + 8u rise, ease-out). The content is wrapped in an SBorder
+	// whose ColorAndOpacity + RenderTransform read this curve; Play() on construct fades the window in.
+	FCurveSequence OpenAnimation;
+	FCurveHandle OpenCurve;
+
+	/** Content-wrapper attribute getters driven by OpenCurve. */
+	FLinearColor GetOpenAnimationColorAndOpacity() const;
+	TOptional<FSlateRenderTransform> GetOpenAnimationRenderTransform() const;
+
+	/** Active-timer tick that destroys the window once the reverse (close) animation completes. */
+	EActiveTimerReturnType HandleCloseAnimationTick(double InCurrentTime, float InDeltaTime);
 };

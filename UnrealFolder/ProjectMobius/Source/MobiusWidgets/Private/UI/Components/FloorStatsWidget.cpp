@@ -24,7 +24,12 @@
 
 #include "UI/Components/FloorStatsWidget.h"
 
+#include "Components/Border.h"
 #include "Components/TextBlock.h"
+#include "Components/HorizontalBoxSlot.h" // BW3/Q33: transit-row left indent on FloorLabelText's slot
+#include "Engine/Font.h"
+#include "UI/Components/BaseButton.h"
+#include "UI/Theme/UIThemeSubsystem.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "SimData/ISimSampleProvider.h" // A1: ForEachTimestep over the resident provider
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
@@ -60,14 +65,7 @@ void UFloorStatsWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 	BuildFloorText();
-	if (FloorTextBlock && !FloorPrefixText.IsEmpty())
-	{
-		FloorTextBlock->SetText(FormatTextForTextBlock(FloorPrefixText, CurrentLiveAgentCount));
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("The Current Floor Button is invalid"));
-	}
+	RefreshFloorDisplay();
 }
 
 void UFloorStatsWidget::NativeConstruct()
@@ -136,14 +134,7 @@ void UFloorStatsWidget::NativeConstruct()
         }
 
 	BuildFloorText();
-	if (FloorTextBlock && !FloorPrefixText.IsEmpty())
-	{
-		FloorTextBlock->SetText(FormatTextForTextBlock(FloorPrefixText, CurrentLiveAgentCount));
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("The Current Floor Button is invalid"));
-	}
+	RefreshFloorDisplay();
 }
 
 void UFloorStatsWidget::NativeDestruct()
@@ -185,16 +176,9 @@ void UFloorStatsWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 void UFloorStatsWidget::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
-	
+
 	BuildFloorText();
-	if (FloorTextBlock && !FloorPrefixText.IsEmpty())
-	{
-		FloorTextBlock->SetText(FormatTextForTextBlock(FloorPrefixText, CurrentLiveAgentCount));
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("The Current Floor Button is invalid"));
-	}
+	RefreshFloorDisplay();
 }
 
 void UFloorStatsWidget::UpdateFloorLiveStatCount(int32 InFloorNumber, int32 AgentCount)
@@ -203,10 +187,7 @@ void UFloorStatsWidget::UpdateFloorLiveStatCount(int32 InFloorNumber, int32 Agen
 	{
 		CurrentLiveAgentCount = AgentCount;
 
-		if (FloorTextBlock && !FloorPrefixText.IsEmpty())
-		{
-			FloorTextBlock->SetText(FormatTextForTextBlock(FloorPrefixText, CurrentLiveAgentCount));
-		}
+		RefreshFloorDisplay();
                 // we have to send a time that is float and divided by 10 to match the logic for the method
                 float NewTime = LastSentTimeInt / 10.0f;
 
@@ -224,6 +205,9 @@ void UFloorStatsWidget::UpdateFloorLiveStatCount(int32 InFloorNumber, int32 Agen
 
 void UFloorStatsWidget::BuildFloorText()
 {
+        // Sentence-case prefixes (spec C2). Transit rows get the "↳ " lead-in (§3.2); when the label/value
+        // split blocks exist the "↳" also carries the indent via the asset slot, otherwise it prefixes the
+        // combined block. Trailing ": " is dropped in the split path (value lives in its own block).
         if (FloorNumber == -1)
         {
                 FloorPrefixText = FText::FromString("Total Occupants: ");
@@ -233,15 +217,103 @@ void UFloorStatsWidget::BuildFloorText()
 
         if (bIsBetweenFloorWidget)
         {
-                const FText BottomFloorText = FText::AsNumber(FloorNumber);
-                const FText TopFloorText = FText::AsNumber(FloorNumber + 1);
-                FloorPrefixText = FText::Format(FText::FromString("Between Floors {0} & {1}: "), BottomFloorText, TopFloorText);
+                const FText BottomFloorText = FText::AsNumber(FloorNumber + 1);
+                const FText TopFloorText = FText::AsNumber(FloorNumber + 2);
+                FloorPrefixText = FText::FromString(FString::Printf(TEXT("%c Level %s %c Level %s: "), (TCHAR)0x21B3, *BottomFloorText.ToString(), (TCHAR)0x2194, *TopFloorText.ToString()));
                 ImPlotChartId = FName(*FString::Printf(TEXT("ImPlot_Between_%d_%d"), FloorNumber, FloorNumber + 1));
                 return;
         }
 
-        FloorPrefixText = FText::Format(FText::FromString("Floor {0}: "), FText::AsNumber(FloorNumber));
+        FloorPrefixText = FText::Format(FText::FromString("Level {0}: "), FText::AsNumber(FloorNumber + 1));
         ImPlotChartId = FName(*FString::Printf(TEXT("ImPlot_Floor_%d"), FloorNumber));
+}
+
+void UFloorStatsWidget::RefreshFloorDisplay()
+{
+        if (FloorPrefixText.IsEmpty())
+        {
+                UE_LOG(LogTemp, Warning, TEXT("FloorStatsWidget: FloorPrefixText is empty — row not built"));
+                return;
+        }
+
+        const bool bTotal = (FloorNumber == -1);
+        const bool bTransit = bIsBetweenFloorWidget;
+
+        // Palette lookup (null at design-time / cook — fonts still apply, colours are skipped then).
+        UUIThemeSubsystem* Theme = nullptr;
+        if (const UWorld* World = GetWorld())
+        {
+                if (UGameInstance* GameInstance = World->GetGameInstance())
+                {
+                        Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>();
+                }
+        }
+        UFont* Inter = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter"));
+
+        if (FloorLabelText && FloorValueText)
+        {
+                // §3.2 split path: label Regular (Total SemiBold; transit muted) | value Mono, right side.
+                FString LabelStr = FloorPrefixText.ToString();
+                LabelStr.RemoveFromEnd(TEXT(": "));
+                FloorLabelText->SetText(FText::FromString(LabelStr));
+                FloorValueText->SetText(FText::AsNumber(CurrentLiveAgentCount));
+
+                if (Inter)
+                {
+                        FloorLabelText->SetFont(FSlateFontInfo(Inter, 12, bTotal ? FName(TEXT("SemiBold")) : FName(TEXT("Regular")))); // BW6 density: 15->12
+                        FloorValueText->SetFont(FSlateFontInfo(Inter, 11, FName(TEXT("Mono")))); // BW6 density: 14->11
+                }
+                if (Theme)
+                {
+                        // SublabelText/LabelText are TextMap rows, so these flip correctly on theme toggle.
+                        FloorLabelText->SetColorAndOpacity(FSlateColor(Theme->GetPaletteColor(
+                                bTransit ? EMobiusPaletteRole::SublabelText : EMobiusPaletteRole::LabelText)));
+                        FloorValueText->SetColorAndOpacity(FSlateColor(Theme->GetPaletteColor(bTransit ? EMobiusPaletteRole::SublabelText : EMobiusPaletteRole::LabelText)));
+                }
+                if (FloorTextBlock)
+                {
+                        FloorTextBlock->SetVisibility(ESlateVisibility::Collapsed);
+                }
+
+                // §3.2/Q33: transit sub-rows are indented 24u; floor/Total rows flush (0). Applied per
+                // instance on FloorLabelText's HorizontalBox slot (the row template is shared by all row
+                // types, so the indent cannot be baked into the WBP_NumberOfAgents asset — it would push
+                // Total/Floor rows too). Value stays right-aligned (AUTO slot), only the label shifts.
+                if (UHorizontalBoxSlot* LabelSlot = Cast<UHorizontalBoxSlot>(FloorLabelText->Slot))
+                {
+                        FMargin Pad = LabelSlot->GetPadding();
+                        Pad.Left = bTransit ? 24.0f : 0.0f;
+                        LabelSlot->SetPadding(Pad);
+                }
+        }
+        else if (FloorTextBlock)
+        {
+                // Legacy combined path (asset without split blocks): behaviour preserved + transit muted.
+                FloorTextBlock->SetText(FormatTextForTextBlock(FloorPrefixText, CurrentLiveAgentCount));
+                if (Theme && bTransit)
+                {
+                        FloorTextBlock->SetColorAndOpacity(FSlateColor(Theme->GetPaletteColor(EMobiusPaletteRole::SublabelText)));
+                }
+        }
+        else
+        {
+                UE_LOG(LogTemp, Warning, TEXT("FloorStatsWidget: no floor text block bound"));
+        }
+
+        // Total-occupants row = WellBg well (+ 1u hairline via the asset border); only on the Total row.
+        if (TotalRowWell)
+        {
+                TotalRowWell->SetVisibility(bTotal ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+        }
+
+        // Row hover = HoverBg on the click-to-chart button (best-effort, current theme; the button's
+        // click→ToggleImPlotOverlay path is untouched).
+        if (Theme && CurrentFloorBtn)
+        {
+                FButtonStyle Style = CurrentFloorBtn->GetStyle();
+                Style.Hovered.TintColor = FSlateColor(Theme->GetPaletteColor(EMobiusPaletteRole::HoverBg));
+                CurrentFloorBtn->SetStyle(Style);
+        }
 }
 
 void UFloorStatsWidget::BuildImPlotChartTitle() const
@@ -251,20 +323,22 @@ void UFloorStatsWidget::BuildImPlotChartTitle() const
                 return;
         }
 
+        // Chart title format (spec §3.5): "Chart — {Total Number of People Over Time |
+        //   {Floor} — Remaining Occupants Over Time}". Row click → this title (P7 acceptance (f)).
         if (FloorNumber == -1)
         {
                 ImPlotDataSubsystem->SetChartTitleForChart(
                         ImPlotChartId,
-                        FText::FromString("Total Number of People Over Time"));
+                        FText::FromString("Chart — Total Number of People Over Time"));
                 return;
         }
 
         if (bIsBetweenFloorWidget)
         {
-                const FText BottomFloorText = FText::AsNumber(FloorNumber);
-                const FText TopFloorText = FText::AsNumber(FloorNumber + 1);
+                const FText BottomFloorText = FText::AsNumber(FloorNumber + 1);
+                const FText TopFloorText = FText::AsNumber(FloorNumber + 2);
                 const FText Title = FText::Format(
-                        FText::FromString("Between Floors {0} & {1} Occupants Over Time"),
+                        FText::FromString(TEXT("Chart - Level {0} to Level {1} - Remaining Occupants Over Time")),
                         BottomFloorText,
                         TopFloorText);
                 ImPlotDataSubsystem->SetChartTitleForChart(ImPlotChartId, Title);
@@ -272,8 +346,8 @@ void UFloorStatsWidget::BuildImPlotChartTitle() const
         }
 
         const FText Title = FText::Format(
-                FText::FromString("Floor {0} Occupants Over Time"),
-                FText::AsNumber(FloorNumber));
+                FText::FromString(TEXT("Chart - Level {0} - Remaining Occupants Over Time")),
+                FText::AsNumber(FloorNumber + 1));
         ImPlotDataSubsystem->SetChartTitleForChart(ImPlotChartId, Title);
 }
 

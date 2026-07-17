@@ -26,6 +26,7 @@
 #include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/Slider.h"
+#include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Kismet/GameplayStatics.h"
@@ -122,12 +123,14 @@ void USimulationPlayBar::NativeConstruct()
 
 	
 
-	// Set Current & Max time text to 0 as likely the subsystem is not valid or not updated yet
-	UpdateCurrentTime(0.0f);
-	UpdateMaxTime(0.0f);
-	
 	// Bind the time dilation subsystem to the widget
 	SetTimeDilationSubsystem();
+
+	// Set Current & Max time text to 0 (Q41b: moved AFTER SetTimeDilationSubsystem so the boot
+	// value formats through FormatSimTime's zero-pad instead of the null-subsystem "--:--:--.--"
+	// fallback). Subsystem may still be updating, so zero is the correct initial display.
+	UpdateCurrentTime(0.0f);
+	UpdateMaxTime(0.0f);
 	
 	// check if the subsystem is valid and if so bind to the delegates
 	if (TimeDilationSubsystem)
@@ -162,9 +165,14 @@ void USimulationPlayBar::NativeConstruct()
 		{
 			PlaybackSlider->OnMouseCaptureBegin.AddDynamic(this, &USimulationPlayBar::OnPlaybackSliderCaptureBegin);
 			PlaybackSlider->OnMouseCaptureEnd.AddDynamic(this, &USimulationPlayBar::OnPlaybackSliderCaptureEnd);
+			// Q51/C4: keep the accent scrub fill in step with live dragging.
+			PlaybackSlider->OnValueChanged.AddDynamic(this, &USimulationPlayBar::OnPlaybackSliderValueChanged);
 		}
-		
+
 	}
+
+	// Initialise the scrub fill to the current slider state.
+	UpdateScrubFill();
 
 	// Get the project mobius game instance and bind the loading state to the play button
         if (UWorld* World = GetWorld())
@@ -219,6 +227,7 @@ void USimulationPlayBar::NativeDestruct()
         {
                 PlaybackSlider->OnMouseCaptureBegin.RemoveDynamic(this, &USimulationPlayBar::OnPlaybackSliderCaptureBegin);
                 PlaybackSlider->OnMouseCaptureEnd.RemoveDynamic(this, &USimulationPlayBar::OnPlaybackSliderCaptureEnd);
+                PlaybackSlider->OnValueChanged.RemoveDynamic(this, &USimulationPlayBar::OnPlaybackSliderValueChanged);
         }
 
         // Unbind game instance delegates
@@ -508,6 +517,9 @@ void USimulationPlayBar::UpdateCurrentTime(float NewCurrentTime)
                 PlaybackSlider->SetValue(NewCurrentTime);
             }
         }
+
+        // Q51/C4: keep the accent scrub fill in step with playback.
+        UpdateScrubFill();
 }
 
 void USimulationPlayBar::UpdateMaxTime(float NewMaxTime)
@@ -547,6 +559,9 @@ void USimulationPlayBar::UpdateMaxTime(float NewMaxTime)
 	// change. Done here because the chosen format (and thus the widest possible string) depends on
 	// HoursNeeded, set just above. Also covers the initial UpdateMaxTime(0.0f) call in NativeConstruct.
 	ReserveStableTimeWidth(CurrentTimeTextBlock, HoursNeeded != 0);
+
+	// Q51/C4: max changed -> the scrub-fill fraction (value/max) must be recomputed.
+	UpdateScrubFill();
 }
 
 void USimulationPlayBar::AssignStyleAssets() const
@@ -574,7 +589,8 @@ FText USimulationPlayBar::FormatTime(float TotalTime) const
         return TimeDilationSubsystem->FormatSimTime(TotalTime, HoursNeeded);
     }
 	// Return a default value if the subsystem is not valid - or if no data is available
-    return FText::FromString("--:--:--.--"); 
+	// (Q41a) match the FormatSimTime zero-padded format branch instead of a dash train.
+    return FText::FromString(HoursNeeded != 0 ? TEXT("00:00:00.00") : TEXT("00:00.00"));
 }
 
 void USimulationPlayBar::SetPlayButtonEnabled(const bool bLoadingState)
@@ -729,4 +745,28 @@ void USimulationPlayBar::PauseSimulationAndUpdateTimeEnd()
 	// Subscribe to the update current time
 	TimeDilationSubsystem->OnNewCurrentTime.AddDynamic(this, &USimulationPlayBar::UpdateCurrentTime);
 	UGameplayStatics::SetGamePaused(GetWorld(), false);
+
+	// Q51/C4: a scrub/step just committed a new slider value -> update the accent fill.
+	UpdateScrubFill();
+}
+
+void USimulationPlayBar::UpdateScrubFill() const
+{
+	if (!ScrubFillBar || !PlaybackSlider)
+	{
+		return;
+	}
+
+	const float MaxValue = PlaybackSlider->GetMaxValue();
+	const float Percent = (MaxValue > KINDA_SMALL_NUMBER)
+		? (PlaybackSlider->GetValue() / MaxValue)
+		: 0.0f;
+	ScrubFillBar->SetPercent(FMath::Clamp(Percent, 0.0f, 1.0f));
+}
+
+void USimulationPlayBar::OnPlaybackSliderValueChanged(float /*NewValue*/)
+{
+	// Live drag: OnValueChanged fires on user interaction (programmatic SetValue does not), so this
+	// covers scrubbing that occurs while the sim clock delegate is temporarily unsubscribed.
+	UpdateScrubFill();
 }
