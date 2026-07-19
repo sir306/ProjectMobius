@@ -602,6 +602,21 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		FSlateBrush Brush = Border->Background;
 		bool bChanged = RemapBrush(Brush, bLight);
 		bChanged |= ThemeBackgroundBrush(Brush, Border, bLight);
+		// D169: kill the UBorder double-tint. SBorder paints Background.TintColor * BrushColor
+		// (SBorder::OnPaint) — a border carrying a non-white colour in BOTH fields multiplies them and
+		// renders far too dark (~0.63x in light, near-black in dark; e.g. RailBg / RailRightBorder are
+		// authored 0.7913 in both). Collapse to a single multiplier: BrushColor keeps the themed colour
+		// (the SurfaceMap-remapped primary), the brush tint goes neutral white. Guarded to plain colour
+		// fills (no texture/material resource) and only when BOTH are non-white — so convention-A
+		// (colour + white tint) and convention-B (white BrushColor + colour tint) borders, and all
+		// material-backed chrome, are left untouched. Runs each theme pass; the asset is not mutated.
+		if (Brush.GetResourceObject() == nullptr
+			&& !Border->GetBrushColor().Equals(FLinearColor::White, 0.02f)
+			&& !Brush.TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+		{
+			Brush.TintColor = FSlateColor(FLinearColor::White);
+			bChanged = true;
+		}
 		if (bChanged)
 		{
 			Border->SetBrush(Brush);
