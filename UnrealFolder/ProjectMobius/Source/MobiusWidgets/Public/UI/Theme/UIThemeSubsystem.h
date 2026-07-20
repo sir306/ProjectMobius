@@ -204,7 +204,7 @@ public:
 
 private:
 	void ApplyTheme(bool bLight);
-	void ApplyToLiveWidgets(bool bLight);
+	int32 ApplyToLiveWidgets(bool bLight);
 	void ApplyToWidget(UWidget* Widget, bool bLight);
 	/**
 	 * Explicit per-theme colour for widgets the value-remap walker cannot distinguish (dark-grey

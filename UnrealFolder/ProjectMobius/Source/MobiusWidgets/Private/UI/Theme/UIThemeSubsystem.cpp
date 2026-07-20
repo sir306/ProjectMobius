@@ -28,6 +28,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
+#include "Containers/Ticker.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/CheckBox.h"
@@ -433,6 +434,36 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	// Retint the SHARED styles before any widget constructs: several Slate widgets (ButtonWithText
 	// labels) copy their style at construction, so the first paint must already be themed.
 	ApplySharedStyles(CurrentTheme == EMobiusUITheme::Light);
+
+	// D172: reliably re-theme the LIVE widgets once the UI is up. Widgets (ribbon tabs, lazily-built
+	// panels) construct AFTER this subsystem initialises, and the only other startup re-theme
+	// (UThemeToggleWidget::NativeConstruct) can fire before them or live in a popup that is closed at
+	// launch — leaving late labels at their white design-time colour until the user clicks. Re-run the
+	// live-widget pass a handful of times over the first few seconds so late widgets pick up the saved
+	// theme. Each pass no-ops until a game world + widgets exist. Light only (dark is the design-time
+	// default — nothing to repaint). One-shot: the ticker unregisters itself after the last pass.
+	if (CurrentTheme == EMobiusUITheme::Light)
+	{
+		const TSharedRef<int32> Passes = MakeShared<int32>(0);
+		const TSharedRef<int32> ThemedPasses = MakeShared<int32>(0);
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Passes, ThemedPasses](float) -> bool
+		{
+			// Returns the number of live leaf widgets themed; >0 means the UI has actually constructed
+			// (it can appear seconds after launch, behind shader compilation). Keep re-applying until we
+			// have themed a live UI a few times (settle late stragglers), then stop. Hard cap ~30s.
+			if (ApplyToLiveWidgets(CurrentTheme == EMobiusUITheme::Light) > 0)
+			{
+				++(*ThemedPasses);
+				// Force a repaint — labels re-coloured behind an InvalidationBox (ribbon tabs) keep their
+				// cached white paint until invalidated (this is what a tab CLICK does via ApplyTheme).
+				if (FSlateApplication::IsInitialized())
+				{
+					FSlateApplication::Get().InvalidateAllWidgets(false);
+				}
+			}
+			return (*ThemedPasses < 3) && (++(*Passes) < 100);
+		}), 0.3f);
+	}
 }
 
 void UUIThemeSubsystem::SetTheme(const EMobiusUITheme NewTheme)
@@ -548,12 +579,12 @@ void UUIThemeSubsystem::ApplyTheme(const bool bLight)
 	}
 }
 
-void UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
+int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 {
 	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
 	if (!World)
 	{
-		return;
+		return 0;
 	}
 
 	// TopLevelOnly=false returns every live UUserWidget, embedded ones included, so each widget
@@ -578,6 +609,8 @@ void UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 	}
 	UE_LOG(LogMobiusTheme, Display, TEXT("ApplyToLiveWidgets(%s): %d user widgets, %d leaf widgets visited"),
 		bLight ? TEXT("light") : TEXT("dark"), AllUserWidgets.Num(), WidgetsVisited);
+
+	return WidgetsVisited;
 }
 
 void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
@@ -653,6 +686,37 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		// Q24: force the thumb to the accent per theme (design: slider thumb = accent). Not a value
 		// remap — the stock thumbs are grey and match no accent bucket, so set it explicitly.
 		Slider->SetSliderHandleColor(PaletteColor(EMobiusPaletteRole::SliderThumb, bLight));
+		// D171: neutralize the slider double-tint. SetSliderHandleColor (above) and the bar colour are
+		// multipliers applied ON TOP of the style's brush TintColors. A slider that baked the accent/track
+		// INTO its brush tint (e.g. OpacitySlider: thumb tint = accent) multiplies twice -> accent^2 (a
+		// dark navy handle) / dark track. Force the style brush tints to white so the colour multipliers
+		// render cleanly. Thumbs always (flat); bars only when resource-less (leave gradient / HSV-picker
+		// bars, which legitimately carry their colour in the brush, untouched).
+		FSliderStyle SliderStyle = Slider->GetWidgetStyle();
+		bool bSliderStyleChanged = false;
+		FSlateBrush* ThumbBrushes[] = { &SliderStyle.NormalThumbImage, &SliderStyle.HoveredThumbImage, &SliderStyle.DisabledThumbImage };
+		for (FSlateBrush* ThumbBrush : ThumbBrushes)
+		{
+			if (!ThumbBrush->TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+			{
+				ThumbBrush->TintColor = FSlateColor(FLinearColor::White);
+				bSliderStyleChanged = true;
+			}
+		}
+		FSlateBrush* BarBrushes[] = { &SliderStyle.NormalBarImage, &SliderStyle.HoveredBarImage, &SliderStyle.DisabledBarImage };
+		for (FSlateBrush* BarBrush : BarBrushes)
+		{
+			if (BarBrush->GetResourceObject() == nullptr
+				&& !BarBrush->TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+			{
+				BarBrush->TintColor = FSlateColor(FLinearColor::White);
+				bSliderStyleChanged = true;
+			}
+		}
+		if (bSliderStyleChanged)
+		{
+			Slider->SetWidgetStyle(SliderStyle);
+		}
 	}
 	else if (UCheckBox* CheckBox = Cast<UCheckBox>(Widget))
 	{
@@ -737,34 +801,35 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 
 			// Q49/R4: RefreshTextStyle()/SetTextStyle re-pushes the style struct but does NOT re-land the
 			// STextBlock's resolved ColorAndOpacity, so tab + Browse labels keep their light-mode colour in
-			// dark theme (D118). Re-land it directly. Only for labels using the shared Mobius.Text.Label
-			// fallback (MobiusButtonTextStyle == null); buttons carrying a custom SWS text style own their
-			// colour and must not be stomped (walker-style caution).
-			if (!ButtonWithText->MobiusButtonTextStyle)
-			{
-				const FString BtnName = ButtonWithText->GetName();
-				const bool bIsRibbonTab =
-					BtnName.Contains(TEXT("FilesPanelBtn")) ||
-					BtnName.Contains(TEXT("DisplaylPanelBTN")) || // sic: asset typo (D13)
-					BtnName.Contains(TEXT("HelpPanelBtn"));
+			// dark theme (D118). Re-land it directly.
+			const FString BtnName = ButtonWithText->GetName();
+			const bool bIsRibbonTab =
+				BtnName.Contains(TEXT("FilesPanelBtn")) ||
+				BtnName.Contains(TEXT("DisplaylPanelBTN")) || // sic: asset typo (D13)
+				BtnName.Contains(TEXT("HelpPanelBtn"));
 
-				if (bIsRibbonTab)
-				{
-					// Active tab = current Normal-brush material named "TabSelected" (name-based so it holds
-					// whichever theme folder the tab-material swap left on the brush).
-					const UObject* NormalRes = Style.Normal.GetResourceObject();
-					const bool bActive = NormalRes && NormalRes->GetName().Contains(TEXT("TabSelected"));
-					ButtonWithText->ApplyThemedLabelColor(PaletteColor(
-						bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText,
-						bLight));
-				}
-				else
-				{
-					// Browse et al: mirror the shared Mobius.Text.Label colour ApplySharedStyles just set.
-					const FSlateColor LabelColor =
-						FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label").ColorAndOpacity;
-					ButtonWithText->ApplyThemedLabelColor(LabelColor.GetSpecifiedColor());
-				}
+			if (bIsRibbonTab)
+			{
+				// D173: ribbon tabs are theme-MANAGED regardless of any custom SWS text style. This used to
+				// be gated behind (MobiusButtonTextStyle == null), so tabs carrying a custom text style never
+				// had their label colour re-landed here — only the ACTIVE tab got coloured (by the ribbon's
+				// activation BP), leaving INACTIVE tabs at their white design-time colour until clicked. Set
+				// the colour directly (the custom font/size still comes from RefreshTextStyle above).
+				// Active tab = current Normal-brush material named "TabSelected" (name-based so it holds
+				// whichever theme folder the tab-material swap left on the brush).
+				const UObject* NormalRes = Style.Normal.GetResourceObject();
+				const bool bActive = NormalRes && NormalRes->GetName().Contains(TEXT("TabSelected"));
+				ButtonWithText->ApplyThemedLabelColor(PaletteColor(
+					bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText,
+					bLight));
+			}
+			else if (!ButtonWithText->MobiusButtonTextStyle)
+			{
+				// Browse et al (no custom SWS text style): mirror the shared Mobius.Text.Label colour
+				// ApplySharedStyles just set. Buttons carrying a custom SWS text style own their colour.
+				const FSlateColor LabelColor =
+					FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label").ColorAndOpacity;
+				ButtonWithText->ApplyThemedLabelColor(LabelColor.GetSpecifiedColor());
 			}
 		}
 	}
