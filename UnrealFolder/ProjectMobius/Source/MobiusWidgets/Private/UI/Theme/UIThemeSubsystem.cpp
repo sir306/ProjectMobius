@@ -50,6 +50,8 @@
 #include "Styling/SlateTypes.h"
 #include "Styling/SlateWidgetStyleAsset.h"
 #include "UI/Components/ButtonWithText.h"
+#include "UI/Components/VerticalTextBlock.h"
+#include "Widgets/SCompoundWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMobiusTheme, Log, All);
 
@@ -706,6 +708,12 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 			Text->SetColorAndOpacity(Color);
 		}
 	}
+	else if (UVerticalTextBlock* VerticalText = Cast<UVerticalTextBlock>(Widget))
+	{
+		// Round 11: the rail labels (Floor Stats / Flow Counters) copy their style at construct and had
+		// no live re-land — after a toggle they kept the previous theme's colour (black-on-dark rail).
+		VerticalText->RefreshThemedStyle();
+	}
 	else if (USlider* Slider = Cast<USlider>(Widget))
 	{
 		if (Slider->GetName() == TEXT("PlaybackSlider"))
@@ -834,6 +842,29 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		}
 		FButtonStyle Style = Button->GetStyle();
 		bool bChanged = false;
+		if (bRibbonTabButton)
+		{
+			// Round 11: skipping the re-copy (round 10) kept the active-tab material alive but nothing
+			// re-themed it — the ribbon's click BP swaps MI_TabSelected/MI_TabDefault from the folder of
+			// the theme CURRENT AT CLICK TIME, so after a toggle the tabs sat on the previous theme's
+			// materials ("traces of the last theme", active File tab white-in-dark). Re-land the
+			// same-ROLE material from the current theme's folder on every material-carrying state brush.
+			// Name-based, so the D173 active detection below (and the click BP) keep working.
+			const UObject* CurrentRes = Style.Normal.GetResourceObject();
+			const bool bActiveTab = CurrentRes && CurrentRes->GetName().Contains(TEXT("TabSelected"));
+			if (UMaterialInterface* TabMaterial = GetThemedTabMaterial(bActiveTab))
+			{
+				FSlateBrush* TabBrushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
+				for (FSlateBrush* TabBrush : TabBrushes)
+				{
+					if (TabBrush->GetResourceObject() && TabBrush->GetResourceObject() != TabMaterial)
+					{
+						TabBrush->SetResourceObject(TabMaterial);
+						bChanged = true;
+					}
+				}
+			}
+		}
 		FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
 		for (FSlateBrush* Brush : Brushes)
 		{
@@ -842,9 +873,27 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 			bChanged |= ThemeBackgroundBrush(*Brush, Button, bLight);
 			bChanged |= ThemePillBrush(*Brush, Button, bLight); // agent-visibility pill toggle (D51)
 		}
-		bChanged |= RemapSlate(Style.NormalForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-		bChanged |= RemapSlate(Style.HoveredForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-		bChanged |= RemapSlate(Style.PressedForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+		if (bRibbonTabButton)
+		{
+			// Tab foregrounds stay on the value walk; the label colour is painted explicitly below (D173).
+			bChanged |= RemapSlate(Style.NormalForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+			bChanged |= RemapSlate(Style.HoveredForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+			bChanged |= RemapSlate(Style.PressedForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+		}
+		else
+		{
+			// Round 11: EXPLICIT foregrounds. The authored values are per-widget sentinels (cyan on the
+			// icon buttons) that no TextMap pair matches, so any UseForeground content resolving through
+			// these styles never themed in either direction.
+			const FSlateColor ButtonForeground(PaletteColor(EMobiusPaletteRole::ButtonText, bLight));
+			if (Style.NormalForeground != ButtonForeground)
+			{
+				Style.NormalForeground = ButtonForeground;
+				Style.HoveredForeground = ButtonForeground;
+				Style.PressedForeground = ButtonForeground;
+				bChanged = true;
+			}
+		}
 		if (bChanged)
 		{
 			Button->SetStyle(Style);
@@ -886,10 +935,26 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 					bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText,
 					bLight));
 			}
-			else if (!ButtonWithText->MobiusButtonTextStyle)
+			else if (ButtonWithText->MobiusButtonTextStyle)
+			{
+				// Round 11: RefreshTextStyle (above) re-pushes the custom SWS struct, but a label that
+				// ever received an explicit SetColorAndOpacity keeps that override — and once any pass
+				// painted these labels they were latched to that theme forever (quality tiers / sidebar
+				// flow buttons stayed on the previous theme's colour after a toggle). Re-land the
+				// asset's CURRENT colour directly; ApplySharedStyles themed the asset just before this
+				// walk, and pinned styles (Remove red, in-world black) re-land their pinned value.
+				if (const FTextBlockStyle* LabelStyle = ButtonWithText->MobiusButtonTextStyle->GetStyle<FTextBlockStyle>())
+				{
+					if (LabelStyle->ColorAndOpacity.IsColorSpecified())
+					{
+						ButtonWithText->ApplyThemedLabelColor(LabelStyle->ColorAndOpacity.GetSpecifiedColor());
+					}
+				}
+			}
+			else
 			{
 				// Browse et al (no custom SWS text style): mirror the shared Mobius.Text.Label colour
-				// ApplySharedStyles just set. Buttons carrying a custom SWS text style own their colour.
+				// ApplySharedStyles just set.
 				const FSlateColor LabelColor =
 					FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label").ColorAndOpacity;
 				ButtonWithText->ApplyThemedLabelColor(LabelColor.GetSpecifiedColor());
@@ -930,12 +995,29 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 				}
 			}
 		}
-		bChanged |= RemapSlate(Style.ComboButtonStyle.ButtonStyle.NormalForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-		bChanged |= RemapSlate(Style.ComboButtonStyle.ButtonStyle.HoveredForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-		bChanged |= RemapSlate(Style.ComboButtonStyle.ButtonStyle.PressedForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+		// Round 11: EXPLICIT combo foregrounds per theme. The authored values are cyan sentinels no
+		// TextMap pair matches, so the closed combo's DEFAULT content text (engine STextBlock on the
+		// FCoreStyle "NormalText" UseForeground rule) rendered near-black in BOTH themes — invisible
+		// on the dark chrome (owner report: Display-tab dropdowns).
+		const FSlateColor ComboTextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
+		if (Style.ComboButtonStyle.ButtonStyle.NormalForeground != ComboTextColor)
+		{
+			Style.ComboButtonStyle.ButtonStyle.NormalForeground = ComboTextColor;
+			Style.ComboButtonStyle.ButtonStyle.HoveredForeground = ComboTextColor;
+			Style.ComboButtonStyle.ButtonStyle.PressedForeground = ComboTextColor;
+			bChanged = true;
+		}
 		if (bChanged)
 		{
 			ComboBox->SetWidgetStyle(Style);
+		}
+		// The live SComboBox was constructed with .ForegroundColor(<authored per-widget property>) —
+		// style foregrounds never reach an already-built widget and UComboBoxString has no
+		// post-construction setter (SetForegroundColor ensures !MyComboBox). Set the compound
+		// foreground directly so the UseForeground content re-lands per theme (idempotent, toggle-safe).
+		if (const TSharedPtr<SWidget> LiveCombo = ComboBox->GetCachedWidget())
+		{
+			StaticCastSharedPtr<SCompoundWidget>(LiveCombo)->SetForegroundColor(ComboTextColor);
 		}
 		// Dropdown MENU rows + item text (FTableRowStyle) — explicit per theme; the authored values
 		// are dark-only.
@@ -1176,9 +1258,20 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 					bChanged |= ThemeIconBrush(*Brush, StyleAsset, bLight);
 					bChanged |= ThemeBackgroundBrush(*Brush, StyleAsset, bLight);
 				}
-				bChanged |= RemapSlate(ButtonStyle->NormalForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-				bChanged |= RemapSlate(ButtonStyle->HoveredForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-				bChanged |= RemapSlate(ButtonStyle->PressedForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+				// Round 11: EXPLICIT foregrounds. The authored values on these SWS assets are magenta
+				// sentinels no TextMap pair matches — they sat magenta in BOTH themes and any
+				// UseForeground text resolving through them (combo default content, generated entries)
+				// never themed. (SWS_SettingButtonStyle keeps its bespoke tab foregrounds above.)
+				{
+					const FSlateColor AssetButtonForeground(PaletteColor(EMobiusPaletteRole::ButtonText, bLight));
+					if (ButtonStyle->NormalForeground != AssetButtonForeground)
+					{
+						ButtonStyle->NormalForeground = AssetButtonForeground;
+						ButtonStyle->HoveredForeground = AssetButtonForeground;
+						ButtonStyle->PressedForeground = AssetButtonForeground;
+						bChanged = true;
+					}
+				}
 				// Scalability/panel buttons: their dark fill shares the panel-body value so the
 				// generic remap can't give them contrast — set the full style explicitly per theme.
 				if (AssetData.AssetName == TEXT("SWS_PanelButtonStyle"))
@@ -1342,9 +1435,11 @@ UWidget* UUIThemeSubsystem::HandleGenerateThemedComboEntry(const FString Item)
 	UTextBlock* Text = NewObject<UTextBlock>(this);
 	Text->SetText(FText::FromString(Item));
 	Text->SetFont(FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field").Font);
-	Text->SetColorAndOpacity(FSlateColor(CurrentTheme == EMobiusUITheme::Light
-		? FLinearColor(0.016f, 0.016f, 0.016f)
-		: FLinearColor(0.625f, 0.625f, 0.625f)));
+	// UseForeground, NOT a baked colour: as combo CONTENT it resolves the SComboButton foreground the
+	// walk sets per theme; as a MENU ROW it resolves the STableRow ItemStyle Text/SelectedText colours
+	// (also explicit per theme). A baked colour latched the theme of the moment it was generated and
+	// went unreadable after a toggle.
+	Text->SetColorAndOpacity(FSlateColor::UseForeground());
 	return Text;
 }
 

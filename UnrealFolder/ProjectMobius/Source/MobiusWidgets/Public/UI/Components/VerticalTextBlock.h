@@ -53,6 +53,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Vertical Text")
 	void SetText(FText InText);
 
+	/** Re-resolve the themed text style and re-land it on the live Slate label (theme-walk hook). */
+	void RefreshThemedStyle();
+
 	virtual void SynchronizeProperties() override;
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 

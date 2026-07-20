@@ -14,6 +14,19 @@ void UVerticalTextBlock::SetText(FText InText)
 	PushTextToSlate();
 }
 
+void UVerticalTextBlock::RefreshThemedStyle()
+{
+	// Stacked mode only — SRotatedText exposes no style setter (the rails use stacked). The style
+	// struct is copied at construct, so the colour ApplySharedStyles retints must be re-pushed here
+	// or the label keeps the previous theme until a full rebuild.
+	if (StackedText.IsValid())
+	{
+		StackedText->SetTextStyle(TextStyle
+			? TextStyle->GetStyle<FTextBlockStyle>()
+			: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton"));
+	}
+}
+
 void UVerticalTextBlock::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
