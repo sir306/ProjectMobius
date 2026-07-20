@@ -440,9 +440,10 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	// (UThemeToggleWidget::NativeConstruct) can fire before them or live in a popup that is closed at
 	// launch — leaving late labels at their white design-time colour until the user clicks. Re-run the
 	// live-widget pass a handful of times over the first few seconds so late widgets pick up the saved
-	// theme. Each pass no-ops until a game world + widgets exist. Light only (dark is the design-time
-	// default — nothing to repaint). One-shot: the ticker unregisters itself after the last pass.
-	if (CurrentTheme == EMobiusUITheme::Light)
+	// theme. Each pass no-ops until a game world + widgets exist. BOTH themes: "dark is the design-time
+	// default" turned out false for parts of the UI (Browse buttons, checkbox labels, snapshot-at-construct
+	// button styles) — a dark start with no walk left light traces everywhere. The walk is idempotent, so
+	// running it on dark starts is safe. One-shot: the ticker unregisters itself after the last pass.
 	{
 		const TSharedRef<int32> Passes = MakeShared<int32>(0);
 		const TSharedRef<int32> ThemedPasses = MakeShared<int32>(0);
@@ -451,7 +452,16 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			// Returns the number of live leaf widgets themed; >0 means the UI has actually constructed
 			// (it can appear seconds after launch, behind shader compilation). Keep re-applying until we
 			// have themed a live UI a few times (settle late stragglers), then stop. Hard cap ~30s.
-			if (ApplyToLiveWidgets(CurrentTheme == EMobiusUITheme::Light) > 0)
+			// Re-run the SHARED-ASSET pass each tick too: at Initialize the asset registry scan is often
+			// not finished, so the startup ApplySharedStyles themes ZERO SWS assets — the walk then
+			// stamps disk-authored (light, magenta-foreground) styles onto every snapshot button on a
+			// dark start. By these ticks the registry is ready and the assets carry the theme.
+			// A pass only COUNTS when the walk was HUD-sized: on a cold start the loading screen's
+			// handful of widgets used to eat all three passes, the ticker unregistered before the ribbon
+			// ever constructed, and the tab labels kept their construct-time white (invisible on light).
+			// The full Mobius HUD walks ~600 leaf widgets; 200 cleanly separates it from load screens.
+			ApplySharedStyles(CurrentTheme == EMobiusUITheme::Light);
+			if (ApplyToLiveWidgets(CurrentTheme == EMobiusUITheme::Light) > 200)
 			{
 				++(*ThemedPasses);
 				// Force a repaint — labels re-coloured behind an InvalidationBox (ribbon tabs) keep their
@@ -597,6 +607,39 @@ int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 		if (!UserWidget || !UserWidget->WidgetTree)
 		{
 			continue;
+		}
+		// In-world widgets (flow-counter cards on a UWidgetComponent) are world-space labels with a
+		// FIXED light design in both themes — walking them in dark repainted the card dark while its
+		// text is pinned black (solid black bars). They are trees whose OUTERMOST user widget was
+		// never added to the viewport (outer = game instance, not the component, so an outer check
+		// doesn't work — and their child user widgets DO have parents, so climb to the owning
+		// top-level before deciding).
+		{
+			bool bOnScreenUI = false;
+			UUserWidget* Current = UserWidget;
+			for (int32 Guard = 0; Guard < 16 && Current; ++Guard)
+			{
+				if (Current->IsInViewport())
+				{
+					bOnScreenUI = true;
+					break;
+				}
+				UWidget* Root = Current;
+				while (UWidget* Up = Root->GetParent())
+				{
+					Root = Up;
+				}
+				UUserWidget* Owner = Root->GetTypedOuter<UUserWidget>();
+				if (Owner == Current)
+				{
+					break;
+				}
+				Current = Owner;
+			}
+			if (!bOnScreenUI)
+			{
+				continue;
+			}
 		}
 		UserWidget->WidgetTree->ForEachWidget([this, bLight, &WidgetsVisited](UWidget* Widget)
 		{
@@ -769,6 +812,26 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	}
 	else if (UButton* Button = Cast<UButton>(Widget))
 	{
+		// Buttons with an SWS style asset SNAPSHOT it at construct (BaseButton::ApplyMobiusButtonStyle),
+		// so a theme flip leaves the live copy's foregrounds/hover tints stale even though
+		// ApplySharedStyles retinted the asset — e.g. the side tool tabs hovered light-on-light in
+		// light mode. Re-copy the freshly themed asset FIRST (no-op when no asset is assigned), then
+		// let the value remaps below handle asset-less buttons as before.
+		// EXCEPT the three ribbon tabs: their Normal brush carries the BP-managed active-tab material
+		// ("TabSelected") that the D173 label block below reads for active/inactive detection — a
+		// re-copy from the base SWS asset wipes that material every pass and degrades the active look.
+		const FString WalkButtonName = Widget->GetName();
+		const bool bRibbonTabButton =
+			WalkButtonName.Contains(TEXT("FilesPanelBtn")) ||
+			WalkButtonName.Contains(TEXT("DisplaylPanelBTN")) ||
+			WalkButtonName.Contains(TEXT("HelpPanelBtn"));
+		if (!bRibbonTabButton)
+		{
+			if (UBaseButton* MobiusButton = Cast<UBaseButton>(Widget))
+			{
+				MobiusButton->ApplyMobiusButtonStyle();
+			}
+		}
 		FButtonStyle Style = Button->GetStyle();
 		bool bChanged = false;
 		FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
@@ -960,6 +1023,8 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	}
 	else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(Widget))
 	{
+		bool bStyleChanged = false;
+
 		// Q26: numeric/path edit boxes → Font_Inter Mono 14 (input_mono token). Font is
 		// theme-independent, but the walk is the only C++ hook that touches every live widget, and
 		// FEditableTextBoxStyle.Font is not settable from Python (protected). Convert only boxes not
@@ -969,8 +1034,59 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 			if (EditBox->WidgetStyle.TextStyle.Font.FontObject != Inter)
 			{
 				EditBox->WidgetStyle.TextStyle.Font = FSlateFontInfo(Inter, 11, FName(TEXT("Mono"))); // BW6 density: 14->11
-				EditBox->SynchronizeProperties(); // push the style to the live SEditableTextBox
+				bStyleChanged = true;
 			}
+		}
+
+		// Edit boxes carry their surface in FEditableTextBoxStyle, which the Border/Image value walk
+		// never reaches — a dark-authored input (e.g. the flow-counter rename field) stayed dark in
+		// light mode. Set the input palette roles EXPLICITLY: a generic SurfaceMap remap is not safe
+		// here — the input values collide with other rows (0.0243 matched a rail pair), so each theme
+		// toggle walked the fill to a different bucket (0.0243 -> 0.791 -> 0.913 drift).
+		const FLinearColor InputBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
+		const FLinearColor InputBorderColor = PaletteColor(EMobiusPaletteRole::InputBorder, bLight);
+		FSlateBrush* BoxBrushes[] =
+		{
+			&EditBox->WidgetStyle.BackgroundImageNormal, &EditBox->WidgetStyle.BackgroundImageHovered,
+			&EditBox->WidgetStyle.BackgroundImageFocused, &EditBox->WidgetStyle.BackgroundImageReadOnly,
+		};
+		for (FSlateBrush* Brush : BoxBrushes)
+		{
+			// Flat colour fills only — leave any texture/material-backed input art alone.
+			if (Brush->GetResourceObject() != nullptr)
+			{
+				continue;
+			}
+			if (!Brush->TintColor.GetSpecifiedColor().Equals(InputBg, 0.004f))
+			{
+				Brush->TintColor = FSlateColor(InputBg);
+				bStyleChanged = true;
+			}
+			if (Brush->OutlineSettings.Width > 0.0f
+				&& !Brush->OutlineSettings.Color.GetSpecifiedColor().Equals(InputBorderColor, 0.004f))
+			{
+				Brush->OutlineSettings.Color = FSlateColor(InputBorderColor);
+				bStyleChanged = true;
+			}
+		}
+
+		// Text colour: set the InputText palette role EXPLICITLY. Do NOT value-remap these — edit
+		// boxes commonly leave ForegroundColor/TextStyle colour on an inheritance rule, and reading
+		// GetSpecifiedColor() off those yields the magenta sentinel, which a remap-write then bakes in.
+		const FSlateColor InputTextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
+		if (EditBox->WidgetStyle.TextStyle.ColorAndOpacity != InputTextColor
+			|| EditBox->WidgetStyle.ForegroundColor != InputTextColor
+			|| EditBox->WidgetStyle.FocusedForegroundColor != InputTextColor)
+		{
+			EditBox->WidgetStyle.TextStyle.ColorAndOpacity = InputTextColor;
+			EditBox->WidgetStyle.ForegroundColor = InputTextColor;
+			EditBox->WidgetStyle.FocusedForegroundColor = InputTextColor;
+			bStyleChanged = true;
+		}
+
+		if (bStyleChanged)
+		{
+			EditBox->SynchronizeProperties(); // push the style to the live SEditableTextBox
 		}
 	}
 }
@@ -1112,7 +1228,41 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 			// the light theme leaves white labels on light buttons.
 			else if (FTextBlockStyle* TextStyle = const_cast<FTextBlockStyle*>(StyleAsset->GetStyle<FTextBlockStyle>()))
 			{
-				bChanged |= RemapSlate(TextStyle->ColorAndOpacity, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+				const FString TextAssetName = AssetData.AssetName.ToString();
+				if (TextAssetName == TEXT("SWS_FlowRemoveButtonTextStyle"))
+				{
+					// Danger red — theme-independent, leave the authored colour alone.
+				}
+				else if (TextAssetName == TEXT("SWS_FlowCounterTextStyle"))
+				{
+					// In-world counter card is a light surface in BOTH themes (material-brush card),
+					// so its text is pinned black. A value-remap here ping-ponged it white via the
+					// playbar {white<->black} row and the in-world labels vanished.
+					const FSlateColor PinnedBlack(FLinearColor::Black);
+					if (TextStyle->ColorAndOpacity != PinnedBlack)
+					{
+						TextStyle->ColorAndOpacity = PinnedBlack;
+						bChanged = true;
+					}
+				}
+				else if (TextAssetName.Contains(TEXT("Button")))
+				{
+					// Button-label assets: EXPLICIT per-theme colour (idempotent, direction-safe).
+					// The generic TextMap remap is order-dependent: a pass run against mixed state
+					// (extra ReapplyTheme calls, editor+PIE both mutating the shared asset) walked
+					// black -> white through the playbar row and every ButtonWithText label except
+					// the red Remove went invisible.
+					const FSlateColor LabelColor(PaletteColor(EMobiusPaletteRole::ButtonText, bLight));
+					if (TextStyle->ColorAndOpacity != LabelColor)
+					{
+						TextStyle->ColorAndOpacity = LabelColor;
+						bChanged = true;
+					}
+				}
+				else
+				{
+					bChanged |= RemapSlate(TextStyle->ColorAndOpacity, bLight, TextMap, /*bGuardNeutralWhite*/ false);
+				}
 				// Q28/B8: SWS text styles (rail labels, agent-window rows, ButtonWithText labels) → Font_Inter.
 				// Idempotent (only converts non-Inter faces), preserving each asset's authored size; a "Mono"
 				// / "Field" / "Value" asset name picks the JetBrains-Mono face for numeric/path readouts.

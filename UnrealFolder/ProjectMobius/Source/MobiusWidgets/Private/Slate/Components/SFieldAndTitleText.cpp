@@ -244,6 +244,54 @@ int32 SFieldAndTitleText::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
                                   const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
                                   const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
+	// Shrink-to-fit: in-world flow counters allot each section a fixed cell; long title+value pairs
+	// overflowed the cell (and the widget's card) and overlapped their neighbours. When the measured
+	// text exceeds the allotted box, binary-search the largest font size that fits and push it via
+	// SetFontSize. Shrink-only (no stored base size, so no grow-back / no oscillation); a paint pass
+	// where the text already fits costs one measure.
+	if (TitleTextBlock.IsValid() && FieldTextBlock.IsValid())
+	{
+		const FVector2D Allotted = AllottedGeometry.GetLocalSize();
+		if (!Allotted.IsNearlyZero())
+		{
+			// Slot/box padding inside the internal grid (5+2 / 2+5 horizontal) — leave headroom.
+			const FVector2D FitBox(Allotted.X * 0.94f, Allotted.Y);
+			const float CurrentSize = FMath::Max(TitleTextBlock->GetFont().Size, FieldTextBlock->GetFont().Size);
+
+			const TSharedRef<FSlateFontMeasure> Measure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+			auto MeasureAt = [&](const float FontSize) -> FVector2D
+			{
+				FSlateFontInfo TitleFont = TitleTextBlock->GetFont();
+				TitleFont.Size = FontSize;
+				FSlateFontInfo FieldFont = FieldTextBlock->GetFont();
+				FieldFont.Size = FontSize;
+				const FVector2D TitleSize = Measure->Measure(TitleTextBlock->GetText(), TitleFont);
+				const FVector2D FieldSize = Measure->Measure(FieldTextBlock->GetText(), FieldFont);
+				return bVerticalStacking
+					? FVector2D(FMath::Max(TitleSize.X, FieldSize.X), TitleSize.Y + FieldSize.Y)
+					: FVector2D(TitleSize.X + FieldSize.X, FMath::Max(TitleSize.Y, FieldSize.Y));
+			};
+
+			const FVector2D CurrentMeasured = MeasureAt(CurrentSize);
+			if (CurrentMeasured.X > FitBox.X || CurrentMeasured.Y > FitBox.Y)
+			{
+				constexpr int32 MinFontSize = 6;
+				int32 Low = MinFontSize;
+				int32 High = FMath::Max(MinFontSize, static_cast<int32>(CurrentSize) - 1);
+				while (Low < High)
+				{
+					const int32 Mid = (Low + High + 1) / 2;
+					const FVector2D Size = MeasureAt(static_cast<float>(Mid));
+					if (Size.X <= FitBox.X && Size.Y <= FitBox.Y) { Low = Mid; } else { High = Mid - 1; }
+				}
+				if (static_cast<float>(Low) < CurrentSize)
+				{
+					SetFontSize(static_cast<float>(Low));
+				}
+			}
+		}
+	}
+
 	return SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle,
 	                                bParentEnabled);
 }
