@@ -61,6 +61,13 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 		.Text(ButtonTextValue)
 		.TextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>()
 			           : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"))
+		// Label FOLLOWS the button style foreground (themed by GetThemedTabStyle / ApplySharedStyles)
+		// rather than the SWS text style's baked colour. FIX (2026-07-21): ribbon-tab labels rendered
+		// WHITE/invisible because the walk's per-widget ApplyThemedLabelColor wasn't landing on them
+		// (stale MyButtonText) — yet the button foreground was correctly themed. UseForeground makes the
+		// label track that foreground. Where the walk DOES set a specified colour it still overrides;
+		// where it doesn't, this gives the correct themed colour instead of construct-time white.
+		.ColorAndOpacity(FSlateColor::UseForeground())
 		.TextShapingMethod(ETextShapingMethod::FullShaping);
 
 	MyButton = SNew(SButton)
@@ -89,7 +96,11 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 		Cast<UButtonSlot>(GetContentSlot())->BuildSlot(MyButton.ToSharedRef());
 	}
 
-	OnClicked.AddUniqueDynamic(this, &UButtonWithText::HandleThemeRefreshAfterClick);
+	// W2 (2026-07-21): the per-click full ReapplyTheme (HandleThemeRefreshAfterClick) is REMOVED. It
+	// scheduled a whole-UI walk on EVERY button click, turning OnThemeChanged into a per-click firehose
+	// and re-churning combos (the crash). It existed to re-theme the ribbon tab-swap's baked DarkTheme
+	// brushes; the ribbon BP is now rewired to GetThemedTabStyle (produces a themed style directly), and
+	// no other click re-bakes a theme brush (gating checks 2026-07-21), so it is no longer load-bearing.
 
 	return MyButton.ToSharedRef();
 }
@@ -120,23 +131,6 @@ void UButtonWithText::ApplyThemedLabelColor(FLinearColor Color)
 	if (MyButtonText.IsValid())
 	{
 		MyButtonText->SetColorAndOpacity(FSlateColor(Color));
-	}
-}
-
-void UButtonWithText::HandleThemeRefreshAfterClick()
-{
-	// Deferred one tick so every Blueprint OnClicked handler (including the ribbon's
-	// SetActiveRibbonTabMaterial / ResetOldRibbonTabMaterial material swaps) has run first.
-	if (UWorld* World = GetWorld())
-	{
-		if (UGameInstance* GameInstance = World->GetGameInstance())
-		{
-			if (UUIThemeSubsystem* ThemeSubsystem = GameInstance->GetSubsystem<UUIThemeSubsystem>())
-			{
-				World->GetTimerManager().SetTimerForNextTick(
-					FTimerDelegate::CreateUObject(ThemeSubsystem, &UUIThemeSubsystem::ReapplyTheme));
-			}
-		}
 	}
 }
 

@@ -43,6 +43,8 @@
 #include "Styling/CoreStyle.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Kismet/KismetMaterialLibrary.h"
 #include "Engine/Engine.h"
 #include "Slate/SlateBrushAsset.h"
 #include "UserConfig/UserProjectSettings.h"
@@ -63,81 +65,12 @@ namespace MobiusTheme
 		FLinearColor Light;
 	};
 
-	// -------------------------------------------------------------------------------------------
-	// AUTHORITATIVE PALETTE (P1) — one entry per mockup CSS var, design-tokens.json v2 linearRGBA
-	// VERBATIM (never hex/255). Indexed by EMobiusPaletteRole; read via GetPaletteColor(). This is
-	// the single source of truth for phases P2-P7. The value-remap SurfaceMap/TextMap arrays BELOW
-	// are the curated subset the by-value theme walker can distinguish; roles absent from those
-	// arrays are applied EXPLICITLY per theme by style code (see EMobiusPaletteRole docs).
-	// -------------------------------------------------------------------------------------------
-	struct FThemeColor
-	{
-		FLinearColor Light;
-		FLinearColor Dark;
-	};
-
-	static const FThemeColor GMobiusPalette[] =
-	{
-		/* TitlebarBg        */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.03955f, 0.03955f, 0.03955f) },
-		/* TitlebarBorder    */ { FLinearColor(0.76052f, 0.76052f, 0.76052f),     FLinearColor(0.01938f, 0.01938f, 0.01938f) },
-		/* TitlebarText      */ { FLinearColor(0.0331f, 0.0331f, 0.0331f),        FLinearColor(0.55201f, 0.55201f, 0.55201f) },
-		/* TabstripBg        */ { FLinearColor(0.7913f, 0.7913f, 0.7913f),        FLinearColor(0.02843f, 0.02843f, 0.02843f) },
-		/* TabstripBorder    */ { FLinearColor(0.63076f, 0.63076f, 0.63076f),     FLinearColor(0.01764f, 0.01764f, 0.01764f) },
-		/* TabActiveBg       */ { FLinearColor(0.9131f, 0.9131f, 0.9131f),        FLinearColor(0.04519f, 0.04519f, 0.04519f) },
-		/* TabActiveText     */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.82279f, 0.82279f, 0.82279f) },
-		/* TabInactiveText   */ { FLinearColor(0.05781f, 0.05781f, 0.05781f),     FLinearColor(0.32314f, 0.32314f, 0.32314f) },
-		/* TabActiveOutline  */ { FLinearColor(0.63076f, 0.63076f, 0.63076f),     FLinearColor(0.01764f, 0.01764f, 0.01764f) }, // dark: no tab outline; = dark line
-		/* Accent            */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
-		/* RibbonBg          */ { FLinearColor(0.9131f, 0.9131f, 0.9131f),        FLinearColor(0.03955f, 0.03955f, 0.03955f) },
-		/* PanelHeaderBg     */ { FLinearColor(0.82279f, 0.82279f, 0.82279f),     FLinearColor(0.05286f, 0.05286f, 0.05286f) },
-		/* PanelHeaderText   */ { FLinearColor(0.05781f, 0.05781f, 0.05781f),     FLinearColor(0.46208f, 0.46208f, 0.46208f) },
-		/* PanelHeaderBorder */ { FLinearColor(0.7454f, 0.7454f, 0.7454f),        FLinearColor(0.06848f, 0.06848f, 0.06848f) },
-		/* PanelDivider      */ { FLinearColor(0.76815f, 0.76815f, 0.76815f),     FLinearColor(0.05951f, 0.05951f, 0.05951f) },
-		/* LabelText         */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.62396f, 0.62396f, 0.62396f) },
-		/* SublabelText      */ { FLinearColor(0.13287f, 0.13287f, 0.13287f),     FLinearColor(0.32314f, 0.32314f, 0.32314f) },
-		/* MicroText         */ { FLinearColor(0.2462f, 0.2462f, 0.2462f),        FLinearColor(0.25818f, 0.25818f, 0.25818f) },
-		/* InputBg           */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.02416f, 0.02416f, 0.02416f) },
-		/* InputBorder       */ { FLinearColor(0.19462f, 0.19462f, 0.19462f),     FLinearColor(0.09084f, 0.09084f, 0.09084f) },
-		/* InputText         */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.62396f, 0.62396f, 0.62396f) },
-		/* InputPlaceholder  */ { FLinearColor(0.40198f, 0.40198f, 0.40198f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
-		/* InputMonoText     */ { FLinearColor(0.09084f, 0.09084f, 0.09084f),     FLinearColor(0.32314f, 0.32314f, 0.32314f) },
-		/* ButtonBg          */ { FLinearColor(0.93869f, 0.93869f, 0.93869f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
-		/* ButtonBorder      */ { FLinearColor(0.41789f, 0.41789f, 0.41789f),     FLinearColor(0.10224f, 0.10224f, 0.10224f) },
-		/* ButtonText        */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.7454f, 0.7454f, 0.7454f) },
-		/* ButtonHoverBg     */ { FLinearColor(0.81485f, 0.87962f, 0.95597f),     FLinearColor(0.09306f, 0.09306f, 0.09306f) },
-		/* ButtonHoverBorder */ { FLinearColor(0.25415f, 0.47932f, 0.72306f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
-		/* ButtonPressedBg   */ { FLinearColor(0.69387f, 0.7991f, 0.9131f),       FLinearColor(0.04971f, 0.04971f, 0.04971f) },
-		/* CheckboxBg        */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.02416f, 0.02416f, 0.02416f) },
-		/* CheckboxBorder    */ { FLinearColor(0.19462f, 0.19462f, 0.19462f),     FLinearColor(0.13287f, 0.13287f, 0.13287f) },
-		/* CheckboxCheckedBg */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
-		/* CheckboxCheckmark */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(1.0f, 1.0f, 1.0f) },
-		/* SliderTrack       */ { FLinearColor(0.58408f, 0.58408f, 0.58408f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
-		/* SliderThumb       */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
-		/* KbdBg             */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.05951f, 0.05951f, 0.05951f) },
-		/* KbdBorder         */ { FLinearColor(0.41789f, 0.41789f, 0.41789f),     FLinearColor(0.10224f, 0.10224f, 0.10224f) },
-		/* KbdText           */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.7454f, 0.7454f, 0.7454f) },
-		/* HelpRowDivider    */ { FLinearColor(0.7913f, 0.7913f, 0.7913f),        FLinearColor(0.05951f, 0.05951f, 0.05951f) },
-		/* HelpRowText       */ { FLinearColor(0.0331f, 0.0331f, 0.0331f),        FLinearColor(0.62396f, 0.62396f, 0.62396f) },
-		/* Zebra             */ { FLinearColor(0.85499f, 0.85499f, 0.85499f),     FLinearColor(0.04971f, 0.04971f, 0.04971f) },
-		/* ChipOutline       */ { FLinearColor(0.0f, 0.0f, 0.0f, 0.25f),          FLinearColor(1.0f, 1.0f, 1.0f, 0.30f) },
-		/* WellBg            */ { FLinearColor(0.85499f, 0.87137f, 0.88792f),     FLinearColor(0.05286f, 0.05286f, 0.05286f) },
-		/* IconTint          */ { FLinearColor(0.04374f, 0.04374f, 0.04374f),     FLinearColor(0.69387f, 0.69387f, 0.69387f) },
-		/* HoverBg           */ { FLinearColor(0.69387f, 0.69387f, 0.69387f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
-		/* HintText          */ { FLinearColor(0.31855f, 0.31855f, 0.31855f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
-		/* WindowBorder      */ { FLinearColor(0.43415f, 0.43415f, 0.43415f),     FLinearColor(0.01033f, 0.01033f, 0.01033f) },
-	};
-
-	static_assert(UE_ARRAY_COUNT(GMobiusPalette) == static_cast<int32>(EMobiusPaletteRole::Count),
-		"GMobiusPalette must have exactly one entry per EMobiusPaletteRole (order must match).");
-
+	// AUTHORITATIVE PALETTE + FThemeColor moved to UI/Theme/MobiusThemePalette.h (owner directive
+	// 2026-07-21 — theme data lives in a dedicated header). Thin forwarder keeps every existing
+	// MobiusTheme::PaletteColor(...) call site unchanged; new MPC writer reads the same header table.
 	static FLinearColor PaletteColor(const EMobiusPaletteRole Role, const bool bLight)
 	{
-		const int32 Index = static_cast<int32>(Role);
-		if (Index < 0 || Index >= UE_ARRAY_COUNT(GMobiusPalette))
-		{
-			return FLinearColor::Black;
-		}
-		return bLight ? GMobiusPalette[Index].Light : GMobiusPalette[Index].Dark;
+		return MobiusThemePalette::Color(Role, bLight);
 	}
 
 	// -------------------------------------------------------------------------------------------
@@ -449,8 +382,17 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		const TSharedRef<int32> Passes = MakeShared<int32>(0);
 		const TSharedRef<int32> ThemedPasses = MakeShared<int32>(0);
-		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Passes, ThemedPasses](float) -> bool
+		StartupThemeTickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Passes, ThemedPasses](float) -> bool
 		{
+			// PIE-CLOSE GUARD: the core ticker is GLOBAL and outlives the PIE world. If the world is
+			// gone or tearing down, STOP immediately — walking half-destroyed widgets reads a dying
+			// combo's SMenuAnchor delegate and trips the data-race ensure (the "crash on PIE close").
+			UWorld* TickWorld = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+			if (!TickWorld || TickWorld->bIsTearingDown)
+			{
+				StartupThemeTickerHandle.Reset();
+				return false;
+			}
 			// Returns the number of live leaf widgets themed; >0 means the UI has actually constructed
 			// (it can appear seconds after launch, behind shader compilation). Keep re-applying until we
 			// have themed a live UI a few times (settle late stragglers), then stop. Hard cap ~30s.
@@ -473,9 +415,26 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 					FSlateApplication::Get().InvalidateAllWidgets(false);
 				}
 			}
-			return (*ThemedPasses < 3) && (++(*Passes) < 100);
+			const bool bKeepTicking = (*ThemedPasses < 3) && (++(*Passes) < 100);
+			if (!bKeepTicking)
+			{
+				StartupThemeTickerHandle.Reset();  // self-unregistered; clear so Deinitialize won't double-remove
+			}
+			return bKeepTicking;
 		}), 0.3f);
 	}
+}
+
+void UUIThemeSubsystem::Deinitialize()
+{
+	// Remove the startup re-theme ticker so it cannot fire after the world/subsystem tears down —
+	// the core ticker is global and outlives the PIE world (see Initialize: the "crash on PIE close").
+	if (StartupThemeTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(StartupThemeTickerHandle);
+		StartupThemeTickerHandle.Reset();
+	}
+	Super::Deinitialize();
 }
 
 void UUIThemeSubsystem::SetTheme(const EMobiusUITheme NewTheme)
@@ -585,16 +544,131 @@ void UUIThemeSubsystem::ApplyTheme(const bool bLight)
 	ApplySharedStyles(bLight);
 	ApplyToLiveWidgets(bLight);
 
+	// NEW ARCHITECTURE (additive, migration Phase 2+): push the palette into MPC_UITheme so
+	// material-backed chrome repaints GPU-side. No-op until the MPC asset exists. The legacy
+	// value-remap walk above still runs until the migration retires it.
+	WriteThemeToMPC(bLight);
+
 	if (FSlateApplication::IsInitialized())
 	{
 		FSlateApplication::Get().InvalidateAllWidgets(false);
+	}
+
+	// Event replacement for the walk: event-driven widgets re-pull their role colours on this.
+	OnThemeChanged.Broadcast();
+}
+
+void UUIThemeSubsystem::WriteThemeToMPC(const bool bLight)
+{
+	// MPC_UITheme is authored in migration Phase 2; until then LoadObject returns null and this no-ops.
+	UMaterialParameterCollection* Collection = LoadObject<UMaterialParameterCollection>(
+		nullptr, TEXT("/Game/01_Dev/Widgets/WidgetMaterials/MPC_UITheme.MPC_UITheme"));
+	if (!Collection)
+	{
+		return;
+	}
+	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	if (!World)
+	{
+		return;
+	}
+
+	// Role -> MPC vector-parameter name. Extend as the MPC grows (PRD §8). Parameter names MUST match
+	// the collection's authored vector params. Kept as data so the writer stays a simple loop.
+	struct FRoleParam { EMobiusPaletteRole Role; const TCHAR* Param; };
+	static const FRoleParam Params[] =
+	{
+		{ EMobiusPaletteRole::Accent,          TEXT("Accent") },
+		{ EMobiusPaletteRole::TabstripBg,      TEXT("ChromeTabBar") },
+		{ EMobiusPaletteRole::RibbonBg,        TEXT("ChromeBody") },
+		{ EMobiusPaletteRole::PanelHeaderBg,   TEXT("HeaderBar") },
+		{ EMobiusPaletteRole::PanelDivider,    TEXT("Divider") },
+		{ EMobiusPaletteRole::InputBg,         TEXT("Field") },
+		{ EMobiusPaletteRole::LabelText,       TEXT("TextPrimary") },
+		{ EMobiusPaletteRole::SublabelText,    TEXT("TextDim") },
+		{ EMobiusPaletteRole::ButtonBg,        TEXT("ButtonFill") },
+		{ EMobiusPaletteRole::ButtonHoverBg,   TEXT("ButtonHover") },
+		{ EMobiusPaletteRole::ButtonPressedBg, TEXT("ButtonPressed") },
+		{ EMobiusPaletteRole::ButtonBorder,    TEXT("ButtonBorder") },
+	};
+	for (const FRoleParam& RP : Params)
+	{
+		UKismetMaterialLibrary::SetVectorParameterValue(
+			World, Collection, FName(RP.Param), MobiusThemePalette::Color(RP.Role, bLight));
+	}
+}
+
+void UUIThemeSubsystem::ApplyThemeToComboBox(UComboBoxString* Combo)
+{
+	using namespace MobiusTheme;
+	if (!Combo)
+	{
+		return;
+	}
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+
+	// 1) SURFACE — drive the closed-combo button by M_MobiusInput (samples MPC_UITheme.Field) so a
+	//    theme flip repaints it GPU-side. Push the style at most ONCE: guard on the Normal brush already
+	//    carrying the material, so a toggle never re-SetWidgetStyle a LIVE combo (that rebuild racing a
+	//    menu-open is what tripped the SMenuAnchor delegate-access ensure). The one push happens at
+	//    construct, before any dropdown can be open.
+	UMaterialInterface* InputMat = LoadObject<UMaterialInterface>(
+		nullptr, TEXT("/Game/01_Dev/Widgets/WidgetMaterials/Master/M_MobiusInput.M_MobiusInput"));
+	FComboBoxStyle Style = Combo->GetWidgetStyle();
+	const bool bSurfaceThemed = InputMat && Style.ComboButtonStyle.ButtonStyle.Normal.GetResourceObject() == InputMat;
+	if (InputMat && !bSurfaceThemed)
+	{
+		FSlateBrush* Buttons[] = {
+			&Style.ComboButtonStyle.ButtonStyle.Normal, &Style.ComboButtonStyle.ButtonStyle.Hovered,
+			&Style.ComboButtonStyle.ButtonStyle.Pressed, &Style.ComboButtonStyle.ButtonStyle.Disabled,
+		};
+		for (FSlateBrush* Brush : Buttons)
+		{
+			Brush->SetResourceObject(InputMat);
+			Brush->DrawAs = ESlateBrushDrawType::Image; // material provides the fill (MPC.Field)
+			Brush->TintColor = FSlateColor(FLinearColor::White); // material carries the colour; tint neutral
+		}
+
+		// Dropdown row colours — set in the SAME one-time (guarded) pass. Flat colours; only visible
+		// while the menu is open. NOTE (W1 limitation): because they are flat, not material, they do not
+		// follow a later toggle — a refined menu-row material is deferred (advisor: menu rows secondary).
+		FTableRowStyle Items = Combo->GetItemStyle();
+		const FLinearColor RowBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
+		const FLinearColor RowText = PaletteColor(EMobiusPaletteRole::InputText, bLight);
+		const FLinearColor RowSel = PaletteColor(EMobiusPaletteRole::Accent, bLight);
+		auto Row = [](FSlateBrush& B, const FLinearColor& C)
+		{
+			B.TintColor = FSlateColor(C);
+			B.DrawAs = ESlateBrushDrawType::Image;
+			B.SetResourceObject(nullptr);
+		};
+		Row(Items.EvenRowBackgroundBrush, RowBg);        Row(Items.OddRowBackgroundBrush, RowBg);
+		Row(Items.EvenRowBackgroundHoveredBrush, RowSel); Row(Items.OddRowBackgroundHoveredBrush, RowSel);
+		Row(Items.ActiveBrush, RowSel);                   Row(Items.ActiveHoveredBrush, RowSel);
+		Row(Items.InactiveBrush, RowBg);                  Row(Items.InactiveHoveredBrush, RowSel);
+		Items.TextColor = FSlateColor(RowText);
+		Items.SelectedTextColor = FSlateColor(FLinearColor::White);
+		Combo->SetItemStyle(Items);
+
+		Combo->SetWidgetStyle(Style); // the single, guarded rebuild — construct-time, never mid-open
+	}
+
+	// 2) TEXT foreground — the closed combo's selected-item text uses UseForeground, so re-land the
+	//    InputText role on the compound widget EVERY call. SetForegroundColor sets an attribute; it does
+	//    NOT rebuild the SComboBox / SMenuAnchor, so this is safe even while the dropdown is open.
+	const FSlateColor TextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
+	if (const TSharedPtr<SWidget> Live = Combo->GetCachedWidget())
+	{
+		StaticCastSharedPtr<SCompoundWidget>(Live)->SetForegroundColor(TextColor);
 	}
 }
 
 int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 {
 	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
-	if (!World)
+	// Guard PIE-teardown: a tearing-down world can be non-null while its widgets are destroyed;
+	// walking them reads a dying combo's SMenuAnchor delegate and trips the data-race ensure.
+	if (!World || World->bIsTearingDown)
 	{
 		return 0;
 	}
@@ -661,6 +735,17 @@ int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 {
 	using namespace MobiusTheme;
+
+	// CRASH GUARD + refactor step (2026-07-21): skip UComboBoxString entirely. The per-pass churn on
+	// combos (SetWidgetStyle/SetItemStyle/SetForegroundColor rebuilding the live SComboBox + its
+	// SMenuAnchor) is the prime suspect for the SMenuAnchor delegate-access ensure (crash on combo-open
+	// AND on PIE close — ~SMenuAnchor::Unbind racing this walk). Combos will theme via the MPC/event path
+	// instead; until then their dropdown rows fall back to default styling. If this stops the crash, the
+	// combo-churn / lifetime (UAF) theory is confirmed.
+	if (Widget && Widget->IsA<UComboBoxString>())
+	{
+		return;
+	}
 
 	// Roles the value walker can't reach are set explicitly per theme by widget name FIRST; if a name
 	// matches we fully own that widget and skip the generic walk (which would otherwise mis-remap it,
@@ -905,61 +990,16 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		{
 			Button->SetBackgroundColor(ButtonBackground);
 		}
-		// ButtonWithText labels bake their style at construction (STextBlock copies it) — re-push
-		// so they pick up the retinted "Mobius.Text.Label" / SWS text styles.
-		if (UButtonWithText* ButtonWithText = Cast<UButtonWithText>(Widget))
-		{
-			ButtonWithText->RefreshTextStyle();
-
-			// Q49/R4: RefreshTextStyle()/SetTextStyle re-pushes the style struct but does NOT re-land the
-			// STextBlock's resolved ColorAndOpacity, so tab + Browse labels keep their light-mode colour in
-			// dark theme (D118). Re-land it directly.
-			const FString BtnName = ButtonWithText->GetName();
-			const bool bIsRibbonTab =
-				BtnName.Contains(TEXT("FilesPanelBtn")) ||
-				BtnName.Contains(TEXT("DisplaylPanelBTN")) || // sic: asset typo (D13)
-				BtnName.Contains(TEXT("HelpPanelBtn"));
-
-			if (bIsRibbonTab)
-			{
-				// D173: ribbon tabs are theme-MANAGED regardless of any custom SWS text style. This used to
-				// be gated behind (MobiusButtonTextStyle == null), so tabs carrying a custom text style never
-				// had their label colour re-landed here — only the ACTIVE tab got coloured (by the ribbon's
-				// activation BP), leaving INACTIVE tabs at their white design-time colour until clicked. Set
-				// the colour directly (the custom font/size still comes from RefreshTextStyle above).
-				// Active tab = current Normal-brush material named "TabSelected" (name-based so it holds
-				// whichever theme folder the tab-material swap left on the brush).
-				const UObject* NormalRes = Style.Normal.GetResourceObject();
-				const bool bActive = NormalRes && NormalRes->GetName().Contains(TEXT("TabSelected"));
-				ButtonWithText->ApplyThemedLabelColor(PaletteColor(
-					bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText,
-					bLight));
-			}
-			else if (ButtonWithText->MobiusButtonTextStyle)
-			{
-				// Round 11: RefreshTextStyle (above) re-pushes the custom SWS struct, but a label that
-				// ever received an explicit SetColorAndOpacity keeps that override — and once any pass
-				// painted these labels they were latched to that theme forever (quality tiers / sidebar
-				// flow buttons stayed on the previous theme's colour after a toggle). Re-land the
-				// asset's CURRENT colour directly; ApplySharedStyles themed the asset just before this
-				// walk, and pinned styles (Remove red, in-world black) re-land their pinned value.
-				if (const FTextBlockStyle* LabelStyle = ButtonWithText->MobiusButtonTextStyle->GetStyle<FTextBlockStyle>())
-				{
-					if (LabelStyle->ColorAndOpacity.IsColorSpecified())
-					{
-						ButtonWithText->ApplyThemedLabelColor(LabelStyle->ColorAndOpacity.GetSpecifiedColor());
-					}
-				}
-			}
-			else
-			{
-				// Browse et al (no custom SWS text style): mirror the shared Mobius.Text.Label colour
-				// ApplySharedStyles just set.
-				const FSlateColor LabelColor =
-					FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label").ColorAndOpacity;
-				ButtonWithText->ApplyThemedLabelColor(LabelColor.GetSpecifiedColor());
-			}
-		}
+		// W2 LABEL EXPERIMENT (2026-07-21): the walk's per-label colour handling for UButtonWithText
+		// (RefreshTextStyle + the three ApplyThemedLabelColor cases: ribbon-tab / custom-SWS / shared
+		// Mobius.Text.Label) is DISABLED. The label STextBlock is constructed with
+		// ColorAndOpacity(FSlateColor::UseForeground()) (ButtonWithText::RebuildWidget), so it should
+		// follow the button STYLE foreground the block ABOVE still sets (ribbon-tab NormalForeground
+		// remap + non-ribbon ButtonText role). Discriminates two theories for the invisible ribbon-tab /
+		// tool-panel labels: if they now appear + track active/inactive, the walk was clobbering
+		// UseForeground with white (candidate B) and this is the clean W2 label endpoint; if still white,
+		// UseForeground isn't reaching the label (candidate A) → explicit per-state label colour needed.
+		// KEEP the foreground remaps above (they feed UseForeground). Restore this block only if candidate A.
 	}
 	else if (UComboBoxString* ComboBox = Cast<UComboBoxString>(Widget))
 	{
@@ -1048,8 +1088,10 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 			MenuStyle.ComboButtonStyle.MenuBorderBrush.TintColor = FSlateColor(RowBg);
 			ComboBox->SetWidgetStyle(MenuStyle);
 		}
-		// Themed item/content generator — the default one bakes construction-time colours.
-		ComboBox->OnGenerateWidgetEvent.BindDynamic(this, &UUIThemeSubsystem::HandleGenerateThemedComboEntry);
+		// W2 (2026-07-21): themed-combo-entry generator REMOVED — killed the HandleGenerateThemedComboEntry
+		// NewObject<UTextBlock>(this) leak the owner flagged. Combos are off the walk entirely (the
+		// crash-fix skip at the top of ApplyToWidget), so this whole branch is unreachable dead code;
+		// combo theming is rebuilt churn-free in W1 (UComboBoxString subclass, styled before Slate build).
 	}
 	else if (UImage* Image = Cast<UImage>(Widget))
 	{
@@ -1428,19 +1470,6 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 	// themes hold (the rails read this shared style on rebuild; they have no per-widget colour handling).
 	FTextBlockStyle& RailButtonText = const_cast<FTextBlockStyle&>(FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton"));
 	RailButtonText.ColorAndOpacity = LabelText.ColorAndOpacity;
-}
-
-UWidget* UUIThemeSubsystem::HandleGenerateThemedComboEntry(const FString Item)
-{
-	UTextBlock* Text = NewObject<UTextBlock>(this);
-	Text->SetText(FText::FromString(Item));
-	Text->SetFont(FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field").Font);
-	// UseForeground, NOT a baked colour: as combo CONTENT it resolves the SComboButton foreground the
-	// walk sets per theme; as a MENU ROW it resolves the STableRow ItemStyle Text/SelectedText colours
-	// (also explicit per theme). A baked colour latched the theme of the moment it was generated and
-	// went unreadable after a toggle.
-	Text->SetColorAndOpacity(FSlateColor::UseForeground());
-	return Text;
 }
 
 // Dev diagnostic: dump colour-relevant state of every live ButtonWithText.

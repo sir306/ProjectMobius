@@ -26,11 +26,14 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Containers/Ticker.h"       // FTSTicker::FDelegateHandle (startup re-theme ticker, removed in Deinitialize)
 #include "Styling/SlateTypes.h"     // FButtonStyle / FWindowStyle (GetThemedTabStyle / GetThemedWindowStyle)
+#include "UI/Theme/MobiusThemePalette.h"  // EMobiusPaletteRole + authoritative palette (moved out of the .cpp, 2026-07-21)
 #include "UIThemeSubsystem.generated.h"
 
 class UWidget;
 class UMaterialInterface;
+class UComboBoxString;
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -40,74 +43,11 @@ enum class EMobiusUITheme : uint8
 	Light
 };
 
-/**
- * One entry per mockup CSS var (design-tokens.json v2 "themes" object). This is the authoritative
- * Mobius UI palette — the single source of truth for phases P2-P7, exposed via GetPaletteColor().
- *
- * NOTE ON CONSUMPTION: the theme SWITCH itself is a value-remap walk (MobiusTheme::SurfaceMap /
- * TextMap in the .cpp) that swaps colours dark<->light by matching literal widget values within an
- * epsilon. That walker can only distinguish a *curated subset* of these roles — the dark-grey chrome
- * region is so densely packed that many roles share a value bucket at the walker's epsilon (0.012).
- * Roles the walker cannot separate are instead applied EXPLICITLY per theme via style code
- * (buttons/combos/tabs/scalability chips already do this in ApplySharedStyles) sourcing THIS table.
- * So: read a colour with GetPaletteColor(); when authoring a new control, if its role is not one of
- * the walker's SurfaceMap/TextMap rows, set it explicitly for the current theme (and re-set on
- * toggle) rather than relying on the value-match.
- *
- * Values are design-tokens.json v2 linearRGBA VERBATIM (never hex/255). Order must match GMobiusPalette.
- */
-UENUM(BlueprintType)
-enum class EMobiusPaletteRole : uint8
-{
-	TitlebarBg,
-	TitlebarBorder,
-	TitlebarText,
-	TabstripBg,
-	TabstripBorder,      // spec-4 "line" (#d0d0d0 / #242424)
-	TabActiveBg,         // spec-4 "tabactive"
-	TabActiveText,
-	TabInactiveText,
-	TabActiveOutline,    // light-only outline; dark value = dark line for completeness
-	Accent,
-	RibbonBg,            // spec-4 "surface"
-	PanelHeaderBg,       // spec-4 "header"
-	PanelHeaderText,     // spec-4 "text2"
-	PanelHeaderBorder,   // spec-4 "hairline"
-	PanelDivider,        // spec-4 "divider"
-	LabelText,           // spec-4 "text"
-	SublabelText,        // spec-4 "muted"
-	MicroText,           // spec-4 "faint"
-	InputBg,             // spec-4 "input"
-	InputBorder,         // spec-4 "inputborder"
-	InputText,
-	InputPlaceholder,
-	InputMonoText,       // spec-4 "icon" (glyph/mono text #555555 / #9a9a9a)
-	ButtonBg,            // spec-4 "btn"
-	ButtonBorder,        // spec-4 "btnborder"
-	ButtonText,
-	ButtonHoverBg,       // spec-4 "btnhover"
-	ButtonHoverBorder,   // spec-4 "btnhoverborder"
-	ButtonPressedBg,
-	CheckboxBg,
-	CheckboxBorder,
-	CheckboxCheckedBg,
-	CheckboxCheckmark,
-	SliderTrack,         // spec-4 "track"
-	SliderThumb,
-	KbdBg,
-	KbdBorder,
-	KbdText,
-	HelpRowDivider,      // spec-4 "rowline"
-	HelpRowText,
-	Zebra,               // LoS legend alternating row tint (NEW)
-	ChipOutline,         // LoS chip 1px outline, rgba w/ ALPHA (NEW)
-	WellBg,              // total-occupants row / move-markers well
-	IconTint,            // MID glyph tint per theme (NEW)
-	HoverBg,             // spec-4 "hoverbg" — generic row hover, distinct from ButtonHoverBg (Q11)
-	HintText,            // spec-4 "hint" (Q12)
-	WindowBorder,        // spec-4 "winborder" — SMoveableWindow chrome (Q13)
-	Count UMETA(Hidden)
-};
+// EMobiusPaletteRole + the authoritative palette table moved to UI/Theme/MobiusThemePalette.h
+// (owner directive 2026-07-21 — theme data lives in a dedicated header, not the subsystem).
+
+/** Broadcast at the END of a theme apply so widgets can re-pull their role colours (new architecture). */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMobiusThemeChanged);
 
 /**
  * Runtime light/dark theme switcher for the Mobius UI (design doc: dark = turn 7a "AutoCAD dark",
@@ -136,6 +76,7 @@ class MOBIUSWIDGETS_API UUIThemeSubsystem : public UGameInstanceSubsystem
 
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
 	/** Switch the whole live UI to the given theme and persist the choice (GameUserSettings). */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
@@ -146,6 +87,13 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Mobius|Theme")
 	EMobiusUITheme GetTheme() const { return CurrentTheme; }
+
+	/**
+	 * Fires at the END of every theme apply (SetTheme / ReapplyTheme). New-architecture widgets bind
+	 * this and re-pull their role colours on fire — the event replacement for the value-remap walk.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Mobius|Theme")
+	FOnMobiusThemeChanged OnThemeChanged;
 
 	/** Re-run the palette walk for the CURRENT theme (idempotent; picks up late-spawned widgets). */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
@@ -195,15 +143,27 @@ public:
 	FWindowStyle GetThemedWindowStyle() const;
 
 	/**
-	 * ComboBoxString item/content generator bound by the theme walk: a plain text block in the
-	 * current theme's text colour, so dropdown entries follow the theme (the default generator
-	 * bakes construction-time colours).
+	 * Theme a UComboBoxString the CHURN-FREE way (new architecture, migration W1). The closed-combo
+	 * button SURFACE is driven by M_MobiusInput (samples MPC_UITheme.Field) so it follows the theme
+	 * GPU-side; that material brush + the dropdown row colours are pushed at most ONCE (guarded on the
+	 * Normal brush already carrying the material), so there is NO per-pass SetWidgetStyle churn on the
+	 * live SComboBox / SMenuAnchor — the churn the old value-walk caused, which tripped the
+	 * FMRSWRecursiveAccessDetector ensure on combo-open. The selected-item TEXT follows the InputText
+	 * role, re-landed via the compound widget's SetForegroundColor (sets an attribute; does NOT rebuild
+	 * the menu anchor), so it is safe to call on every theme change, even with the dropdown open.
+	 * Call from a combo's OWNING widget at construct and again on OnThemeChanged.
 	 */
-	UFUNCTION()
-	UWidget* HandleGenerateThemedComboEntry(FString Item);
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
+	void ApplyThemeToComboBox(UComboBoxString* Combo);
 
 private:
 	void ApplyTheme(bool bLight);
+	/**
+	 * Push the current palette into the MPC_UITheme Material Parameter Collection (new architecture:
+	 * chrome/button/input materials sample it, so a theme switch updates them GPU-side with no walk).
+	 * No-op until the MPC asset exists. See _ClaudeHandoff/PRD_ThemeSystemRework.md.
+	 */
+	void WriteThemeToMPC(bool bLight);
 	int32 ApplyToLiveWidgets(bool bLight);
 	void ApplyToWidget(UWidget* Widget, bool bLight);
 	/**
@@ -217,4 +177,12 @@ private:
 	void ApplySharedStyles(bool bLight);
 
 	EMobiusUITheme CurrentTheme = EMobiusUITheme::Dark;
+
+	/**
+	 * Startup one-shot re-theme ticker (FTSTicker core ticker, ~30 s window). Stored so Deinitialize
+	 * can remove it: the core ticker is GLOBAL and outlives the PIE world, so if left registered it
+	 * fires during world teardown and walks half-destroyed widgets → the combo SMenuAnchor delegate
+	 * -access ensure (the "crash on PIE close"). Also reset when the ticker self-unregisters.
+	 */
+	FTSTicker::FDelegateHandle StartupThemeTickerHandle;
 };

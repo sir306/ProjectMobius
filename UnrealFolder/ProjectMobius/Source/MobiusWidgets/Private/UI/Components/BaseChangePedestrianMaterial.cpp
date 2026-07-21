@@ -68,13 +68,13 @@ void UBaseChangePedestrianMaterial::NativeConstruct()
 	{
 		// Make sure the random clothing matches the current random setting
 		OnRandomClothingCheckBoxChanged(RandomClothingCheckBox->IsChecked());
-		
+
 		// ensure the materials are set on the agents
-		UpdateRepSubsystemMaterialInstances();	
+		UpdateRepSubsystemMaterialInstances();
 
 		// Ensure the slider properties are updated
 		UpdateSliderProperties();
-		
+
 	}
 }
 
