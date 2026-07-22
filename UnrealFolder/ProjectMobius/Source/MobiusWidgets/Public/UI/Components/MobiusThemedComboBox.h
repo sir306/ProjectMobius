@@ -73,6 +73,20 @@ protected:
 	//~ Begin UComboBoxString Interface
 	/** Re-apply the explicit selected-value text colour after the base regenerates the display block. */
 	virtual void HandleSelectionChanged(TSharedPtr<FString> Item, ESelectInfo::Type SelectionType) override;
+
+	/**
+	 * Stamp the CURRENT-theme selected/row text colour onto every generated block. This is the single
+	 * regeneration choke point BOTH selection paths funnel through (UComboBoxString::UpdateOrGenerateWidget
+	 * -> HandleGenerateWidget). The interactive path also runs HandleSelectionChanged (-> ApplySelectedTextColor),
+	 * but the PROGRAMMATIC SetSelectedOption / SetSelectedIndex path takes the base's built-Slate branch which
+	 * calls UpdateOrGenerateWidget DIRECTLY and NEVER routes through HandleSelectionChanged (those setters and
+	 * UpdateOrGenerateWidget are non-virtual, so this virtual is the only seam). Without this, a combo re-selected
+	 * on activation regenerates a block with no ColorAndOpacity that falls back to the core "NormalText" colour
+	 * (outside the palette) and never follows a later toggle. Reads the LIVE theme (not cached) so it is correct
+	 * even if a toggle happened while the combo was disabled. Const-safe; SetColorAndOpacity Assigns +
+	 * Invalidate(Paint) only — no SComboButton / SMenuAnchor touch.
+	 */
+	virtual TSharedRef<SWidget> HandleGenerateWidget(TSharedPtr<FString> Item) const override;
 	//~ End UComboBoxString Interface
 
 private:
@@ -93,6 +107,15 @@ private:
 	void ApplySelectedTextColor();
 
 	/**
+	 * Bind OnThemeChanged if not already bound and the subsystem is now available. Idempotent (AddUnique) and
+	 * cheap. Called from RebuildWidget AND from HandleGenerateWidget so a combo first built before the
+	 * GameInstance subsystem existed (GetThemeSubsystem() == null at that build) re-establishes live-follow the
+	 * first time it is regenerated on (re)activation — closing the "never follows a later toggle" race. const so
+	 * it can run from the const HandleGenerateWidget seam; binding a delegate is not observable widget state.
+	 */
+	void EnsureThemeBound() const;
+
+	/**
 	 * Current theme from the subsystem's live CurrentTheme (NOT UserProjectSettings — that is still the OLD
 	 * value during OnThemeChanged, which fires mid-ApplyTheme before the persist). Falls back to the
 	 * persisted flag when there is no subsystem (design-time preview).
@@ -104,6 +127,8 @@ private:
 	/** Cached current-theme selected-value text colour; applied on build / selection / toggle. */
 	FSlateColor ThemeTextColor = FSlateColor(FLinearColor::White);
 
-	/** True while bound to OnThemeChanged, so teardown unbinds exactly once. */
-	bool bThemeBound = false;
+	/** True while bound to OnThemeChanged, so teardown unbinds exactly once. Mutable: the const
+	 *  HandleGenerateWidget/EnsureThemeBound seam updates this bookkeeping (a delegate bind is not
+	 *  observable widget state). */
+	mutable bool bThemeBound = false;
 };

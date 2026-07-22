@@ -175,6 +175,20 @@ void SFieldAndTitleText::SetFieldText(FText InFieldText)
 	}
 }
 
+void SFieldAndTitleText::SetTextColors(const FSlateColor& InTitleColor, const FSlateColor& InFieldColor)
+{
+	// COLOUR-only reland (SetColorAndOpacity Assigns + Invalidate(Paint)); font/size/face untouched so the
+	// numeric-field Mono face and the OnPaint shrink-to-fit are preserved across a theme toggle.
+	if (TitleTextBlock.IsValid())
+	{
+		TitleTextBlock->SetColorAndOpacity(InTitleColor);
+	}
+	if (FieldTextBlock.IsValid())
+	{
+		FieldTextBlock->SetColorAndOpacity(InFieldColor);
+	}
+}
+
 void SFieldAndTitleText::SetFontSize(float InFontSize) const
 {
 	// Each field and title uses the same font size, however we could make this more flexible in the future

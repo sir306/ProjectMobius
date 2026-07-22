@@ -64,6 +64,8 @@ SLATE_END_ARGS()
 	void Construct(const FArguments& InArgs);
 	void SetTitleText(FText InTitleText);
 	void SetFieldText(FText InFieldText);
+	/** Re-land title/field text COLOUR only (font/size/face preserved) — the theme-toggle reland seam. */
+	void SetTextColors(const FSlateColor& InTitleColor, const FSlateColor& InFieldColor);
 	void SetFontSize(float InFontSize) const;
 	/** Set the FIELD text block's typeface face on the composite Font_Inter (e.g. "Mono"); title untouched. */
 	void SetFieldFontFace(FName InTypeface);

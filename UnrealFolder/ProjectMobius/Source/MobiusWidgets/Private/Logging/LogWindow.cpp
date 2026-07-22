@@ -6,11 +6,50 @@
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/CoreStyle.h"
 #include "Containers/Array.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+namespace
+{
+	// Slate chrome can't ride the UMG palette walk — poll the theme subsystem per-paint (same idiom as
+	// SWindowTitleBarWidget) so the log window body + mono text follow a live theme toggle.
+	UUIThemeSubsystem* FindThemeSubsystemForLogWindow()
+	{
+		if (!GEngine)
+		{
+			return nullptr;
+		}
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			if (UWorld* World = Context.World())
+			{
+				if (UGameInstance* GameInstance = World->GetGameInstance())
+				{
+					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+					{
+						return Theme;
+					}
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	FLinearColor PollLogWindowColor(EMobiusPaletteRole Role, const FLinearColor& Fallback)
+	{
+		if (const UUIThemeSubsystem* Theme = FindThemeSubsystemForLogWindow())
+		{
+			return Theme->GetPaletteColor(Role);
+		}
+		return Fallback;
+	}
+}
 
 SLogWindowWidget::SLogWindowWidget() = default;
 
@@ -109,7 +148,11 @@ void SLogWindowWidget::OpenLogWindow()
 
 	TSharedRef<SWidget> WindowPanel = SNew(SBorder)
 		.Padding(FMargin(12.0f))
-		.BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
+		.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+		.BorderBackgroundColor_Lambda([]()
+		{
+			return FSlateColor(PollLogWindowColor(EMobiusPaletteRole::RibbonBg, FLinearColor(0.03955f, 0.03955f, 0.03955f)));
+		})
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot()
@@ -122,6 +165,11 @@ void SLogWindowWidget::OpenLogWindow()
 					.Text(FText::FromString(LogText))
 					.AutoWrapText(true)
 					.TextStyle(&LogTextStyle)
+					// Mono log text follows the theme (readable on either surface) via a live poll.
+					.ColorAndOpacity_Lambda([]()
+					{
+						return FSlateColor(PollLogWindowColor(EMobiusPaletteRole::InputMonoText, FLinearColor(0.32314f, 0.32314f, 0.32314f)));
+					})
 				]
 			]
 			+ SVerticalBox::Slot()

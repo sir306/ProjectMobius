@@ -36,8 +36,11 @@
 #include "Components/EditableTextBox.h"
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
+#include "Components/ScrollBox.h"
 #include "Components/Slider.h"
 #include "Components/TextBlock.h"
+#include "Components/WidgetComponent.h"
+#include "UObject/UObjectIterator.h"
 #include "Engine/Font.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
@@ -53,6 +56,7 @@
 #include "Styling/SlateWidgetStyleAsset.h"
 #include "UI/Components/ButtonWithText.h"
 #include "UI/Components/VerticalTextBlock.h"
+#include "UI/Components/FieldAndTextWidget.h"
 #include "Widgets/SCompoundWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMobiusTheme, Log, All);
@@ -305,6 +309,21 @@ namespace MobiusTheme
 			Mid = UMaterialInstanceDynamic::Create(Material, MidOuter);
 			Brush.SetResourceObject(Mid);
 		}
+		// The in-world flow-counter card must conform to the PALETTE in BOTH themes (the generic dark branch
+		// below just restores the material's authored values, which the owner flagged as off-palette in dark).
+		// Set an explicit panel surface (RibbonBg) + input-border edge per theme; preserve the authored alpha.
+		if (SourcePath.Contains(TEXT("FlowCounter")))
+		{
+			FLinearColor Background = FLinearColor::Black;
+			FLinearColor BorderTint = FLinearColor::White;
+			Mid->Parent->GetVectorParameterValue(FMaterialParameterInfo(TEXT("Background Color Tint")), Background);
+			Mid->Parent->GetVectorParameterValue(FMaterialParameterInfo(TEXT("Border Color Tint")), BorderTint);
+			const FLinearColor CardBg = PaletteColor(EMobiusPaletteRole::RibbonBg, bLight);
+			const FLinearColor CardBorder = PaletteColor(EMobiusPaletteRole::InputBorder, bLight);
+			Mid->SetVectorParameterValue(TEXT("Background Color Tint"), FLinearColor(CardBg.R, CardBg.G, CardBg.B, Background.A));
+			Mid->SetVectorParameterValue(TEXT("Border Color Tint"), FLinearColor(CardBorder.R, CardBorder.G, CardBorder.B, BorderTint.A));
+			return true;
+		}
 		if (bLight)
 		{
 			// Override ONLY the two colour params — clearing everything here would also drop the
@@ -405,6 +424,7 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			// ever constructed, and the tab labels kept their construct-time white (invisible on light).
 			// The full Mobius HUD walks ~600 leaf widgets; 200 cleanly separates it from load screens.
 			ApplySharedStyles(CurrentTheme == EMobiusUITheme::Light);
+			ThemeInWorldWidgetComponents();
 			if (ApplyToLiveWidgets(CurrentTheme == EMobiusUITheme::Light) > 200)
 			{
 				++(*ThemedPasses);
@@ -458,6 +478,34 @@ void UUIThemeSubsystem::ToggleTheme()
 void UUIThemeSubsystem::ReapplyTheme()
 {
 	ApplyTheme(CurrentTheme == EMobiusUITheme::Light);
+}
+
+void UUIThemeSubsystem::ReapplyToUserWidget(UUserWidget* UserWidget)
+{
+	if (!UserWidget || !UserWidget->WidgetTree)
+	{
+		return;
+	}
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+	// Same per-widget pass ApplyToLiveWidgets runs, scoped to this one tree (used for in-world widget-
+	// component cards, which GetAllWidgetsOfClass never returns). RECURSE into embedded user widgets so a
+	// flow-counter card themes its section-counter children too (the main walk handles embedded widgets as
+	// separate iterations, but those are never reached for a world-space component).
+	UserWidget->WidgetTree->ForEachWidget([this, bLight](UWidget* Widget)
+	{
+		if (!Widget)
+		{
+			return;
+		}
+		if (UUserWidget* ChildUserWidget = Cast<UUserWidget>(Widget))
+		{
+			ReapplyToUserWidget(ChildUserWidget);
+		}
+		else
+		{
+			ApplyToWidget(Widget, bLight);
+		}
+	});
 }
 
 FLinearColor UUIThemeSubsystem::GetPaletteColor(const EMobiusPaletteRole Role) const
@@ -587,6 +635,7 @@ void UUIThemeSubsystem::ApplyTheme(const bool bLight)
 {
 	ApplySharedStyles(bLight);
 	ApplyToLiveWidgets(bLight);
+	ThemeInWorldWidgetComponents();
 
 	// NEW ARCHITECTURE (additive, migration Phase 2+): push the palette into MPC_UITheme so
 	// material-backed chrome repaints GPU-side. No-op until the MPC asset exists. The legacy
@@ -600,6 +649,32 @@ void UUIThemeSubsystem::ApplyTheme(const bool bLight)
 
 	// Event replacement for the walk: event-driven widgets re-pull their role colours on this.
 	OnThemeChanged.Broadcast();
+}
+
+void UUIThemeSubsystem::ThemeInWorldWidgetComponents()
+{
+	// In-world cards (flow counters) render via a UWidgetComponent and are world-space plain-BP widgets —
+	// GetAllWidgetsOfClass never returns them, so the live-widget walk cannot reach them. Iterate the
+	// widget components directly and re-theme each hosted widget's tree (recursive, so section children
+	// theme too). Runs on every ApplyTheme + the startup ticker; the container also calls ReapplyTheme
+	// when it places a counter so a freshly-spawned card themes immediately.
+	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	if (!World)
+	{
+		return;
+	}
+	for (TObjectIterator<UWidgetComponent> It; It; ++It)
+	{
+		UWidgetComponent* Component = *It;
+		if (!Component || Component->GetWorld() != World)
+		{
+			continue;
+		}
+		if (UUserWidget* HostedWidget = Component->GetWidget())
+		{
+			ReapplyToUserWidget(HostedWidget);
+		}
+	}
 }
 
 void UUIThemeSubsystem::WriteThemeToMPC(const bool bLight)
@@ -760,12 +835,11 @@ int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 		{
 			continue;
 		}
-		// In-world widgets (flow-counter cards on a UWidgetComponent) are world-space labels with a
-		// FIXED light design in both themes — walking them in dark repainted the card dark while its
-		// text is pinned black (solid black bars). They are trees whose OUTERMOST user widget was
-		// never added to the viewport (outer = game instance, not the component, so an outer check
-		// doesn't work — and their child user widgets DO have parents, so climb to the owning
-		// top-level before deciding).
+		// In-world widgets on a UWidgetComponent are world-space and are NOT returned by
+		// GetAllWidgetsOfClass anyway; the ones that ARE returned but live outside the viewport (outer =
+		// game instance, not the component; child user widgets have parents, so climb to the owning
+		// top-level before deciding) get skipped here. Flow-counter cards self-theme via their own
+		// OnThemeChanged bind (UFlowCounterWidget), since this walk cannot reach them.
 		{
 			bool bOnScreenUI = false;
 			UUserWidget* Current = UserWidget;
@@ -885,6 +959,29 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		// Round 11: the rail labels (Floor Stats / Flow Counters) copy their style at construct and had
 		// no live re-land — after a toggle they kept the previous theme's colour (black-on-dark rail).
 		VerticalText->RefreshThemedStyle();
+	}
+	else if (UFieldAndTextWidget* FieldText = Cast<UFieldAndTextWidget>(Widget))
+	{
+		// Audit #1: SFieldAndTitleText's inner STextBlocks are raw Slate (not in any WidgetTree), so this
+		// walk can never reach them and they froze at construct. Pass THIS walk's theme (bLight) — the
+		// in-world card's widget-component GetWorld()/GameInstance resolves an unreliable theme, so letting
+		// the widget self-resolve gave grey (dark-value) text on a light card.
+		FieldText->RefreshThemedStyle(bLight);
+	}
+	else if (UScrollBox* ScrollBox = Cast<UScrollBox>(Widget))
+	{
+		// Audit #4: UScrollBox had no walk branch and its authored scrollbar thumb colour stayed fixed
+		// across a toggle (dark thumb on light chrome / vice-versa) whenever a list overflowed. Tint the
+		// three thumb states per theme (grey thumb readable on either chrome); track/background left to the
+		// box style. No dedicated scrollbar palette role, so explicit greys: light #adadad, dark #9a9a9a.
+		FScrollBarStyle BarStyle = ScrollBox->GetWidgetBarStyle();
+		const FLinearColor ThumbTint = bLight ? FLinearColor(0.4179f, 0.4179f, 0.4179f) : FLinearColor(0.323f, 0.323f, 0.323f);
+		FSlateBrush* ThumbBrushes[] = { &BarStyle.NormalThumbImage, &BarStyle.HoveredThumbImage, &BarStyle.DraggedThumbImage };
+		for (FSlateBrush* ThumbBrush : ThumbBrushes)
+		{
+			ThumbBrush->TintColor = FSlateColor(ThumbTint);
+		}
+		ScrollBox->SetWidgetBarStyle(BarStyle);
 	}
 	else if (USlider* Slider = Cast<USlider>(Widget))
 	{
@@ -1557,6 +1654,21 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 	// themes hold (the rails read this shared style on rebuild; they have no per-widget colour handling).
 	FTextBlockStyle& RailButtonText = const_cast<FTextBlockStyle&>(FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton"));
 	RailButtonText.ColorAndOpacity = LabelText.ColorAndOpacity;
+
+	// Audit #5: the rest of the shared text ramp (Title/Header/Body/Field/Caption) was authored from the
+	// FCoreStyle "NormalText" near-white and NEVER retinted per theme, so any consumer that falls back to it
+	// (FieldAndTextWidget, the error/log dialogs) showed fixed near-white text. Re-stamp each per theme from
+	// the palette so the fallback path is theme-correct in both directions. Explicit both ways (self-heals).
+	auto RetintRamp = [bLight](const char* Key, EMobiusPaletteRole Role)
+	{
+		FTextBlockStyle& S = const_cast<FTextBlockStyle&>(FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>(Key));
+		S.ColorAndOpacity = FSlateColor(MobiusThemePalette::Color(Role, bLight));
+	};
+	RetintRamp("Mobius.Text.Title",   EMobiusPaletteRole::LabelText);       // primary heading text
+	RetintRamp("Mobius.Text.Header",  EMobiusPaletteRole::PanelHeaderText); // section-header (muted)
+	RetintRamp("Mobius.Text.Body",    EMobiusPaletteRole::LabelText);       // body copy
+	RetintRamp("Mobius.Text.Field",   EMobiusPaletteRole::InputText);       // value readouts
+	RetintRamp("Mobius.Text.Caption", EMobiusPaletteRole::SublabelText);    // captions / hints
 }
 
 // Dev diagnostic: dump colour-relevant state of every live ButtonWithText.

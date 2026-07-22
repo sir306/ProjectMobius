@@ -91,12 +91,9 @@ TSharedRef<SWidget> UMobiusThemedComboBox::RebuildWidget()
 
 	// LIVE theme-follow. Safe to bind now that W2 removed the per-click reapply firehose: OnThemeChanged
 	// fires only on a deliberate toggle, and HandleThemeChanged never touches the SMenuAnchor delegates the
-	// FMRSWRecursiveAccessDetector ensure guards (verified against UE 5.5 Slate source). AddUnique → bind once.
-	if (UUIThemeSubsystem* Theme = GetThemeSubsystem())
-	{
-		Theme->OnThemeChanged.AddUniqueDynamic(this, &UMobiusThemedComboBox::HandleThemeChanged);
-		bThemeBound = true;
-	}
+	// FMRSWRecursiveAccessDetector ensure guards (verified against UE 5.5 Slate source). Idempotent; also
+	// retried from HandleGenerateWidget so a combo built before the subsystem existed still binds later.
+	EnsureThemeBound();
 
 	return Built;
 }
@@ -145,9 +142,52 @@ void UMobiusThemedComboBox::ApplySelectedTextColor()
 void UMobiusThemedComboBox::HandleSelectionChanged(TSharedPtr<FString> Item, ESelectInfo::Type SelectionType)
 {
 	// The base regenerates the selected-value STextBlock (with no ColorAndOpacity), dropping our explicit
-	// colour — re-apply it afterwards.
+	// colour — re-apply it afterwards. (HandleGenerateWidget below also stamps it, so this is belt-and-braces
+	// for the interactive path; the programmatic SetSelectedOption path bypasses this method entirely.)
 	Super::HandleSelectionChanged(Item, SelectionType);
 	ApplySelectedTextColor();
+}
+
+TSharedRef<SWidget> UMobiusThemedComboBox::HandleGenerateWidget(TSharedPtr<FString> Item) const
+{
+	// A combo first built before the GameInstance subsystem existed re-establishes live-follow HERE, the
+	// first time it is regenerated on (re)activation — the programmatic "built" path funnels through
+	// UpdateOrGenerateWidget -> HandleGenerateWidget and never runs RebuildWidget again.
+	EnsureThemeBound();
+
+	TSharedRef<SWidget> Row = Super::HandleGenerateWidget(Item);
+
+	// The base default row is SNew(STextBlock).Text(...).Font(Font) with NO ColorAndOpacity, so it falls back
+	// to the core "NormalText" style colour — outside the Mobius palette and untouched by the live style path.
+	// Stamp the CURRENT-theme InputText colour so the programmatic SetSelectedOption "built" branch (which
+	// regenerates the selected-value block and bypasses the HandleSelectionChanged override where
+	// ApplySelectedTextColor would have run) is born correctly themed and follows every later toggle. Read the
+	// live theme directly so it is right even if a toggle happened while this combo was disabled. Skip a
+	// WBP-supplied custom row (non-STextBlock). SetColorAndOpacity Assigns + Invalidate(Paint) only.
+	if (Row->GetType() == TEXT("STextBlock"))
+	{
+		const bool bLight = ResolveIsLight();
+		StaticCastSharedRef<STextBlock>(Row)->SetColorAndOpacity(
+			FSlateColor(MobiusThemePalette::Color(EMobiusPaletteRole::InputText, bLight)));
+	}
+	return Row;
+}
+
+void UMobiusThemedComboBox::EnsureThemeBound() const
+{
+	if (bThemeBound)
+	{
+		return;
+	}
+	if (UUIThemeSubsystem* Theme = GetThemeSubsystem())
+	{
+		// const_cast: AddUniqueDynamic needs a non-const receiver; the widget's observable state is unchanged
+		// (bThemeBound is mutable bookkeeping). AddUnique => bind at most once; ReleaseSlateResources/
+		// BeginDestroy unbind exactly once (guarded on bThemeBound).
+		Theme->OnThemeChanged.AddUniqueDynamic(
+			const_cast<UMobiusThemedComboBox*>(this), &UMobiusThemedComboBox::HandleThemeChanged);
+		bThemeBound = true;
+	}
 }
 
 void UMobiusThemedComboBox::ReleaseSlateResources(bool bReleaseChildren)

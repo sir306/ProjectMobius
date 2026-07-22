@@ -55,6 +55,16 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "FieldAndTextWidget")
 	void SetUpdateFieldText(FText InFieldText);
+
+	/**
+	 * Re-land themed text colours (both = LabelText, high contrast) on the inner raw-Slate title/field
+	 * blocks. The theme walk calls the (bool) overload with the theme it is applying — the no-arg version
+	 * (build/sync cold-start) resolves the current theme itself. Taking the walk's theme is essential for
+	 * the in-world flow-counter card: its widget-component GetWorld()/GetGameInstance() resolves an
+	 * unreliable theme, so self-resolving there gave grey (dark-value) text on a light card.
+	 */
+	void RefreshThemedStyle();
+	void RefreshThemedStyle(bool bLight);
 	/**
 	 * Gets the size of the text in this widget, used for layout calculations
 	 * 

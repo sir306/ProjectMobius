@@ -4,6 +4,10 @@
 #include "UI/Components/FieldAndTextWidget.h"
 #include "Slate/Components/SFieldAndTitleText.h"
 #include "Style/MobiusStyle.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+#include "UI/Theme/MobiusThemePalette.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 
 TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 {
@@ -17,7 +21,41 @@ TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 		.TitleTextStyle(TitleTextStyle ? TitleTextStyle->GetStyle<FTextBlockStyle>() : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Header"))
 		.FieldTextStyle(FieldTextStyle ? FieldTextStyle->GetStyle<FTextBlockStyle>() : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field"));
 
+	// Cold-start correctness: colour the freshly built blocks for the current theme (the walk relands
+	// again on every toggle).
+	RefreshThemedStyle();
+
 	return FieldAndTextWidget.ToSharedRef();
+}
+
+void UFieldAndTextWidget::RefreshThemedStyle()
+{
+	// No-arg (build/sync cold-start): resolve the current theme via any live game world, then apply.
+	bool bLight = true;
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (const UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				bLight = Theme->GetTheme() == EMobiusUITheme::Light;
+			}
+		}
+	}
+	RefreshThemedStyle(bLight);
+}
+
+void UFieldAndTextWidget::RefreshThemedStyle(const bool bLight)
+{
+	if (!FieldAndTextWidget.IsValid())
+	{
+		return;
+	}
+	// Title + field both = LabelText (primary text). SublabelText for the title read as "barely readable"
+	// on the in-world flow-counter card over a bright sky (muted #666 grey on a light card); LabelText is
+	// near-black in light / light-grey in dark — strong contrast on the card AND on the agent-stat panels.
+	const FSlateColor TextColor(MobiusThemePalette::Color(EMobiusPaletteRole::LabelText, bLight));
+	FieldAndTextWidget->SetTextColors(TextColor, TextColor);
 }
 
 void UFieldAndTextWidget::SynchronizeProperties()
@@ -28,6 +66,7 @@ void UFieldAndTextWidget::SynchronizeProperties()
 	{
 		FieldAndTextWidget->SetTitleText(TitleText);
 		FieldAndTextWidget->SetFieldText(FieldText);
+		RefreshThemedStyle();
 		// // If SFieldAndTitleText exposes setters:
 		// FieldAndTextWidget->SetTitleText(TitleText);
 		// FieldAndTextWidget->SetFieldText(FieldText);

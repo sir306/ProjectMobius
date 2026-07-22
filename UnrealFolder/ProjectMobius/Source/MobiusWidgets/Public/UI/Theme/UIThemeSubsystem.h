@@ -101,6 +101,15 @@ public:
 	void ReapplyTheme();
 
 	/**
+	 * Run the per-widget theme pass over ONE UserWidget's own tree for the current theme. For widgets the
+	 * live-widget walk deliberately SKIPS — the in-world flow-counter cards live on a UWidgetComponent, not in
+	 * the viewport, so ApplyToLiveWidgets excludes them. They call this from their own OnThemeChanged handler
+	 * to self-theme (card material via ThemeBackgroundBrush, FieldAndText rows via the walk branch, etc.).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
+	void ReapplyToUserWidget(UUserWidget* UserWidget);
+
+	/**
 	 * Look up a mockup-var colour (design-tokens.json v2 verbatim) for the CURRENT theme.
 	 * Use this when styling controls whose role the value-remap walker can't distinguish
 	 * (see EMobiusPaletteRole docs) — set the returned colour explicitly, and re-set on toggle.
@@ -180,6 +189,9 @@ private:
 	 */
 	void WriteThemeToMPC(bool bLight);
 	int32 ApplyToLiveWidgets(bool bLight);
+	/** Re-theme every in-world UWidgetComponent-hosted widget (flow-counter cards) — GetAllWidgetsOfClass
+	 *  does not return world-space component widgets, so the walk cannot reach them. */
+	void ThemeInWorldWidgetComponents();
 	void ApplyToWidget(UWidget* Widget, bool bLight);
 	/**
 	 * Explicit per-theme colour for widgets the value-remap walker cannot distinguish (dark-grey
