@@ -11,21 +11,21 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
 #include "UI/Components/ButtonWithText.h"
 #include "Components/TextBlock.h"
+#include "Engine/GameInstance.h"
 #include "Style/MobiusStyle.h"
-#include "TimerManager.h"
 #include "UI/Theme/UIThemeSubsystem.h"
 #include "Widgets/SWidget.h"
 #include "Slate.h"
@@ -33,13 +33,13 @@
 
 UButtonWithText::UButtonWithText()
 {
-	
+
 }
 
 void UButtonWithText::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
-	
+
 	ApplyMobiusButtonStyle();
 
 	// bind the button clicked event to the update style method
@@ -48,6 +48,13 @@ void UButtonWithText::SynchronizeProperties()
 
 void UButtonWithText::ApplyMobiusButtonStyle()
 {
+	// Ribbon tabs self-theme from the subsystem (themed tab style + explicit label colour) instead of the
+	// SWS snapshot — the snapshot is what fought the BP tab-swap and left the tab text invisible.
+	if (bIsRibbonButton)
+	{
+		RefreshRibbonAppearance();
+		return;
+	}
 	Super::ApplyMobiusButtonStyle();
 }
 
@@ -89,7 +96,7 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 		.PressMethod(PressMethod)
 		.IsFocusable(IsFocusable);
 	;
-	
+
 	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	if ( GetChildrenCount() > 0 )
 	{
@@ -101,6 +108,24 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 	// and re-churning combos (the crash). It existed to re-theme the ribbon tab-swap's baked DarkTheme
 	// brushes; the ribbon BP is now rewired to GetThemedTabStyle (produces a themed style directly), and
 	// no other click re-bakes a theme brush (gating checks 2026-07-21), so it is no longer load-bearing.
+
+	// Ribbon tabs: subscribe to theme changes (so a light/dark switch re-themes the tab) and apply the
+	// themed look now that MyButtonText exists. Runtime only — no game instance/subsystem at design time.
+	if (bIsRibbonButton)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			if (UGameInstance* GameInstance = World->GetGameInstance())
+			{
+				if (UUIThemeSubsystem* ThemeSubsystem = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+				{
+					CachedThemeSubsystem = ThemeSubsystem;
+					ThemeSubsystem->OnThemeChanged.AddUniqueDynamic(this, &UButtonWithText::HandleThemeChanged);
+				}
+			}
+		}
+		RefreshRibbonAppearance();
+	}
 
 	return MyButton.ToSharedRef();
 }
@@ -132,6 +157,51 @@ void UButtonWithText::ApplyThemedLabelColor(FLinearColor Color)
 	{
 		MyButtonText->SetColorAndOpacity(FSlateColor(Color));
 	}
+}
+
+void UButtonWithText::SetIsActiveTab(const bool bNewActive)
+{
+	bIsActiveTab = bNewActive;
+	RefreshRibbonAppearance();
+}
+
+void UButtonWithText::RefreshRibbonAppearance()
+{
+	if (!bIsRibbonButton)
+	{
+		return;
+	}
+	UUIThemeSubsystem* ThemeSubsystem = CachedThemeSubsystem.Get();
+	if (!ThemeSubsystem)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			if (UGameInstance* GameInstance = World->GetGameInstance())
+			{
+				ThemeSubsystem = GameInstance->GetSubsystem<UUIThemeSubsystem>();
+				CachedThemeSubsystem = ThemeSubsystem;
+			}
+		}
+	}
+	if (ThemeSubsystem)
+	{
+		// One authoritative apply: themed tab style (brushes + foreground) AND explicit label colour.
+		ThemeSubsystem->ApplyRibbonTabStyle(this, bIsActiveTab);
+	}
+}
+
+void UButtonWithText::HandleThemeChanged()
+{
+	RefreshRibbonAppearance();
+}
+
+void UButtonWithText::BeginDestroy()
+{
+	if (UUIThemeSubsystem* ThemeSubsystem = CachedThemeSubsystem.Get())
+	{
+		ThemeSubsystem->OnThemeChanged.RemoveDynamic(this, &UButtonWithText::HandleThemeChanged);
+	}
+	Super::BeginDestroy();
 }
 
 void UButtonWithText::ButtonClickedUpdateStyle()

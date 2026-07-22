@@ -34,6 +34,7 @@
 class UWidget;
 class UMaterialInterface;
 class UComboBoxString;
+class UButtonWithText;
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -118,8 +119,11 @@ public:
 	 * source its Set-Style brush from THIS instead of hard-referencing the DarkTheme MI — then a tab
 	 * click in light mode never shows a dark frame (no deferred ReapplyTheme needed to un-dark it).
 	 */
+	// bRightEdge=false → bottom-underline tab MI (top ribbon, unchanged). bRightEdge=true → the *Right
+	// variants (MI_TabSelectedRight / MI_TabDefaultRight) whose AccentEdge=1 puts the accent on the RIGHT
+	// edge — for the vertical side tool-rail (WBP_ToolPanel), which reads better than a bottom underline.
 	UFUNCTION(BlueprintPure, Category = "Mobius|Theme")
-	UMaterialInterface* GetThemedTabMaterial(bool bSelected) const;
+	UMaterialInterface* GetThemedTabMaterial(bool bSelected, bool bRightEdge = false) const;
 
 	/**
 	 * Q22 ROOT-FIX GETTER for the BP tab swap. Returns a complete FButtonStyle for the ribbon tab in
@@ -131,7 +135,19 @@ public:
 	 * in light mode without waiting for the deferred ReapplyTheme.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Mobius|Theme")
-	FButtonStyle GetThemedTabStyle(bool bSelected) const;
+	FButtonStyle GetThemedTabStyle(bool bSelected, bool bRightEdge = false) const;
+
+	/**
+	 * Apply the themed ribbon-tab look to a UButtonWithText in ONE authoritative place (new architecture,
+	 * W2): sets the button's FButtonStyle from GetThemedTabStyle(bActive) AND sets the label colour
+	 * EXPLICITLY (TabActiveText / TabInactiveText) via ApplyThemedLabelColor. The explicit label set is
+	 * the fix for the invisible ribbon-tab text: UseForeground did not resolve to the button foreground
+	 * for these buttons, and the old split (BP SetStyle in construct + on activation, walk re-landing the
+	 * label) fought itself. Called by the button on bIsActiveTab change / construct / OnThemeChanged — the
+	 * ribbon BP no longer needs to SetStyle at all, just set bIsActiveTab.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
+	void ApplyRibbonTabStyle(UButtonWithText* Button, bool bActive);
 
 	/**
 	 * Themed SWindow chrome for the CURRENT theme (D8/Q3): a Core "Window" FWindowStyle with title/
@@ -143,18 +159,17 @@ public:
 	FWindowStyle GetThemedWindowStyle() const;
 
 	/**
-	 * Theme a UComboBoxString the CHURN-FREE way (new architecture, migration W1). The closed-combo
-	 * button SURFACE is driven by M_MobiusInput (samples MPC_UITheme.Field) so it follows the theme
-	 * GPU-side; that material brush + the dropdown row colours are pushed at most ONCE (guarded on the
-	 * Normal brush already carrying the material), so there is NO per-pass SetWidgetStyle churn on the
-	 * live SComboBox / SMenuAnchor — the churn the old value-walk caused, which tripped the
-	 * FMRSWRecursiveAccessDetector ensure on combo-open. The selected-item TEXT follows the InputText
-	 * role, re-landed via the compound widget's SetForegroundColor (sets an attribute; does NOT rebuild
-	 * the menu anchor), so it is safe to call on every theme change, even with the dropdown open.
-	 * Call from a combo's OWNING widget at construct and again on OnThemeChanged.
+	 * Style a UComboBoxString's WidgetStyle / ItemStyle MEMBERS for the given theme (new architecture,
+	 * migration W1). The closed-combo button SURFACE becomes an M_MobiusInput brush (samples
+	 * MPC_UITheme.Field) so it follows a runtime toggle GPU-side; the dropdown row colours are baked flat.
+	 * It writes ONLY UPROPERTY members and NEVER touches the live SComboBox / SMenuAnchor, so it is valid
+	 * ONLY before the Slate is built — call it from a UComboBoxString subclass's RebuildWidget() before
+	 * Super (see UMobiusThemedComboBox). "Born themed, never restyled live" is the fix for the
+	 * FMRSWRecursiveAccessDetector ensure that a post-build combo restyle tripped on menu-open / PIE-close.
+	 * The selected-item TEXT foreground (InputText role) is set by the subclass via the engine's protected
+	 * InitForegroundColor() — the only pre-build foreground setter — so it is not handled here.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
-	void ApplyThemeToComboBox(UComboBoxString* Combo);
+	static void StyleComboBoxForBuild(UComboBoxString* Combo, bool bLight);
 
 private:
 	void ApplyTheme(bool bLight);

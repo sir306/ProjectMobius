@@ -470,18 +470,21 @@ FLinearColor UUIThemeSubsystem::GetPaletteColorForTheme(const EMobiusPaletteRole
 	return MobiusTheme::PaletteColor(Role, Theme == EMobiusUITheme::Light);
 }
 
-UMaterialInterface* UUIThemeSubsystem::GetThemedTabMaterial(const bool bSelected) const
+UMaterialInterface* UUIThemeSubsystem::GetThemedTabMaterial(const bool bSelected, const bool bRightEdge) const
 {
 	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
 	const TCHAR* ThemeFolder = bLight ? TEXT("LightTheme") : TEXT("DarkTheme");
-	const TCHAR* Name = bSelected ? TEXT("MI_TabSelected") : TEXT("MI_TabDefault");
+	// bRightEdge selects the *Right variants (AccentEdge=1) for the vertical side rail; default = bottom.
+	const FString Name = FString::Printf(TEXT("MI_Tab%s%s"),
+		bSelected ? TEXT("Selected") : TEXT("Default"),
+		bRightEdge ? TEXT("Right") : TEXT(""));
 	const FString Path = FString::Printf(
 		TEXT("/Game/01_Dev/Widgets/WidgetMaterials/Master/Instances/%s/%s.%s"),
-		ThemeFolder, Name, Name);
+		ThemeFolder, *Name, *Name);
 	return LoadObject<UMaterialInterface>(nullptr, *Path);
 }
 
-FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected) const
+FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected, const bool bRightEdge) const
 {
 	using namespace MobiusTheme;
 	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
@@ -498,7 +501,10 @@ FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected) const
 	}
 
 	// Swap each state's brush to the themed tab material (selected vs default) for the current theme.
-	if (UMaterialInterface* TabMaterial = GetThemedTabMaterial(bSelected))
+	// NOTE: this material is NOT what hid the label — the real cause was the 40px vertical padding below
+	// (measured: label allocated 2px of 46px). Restored per owner after the padding fix so the active/
+	// inactive tab keeps its original material look.
+	if (UMaterialInterface* TabMaterial = GetThemedTabMaterial(bSelected, bRightEdge))
 	{
 		FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
 		for (FSlateBrush* Brush : Brushes)
@@ -516,7 +522,45 @@ FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected) const
 	Style.HoveredForeground = FSlateColor(SelectedFg);
 	Style.PressedForeground = FSlateColor(SelectedFg);
 	Style.DisabledForeground = Fg;
+
+	// THE invisible-tab-text fix (measured 2026-07-21): the base SWS_SettingButtonStyle padding is
+	// 0,20,0,20 — 40px of VERTICAL padding, designed for a much taller tab. On the live ~46px tab button
+	// that squeezed the label to ~2px of allocated height (desired 19px) and clipped it to nothing — which
+	// is why the label was correctly coloured + in the live tree yet drew no pixels. Give the label its
+	// height back with modest padding (horizontal kept 0 so the label width is unchanged).
+	Style.NormalPadding = FMargin(0.0f, 4.0f);
+	Style.PressedPadding = FMargin(0.0f, 4.0f);
 	return Style;
+}
+
+void UUIThemeSubsystem::ApplyRibbonTabStyle(UButtonWithText* Button, const bool bActive)
+{
+	using namespace MobiusTheme;
+	if (!Button)
+	{
+		return;
+	}
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+
+	// Single authoritative source for a ribbon tab's look. Style carries the tab material + per-state
+	// foregrounds; the label colour is ALSO set explicitly (UseForeground did not resolve to the button
+	// foreground for these buttons — the invisible-tab-text bug), so the label is driven directly.
+	const FLinearColor LabelColor = PaletteColor(
+		bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText, bLight);
+	// bRightEdgeAccent picks the right-edge tab material variant (side tool-rail) vs bottom (top ribbon).
+	Button->SetStyle(GetThemedTabStyle(bActive, Button->bRightEdgeAccent));
+	// Top-ribbon labels are MyButtonText; colour them here as before.
+	Button->ApplyThemedLabelColor(LabelColor);
+	// Side-rail ribbon buttons show their label via a CHILD UVerticalTextBlock (not MyButtonText), so
+	// colour that too: active = TabActiveText, inactive = TabInactiveText (matches the top ribbon). Runs
+	// after the walk's RefreshThemedStyle (OnThemeChanged fires at the end of ApplyTheme), so this wins.
+	if (UWidget* Content = Button->GetChildAt(0))
+	{
+		if (UVerticalTextBlock* VLabel = Cast<UVerticalTextBlock>(Content))
+		{
+			VLabel->SetThemedLabelColor(LabelColor);
+		}
+	}
 }
 
 FWindowStyle UUIThemeSubsystem::GetThemedWindowStyle() const
@@ -598,69 +642,101 @@ void UUIThemeSubsystem::WriteThemeToMPC(const bool bLight)
 	}
 }
 
-void UUIThemeSubsystem::ApplyThemeToComboBox(UComboBoxString* Combo)
+void UUIThemeSubsystem::StyleComboBoxForBuild(UComboBoxString* Combo, const bool bLight)
 {
 	using namespace MobiusTheme;
 	if (!Combo)
 	{
 		return;
 	}
-	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
 
-	// 1) SURFACE — drive the closed-combo button by M_MobiusInput (samples MPC_UITheme.Field) so a
-	//    theme flip repaints it GPU-side. Push the style at most ONCE: guard on the Normal brush already
-	//    carrying the material, so a toggle never re-SetWidgetStyle a LIVE combo (that rebuild racing a
-	//    menu-open is what tripped the SMenuAnchor delegate-access ensure). The one push happens at
-	//    construct, before any dropdown can be open.
-	UMaterialInterface* InputMat = LoadObject<UMaterialInterface>(
-		nullptr, TEXT("/Game/01_Dev/Widgets/WidgetMaterials/Master/M_MobiusInput.M_MobiusInput"));
+	// W1 CONTRACT: writes the combo's UPROPERTY style members, then nudges via SetWidgetStyle/SetItemStyle.
+	// Called both PRE-BUILD (from UMobiusThemedComboBox::RebuildWidget, before Super — MyComboBox null, the
+	// setters just store the members) AND LIVE (from UMobiusThemedComboBox::HandleThemeChanged on a
+	// deliberate toggle). The live path is crash-safe: SetWidgetStyle/SetItemStyle only Invalidate(Layout)
+	// on the SComboBox — they NEVER touch the SMenuAnchor delegates the FMRSWRecursiveAccessDetector ensure
+	// guards (verified against UE 5.5 Slate source). The old crash was per-CLICK timing re-entering an
+	// in-flight SMenuAnchor::SetIsOpen — a mode this single-fire/menu-closed path does not create.
+
+	// CLOSED-COMBO SURFACE — a FLAT RoundedBox: fill=InputBg, 1px InputBorder outline, rounded corners
+	// (CornerRadii 5, matching the flow-counter combo the owner flagged as the more professional look; the
+	// colours are already the InputBg/InputBorder roles this uses). It is NOT a material: a material Image
+	// brush cannot carry a Slate outline, and the combo no longer needs GPU-follow — it re-themes via
+	// HandleThemeChanged re-running this (crash-safe SetWidgetStyle → Invalidate(Layout) only). All four
+	// button states share the look (static input-field style; no hover flash).
 	FComboBoxStyle Style = Combo->GetWidgetStyle();
-	const bool bSurfaceThemed = InputMat && Style.ComboButtonStyle.ButtonStyle.Normal.GetResourceObject() == InputMat;
-	if (InputMat && !bSurfaceThemed)
 	{
+		const FLinearColor SurfaceFill    = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
+		const FLinearColor SurfaceOutline = PaletteColor(EMobiusPaletteRole::InputBorder, bLight);
 		FSlateBrush* Buttons[] = {
 			&Style.ComboButtonStyle.ButtonStyle.Normal, &Style.ComboButtonStyle.ButtonStyle.Hovered,
 			&Style.ComboButtonStyle.ButtonStyle.Pressed, &Style.ComboButtonStyle.ButtonStyle.Disabled,
 		};
 		for (FSlateBrush* Brush : Buttons)
 		{
-			Brush->SetResourceObject(InputMat);
-			Brush->DrawAs = ESlateBrushDrawType::Image; // material provides the fill (MPC.Field)
-			Brush->TintColor = FSlateColor(FLinearColor::White); // material carries the colour; tint neutral
+			Brush->SetResourceObject(nullptr);                 // flat colour, no material
+			Brush->DrawAs = ESlateBrushDrawType::RoundedBox;   // RoundedBox so OutlineSettings draw a real edge
+			Brush->TintColor = FSlateColor(SurfaceFill);
+			Brush->OutlineSettings.Color = FSlateColor(SurfaceOutline);
+			Brush->OutlineSettings.Width = 1.0f;
+			Brush->OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			Brush->OutlineSettings.CornerRadii = FVector4(5.0, 5.0, 5.0, 5.0);
 		}
-
-		// Dropdown row colours — set in the SAME one-time (guarded) pass. Flat colours; only visible
-		// while the menu is open. NOTE (W1 limitation): because they are flat, not material, they do not
-		// follow a later toggle — a refined menu-row material is deferred (advisor: menu rows secondary).
-		FTableRowStyle Items = Combo->GetItemStyle();
-		const FLinearColor RowBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
-		const FLinearColor RowText = PaletteColor(EMobiusPaletteRole::InputText, bLight);
-		const FLinearColor RowSel = PaletteColor(EMobiusPaletteRole::Accent, bLight);
-		auto Row = [](FSlateBrush& B, const FLinearColor& C)
-		{
-			B.TintColor = FSlateColor(C);
-			B.DrawAs = ESlateBrushDrawType::Image;
-			B.SetResourceObject(nullptr);
-		};
-		Row(Items.EvenRowBackgroundBrush, RowBg);        Row(Items.OddRowBackgroundBrush, RowBg);
-		Row(Items.EvenRowBackgroundHoveredBrush, RowSel); Row(Items.OddRowBackgroundHoveredBrush, RowSel);
-		Row(Items.ActiveBrush, RowSel);                   Row(Items.ActiveHoveredBrush, RowSel);
-		Row(Items.InactiveBrush, RowBg);                  Row(Items.InactiveHoveredBrush, RowSel);
-		Items.TextColor = FSlateColor(RowText);
-		Items.SelectedTextColor = FSlateColor(FLinearColor::White);
-		Combo->SetItemStyle(Items);
-
-		Combo->SetWidgetStyle(Style); // the single, guarded rebuild — construct-time, never mid-open
 	}
 
-	// 2) TEXT foreground — the closed combo's selected-item text uses UseForeground, so re-land the
-	//    InputText role on the compound widget EVERY call. SetForegroundColor sets an attribute; it does
-	//    NOT rebuild the SComboBox / SMenuAnchor, so this is safe even while the dropdown is open.
-	const FSlateColor TextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
-	if (const TSharedPtr<SWidget> Live = Combo->GetCachedWidget())
+	// Dropdown popup OUTLINE. MenuBorderBrush is the FSlateBrush the popup's SBorder holds BY POINTER, so
+	// mutating it here (and on a live toggle) is picked up on the next open with no live SMenuAnchor touch.
+	// 1px InputBorder outline + InputBg fill gives the dropdown a crisp edge (it had none). The fill IS the
+	// brush TintColor: SComboButton wraps the popup in SBorder.BorderImage(&MenuBorderBrush) and never sets
+	// BorderBackgroundColor, so tint alone is the fill — this is NOT the UBorder double-tint case.
 	{
-		StaticCastSharedPtr<SCompoundWidget>(Live)->SetForegroundColor(TextColor);
+		FSlateBrush& MenuBorder = Style.ComboButtonStyle.MenuBorderBrush;
+		MenuBorder.DrawAs = ESlateBrushDrawType::RoundedBox;
+		MenuBorder.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBg, bLight));
+		MenuBorder.OutlineSettings.Color = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBorder, bLight));
+		MenuBorder.OutlineSettings.Width = 1.0f;
+		MenuBorder.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius; // HalfHeightRadius would pill it
+		MenuBorder.OutlineSettings.CornerRadii = FVector4(0.0, 0.0, 0.0, 0.0);          // square dropdown corners
+		Style.ComboButtonStyle.MenuBorderPadding = FMargin(1.0f);                       // keep rows off the 1px edge
 	}
+
+	// BUTTON FOREGROUNDS — theme ALL FOUR states to InputText. The authored leftovers (cyan Normal, grey
+	// Disabled) otherwise show through: a combo that gets SetIsEnabled(false)/(true) (e.g. the flow-counter
+	// type combo) would keep its stale grey DisabledForeground after re-enabling. With every state = InputText
+	// the enabled text is always crisp; the disabled cue comes from Slate's own whole-combo dimming, not a
+	// stale foreground. (The selected-item text inherits this via UseForeground when a block is regenerated
+	// by a programmatic SetSelectedOption, which does not run the subclass's explicit reland.)
+	{
+		const FSlateColor FgColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
+		Style.ComboButtonStyle.ButtonStyle.NormalForeground   = FgColor;
+		Style.ComboButtonStyle.ButtonStyle.HoveredForeground  = FgColor;
+		Style.ComboButtonStyle.ButtonStyle.PressedForeground  = FgColor;
+		Style.ComboButtonStyle.ButtonStyle.DisabledForeground = FgColor;
+	}
+	Combo->SetWidgetStyle(Style); // one push: button surface + menu-border outline + themed foregrounds
+
+	// Dropdown ROW colours — flat (only visible while the menu is open). STableRow reads ItemStyle live via
+	// its const FTableRowStyle* pointer, so re-setting these on a toggle updates the rows on the next open.
+	FTableRowStyle Items = Combo->GetItemStyle();
+	const FLinearColor RowBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
+	const FLinearColor RowText = PaletteColor(EMobiusPaletteRole::InputText, bLight);
+	const FLinearColor RowSel = PaletteColor(EMobiusPaletteRole::Accent, bLight);
+	auto Row = [](FSlateBrush& B, const FLinearColor& C)
+	{
+		B.TintColor = FSlateColor(C);
+		B.DrawAs = ESlateBrushDrawType::Image;
+		B.SetResourceObject(nullptr);
+	};
+	Row(Items.EvenRowBackgroundBrush, RowBg);        Row(Items.OddRowBackgroundBrush, RowBg);
+	Row(Items.EvenRowBackgroundHoveredBrush, RowSel); Row(Items.OddRowBackgroundHoveredBrush, RowSel);
+	Row(Items.ActiveBrush, RowSel);                   Row(Items.ActiveHoveredBrush, RowSel);
+	Row(Items.InactiveBrush, RowBg);                  Row(Items.InactiveHoveredBrush, RowSel);
+	Items.TextColor = FSlateColor(RowText);
+	Items.SelectedTextColor = FSlateColor(FLinearColor::White);
+	Combo->SetItemStyle(Items);
+
+	// Selected-item TEXT foreground (InputText role) is set by the subclass via the engine's protected
+	// InitForegroundColor() — the only pre-build foreground setter, and not reachable from here.
 }
 
 int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
@@ -745,6 +821,17 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	if (Widget && Widget->IsA<UComboBoxString>())
 	{
 		return;
+	}
+
+	// Ribbon tabs SELF-THEME (W2): a UButtonWithText with bIsRibbonButton drives its own look via the
+	// subsystem (flat GetThemedTabStyle + explicit label colour) on construct / OnThemeChanged. Skip it
+	// here so the walk never re-applies the old tab MATERIAL onto it (that material occluded the label).
+	if (const UButtonWithText* RibbonBtn = Cast<UButtonWithText>(Widget))
+	{
+		if (RibbonBtn->bIsRibbonButton)
+		{
+			return;
+		}
 	}
 
 	// Roles the value walker can't reach are set explicitly per theme by widget name FIRST; if a name

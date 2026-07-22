@@ -56,6 +56,10 @@ public:
 	/** Re-resolve the themed text style and re-land it on the live Slate label (theme-walk hook). */
 	void RefreshThemedStyle();
 
+	/** Explicitly set the live label colour (e.g. a ribbon button's active/inactive tab-text override).
+	 *  Direct SetColorAndOpacity — bypasses the STextBlock style-copy that SetTextStyle cannot re-land. */
+	void SetThemedLabelColor(FLinearColor Color);
+
 	virtual void SynchronizeProperties() override;
 	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
 

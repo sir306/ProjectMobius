@@ -21,9 +21,27 @@ void UVerticalTextBlock::RefreshThemedStyle()
 	// or the label keeps the previous theme until a full rebuild.
 	if (StackedText.IsValid())
 	{
-		StackedText->SetTextStyle(TextStyle
+		const FTextBlockStyle* Style = TextStyle
 			? TextStyle->GetStyle<FTextBlockStyle>()
-			: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton"));
+			: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
+		StackedText->SetTextStyle(Style);
+		// FIX (2026-07-22): SetTextStyle re-pushes the style STRUCT but NOT the STextBlock's separately
+		// captured ColorAndOpacity attribute (taken from the style at construct), so after a theme toggle
+		// the rail label kept the PREVIOUS theme's colour — the identical half-fix that MyButtonText needed
+		// (RefreshTextStyle vs ApplyThemedLabelColor). Re-land the colour explicitly. Harmless for a
+		// TextStyle-assigned label (it just re-lands its own baked colour).
+		StackedText->SetColorAndOpacity(Style->ColorAndOpacity);
+	}
+}
+
+void UVerticalTextBlock::SetThemedLabelColor(FLinearColor Color)
+{
+	// Rails are stacked; SRotatedText exposes no colour setter. Direct set on the live label so a ribbon
+	// button can paint its active/inactive tab-text colour (the walk's RefreshThemedStyle uses the uniform
+	// RailButton colour; this override runs after it — see UUIThemeSubsystem::ApplyRibbonTabStyle).
+	if (StackedText.IsValid())
+	{
+		StackedText->SetColorAndOpacity(FSlateColor(Color));
 	}
 }
 

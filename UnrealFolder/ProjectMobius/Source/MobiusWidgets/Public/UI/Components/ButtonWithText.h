@@ -29,6 +29,7 @@
 #include "ButtonWithText.generated.h"
 
 class UTextBlock;
+class UUIThemeSubsystem;
 /**
  *
  */
@@ -73,11 +74,44 @@ public:
 	 */
 	void ApplyThemedLabelColor(FLinearColor Color);
 
+	// -------- Ribbon-tab self-theming (W2, 2026-07-21) --------
+	// A ribbon tab drives its OWN look from the UIThemeSubsystem instead of the old split (SWS snapshot in
+	// construct + BP SetStyle on activation + walk re-landing the label) that fought itself and left the
+	// tab text invisible. Set bIsRibbonButton in the designer; drive bIsActiveTab from the ribbon BP (its
+	// BlueprintSetter re-applies the themed style + label colour). No manual SetStyle in the BP needed.
+
+	/** Re-pull + apply this ribbon button's themed tab style + label colour from the UIThemeSubsystem for
+	 *  the current bIsActiveTab. No-op unless bIsRibbonButton and the subsystem is available. */
+	UFUNCTION(BlueprintCallable, Category = "MobiusWidget|Ribbon")
+	void RefreshRibbonAppearance();
+
+	UFUNCTION(BlueprintSetter)
+	void SetIsActiveTab(bool bNewActive);
+
+	UFUNCTION(BlueprintGetter)
+	bool GetIsActiveTab() const { return bIsActiveTab; }
+
 	/**
 	 * To change the style of the button from default to clicked to give the ribbon appearance on the widget,
 	 * we can bind to the on clicked method to flip between the two style sheets */
 	UFUNCTION()
 	void ButtonClickedUpdateStyle();
+
+	/** Marks this button as a ribbon tab: self-themes from the UIThemeSubsystem (GetThemedTabStyle + tab
+	 *  text palette) instead of the SWS snapshot, and re-themes on OnThemeChanged. Set in the designer. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|Ribbon")
+	bool bIsRibbonButton = false;
+
+	/** Active/selected state of a ribbon tab. Setting it re-applies the themed tab style + label colour
+	 *  (BlueprintSetter → SetIsActiveTab), so the ribbon BP just sets this instead of calling SetStyle. */
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetIsActiveTab, BlueprintSetter = SetIsActiveTab, Category = "MobiusWidget|Ribbon")
+	bool bIsActiveTab = false;
+
+	/** Ribbon tabs only: put the active-accent on the RIGHT edge (vertical side tool-rail, WBP_ToolPanel)
+	 *  instead of the bottom underline (top ribbon). Selects the MI_Tab*Right material variants via
+	 *  UIThemeSubsystem::GetThemedTabStyle. Set in the designer alongside bIsRibbonButton. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|Ribbon")
+	bool bRightEdgeAccent = false;
 
 	/** Text to be set on the button */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
@@ -97,4 +131,15 @@ public:
 
 	/** The slate text block used inside the button */
 	TSharedPtr<STextBlock> MyButtonText;
+
+protected:
+	virtual void BeginDestroy() override;
+
+	/** Bound to UIThemeSubsystem::OnThemeChanged for ribbon buttons; re-themes on a light/dark switch. */
+	UFUNCTION()
+	void HandleThemeChanged();
+
+private:
+	/** Cached theme subsystem (ribbon buttons) so we can unbind OnThemeChanged. Weak: never keeps it alive. */
+	TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
 };
