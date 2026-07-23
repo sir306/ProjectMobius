@@ -266,7 +266,7 @@ void UMobiusWidgetSubsystem::HandleErrorReported(const FMobiusErrorMessage& Mess
 {
 	if (ErrorWidget)
 	{
-		DisplayErrorWidget(Message.TitleBarText, Message.ErrorTitle, Message.ErrorMessage, Message.ErrorLocation);
+		DisplayErrorWidget(Message.TitleBarText, Message.ErrorTitle, Message.ErrorMessage, Message.ErrorLocation, Message.Severity);
 	}
 	else
 	{
@@ -357,7 +357,7 @@ void UMobiusWidgetSubsystem::FlushDeferredErrors()
 
 	for (const FMobiusErrorMessage& Message : DeferredErrors)
 	{
-		DisplayErrorWidget(Message.TitleBarText, Message.ErrorTitle, Message.ErrorMessage, Message.ErrorLocation);
+		DisplayErrorWidget(Message.TitleBarText, Message.ErrorTitle, Message.ErrorMessage, Message.ErrorLocation, Message.Severity);
 	}
 	DeferredErrors.Reset();
 }
@@ -375,7 +375,7 @@ UErrorWindowWidget* UMobiusWidgetSubsystem::GetErrorWidget() const
 }
 
 void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText& TitleBarText, const FText& ErrorTitle,
-	const FText& ErrorMessage, const FText& ErrorLocation)
+	const FText& ErrorMessage, const FText& ErrorLocation, EMobiusErrorSeverity Severity)
 {
 	if(ErrorWidget == nullptr)
 	{
@@ -385,6 +385,9 @@ void UMobiusWidgetSubsystem::DisplayErrorWidget(const FText& TitleBarText, const
 	// We show the error window first, that way it triggers the rebuild and gives it access to the slate and subsystems
 	// it needs to function correctly
 	ErrorWidget->ShowErrorWindow();
+	// Severity drives the emphasis cue; set after ShowErrorWindow so the Slate exists (the accent lambda
+	// reads it before first paint on this same synchronous call).
+	ErrorWidget->SetErrorSeverity(Severity);
 	// Set the variables and display the window
 	ErrorWidget->SetTitleBarText(TitleBarText);
 	ErrorWidget->SetErrorTitleText(ErrorTitle);

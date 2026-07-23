@@ -77,9 +77,7 @@ void SAgentEgressTenability::Tick(
 
 	FVector2D ViewportSize = FVector2D::ZeroVector;
 	ViewportClient->GetViewportSize(ViewportSize);
-	const FVector2D LocalWidgetSize = AllottedGeometry.GetLocalSize();
-	if (ViewportSize.X <= 0.0f || ViewportSize.Y <= 0.0f
-		|| LocalWidgetSize.X <= 0.0f || LocalWidgetSize.Y <= 0.0f)
+	if (ViewportSize.X <= 0.0f || ViewportSize.Y <= 0.0f)
 	{
 		ClearInstances();
 		return;
@@ -87,9 +85,6 @@ void SAgentEgressTenability::Tick(
 
 	const FMatrix ViewProjectionMatrix = ProjectionData.ComputeViewProjectionMatrix();
 	const FIntRect ViewRect = ProjectionData.GetConstrainedViewRect();
-	const FVector2D PixelToWidgetScale(
-		LocalWidgetSize.X / ViewportSize.X,
-		LocalWidgetSize.Y / ViewportSize.Y);
 
 	const TConstArrayView<FAgentEgressTenabilityViewer> AgentData = Widget->GetAgentEgressTenabilityData();
 	FSlateInstanceBufferData PerInstanceUpdate;
@@ -105,6 +100,9 @@ void SAgentEgressTenability::Tick(
 			continue;
 		}
 
+		// Anchor at the agent's head: lift the world point WorldHeightOffset cm above the origin,
+		// then project THAT. A projected world point is perspective-correct, so the marker holds a
+		// consistent gap above the head with no distance-driven drift as agents/camera move.
 		FVector WorldLocation = Agent.AgentWorldPosition;
 		WorldLocation.Z += Widget->WorldHeightOffset;
 
@@ -136,8 +134,20 @@ void SAgentEgressTenability::Tick(
 			Widget->MinimumScale,
 			Widget->MaximumScale);
 
-		const FVector2D WidgetLocalPosition = PixelPosition * PixelToWidgetScale;
-		const FVector2D AbsolutePosition = AllottedGeometry.LocalToAbsolute(WidgetLocalPosition);
+		// Custom-vert meshes (SMeshWidget) are batched with NO render transform (see
+		// FSlateElementBatcher::AddCustomVerts), so the instance position must be in absolute
+		// window space (physical pixels). PixelPosition is the projected world head point, already
+		// in viewport pixels. The game UMG layer is anchored to the viewport origin, so the
+		// projected viewport pixel IS that absolute position. Deliberately NOT routed
+		// through this widget's AllottedGeometry: this is a plain UWidget in a WBP slot that does
+		// not fill the viewport, and scaling by (LocalSize/ViewportSize) compressed every marker
+		// into the slot's sub-rect and made the overlay drift as the window resized. For a
+		// full-viewport slot this value is identical to the old LocalToAbsolute() result.
+		const FVector2D AbsolutePosition = PixelPosition;
+
+		// Debug text goes through the normal (geometry-transformed) paint path, so convert the
+		// absolute pixel back into this widget's local space regardless of where the slot sits.
+		const FVector2D WidgetLocalPosition = AllottedGeometry.AbsoluteToLocal(AbsolutePosition);
 
 		// Encode tenability into the single instance data scalar:
 		//   value = ShownCriterion + clamp(DisplayRisk, 0, 0.999)

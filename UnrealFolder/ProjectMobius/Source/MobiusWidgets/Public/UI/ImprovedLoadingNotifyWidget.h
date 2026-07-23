@@ -3,17 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "Animation/CurveSequence.h" // BW3/P6: intro fade+scale (FCurveSequence, mirrors SMoveableWindow D67)
 #include "ImprovedLoadingNotifyWidget.generated.h"
 
 class UTextBlock;
 class UBaseLoadingWidget;
+class UBorder;
 /**
- * 
+ *
  */
 UCLASS()
-class MOBIUSWIDGETS_API UImprovedLoadingNotifyWidget : public UUserWidget
+class MOBIUSWIDGETS_API UImprovedLoadingNotifyWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -80,6 +81,9 @@ public:
 
 #pragma region PROTECTED_METHODS
 protected:
+	/** Born-theme: title text -> LabelText, panel background Border -> RibbonBg, on construct + OnThemeChanged. */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
 	void UpdateLoadingWidgets();
 
 	void SetLoadingWidgetVisibility(TObjectPtr<UBaseLoadingWidget> LoadingWidget, bool bIsVisible);
@@ -107,6 +111,13 @@ public:
 	/** Text block to show current Load Title - this will inform the user what loading action is being done */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
 	TObjectPtr<UTextBlock> LoadingTitleText;
+
+	/**
+	 * Panel background Border. Born-theme repaints it RibbonBg on construct + every OnThemeChanged.
+	 * BindWidgetOptional so this C++ builds/ships before the asset names the Border; absent = untouched.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
+	TObjectPtr<UBorder> LoadingBackground;
 
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))

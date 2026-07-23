@@ -5,6 +5,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Slate/Components/SWindowContentPanel.h"
+#include "Slate/Components/MobiusWindowButtonStyle.h"
 #include "Style/MobiusStyle.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Theme/UIThemeSubsystem.h"
@@ -15,6 +16,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 
 namespace
 {
@@ -125,22 +127,28 @@ void SErrorWindowWidget::OpenErrorWindow()
                 return;
         }
 
-        // Theme + typography come from the shared style set. Style pointers passed to the content
-        // panel now reference set-owned styles with static lifetime — the previous stack-local
-        // FTextBlockStyle instances dangled if the panel kept the pointer past this scope.
+        // Theme + typography come from the shared style set. We copy the ramp styles into members and
+        // bump the font size LOCALLY: this native SMoveableWindow gets no UMG UI-scale/DPI multiplier,
+        // so the shared 12/10 sizes render tiny here. Members (not stack-locals) because the content
+        // panel keeps the style pointers past this scope. Colour is left untouched (the shared ramp is
+        // retinted per theme in ApplySharedStyles at open time), so the polled colour is preserved.
         ErrorWindowStyle = FMobiusStyle::Get().GetWidgetStyle<FWindowStyle>("Mobius.Window.Error");
-        const FTextBlockStyle& TitleStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Title");
-        const FTextBlockStyle& MessageStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Body");
-        const FTextBlockStyle& LocationStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Error.Location");
+        TitleTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Title");
+        MessageTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Body");
+        LocationTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Error.Location");
+        TitleTextStyle.Font.Size = 16.0f;
+        MessageTextStyle.Font.Size = 13.0f;
+        LocationTextStyle.Font.Size = 12.0f;
 
-        // Error identity red (theme-independent danger cue) — == the shared "Mobius.Color.Error" token.
-        const FLinearColor ErrorRed(0.8f, 0.1f, 0.1f);
+        // Themed Close button (member: SButton caches raw pointers into the style's brushes).
+        CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(FindThemeSubsystemForErrorWindow());
+
         const FMargin WindowPadding = FMobiusStyle::Get().GetMargin("Mobius.Padding.Window");
 
         // Body surface: a flat WhiteBrush tinted per-theme via a poll lambda (RibbonBg = panel surface) so
         // the dialog follows the theme instead of the fixed engine-dark ToolPanel.GroupBorder. Body TEXT is
         // themed through the shared ramp (retinted per theme in ApplySharedStyles) at open time.
-        TSharedRef<SWidget> WindowPanel = SNew(SBorder)
+        TSharedRef<SWidget> BodyPanel = SNew(SBorder)
                 .Padding(FMargin(0.0f))
                 .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
                 .BorderBackgroundColor_Lambda([]()
@@ -149,13 +157,28 @@ void SErrorWindowWidget::OpenErrorWindow()
                 })
                 [
                         SNew(SVerticalBox)
-                        // Red top accent — restores an unmistakable error affordance (the old red title
-                        // chrome is dead: SWindowTitleBarWidget forces the title brushes to NoBrush).
+                        // Top accent — the ONLY live emphasis cue (the old red title chrome is dead:
+                        // SWindowTitleBarWidget forces title brushes to NoBrush and polls TitlebarText for
+                        // the title colour). Driven by severity so a Warning-level "Performance Notice" is
+                        // NOT painted error-red: Error/Fatal = red, Warning = amber, Info = accent (blue).
                         + SVerticalBox::Slot()
                         .AutoHeight()
                         [
                                 SNew(SColorBlock)
-                                .Color(ErrorRed)
+                                .Color_Lambda([Severity = CurrentSeverity]() -> FLinearColor
+                                {
+                                        switch (*Severity)
+                                        {
+                                        case EMobiusErrorSeverity::Warning:
+                                                return FLinearColor(0.9f, 0.35f, 0.0f); // amber warning cue
+                                        case EMobiusErrorSeverity::Info:
+                                                return PollErrorWindowColor(EMobiusPaletteRole::Accent, MobiusThemePalette::Color(EMobiusPaletteRole::Accent, /*bLight=*/true));
+                                        case EMobiusErrorSeverity::Error:
+                                        case EMobiusErrorSeverity::Fatal:
+                                        default:
+                                                return FLinearColor(0.8f, 0.1f, 0.1f); // error red (== Mobius.Color.Error)
+                                        }
+                                })
                                 .Size(FVector2D(1.0f, 3.0f))
                         ]
                         + SVerticalBox::Slot()
@@ -170,21 +193,58 @@ void SErrorWindowWidget::OpenErrorWindow()
                                         .TitleText(FText::FromString("Error Window (Test)"))
                                         .MessageText(FText::FromString("This is a test popup for error handling."))
                                         .LocationText(FText::GetEmpty())
-                                        .TitleTextStyle(&TitleStyle)
-                                        .MessageTextStyle(&MessageStyle)
-                                        .LocationTextStyle(&LocationStyle)
+                                        .TitleTextStyle(&TitleTextStyle)
+                                        .MessageTextStyle(&MessageTextStyle)
+                                        .LocationTextStyle(&LocationTextStyle)
                                 ]
                                 + SVerticalBox::Slot()
                                 .AutoHeight()
                                 .HAlign(HAlign_Right)
                                 .Padding(FMargin(0.0f, 12.0f, 0.0f, 0.0f))
                                 [
-                                        SNew(SButton)
-                                        .Text(FText::FromString("Close"))
+                                        SAssignNew(CloseButton, SButton)
+                                        .ButtonStyle(&CloseButtonStyle)
                                         .OnClicked(this, &SErrorWindowWidget::HandleCloseClicked)
+                                        [
+                                                // Explicit label so the text colour follows a live theme toggle
+                                                // (same poll idiom as the body). Background brushes are stamped
+                                                // for the current theme at construct.
+                                                SNew(STextBlock)
+                                                .Text(FText::FromString("Close"))
+                                                .Justification(ETextJustify::Center)
+                                                .ColorAndOpacity_Lambda([]()
+                                                {
+                                                        return FSlateColor(PollErrorWindowColor(EMobiusPaletteRole::ButtonText, MobiusThemePalette::Color(EMobiusPaletteRole::ButtonText, /*bLight=*/true)));
+                                                })
+                                        ]
                                 ]
                         ]
                 ];
+
+        // #11b: the title bar reads the same as the body (TitlebarBg == RibbonBg by palette design). Wrap
+        // the body in a 1px WindowBorder-coloured frame so the two surfaces read as separate. WhiteBrush
+        // (stable engine pointer, like the body) + FMargin(1) gives the 1px edge; colour polled live.
+        TSharedRef<SWidget> WindowPanel = SNew(SBorder)
+                .Padding(FMargin(1.0f))
+                .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                .BorderBackgroundColor_Lambda([]()
+                {
+                        return FSlateColor(PollErrorWindowColor(EMobiusPaletteRole::WindowBorder, MobiusThemePalette::Color(EMobiusPaletteRole::WindowBorder, /*bLight=*/true)));
+                })
+                [
+                        BodyPanel
+                ];
+
+        // Live re-theme for the Close button. This controller is never slotted under any window, so its own
+        // active timers/Tick never fire (SWidget::Paint pumps active timers, and the controller is never
+        // painted — the dead OnPaint override proves it). Register on CloseButton instead: it lives inside
+        // WindowPanel, which IS painted every frame (the body's colour lambda fires there). The delegate is
+        // SP-bound to this controller, and the timer is owned by the button — it dies on window close and a
+        // fresh button gets its own timer on reopen (no duplicates, no dangling).
+        if (CloseButton.IsValid())
+        {
+                CloseButton->RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SErrorWindowWidget::PollCloseButtonTheme));
+        }
 
         SAssignNew(ErrorWindowPtr, SMoveableWindow)
                 .Title(FText::FromString("Error Window"))
@@ -215,8 +275,37 @@ void SErrorWindowWidget::CloseErrorWindow()
 	ErrorWindowPtr.Reset();
 }
 
+void SErrorWindowWidget::SetSeverity(EMobiusErrorSeverity InSeverity)
+{
+	*CurrentSeverity = InSeverity;
+	// The accent bar reads the shared severity via a bound colour attribute; invalidate paint so a
+	// reused window (shown again for a different-severity error without being rebuilt) repaints it.
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
 FReply SErrorWindowWidget::HandleCloseClicked()
 {
 	CloseErrorWindow();
 	return FReply::Handled();
+}
+
+EActiveTimerReturnType SErrorWindowWidget::PollCloseButtonTheme(double InCurrentTime, float InDeltaTime)
+{
+	// Only rebuild when the theme actually changed (sentinel forces the first apply). The CloseButtonStyle
+	// built at construct is frozen at the construct-time theme; a reused window shown in another theme
+	// would otherwise keep the wrong button background (the label already polls ButtonText live).
+	if (const UUIThemeSubsystem* ThemeSubsystem = FindThemeSubsystemForErrorWindow())
+	{
+		const EMobiusUITheme CurrentThemeValue = ThemeSubsystem->GetTheme();
+		if (CurrentThemeValue != LastAppliedCloseButtonTheme)
+		{
+			CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(ThemeSubsystem);
+			if (CloseButton.IsValid())
+			{
+				CloseButton->SetButtonStyle(&CloseButtonStyle);
+			}
+			LastAppliedCloseButtonTheme = CurrentThemeValue;
+		}
+	}
+	return EActiveTimerReturnType::Continue;
 }

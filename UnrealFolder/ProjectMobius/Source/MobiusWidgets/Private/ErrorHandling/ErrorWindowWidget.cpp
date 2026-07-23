@@ -82,5 +82,13 @@ void UErrorWindowWidget::ShowErrorWindow()
 	}
 }
 
+void UErrorWindowWidget::SetErrorSeverity(EMobiusErrorSeverity Severity)
+{
+	if (ErrorWindowWidget.IsValid())
+	{
+		ErrorWindowWidget->SetSeverity(Severity);
+	}
+}
+
 
 

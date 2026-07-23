@@ -5,7 +5,9 @@
 
 #include "Components/GridPanel.h"
 #include "Components/GridSlot.h"
+#include "Components/Image.h"
 #include "Components/TextBlock.h"
+#include "Styling/SlateBrush.h"
 #include "UI/Components/FieldAndTextWidget.h"
 #include "Util/WidgetUtilHelpers.h"
 #include "UI/InWorld/AgentInfoDisplay.h"
@@ -59,6 +61,29 @@ void UPedestrianDataDisplay::NativeConstruct()
 			// todo: make sure to cleanup delegates
 		}
 	}
+}
+
+void UPedestrianDataDisplay::ApplyMobiusTheme_Implementation()
+{
+	// Repaint the popup background as a SOLID RibbonBg surface. The asset's brush is the playbar material
+	// MI_PlayBarBackground (white tint), which the theme value-walk can't retint — so drop the material
+	// (SetResourceObject(nullptr)) and drive the colour purely through the brush tint. Take a copy of the
+	// existing brush so any margin/tiling the asset set on it is preserved; only Box draw + tint change.
+	if (PanelBackgroundImage)
+	{
+		FSlateBrush NewBrush = PanelBackgroundImage->GetBrush();
+		NewBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		NewBrush.SetResourceObject(nullptr);
+		NewBrush.TintColor = FSlateColor(GetThemeColor(EMobiusPaletteRole::RibbonBg));
+		// 1px WindowBorder outline so the popup has a visible themed edge (was a flat Box, no border).
+		NewBrush.OutlineSettings.Color = FSlateColor(GetThemeColor(EMobiusPaletteRole::WindowBorder));
+		NewBrush.OutlineSettings.Width = 1.0f;
+		NewBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		NewBrush.OutlineSettings.CornerRadii = FVector4(6.0, 6.0, 6.0, 6.0);
+		PanelBackgroundImage->SetBrush(NewBrush);
+	}
+
+	// The FieldAndTextWidget rows self-theme; nothing else to do here.
 }
 
 

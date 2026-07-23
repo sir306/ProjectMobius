@@ -7,6 +7,21 @@
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 
+void UBaseLoadingWidget::ApplyMobiusTheme_Implementation()
+{
+	// The "Loading Geometry: <name>" sub-text and the percent readout both sit on the RibbonBg surface,
+	// so both must track LabelText or they go unreadable in the opposite theme. LoadingInfiniteImage is a
+	// functional spinner graphic (not a background), so it is deliberately left untinted.
+	if (LoadingText)
+	{
+		LoadingText->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::LabelText)));
+	}
+	if (LoadedAmount)
+	{
+		LoadedAmount->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::LabelText)));
+	}
+}
+
 void UBaseLoadingWidget::UpdateLoading(float NewLoadPercent)
 {
 	// clamp value between 0 and 1 -> this is so we don't go over 100% or below 0% as this wouldn't make sense

@@ -99,10 +99,13 @@ public:
 	 * @param ErrorTitle - Title of the Error
 	 * @param ErrorMessage - Message of the Error
 	 * @param ErrorLocation - Optional location text for where the error occurred
+	 * @param Severity - Message severity; drives the window's emphasis cue (Error/Fatal = red,
+	 *        Warning = amber, Info = accent). Defaults to Error to preserve existing call sites.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Error Widget", meta = (AdvancedDisplay = "ErrorLocation"))
+	UFUNCTION(BlueprintCallable, Category = "Error Widget", meta = (AdvancedDisplay = "ErrorLocation,Severity"))
 	void DisplayErrorWidget(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
-		const FText& ErrorLocation = FText::GetEmpty());
+		const FText& ErrorLocation = FText::GetEmpty(),
+		EMobiusErrorSeverity Severity = EMobiusErrorSeverity::Error);
 
 	/**
 	 * Update the title bar text for the error window.

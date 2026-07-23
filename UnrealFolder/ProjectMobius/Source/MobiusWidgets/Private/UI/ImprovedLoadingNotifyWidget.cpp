@@ -5,6 +5,7 @@
 
 #include "Core/MobiusWidgetSubsystem.h"
 #include "UI/Components/BaseLoadingWidget.h"
+#include "Components/Border.h"
 #include "Components/TextBlock.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 
@@ -30,6 +31,21 @@ void UImprovedLoadingNotifyWidget::NativeConstruct()
 	}
 
 	IsLoadingComplete();
+}
+
+void UImprovedLoadingNotifyWidget::ApplyMobiusTheme_Implementation()
+{
+	if (LoadingTitleText)
+	{
+		LoadingTitleText->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::LabelText)));
+	}
+
+	// SetBrushColor drives the Border's BorderBackgroundColor; RibbonBg only reads true if the WBP Border
+	// keeps its brush TintColor white (SBorder multiplies the two — see MEMORY reference-umg-border-double-tint).
+	if (LoadingBackground)
+	{
+		LoadingBackground->SetBrushColor(GetThemeColor(EMobiusPaletteRole::RibbonBg));
+	}
 }
 
 void UImprovedLoadingNotifyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)

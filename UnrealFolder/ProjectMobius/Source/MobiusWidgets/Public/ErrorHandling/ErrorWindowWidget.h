@@ -8,6 +8,7 @@
 
 class SErrorWindowWidget;
 class UMobiusWidgetSubsystem;
+enum class EMobiusErrorSeverity : uint8;
 /**
  * 
  */
@@ -62,4 +63,10 @@ public:
 	 * Ensure the error window is visible and focused.
 	 */
 	void ShowErrorWindow();
+
+	/**
+	 * Set the severity that drives the window's emphasis cue (top accent bar).
+	 * @param Severity Severity of the currently displayed message.
+	 */
+	void SetErrorSeverity(EMobiusErrorSeverity Severity);
 };

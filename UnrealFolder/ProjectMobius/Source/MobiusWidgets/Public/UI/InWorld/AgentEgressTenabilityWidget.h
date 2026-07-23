@@ -32,7 +32,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability")
 	TObjectPtr<USlateVectorArtData> AgentEgressTenabilityMeshAsset;
 
-	/** World-space vertical offset from each agent origin, in centimetres. */
+	/**
+	 * World-space vertical offset, in centimetres above the agent origin, giving the head point
+	 * the marker is anchored to. Projected through the view like any world point, so the marker
+	 * sits perspective-correctly above each agent's head with no distance-driven screen drift.
+	 * Tune live in the widget Details; no rebuild needed.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "0.0"))
 	float WorldHeightOffset = 200.0f;
 

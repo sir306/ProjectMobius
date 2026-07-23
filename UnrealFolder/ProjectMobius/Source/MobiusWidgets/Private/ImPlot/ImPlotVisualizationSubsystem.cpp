@@ -38,6 +38,15 @@ void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 void UImPlotVisualizationSubsystem::Deinitialize()
 {
+        // Unbind the live-theme handler. Dynamic delegate: remove by (object, UFUNCTION name). The theme
+        // subsystem outlives this world subsystem, so leaving it bound would retain a stale ref to a
+        // torn-down world subsystem across PIE stop / level change.
+        if (BoundThemeSubsystem.IsValid())
+        {
+                BoundThemeSubsystem->OnThemeChanged.RemoveDynamic(this, &UImPlotVisualizationSubsystem::HandleThemeChanged);
+        }
+        BoundThemeSubsystem.Reset();
+
         for (auto& Pair : OverlayStates)
         {
                 CloseOverlayWindow(Pair.Value);
@@ -339,14 +348,23 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 		return;
 	}
 
+	// Bind the live-theme handler once, now that a GameInstance (and its theme subsystem) is available.
+	EnsureThemeChangeBinding();
+
 	if (!State.OverlayWindow.IsValid())
 	{
 		const FText WindowTitle = FText::FromString(TEXT("UE Plot Overlay"));
 
 		// D8/Q3: themed window chrome held at a stable subsystem address (SWindow keeps the style by
 		// pointer). The SWindowTitleBarWidget also polls the theme per-paint so the title bar follows a
-		// live toggle; the border/background here theme at open time.
-		ChartWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+		// live toggle; the border/background here theme at open time, and HandleThemeChanged re-themes it
+		// in place on a live toggle. Seed the CoreStyle default only once - if the theme lookup fails on a
+		// later open, we keep the last good themed style instead of flashing back to the CoreStyle gray.
+		if (!bChartWindowStyleInitialized)
+		{
+			ChartWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+			bChartWindowStyleInitialized = true;
+		}
 		if (const UWorld* World = GetWorld())
 		{
 			if (const UGameInstance* GameInstance = World->GetGameInstance())
@@ -382,6 +400,47 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 	else
 	{
 		State.OverlayWindow->BringToFront(true);
+	}
+}
+
+void UImPlotVisualizationSubsystem::EnsureThemeChangeBinding()
+{
+	if (BoundThemeSubsystem.IsValid())
+	{
+		// Already bound (weak ptr set by a previous successful resolve).
+		return;
+	}
+
+	if (const UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				// AddUniqueDynamic guards against a duplicate bind; the weak ptr is what Deinitialize
+				// needs to RemoveDynamic (dynamic delegates have no FDelegateHandle).
+				Theme->OnThemeChanged.AddUniqueDynamic(this, &UImPlotVisualizationSubsystem::HandleThemeChanged);
+				BoundThemeSubsystem = Theme;
+			}
+		}
+	}
+}
+
+void UImPlotVisualizationSubsystem::HandleThemeChanged()
+{
+	// Re-theme the shared window chrome IN PLACE: SWindow holds &ChartWindowStyle by pointer, so we must
+	// assign into the existing member, never reassign a new object. GetThemedWindowStyle() reads the
+	// theme subsystem's CurrentTheme, which is already the new value while OnThemeChanged fires.
+	if (UUIThemeSubsystem* Theme = BoundThemeSubsystem.Get())
+	{
+		ChartWindowStyle = Theme->GetThemedWindowStyle();
+		bChartWindowStyleInitialized = true;
+	}
+
+	// Force a repaint so the open chart window(s) pick up the retinted border/background brushes.
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().InvalidateAllWidgets(false);
 	}
 }
 
@@ -572,6 +631,8 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         const FString TitleString = GetChartTitleForChart(ChartId).ToString();
         if (!TitleString.IsEmpty())
         {
+                // Nudge the title down so it isn't jammed against the window's top border.
+                ImGui::Dummy(ImVec2(0.0f, 8.0f));
                 ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
                 ImGui::Spacing();
         }

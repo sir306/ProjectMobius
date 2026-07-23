@@ -6,9 +6,12 @@
 #include "Input/Reply.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/SCompoundWidget.h"
+#include "MobiusErrorTypes.h"   // EMobiusErrorSeverity (member default-init)
 
+class SButton;
 class SMoveableWindow;
 class SWindowContentPanel;
+enum class EMobiusUITheme : uint8;
 
 /**
  * 
@@ -60,6 +63,14 @@ public:
 	 * Ensure the window is visible and in front.
 	 */
 	void ShowErrorWindow();
+
+	/**
+	 * Set the severity that drives the emphasis cue (top accent bar): Error/Fatal = red, Warning =
+	 * amber, Info = accent. Read live by the accent colour lambda, so this is safe to call after the
+	 * window is shown (the window is reused across errors, not rebuilt each time).
+	 * @param InSeverity Severity of the currently displayed message.
+	 */
+	void SetSeverity(EMobiusErrorSeverity InSeverity);
 	
 	/**
 	 * Paints this widget in the game viewport.
@@ -75,9 +86,18 @@ public:
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
 	                      FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
 	                      bool bParentEnabled) const override;
-	
-	
+
+
 private:
+	/**
+	 * Re-theme the Close button when the theme changes. Driven by an active timer registered ON THE CLOSE
+	 * BUTTON (in OpenErrorWindow), not on this controller: this widget is free-standing chrome — it spawns a
+	 * separate SMoveableWindow and is never slotted under any window — so it is never painted (the OnPaint
+	 * override above is dead) and SWidget::Paint is what pumps active timers. CloseButton lives inside the
+	 * painted WindowPanel, so its timer fires. Cheap: only rebuilds CloseButtonStyle when GetTheme() differs.
+	 */
+	EActiveTimerReturnType PollCloseButtonTheme(double InCurrentTime, float InDeltaTime);
+
 	/** Creates and shows the test error window. */
 	void OpenErrorWindow();
 	/** Requests the test window to close. */
@@ -88,4 +108,31 @@ private:
 	TSharedPtr<SMoveableWindow> ErrorWindowPtr;
 	TSharedPtr<SWindowContentPanel> ContentPanel;
 	FWindowStyle ErrorWindowStyle;
+
+	// Text styles are stored as members (locally size-bumped copies of the shared ramp): this native
+	// window gets no UMG UI-scale/DPI multiplier, so the shared 12/10 sizes render tiny. The content
+	// panel is fed pointers to these, so they must outlive OpenErrorWindow.
+	FTextBlockStyle TitleTextStyle;
+	FTextBlockStyle MessageTextStyle;
+	FTextBlockStyle LocationTextStyle;
+
+	/** Themed Close-button style (member so SButton's cached brush pointers stay valid). */
+	FButtonStyle CloseButtonStyle;
+
+	/** Close button, stored so its style can be re-applied on a live theme change (see PollCloseButtonTheme). */
+	TSharedPtr<SButton> CloseButton;
+
+	/**
+	 * Theme last stamped into CloseButtonStyle. Initialised to an out-of-range sentinel (Dark=0/Light=1)
+	 * so the first poll always rebuilds and applies the button style.
+	 */
+	EMobiusUITheme LastAppliedCloseButtonTheme = static_cast<EMobiusUITheme>(0xFF);
+
+	/**
+	 * Drives the top accent colour by severity. Held in a shared value (not a plain member) so the
+	 * accent colour lambda can capture it by value: FSlateApplication::RequestDestroyWindow can defer
+	 * the window's destruction past this widget's own destructor, and the codebase's window chrome
+	 * deliberately avoids capturing raw `this` in paint lambdas for exactly that lifetime reason.
+	 */
+	TSharedRef<EMobiusErrorSeverity> CurrentSeverity = MakeShared<EMobiusErrorSeverity>(EMobiusErrorSeverity::Error);
 };

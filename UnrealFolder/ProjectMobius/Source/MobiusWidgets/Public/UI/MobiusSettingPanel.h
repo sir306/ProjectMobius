@@ -25,14 +25,16 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "MobiusSettingPanel.generated.h"
 
+class UBorder;
+
 /**
- * 
+ *
  */
 UCLASS()
-class MOBIUSWIDGETS_API UMobiusSettingPanel : public UUserWidget
+class MOBIUSWIDGETS_API UMobiusSettingPanel : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -56,4 +58,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MobiusSettingPanel|Methods")
 	void MinimizeGameWindow();
 #pragma endregion PUBLIC_METHODS
+
+protected:
+	/** Born-theme: frame the settings-panel surface (RibbonBg fill + 1px WindowBorder outline) on
+	 *  construct + every OnThemeChanged, so it reads as a distinct bordered panel (the title bar and
+	 *  body otherwise share the same palette surface role by design). */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
+	/** Settings-panel background surface (the ribbon panel Border). BindWidgetOptional so this C++
+	 *  builds/ships before the asset names it; when absent the panel is left untouched. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UBorder> RibbonPanelBackground;
 };

@@ -323,13 +323,13 @@ void UFloorStatsWidget::BuildImPlotChartTitle() const
                 return;
         }
 
-        // Chart title format (spec §3.5): "Chart — {Total Number of People Over Time |
-        //   {Floor} — Remaining Occupants Over Time}". Row click → this title (P7 acceptance (f)).
+        // Chart title format (spec §3.5): "Chart - {Total Number of People Over Time |
+        //   {Floor} - Remaining Occupants Over Time}". Row click → this title (P7 acceptance (f)).
         if (FloorNumber == -1)
         {
                 ImPlotDataSubsystem->SetChartTitleForChart(
                         ImPlotChartId,
-                        FText::FromString("Chart — Total Number of People Over Time"));
+                        FText::FromString(TEXT("Chart - Total Number of People Over Time")));
                 return;
         }
 

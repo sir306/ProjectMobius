@@ -26,6 +26,7 @@ class SImPlotOverlay;
 class SMoveableWindow;
 class SWindow;
 class UMobiusWidgetSubsystem;
+class UUIThemeSubsystem;
 
 /**
  * World subsystem that owns ImPlot overlay state and data.
@@ -197,6 +198,25 @@ private:
          * NOT a TMap value (which moves on rehash). Refreshed to the current theme each OpenOverlayWindow.
          */
         FWindowStyle ChartWindowStyle;
+
+        /** True once ChartWindowStyle has been seeded, so a failed theme lookup keeps the last good
+         *  style instead of resetting the shared chrome to the CoreStyle gray (D8/Q3 harden). */
+        bool bChartWindowStyleInitialized = false;
+
+        /**
+         * Theme subsystem we bound OnThemeChanged on. Weak so Deinitialize can RemoveDynamic safely: the
+         * theme subsystem is a GameInstance subsystem and outlives this World subsystem across PIE stop /
+         * level change. OnThemeChanged is a DYNAMIC delegate - bound/unbound by (object, UFUNCTION name),
+         * so there is no FDelegateHandle to store; the weak ptr is what the unbind needs.
+         */
+        TWeakObjectPtr<UUIThemeSubsystem> BoundThemeSubsystem;
+
+        /** Bind OnThemeChanged once (idempotent; theme subsystem resolved lazily on first window open). */
+        void EnsureThemeChangeBinding();
+
+        /** Re-theme the shared chart window chrome in place on a live theme toggle and repaint. */
+        UFUNCTION()
+        void HandleThemeChanged();
 
         FImPlotOverlayState& GetOrCreateOverlayState(const FName& ChartId);
         FImPlotOverlayState* FindOverlayState(const FName& ChartId);

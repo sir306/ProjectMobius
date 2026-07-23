@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "EnumsAndStructs/AgentMeshViewer.h"
 #include "PedestrianDataDisplay.generated.h"
 
@@ -11,6 +11,7 @@ class UAgentInfoDisplay;
 class UFieldAndTextWidget;
 class UTextBlock;
 class UGridPanel;
+class UImage;
 
 // Delegates
 /** When the visibility of the selected agent component changes we need notify other classes that require it in blueprints or code */
@@ -20,7 +21,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSelectedAgentComponentVisibilityC
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UPedestrianDataDisplay : public UUserWidget
+class MOBIUSWIDGETS_API UPedestrianDataDisplay : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -30,7 +31,10 @@ public:
 protected:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
-	
+
+	/** Born-theme: repaint the popup background surface (RibbonBg) on construct + every OnThemeChanged. */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
 	void ConfigureTextBlockStyles() const;
 
 	void SetupTextBlockTitles() const;
@@ -77,6 +81,14 @@ public:
 	/** Grid Panel to arrange items */
 	UPROPERTY(EditAnywhere,BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UGridPanel> WidgetHeadGridPanel;
+
+	/**
+	 * Popup background surface. Born-theme replaces its brush with a SOLID RibbonBg box (dropping the
+	 * MI_PlayBarBackground material the value-walk couldn't retint). BindWidgetOptional so this C++
+	 * builds/ships before the asset names the Image; when absent the background is left untouched.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UImage> PanelBackgroundImage;
 
        UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
        TObjectPtr<UFieldAndTextWidget> TitleFieldWidget1;

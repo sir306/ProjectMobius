@@ -30,6 +30,7 @@
 #include "Components/TextBlock.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
+#include "UI/Theme/UIThemeSubsystem.h"
 
 void UBaseChangePedestrianMaterial::NativePreConstruct()
 {
@@ -75,6 +76,14 @@ void UBaseChangePedestrianMaterial::NativeConstruct()
 		// Ensure the slider properties are updated
 		UpdateSliderProperties();
 
+	}
+}
+
+void UBaseChangePedestrianMaterial::ApplyMobiusTheme_Implementation()
+{
+	if (UUIThemeSubsystem* T = GetThemeSubsystem())
+	{
+		T->ReapplyToUserWidget(this);
 	}
 }
 

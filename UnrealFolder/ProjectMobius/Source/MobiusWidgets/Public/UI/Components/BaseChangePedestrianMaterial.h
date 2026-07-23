@@ -25,7 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "BaseChangePedestrianMaterial.generated.h"
 
@@ -38,7 +38,7 @@ class UTextBlock;
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UBaseChangePedestrianMaterial : public UUserWidget
+class MOBIUSWIDGETS_API UBaseChangePedestrianMaterial : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 #pragma region METHODS
@@ -80,6 +80,13 @@ public:
 	
 
 protected:
+	/**
+	 * Re-theme this widget (and its child controls) on construct and every theme change. Needed
+	 * because MaterialPropertySlider is revealed late (translucent mode, after the startup theme
+	 * walk), so a one-shot walk never reaches its handle; re-applying here keeps it on-theme.
+	 */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
 	/** Method to assign the material names to the combo box */
 	void AssignMaterialNamesToComboBox();
 
