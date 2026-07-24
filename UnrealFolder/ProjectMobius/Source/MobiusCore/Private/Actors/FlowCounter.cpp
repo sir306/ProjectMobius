@@ -371,18 +371,14 @@ AFlowCounter::AFlowCounter()
 
 AFlowCounter::~AFlowCounter()
 {
-	RemoveFlowCounterToSubsystem();
-
-	if (GetWorld() == nullptr){return;}  
-	// we need to unbind to the time dilation subsystem delegate for current simulation time
-	if (UTimeDilationSubSystem* TimeDilationSub = GetWorld()->GetSubsystem<UTimeDilationSubSystem>())
-	{
-		TimeDilationSub->OnNewCurrentTime.RemoveDynamic(this, &AFlowCounter::NewSimTime);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: Time Dilation Subsystem not found!"));
-	}
+	// Intentionally empty. Do NOT touch GetWorld(), subsystems, or delegates here:
+	// a UObject destructor runs during garbage collection, where purge order is not
+	// guaranteed and the outer chain may already be freed. In particular, at editor
+	// shutdown (PurgeAllUObjectsOnExit) GetWorld() itself dereferences a freed outer
+	// via GetTypedOuter<UWorld>() and access-violates — the "if (GetWorld()==nullptr)"
+	// guard can't help because the crash is inside GetWorld().
+	// All teardown (subsystem unregister + OnNewCurrentTime unbind + timer clear) lives
+	// in EndPlay, which is BeginPlay-paired and runs while the object graph is valid.
 }
 
 void AFlowCounter::PostInitializeComponents()

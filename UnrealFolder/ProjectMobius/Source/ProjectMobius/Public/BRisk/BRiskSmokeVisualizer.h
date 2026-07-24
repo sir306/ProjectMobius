@@ -53,9 +53,6 @@ private:
 	TObjectPtr<UMaterialInterface> SmokeMaterial;
 
 	UPROPERTY()
-	TObjectPtr<UMaterialInterface> SmokeOutlineOverlayMaterial;
-
-	UPROPERTY()
 	TObjectPtr<UMaterialInterface> SmokeOutlineEdgeMaterial;
 
 	UPROPERTY()
@@ -66,9 +63,6 @@ private:
 
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> SmokeMaterialInstances;
-
-	UPROPERTY()
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> SmokeOutlineOverlayMaterialInstances;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UStaticMeshComponent>> SmokeOutlineEdgeComponents;

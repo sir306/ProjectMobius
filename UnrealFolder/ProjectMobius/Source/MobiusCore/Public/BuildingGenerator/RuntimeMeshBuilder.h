@@ -262,6 +262,14 @@ private:
 	void ProcessPendingDatasmithMeshes(float DeltaSeconds);
 	void BuildDatasmithMaterialsForMesh(UStaticMeshComponent* MeshComp);
 
+	/**
+	 * Placeholder material used in packaged builds when a Datasmith slot resolves to no
+	 * material — the signature of Twinmotion-sourced content whose masters were excluded
+	 * from cook under Epic's Twinmotion EULA (see MOBIUS_TWINMOTION_PACKAGED_DISABLED).
+	 * Loads M_MobiusUnsupported (a vivid "render error" purple) on first use and caches it.
+	 */
+	UMaterialInterface* GetUnsupportedMaterial();
+
 	/** Evaluate whether to flush all door spawns immediately or fall back to batched tick. Reports a warning popup when batched mode is chosen. */
 	void DecideAndExecuteSpawnStrategy();
 
@@ -391,6 +399,17 @@ protected:
 	 * This flag marks "scene import done, queue still draining — fire once drained".
 	 */
 	bool bHeatmapBroadcastPending = false;
+
+	/**
+	 * Set during a Datasmith load when one or more slots came back unresolved (Twinmotion
+	 * content excluded from cook). Checked once when the pending-mesh queue drains, to raise a
+	 * single EULA notice per load rather than one per mesh. Reset at the start of each load.
+	 */
+	bool bTwinmotionRefusedThisLoad = false;
+
+	/** Cached placeholder material for unsupported (Twinmotion) slots — see GetUnsupportedMaterial(). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> UnsupportedMaterialCache = nullptr;
 
 private:
 	/** TODO: We eventually want to get the mesh material and apply our materials to it as a mask or material function to it

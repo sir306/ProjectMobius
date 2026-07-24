@@ -119,12 +119,16 @@
 		},
 		{
 			"Name": "ElectronicNodes",
-			"Enabled": true,
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ],
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/5cb2a394d0c04e73891762be4cbd7216"
 		},
 		{
 			"Name": "DarkerNodes",
-			"Enabled": true,
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ],
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/4b3441f0228a40ec9ca986489a5bd682"
 		},
 		{
@@ -134,7 +138,7 @@
 		{
 			"Name": "ProceduralMeshComponent",
 			"Enabled": true,
-			"LoadingPhase": "Pre-Default"
+			"LoadingPhase": "PreDefault"
 		},
 		{
 			"Name": "AnimationWarping",
@@ -185,12 +189,15 @@
 		},
 		{
 			"Name": "NwiroIntegrationKit",
-			"Enabled": true,
-			"Type": "Editor"
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ]
 		},
 		{
 			"Name": "McpAutomationBridge",
-			"Enabled": true
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ]
 		}
 	],
 	"AdditionalPluginDirectories": [

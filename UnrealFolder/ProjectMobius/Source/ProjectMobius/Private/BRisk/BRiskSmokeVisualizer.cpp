@@ -144,12 +144,6 @@ ABRiskSmokeVisualizer::ABRiskSmokeVisualizer()
 		SmokeMaterial = SmokeMaterialFinder.Object;
 	}
 
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> SmokeOutlineOverlayMaterialFinder(
-		TEXT("/Game/B-Risk/Materials/M_SimpleBoxFireOutlineOverlay.M_SimpleBoxFireOutlineOverlay"));
-	if (SmokeOutlineOverlayMaterialFinder.Succeeded())
-	{
-		SmokeOutlineOverlayMaterial = SmokeOutlineOverlayMaterialFinder.Object;
-	}
 
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> SmokeOutlineEdgeMaterialFinder(
 		TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
@@ -182,12 +176,6 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 			TEXT("/Game/B-Risk/Materials/M_SimpleBoxFireTest.M_SimpleBoxFireTest"));
 	}
 
-	if (!SmokeOutlineOverlayMaterial)
-	{
-		SmokeOutlineOverlayMaterial = LoadObject<UMaterialInterface>(
-			nullptr,
-			TEXT("/Game/B-Risk/Materials/M_SimpleBoxFireOutlineOverlay.M_SimpleBoxFireOutlineOverlay"));
-	}
 
 	if (!SmokeOutlineEdgeMaterial)
 	{
@@ -210,7 +198,6 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 
 	SmokeVolumeComponents.Reserve(Rooms.Num());
 	SmokeMaterialInstances.Reserve(Rooms.Num());
-	SmokeOutlineOverlayMaterialInstances.Reserve(Rooms.Num());
 	SmokeOutlineEdgeComponents.Reserve(Rooms.Num() * SmokeOutlineEdgesPerRoom);
 	SmokeOutlineEdgeMaterialInstances.Reserve(Rooms.Num() * SmokeOutlineEdgesPerRoom);
 	SmokeNiagaraComponents.Reserve(Rooms.Num());
@@ -219,7 +206,6 @@ bool ABRiskSmokeVisualizer::ConfigureFromRooms(const TArray<FBRiskRoomGeometry>&
 	LastSmokeStates.Reserve(Rooms.Num());
 	SmokeVolumeComponents.SetNum(Rooms.Num());
 	SmokeMaterialInstances.SetNum(Rooms.Num());
-	SmokeOutlineOverlayMaterialInstances.SetNum(Rooms.Num());
 	SmokeOutlineEdgeComponents.SetNum(Rooms.Num() * SmokeOutlineEdgesPerRoom);
 	SmokeOutlineEdgeMaterialInstances.SetNum(Rooms.Num() * SmokeOutlineEdgesPerRoom);
 	SmokeNiagaraComponents.SetNum(Rooms.Num());
@@ -401,7 +387,6 @@ void ABRiskSmokeVisualizer::ClearSmokeVolumes()
 
 	SmokeVolumeComponents.Reset();
 	SmokeMaterialInstances.Reset();
-	SmokeOutlineOverlayMaterialInstances.Reset();
 	for (UStaticMeshComponent* EdgeComponent : SmokeOutlineEdgeComponents)
 	{
 		if (EdgeComponent)
@@ -484,14 +469,6 @@ bool ABRiskSmokeVisualizer::SetRoomSmokeState(int32 RoomIndex, const FBRiskSmoke
 		bUpdated = true;
 	}
 
-	if (SmokeOutlineOverlayMaterialInstances.IsValidIndex(RoomIndex)
-		&& SmokeOutlineOverlayMaterialInstances[RoomIndex])
-	{
-		SmokeOutlineOverlayMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("RoomSmoke"), RoomSmoke);
-		SmokeOutlineOverlayMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("SmokeDensity"), SmokeDensity);
-		SmokeOutlineOverlayMaterialInstances[RoomIndex]->SetScalarParameterValue(TEXT("SmokeHeat"), SmokeHeat);
-		bUpdated = true;
-	}
 
 	UpdateSmokeOutlineEdges(RoomIndex, SmokeState);
 
