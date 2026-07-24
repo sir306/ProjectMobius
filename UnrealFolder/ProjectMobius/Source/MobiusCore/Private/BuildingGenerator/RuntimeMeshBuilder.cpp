@@ -33,6 +33,7 @@
 #include "DirectLink/DatasmithSceneReceiver.h"
 #include "Engine/StaticMeshActor.h"
 #include "DatasmithAssetUserData.h"
+#include "MaterialDomain.h"
 #include "Actors/FlowCounter.h"
 #include "Components/FlowCounterSpawnerComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -374,7 +375,7 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 			EmptyUVs,
 			EmptyColors,
 			EmptyTangents,
-			false);
+			true);
 	}
 
 	if (MobiusMaterialInstanceDynamic != nullptr)
@@ -476,7 +477,7 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 		MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, MVertices, MFaces, MNormals, MUV,
 		                                                             TArray<FLinearColor>(),
 		                                                             TArray<FProcMeshTangent>(),
-		                                                             false);
+		                                                             true);
 	}
 	else
 	{
@@ -1014,8 +1015,9 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	// FScene_AddPrimitive on the game thread (~300ms for 8 sections on the test asset); spreading
 	// them across frames keeps the per-frame cost bounded. Finalize (broadcast + EndLoadingWidget
 	// + bMeshBeingBuilt=false) runs after the last chunk is pushed, so listeners see a fully
-	// populated bounds. Component-level collision is NoCollision (ctor line 78) so per-section
-	// bCreateCollision stays false in the pump.
+	// populated bounds. Each section is cooked WITH collision (bCreateCollision=true) in the pump; the
+	// component itself is switched from its ctor NoCollision to QueryOnly once in FinalizeMeshEmit, so
+	// the cooked geometry becomes queryable for cursor ray-traces.
 	PendingMeshChunks = MoveTemp(Chunks);
 	PendingChunkEmitIndex = 0;
 	ChunkEmitStartTime = FPlatformTime::Seconds();
@@ -1070,7 +1072,7 @@ bool ARuntimeMeshBuilder::EmitNextChunkSection(float /*DeltaTime*/)
 			Chunk.UV,
 			EmptyColors,
 			EmptyTangents,
-			/*bCreateCollision*/ false);
+			/*bCreateCollision*/ true);
 
 		if (MobiusMaterialInstanceDynamic)
 		{
@@ -1127,6 +1129,18 @@ void ARuntimeMeshBuilder::FinalizeMeshEmit()
 		EndLoadingWidget();
 		return;
 	}
+
+	// Enable query collision now that every section is present. The staggered pump cooks per-section
+	// collision (CreateMeshSection_LinearColor bCreateCollision=true), but the component is left at
+	// NoCollision by the ctor and — unlike the legacy single-shot build paths — the staggered path
+	// never re-enabled it, so the geometry exists yet is invisible to line traces. Cursor ray-traces
+	// (e.g. flow-counter pillar placement: a bTraceComplex LineTraceByChannel against the building)
+	// then hit nothing. QueryOnly + ComplexAsSimple + Block-all matches the legacy build paths and the
+	// bTraceComplex trace, without enabling physics simulation.
+	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = true;
+	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	MobiusProceduralMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
+	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
 
 	// The origin we want to broadcast is the smallest location of the mesh bounds as the mesh generator
 	// for the heatmap works from left to right and bottom to top.
@@ -1560,6 +1574,29 @@ void ARuntimeMeshBuilder::DecideAndExecuteSpawnStrategy()
 	}
 }
 
+UMaterialInterface* ARuntimeMeshBuilder::GetUnsupportedMaterial()
+{
+	if (UnsupportedMaterialCache)
+	{
+		return UnsupportedMaterialCache;
+	}
+
+	// Vivid "render error" purple, shown when a Twinmotion-sourced slot can't be satisfied in a
+	// packaged build (its master was excluded from cook under Epic's Twinmotion EULA). This asset
+	// is project-owned (not Twinmotion-derived) and lives in the always-cooked RuntimeMeshGenerator
+	// folder, so it is always available in the package.
+	static const TCHAR* UnsupportedPath = TEXT("/Game/01_Dev/RuntimeMeshGenerator/M_MobiusUnsupported.M_MobiusUnsupported");
+	UnsupportedMaterialCache = LoadObject<UMaterialInterface>(nullptr, UnsupportedPath);
+
+	if (!UnsupportedMaterialCache)
+	{
+		// Last-resort fallback so the slot is at least visibly wrong rather than empty.
+		UnsupportedMaterialCache = UMaterial::GetDefaultMaterial(MD_Surface);
+	}
+
+	return UnsupportedMaterialCache;
+}
+
 void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 {
 	const double DatasmithStart = FPlatformTime::Seconds();
@@ -1597,6 +1634,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 	PendingDatasmithMeshes.Reset();
 	bDatasmithMaterialSetupInProgress = false;
 	bHeatmapBroadcastPending = false;
+	bTwinmotionRefusedThisLoad = false;
 
 	if (DataComps.Num() == 0)
 	{
@@ -2002,6 +2040,24 @@ void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 			}
 		}
 
+#if MOBIUS_TWINMOTION_PACKAGED_DISABLED
+		// One-shot notice per load: at least one slot was a Twinmotion-sourced material that can't
+		// be shipped in a packaged build (Epic Twinmotion EULA). Geometry was drawn with the purple
+		// M_MobiusUnsupported placeholder instead of the excluded Twinmotion masters.
+		if (bTwinmotionRefusedThisLoad)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString(TEXT("Twinmotion Materials Not Supported")),
+					FText::FromString(TEXT("Model exported from Twinmotion")),
+					FText::FromString(TEXT("This model uses Twinmotion materials, which cannot be included in the packaged application under Epic's Twinmotion EULA. The geometry is shown without materials (marked in purple). Re-export the model using non-Twinmotion (Datasmith) materials to restore them.")),
+					FText::FromString(TEXT("RuntimeMeshBuilder")));
+			}
+			bTwinmotionRefusedThisLoad = false;
+		}
+#endif
+
 		EndLoadingWidget();
 		FlowCounterSpawnerComponent->BeginSpawning();
 		DecideAndExecuteSpawnStrategy();
@@ -2056,16 +2112,34 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
 		}
 
 		UMaterialInterface* Material = MeshComp->GetMaterial(Index);
+		UMaterial* ParentMaterial = Material ? Material->GetMaterial() : nullptr;
+
+#if MOBIUS_TWINMOTION_PACKAGED_DISABLED
+		// Packaged build: the Twinmotion master materials are excluded from cook (Epic Twinmotion
+		// EULA — see MobiusCore.Build.cs / Config/DefaultGame.ini). A Datasmith slot that resolves
+		// to no material is a model that needed Twinmotion content we cannot ship. Substitute the
+		// purple "unsupported" placeholder, flag the load for a one-shot notice, and skip the remap.
+		// Non-Twinmotion Datasmith imports resolve to the engine DatasmithRuntime masters and keep
+		// a valid material here, so they fall through untouched.
+		if (!Material || !ParentMaterial)
+		{
+			if (UMaterialInterface* Placeholder = GetUnsupportedMaterial())
+			{
+				MeshComp->SetMaterial(Index, Placeholder);
+			}
+			bTwinmotionRefusedThisLoad = true;
+			continue;
+		}
+#else
 		if (!Material)
 		{
 			continue;
 		}
-
-		UMaterial* ParentMaterial = Material->GetMaterial();
 		if (!ParentMaterial)
 		{
 			continue;
 		}
+#endif
 
 		// Classify master material using cached FName → enum mapping
 		EDatasmithMasterType MasterType = EDatasmithMasterType::Unknown;
