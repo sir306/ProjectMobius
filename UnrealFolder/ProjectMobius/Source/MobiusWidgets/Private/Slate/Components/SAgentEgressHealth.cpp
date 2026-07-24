@@ -2,12 +2,11 @@
 
 #include "Slate/Components/SAgentEgressHealth.h"
 
-#include "Engine/GameViewportClient.h"
-#include "Engine/LocalPlayer.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Fonts/SlateFontInfo.h"
 #include "GameFramework/PlayerController.h"
 #include "Rendering/DrawElements.h"
-#include "SceneView.h"
 #include "Slate/SlateVectorArtData.h"
 #include "Slate/SlateVectorArtInstanceData.h"
 #include "Styling/CoreStyle.h"
@@ -32,7 +31,8 @@ namespace
 void SAgentEgressTenability::Construct(const FArguments& InArgs, UAgentEgressTenabilityWidget& InThis)
 {
 	ParentWidget = &InThis;
-	SetCanTick(true);
+	// Volatile so OnPaint runs every frame (no cached invalidation); all instance resolution happens
+	// there, matching the known-good SAgentFollowIndicator. No Tick override is needed.
 	ForceVolatile(true);
 }
 
@@ -46,52 +46,41 @@ void SAgentEgressTenability::SetMeshAsset(
 	}
 }
 
-void SAgentEgressTenability::Tick(
+int32 SAgentEgressTenability::OnPaint(
+	const FPaintArgs& Args,
 	const FGeometry& AllottedGeometry,
-	const double InCurrentTime,
-	const float InDeltaTime)
+	const FSlateRect& MyCullingRect,
+	FSlateWindowElementList& OutDrawElements,
+	const int32 LayerId,
+	const FWidgetStyle& InWidgetStyle,
+	const bool bParentEnabled) const
 {
-	SMeshWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	// Resolve + submit the instance buffer HERE (not in Tick). SMeshWidget's custom verts are batched
+	// with no render transform, so the position must be in this paint pass's absolute space; resolving
+	// against the paint-space AllottedGeometry (rather than the tick-space geometry, whose accumulated
+	// scale differs) is what makes the marker track correctly across window size, DPI, and camera moves.
+	// This mirrors the known-good SAgentFollowIndicator exactly.
+	SAgentEgressTenability* MutableThis = const_cast<SAgentEgressTenability*>(this);
 
 	UAgentEgressTenabilityWidget* Widget = ParentWidget.Get();
-	if (!Widget || MeshId == MAX_uint32)
-	{
-		return;
-	}
+	APlayerController* PlayerController = Widget ? Widget->GetOwningPlayer() : nullptr;
 
-	APlayerController* PlayerController = Widget->GetOwningPlayer();
-	ULocalPlayer* LocalPlayer = PlayerController ? PlayerController->GetLocalPlayer() : nullptr;
-	UGameViewportClient* ViewportClient = LocalPlayer ? LocalPlayer->ViewportClient : nullptr;
-	if (!PlayerController || !ViewportClient || !ViewportClient->Viewport)
+	if (!Widget || MeshId == MAX_uint32 || !PlayerController || !PlayerController->PlayerCameraManager)
 	{
-		ClearInstances();
-		return;
+		MutableThis->ClearInstances();
+		return SMeshWidget::OnPaint(
+			Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 	}
-
-	FSceneViewProjectionData ProjectionData;
-	if (!LocalPlayer->GetProjectionData(ViewportClient->Viewport, ProjectionData))
-	{
-		ClearInstances();
-		return;
-	}
-
-	FVector2D ViewportSize = FVector2D::ZeroVector;
-	ViewportClient->GetViewportSize(ViewportSize);
-	if (ViewportSize.X <= 0.0f || ViewportSize.Y <= 0.0f)
-	{
-		ClearInstances();
-		return;
-	}
-
-	const FMatrix ViewProjectionMatrix = ProjectionData.ComputeViewProjectionMatrix();
-	const FIntRect ViewRect = ProjectionData.GetConstrainedViewRect();
 
 	const TConstArrayView<FAgentEgressTenabilityViewer> AgentData = Widget->GetAgentEgressTenabilityData();
 	FSlateInstanceBufferData PerInstanceUpdate;
 	PerInstanceUpdate.Reserve(AgentData.Num());
 
 	const bool bWantDebug = Widget->bShowDebugText;
-	DebugMarkers.Reset(bWantDebug ? AgentData.Num() : 0);
+	MutableThis->DebugMarkers.Reset(bWantDebug ? AgentData.Num() : 0);
+
+	const FVector2D WidgetTopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
+	const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
 
 	for (const FAgentEgressTenabilityViewer& Agent : AgentData)
 	{
@@ -100,30 +89,19 @@ void SAgentEgressTenability::Tick(
 			continue;
 		}
 
-		// Anchor at the agent's head: lift the world point WorldHeightOffset cm above the origin,
-		// then project THAT. A projected world point is perspective-correct, so the marker holds a
-		// consistent gap above the head with no distance-driven drift as agents/camera move.
+		// Anchor at the agent's head, then project with the DPI-aware UMG projection. It returns false
+		// when the point is behind the camera (replacing the old off-screen pixel-bounds cull).
 		FVector WorldLocation = Agent.AgentWorldPosition;
 		WorldLocation.Z += Widget->WorldHeightOffset;
 
-		FVector2D PixelPosition;
-		if (!FSceneView::ProjectWorldToScreen(
-				WorldLocation,
-				ViewRect,
-				ViewProjectionMatrix,
-				PixelPosition)
-			|| !PlayerController->PostProcessWorldToScreen(WorldLocation, PixelPosition, false))
+		FVector2D ViewportPosition;
+		if (!UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+				PlayerController, WorldLocation, ViewportPosition, /*bPlayerViewportRelative*/ false))
 		{
 			continue;
 		}
 
-		if (PixelPosition.X < 0.0f || PixelPosition.Y < 0.0f
-			|| PixelPosition.X > ViewportSize.X || PixelPosition.Y > ViewportSize.Y)
-		{
-			continue;
-		}
-
-		const double Distance = FVector::Dist(ProjectionData.ViewOrigin, WorldLocation);
+		const double Distance = FVector::Dist(CameraLocation, WorldLocation);
 		if (Distance <= UE_DOUBLE_SMALL_NUMBER)
 		{
 			continue;
@@ -134,27 +112,16 @@ void SAgentEgressTenability::Tick(
 			Widget->MinimumScale,
 			Widget->MaximumScale);
 
-		// Custom-vert meshes (SMeshWidget) are batched with NO render transform (see
-		// FSlateElementBatcher::AddCustomVerts), so the instance position must be in absolute
-		// window space (physical pixels). PixelPosition is the projected world head point, already
-		// in viewport pixels. The game UMG layer is anchored to the viewport origin, so the
-		// projected viewport pixel IS that absolute position. Deliberately NOT routed
-		// through this widget's AllottedGeometry: this is a plain UWidget in a WBP slot that does
-		// not fill the viewport, and scaling by (LocalSize/ViewportSize) compressed every marker
-		// into the slot's sub-rect and made the overlay drift as the window resized. For a
-		// full-viewport slot this value is identical to the old LocalToAbsolute() result.
-		const FVector2D AbsolutePosition = PixelPosition;
-
-		// Debug text goes through the normal (geometry-transformed) paint path, so convert the
-		// absolute pixel back into this widget's local space regardless of where the slot sits.
-		const FVector2D WidgetLocalPosition = AllottedGeometry.AbsoluteToLocal(AbsolutePosition);
+		// Viewport-logical -> absolute paint space: window top-left + logical * render scale
+		// (identical to SAgentFollowIndicator::CreateRenderMeshData).
+		const FVector2D AbsolutePosition(
+			WidgetTopLeft.X + ViewportPosition.X * AllottedGeometry.Scale,
+			WidgetTopLeft.Y + ViewportPosition.Y * AllottedGeometry.Scale);
 
 		// Encode tenability into the single instance data scalar:
 		//   value = ShownCriterion + clamp(DisplayRisk, 0, 0.999)
 		// The material decodes floor() -> criterion (0=None..5=LayerHeight) for the
 		// icon/accent colour, and frac() -> DisplayRisk for the bar fill length.
-		// Use the live current dominant criterion so the bar reflects the scrubbed
-		// time (the first-failure criterion is retained separately for ASET analytics).
 		const uint8 ShownCriterion = Agent.CurrentDominantCriterion;
 		const float EncodedTenability =
 			static_cast<float>(ShownCriterion) + FMath::Clamp(Agent.DisplayRisk, 0.0f, 0.999f);
@@ -167,8 +134,8 @@ void SAgentEgressTenability::Tick(
 
 		if (bWantDebug)
 		{
-			FDebugMarker& Marker = DebugMarkers.AddDefaulted_GetRef();
-			Marker.LocalPosition = WidgetLocalPosition;
+			FDebugMarker& Marker = MutableThis->DebugMarkers.AddDefaulted_GetRef();
+			Marker.LocalPosition = AllottedGeometry.AbsoluteToLocal(AbsolutePosition);
 			Marker.Scale = InstanceScale;
 			Marker.DisplayRisk = Agent.DisplayRisk;
 			Marker.ShownCriterion = ShownCriterion;
@@ -179,19 +146,9 @@ void SAgentEgressTenability::Tick(
 		}
 	}
 
-	UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
-}
+	MutableThis->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
 
-int32 SAgentEgressTenability::OnPaint(
-	const FPaintArgs& Args,
-	const FGeometry& AllottedGeometry,
-	const FSlateRect& MyCullingRect,
-	FSlateWindowElementList& OutDrawElements,
-	const int32 LayerId,
-	const FWidgetStyle& InWidgetStyle,
-	const bool bParentEnabled) const
-{
-	int32 MaxLayerId = SMeshWidget::OnPaint(
+	const int32 MaxLayerId = SMeshWidget::OnPaint(
 		Args,
 		AllottedGeometry,
 		MyCullingRect,

@@ -20,11 +20,6 @@ public:
 	void Construct(const FArguments& InArgs, UAgentEgressTenabilityWidget& InThis);
 	void SetMeshAsset(USlateVectorArtData* InMeshAsset, int32 InitialInstanceCapacity);
 
-	virtual void Tick(
-		const FGeometry& AllottedGeometry,
-		double InCurrentTime,
-		float InDeltaTime) override;
-
 protected:
 	virtual int32 OnPaint(
 		const FPaintArgs& Args,
@@ -38,7 +33,7 @@ protected:
 private:
 	void ClearInstances();
 
-	/** One screen-resolved agent marker, cached in Tick and drawn as debug text in OnPaint. */
+	/** One screen-resolved agent marker, resolved and drawn as debug text in OnPaint. */
 	struct FDebugMarker
 	{
 		FVector2D LocalPosition = FVector2D::ZeroVector;
