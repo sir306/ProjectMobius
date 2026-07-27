@@ -581,6 +581,45 @@ FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected, const bo
 	return Style;
 }
 
+void UUIThemeSubsystem::ApplyTabHoverFill(FButtonStyle& Style, UObject* Outer, const bool bLight) const
+{
+	using namespace MobiusTheme;
+
+	// A16 (2026-07-28): ribbon tabs had NO hover fill. GetThemedTabStyle assigns the SAME MI_Tab* material
+	// to Normal/Hovered/Pressed/Disabled, so a hovered tab was byte-identical to an unhovered one and only
+	// the label colour changed. Fix: give the HOVERED brush its own MaterialInstanceDynamic off that same
+	// MI and override just FillColour with the app-wide hover role, so ribbon tabs speak the same hover
+	// language as every other Mobius button (owner: "expand this onto the ribbon buttons too").
+	//
+	// Why a MID and not simply a brighter Brush.TintColor: Slate packs the brush tint into the vertex
+	// colour (FColor), so a tint > 1.0 clamps and CANNOT brighten a material — that route works in light
+	// mode and silently does nothing in dark. Overriding the material's own FillColour works both ways.
+	//
+	// The MID's parent is the very MI the Normal brush uses, so every other tab parameter (UseUnderline,
+	// AccentEdge, UseTopBar, UnderlineColour, UnderlineThickness) inherits per-theme/per-state for free.
+	// That is also why hover does not muddy the active tab: the accent UNDERLINE is the active signifier
+	// (UseUnderline 1 vs 0), not fill brightness, so a hovered inactive tab reads brighter-but-not-active.
+	UMaterialInterface* TabMaterial = Cast<UMaterialInterface>(Style.Hovered.GetResourceObject());
+	if (!TabMaterial)
+	{
+		return; // no tab material (SWS fallback) — leave the style alone
+	}
+
+	// Outer = the button, so the MID is GC-rooted through its WidgetStyle UPROPERTY and dies with it.
+	// No subsystem-side cache: ~8 tabs re-themed only on construct / activation / theme toggle.
+	UMaterialInstanceDynamic* HoverMaterial = UMaterialInstanceDynamic::Create(TabMaterial, Outer);
+	if (!HoverMaterial)
+	{
+		return;
+	}
+	HoverMaterial->SetVectorParameterValue(TEXT("FillColour"), PaletteColor(EMobiusPaletteRole::ButtonHoverBg, bLight));
+	Style.Hovered.SetResourceObject(HoverMaterial);
+	if (Style.Hovered.OutlineSettings.Width > 0.0f)
+	{
+		Style.Hovered.OutlineSettings.Color = FSlateColor(PaletteColor(EMobiusPaletteRole::ButtonHoverBorder, bLight));
+	}
+}
+
 void UUIThemeSubsystem::ApplyRibbonTabStyle(UButtonWithText* Button, const bool bActive)
 {
 	using namespace MobiusTheme;
@@ -596,7 +635,9 @@ void UUIThemeSubsystem::ApplyRibbonTabStyle(UButtonWithText* Button, const bool 
 	const FLinearColor LabelColor = PaletteColor(
 		bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText, bLight);
 	// bRightEdgeAccent picks the right-edge tab material variant (side tool-rail) vs bottom (top ribbon).
-	Button->SetStyle(GetThemedTabStyle(bActive, Button->bRightEdgeAccent));
+	FButtonStyle TabStyle = GetThemedTabStyle(bActive, Button->bRightEdgeAccent);
+	ApplyTabHoverFill(TabStyle, Button, bLight);
+	Button->SetStyle(TabStyle);
 	// Top-ribbon labels are MyButtonText; colour them here as before.
 	Button->ApplyThemedLabelColor(LabelColor);
 	// Side-rail ribbon buttons show their label via a CHILD UVerticalTextBlock (not MyButtonText), so
@@ -1126,7 +1167,13 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 				FSlateBrush* TabBrushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
 				for (FSlateBrush* TabBrush : TabBrushes)
 				{
-					if (TabBrush->GetResourceObject() && TabBrush->GetResourceObject() != TabMaterial)
+					// A16: leave a MaterialInstanceDynamic alone. ApplyTabHoverFill gives the HOVERED brush
+					// its own MID (of this very material) carrying the hover FillColour; this walk would see
+					// "MID != TabMaterial" and stamp the flat material back over it, silently deleting the
+					// tab hover on any walk not followed by an OnThemeChanged re-apply. The MID is already
+					// theme-correct — its parent came from the current theme's folder.
+					if (TabBrush->GetResourceObject() && TabBrush->GetResourceObject() != TabMaterial
+						&& !TabBrush->GetResourceObject()->IsA<UMaterialInstanceDynamic>())
 					{
 						TabBrush->SetResourceObject(TabMaterial);
 						bChanged = true;

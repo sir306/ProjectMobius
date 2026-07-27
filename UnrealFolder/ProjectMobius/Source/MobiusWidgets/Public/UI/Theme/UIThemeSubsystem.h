@@ -159,6 +159,17 @@ public:
 	void ApplyRibbonTabStyle(UButtonWithText* Button, bool bActive);
 
 	/**
+	 * A16 (2026-07-28): give a themed tab style a real HOVER FILL. GetThemedTabStyle assigns one MI_Tab*
+	 * material to all four state brushes, so hovering a tab changed nothing but the label colour. This
+	 * repoints Style.Hovered at a MaterialInstanceDynamic of that same MI with FillColour overridden to
+	 * the app-wide ButtonHoverBg role — one hover language for tabs and buttons alike. Outer owns the MID
+	 * (pass the button). A brighter Brush.TintColor cannot do this: Slate packs the tint into an FColor
+	 * vertex colour, so > 1.0 clamps and dark mode would not lift at all. Called by ApplyRibbonTabStyle;
+	 * separate so a Blueprint feeding SetStyle straight from GetThemedTabStyle can opt in too.
+	 */
+	void ApplyTabHoverFill(FButtonStyle& Style, UObject* Outer, bool bLight) const;
+
+	/**
 	 * Themed SWindow chrome for the CURRENT theme (D8/Q3): a Core "Window" FWindowStyle with title/
 	 * border/background brushes tinted to TitlebarBg / WindowBorder and the title text to TitlebarText.
 	 * SMoveableWindow creators (ImPlot overlay, agent-stats window) pass this so the window chrome is
