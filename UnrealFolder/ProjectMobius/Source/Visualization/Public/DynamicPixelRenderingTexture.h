@@ -106,6 +106,13 @@ public:
 	void DrawLine(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y, int32 End_Coordinate_Y, FLinearColor LineColor,  bool bAddColourToExisting = true);
 
 	/**
+	 * Draw a cumulative line while seeding each previously untouched texel with a minimum red value.
+	 * This is useful for quantitative palettes whose low bands otherwise render a first observation invisible.
+	 */
+	void DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y, int32 End_Coordinate_Y,
+		FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius = 0);
+
+	/**
 	 * Draw an Anti-Aliased line on the texture from the start to the end with the specified color
 	 * - This is method could be used for my voronoi diagram implementation
 	 *
@@ -170,7 +177,13 @@ public:
 	/**
 	 * This method performs a Gaussian Blur on the texture using OpenCV, so that the heatmaps have even distribution
 	 */
-	void OpenCVGaussianBlur();
+	void OpenCVGaussianBlur(int32 KernelSize = 29, bool bForceBlur = false);
+
+	/** Copies only CPU pixel data. The destination may then be blurred and rendered without mutating the source. */
+	bool CopyPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture);
+
+	/** Preserves the strongest raw value per channel after a display-only blur. */
+	bool MaxPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture);
 
 	/**
 	 * Method that creates a voronoi diagram using openCV

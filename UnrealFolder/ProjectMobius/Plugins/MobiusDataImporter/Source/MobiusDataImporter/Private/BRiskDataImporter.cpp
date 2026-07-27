@@ -2,8 +2,13 @@
 
 #include "BRiskDataImporter.h"
 
+#include "Algo/Reverse.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "XmlFile.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskDataImporter, Log, All);
@@ -43,6 +48,67 @@ namespace
 		{
 			Token = TrimCell(Token);
 		}
+		return Tokens;
+	}
+
+	/**
+	 * Split a numeric .smv data line into number tokens.
+	 *
+	 * B-Risk writes these lines in a fixed-width Fortran scientific format, where a
+	 * negative value's sign consumes the separating space:
+	 *
+	 *     " 3.2505E+000-1.9019E+001 0.0000E+000"     <- a room origin, 3 values
+	 *
+	 * Whitespace splitting yields two tokens there, not three, so any block with a
+	 * negative coordinate is silently rejected. Split on whitespace AND on any '+'/'-'
+	 * that begins a new number - that is, a sign not immediately preceded by an
+	 * exponent marker (E/e/D/d), which would make it the exponent's own sign.
+	 */
+	TArray<FString> SplitNumericTokens(const FString& InLine)
+	{
+		auto IsExponentMarker = [](TCHAR Character)
+		{
+			return Character == TEXT('E') || Character == TEXT('e')
+				|| Character == TEXT('D') || Character == TEXT('d');
+		};
+
+		TArray<FString> Tokens;
+		const int32 Length = InLine.Len();
+		int32 TokenStart = INDEX_NONE;
+
+		for (int32 Index = 0; Index < Length; ++Index)
+		{
+			const TCHAR Character = InLine[Index];
+
+			if (FChar::IsWhitespace(Character))
+			{
+				if (TokenStart != INDEX_NONE)
+				{
+					Tokens.Add(InLine.Mid(TokenStart, Index - TokenStart));
+					TokenStart = INDEX_NONE;
+				}
+				continue;
+			}
+
+			const bool bIsSign = (Character == TEXT('+') || Character == TEXT('-'));
+			if (bIsSign && TokenStart != INDEX_NONE && !IsExponentMarker(InLine[Index - 1]))
+			{
+				Tokens.Add(InLine.Mid(TokenStart, Index - TokenStart));
+				TokenStart = Index;
+				continue;
+			}
+
+			if (TokenStart == INDEX_NONE)
+			{
+				TokenStart = Index;
+			}
+		}
+
+		if (TokenStart != INDEX_NONE)
+		{
+			Tokens.Add(InLine.Mid(TokenStart, Length - TokenStart));
+		}
+
 		return Tokens;
 	}
 
@@ -91,10 +157,15 @@ namespace
 			return false;
 		}
 
-		const TArray<FString> DimTokens = SplitWhitespace(TrimCell(Lines[DimsIndex]));
-		const TArray<FString> OriginTokens = SplitWhitespace(TrimCell(Lines[OriginIndex]));
+		const TArray<FString> DimTokens = SplitNumericTokens(TrimCell(Lines[DimsIndex]));
+		const TArray<FString> OriginTokens = SplitNumericTokens(TrimCell(Lines[OriginIndex]));
 		if (DimTokens.Num() < 3 || OriginTokens.Num() < 3)
 		{
+			UE_LOG(LogBRiskDataImporter, Warning,
+				TEXT("B-Risk ROOM %d has a malformed geometry block (dims=%d values, origin=%d values, expected 3 each): ")
+				TEXT("dims '%s' origin '%s'"),
+				OutRoom.RoomId, DimTokens.Num(), OriginTokens.Num(),
+				*TrimCell(Lines[DimsIndex]), *TrimCell(Lines[OriginIndex]));
 			return false;
 		}
 
@@ -119,7 +190,7 @@ namespace
 			return false;
 		}
 
-		const TArray<FString> Tokens = SplitWhitespace(TrimCell(Lines[DataIndex]));
+		const TArray<FString> Tokens = SplitNumericTokens(TrimCell(Lines[DataIndex]));
 		if (Tokens.Num() < 4)
 		{
 			return false;
@@ -145,7 +216,7 @@ namespace
 			return false;
 		}
 
-		const TArray<FString> Tokens = SplitWhitespace(TrimCell(Lines[DataIndex]));
+		const TArray<FString> Tokens = SplitNumericTokens(TrimCell(Lines[DataIndex]));
 		if (Tokens.Num() < 7)
 		{
 			return false;
@@ -160,7 +231,24 @@ namespace
 		if (TryParseDouble(Tokens[3], Value)) OutVent.Width = Value;
 		if (TryParseDouble(Tokens[4], Value)) OutVent.Offset = Value;
 		if (TryParseDouble(Tokens[5], Value)) OutVent.SillHeight = Value;
-		if (TryParseDouble(Tokens[6], Value)) OutVent.Height = Value;
+
+		// Token[6] is the HEAD height (sill + opening height), not the opening height.
+		// Confirmed against vents.xml (window: sill 0.9, height 1.35, token[6] 2.25) and
+		// against B-Risk's own vent area in zone.csv (HVENT = 1.05 * 1.35 = 1.4175 m^2).
+		// Doors have sill 0, which is why head == height hid this until a window appeared.
+		if (TryParseDouble(Tokens[6], Value))
+		{
+			const double HeadHeight = Value;
+			OutVent.Height = HeadHeight - OutVent.SillHeight;
+			if (OutVent.Height <= 0.0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk VENTGEOM (from room %d to room %d, face %d) has head %.3f m at or below sill %.3f m; ")
+					TEXT("treating the opening as degenerate."),
+					OutVent.FromRoomId, OutVent.ToRoomId, OutVent.Face, HeadHeight, OutVent.SillHeight);
+				OutVent.Height = 0.0;
+			}
+		}
 
 		InOutIndex = DataIndex;
 		return true;
@@ -360,6 +448,203 @@ namespace
 		}
 
 		return DefaultValue;
+	}
+
+	/** Signed area of a closed ring (shoelace). Positive = counter-clockwise. */
+	double SignedRingArea(const TArray<FVector2D>& Ring)
+	{
+		double Twice = 0.0;
+		for (int32 i = 0, n = Ring.Num(); i < n; ++i)
+		{
+			const FVector2D& A = Ring[i];
+			const FVector2D& B = Ring[(i + 1) % n];
+			Twice += (A.X * B.Y) - (B.X * A.Y);
+		}
+		return Twice * 0.5;
+	}
+
+	/**
+	 * Parse the companion Zones-data.json emitted by the OMA Revit add-in and attach each
+	 * space's true plan footprint to the matching room.
+	 *
+	 * Why this file exists: B-Risk collapses every room to an area- and perimeter-equivalent
+	 * rectangle (SR282 eq. 1-2), and because L always takes the +sqrt branch it is just the
+	 * larger root - so the .smv carries no room orientation and, for non-rectangular spaces,
+	 * no real footprint either. This JSON is the only source of both.
+	 *
+	 * Joined on spaces[].roomNumber == FBRiskRoomGeometry::RoomId. Non-fatal throughout: a
+	 * missing or malformed file leaves every room on the legacy Origin/Size rectangle.
+	 */
+	void ParseZonesDataJson(const FString& JsonPath, TArray<FBRiskRoomGeometry>& InOutRooms)
+	{
+		if (!FPaths::FileExists(JsonPath))
+		{
+			return;
+		}
+
+		FString RawJson;
+		if (!FFileHelper::LoadFileToString(RawJson, *JsonPath))
+		{
+			UE_LOG(LogBRiskDataImporter, Warning, TEXT("Unable to read B-Risk zones JSON: %s"), *JsonPath);
+			return;
+		}
+
+		TSharedPtr<FJsonObject> Root;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RawJson);
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+		{
+			UE_LOG(LogBRiskDataImporter, Warning, TEXT("Malformed B-Risk zones JSON: %s"), *JsonPath);
+			return;
+		}
+
+		// The add-in writes coordinates in Revit's internal frame expressed in metres - the
+		// same frame and units as room_absx / room_absy. Anything else needs a transform we
+		// have not derived, so refuse rather than silently mis-place every room.
+		const TSharedPtr<FJsonObject>* SourceObject = nullptr;
+		if (Root->TryGetObjectField(TEXT("source"), SourceObject) && SourceObject && SourceObject->IsValid())
+		{
+			FString CoordinateSystem;
+			if ((*SourceObject)->TryGetStringField(TEXT("coordinateSystem"), CoordinateSystem)
+				&& !CoordinateSystem.Equals(TEXT("revit-internal"), ESearchCase::IgnoreCase))
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk zones JSON declares an unsupported coordinateSystem '%s' (expected 'revit-internal'); ")
+					TEXT("ignoring footprints in %s"),
+					*CoordinateSystem, *JsonPath);
+				return;
+			}
+
+			int32 Iteration = 1;
+			if ((*SourceObject)->TryGetNumberField(TEXT("iteration"), Iteration) && Iteration != 1)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk zones JSON reports iteration %d; Mobius assumes one geometry set per scenario. ")
+					TEXT("Verify the footprints match the loaded results."),
+					Iteration);
+			}
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Spaces = nullptr;
+		if (!Root->TryGetArrayField(TEXT("spaces"), Spaces) || !Spaces)
+		{
+			UE_LOG(LogBRiskDataImporter, Warning, TEXT("B-Risk zones JSON has no 'spaces' array: %s"), *JsonPath);
+			return;
+		}
+
+		int32 MatchedRooms = 0;
+
+		for (const TSharedPtr<FJsonValue>& SpaceValue : *Spaces)
+		{
+			const TSharedPtr<FJsonObject> Space = SpaceValue.IsValid() ? SpaceValue->AsObject() : nullptr;
+			if (!Space.IsValid())
+			{
+				continue;
+			}
+
+			int32 RoomNumber = INDEX_NONE;
+			if (!Space->TryGetNumberField(TEXT("roomNumber"), RoomNumber))
+			{
+				UE_LOG(LogBRiskDataImporter, Warning, TEXT("B-Risk zones JSON space has no 'roomNumber'; skipped."));
+				continue;
+			}
+
+			FBRiskRoomGeometry* Room = InOutRooms.FindByPredicate(
+				[RoomNumber](const FBRiskRoomGeometry& Candidate) { return Candidate.RoomId == RoomNumber; });
+			if (!Room)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk zones JSON describes space %d, which has no matching room in the .smv; skipped."),
+					RoomNumber);
+				continue;
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* Polygons = nullptr;
+			if (!Space->TryGetArrayField(TEXT("polygons"), Polygons) || !Polygons || Polygons->Num() == 0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk zones JSON space %d has no polygons; room stays on the equivalent rectangle."),
+					RoomNumber);
+				continue;
+			}
+
+			// The add-in emits one contiguous outer ring per space. More than one ring would
+			// mean holes or disjoint parts, which nothing downstream handles yet - say so
+			// rather than silently rendering only part of the room.
+			if (Polygons->Num() > 1)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk zones JSON space %d has %d polygons; only the first is used. ")
+					TEXT("Holes and multi-part rooms are not supported."),
+					RoomNumber, Polygons->Num());
+			}
+
+			const TSharedPtr<FJsonObject> FirstPolygon = (*Polygons)[0].IsValid() ? (*Polygons)[0]->AsObject() : nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* Vertices = nullptr;
+			if (!FirstPolygon.IsValid() || !FirstPolygon->TryGetArrayField(TEXT("vertices"), Vertices) || !Vertices)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning, TEXT("B-Risk zones JSON space %d has no vertices."), RoomNumber);
+				continue;
+			}
+
+			TArray<FVector2D> Ring;
+			Ring.Reserve(Vertices->Num());
+			bool bVerticesValid = true;
+			for (const TSharedPtr<FJsonValue>& VertexValue : *Vertices)
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Pair = nullptr;
+				if (!VertexValue.IsValid() || !VertexValue->TryGetArray(Pair) || !Pair || Pair->Num() < 2)
+				{
+					bVerticesValid = false;
+					break;
+				}
+				Ring.Emplace((*Pair)[0]->AsNumber(), (*Pair)[1]->AsNumber());
+			}
+
+			if (!bVerticesValid || Ring.Num() < 3)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk zones JSON space %d has a malformed ring (%d usable vertices); skipped."),
+					RoomNumber, Ring.Num());
+				continue;
+			}
+
+			// Normalise winding so downstream triangulation and point-in-polygon tests get a
+			// single convention regardless of what the exporter produced.
+			if (SignedRingArea(Ring) < 0.0)
+			{
+				Algo::Reverse(Ring);
+			}
+
+			Room->FootprintPolygon = MoveTemp(Ring);
+			Space->TryGetNumberField(TEXT("floorElevation"), Room->FootprintFloorElevationM);
+			Space->TryGetNumberField(TEXT("height"), Room->FootprintHeightM);
+
+			const TSharedPtr<FJsonObject>* Tenability = nullptr;
+			if (Space->TryGetObjectField(TEXT("tenability"), Tenability) && Tenability && Tenability->IsValid())
+			{
+				Room->bHasOdLimitPerM = (*Tenability)->TryGetNumberField(TEXT("odLimitPerM"), Room->OdLimitPerM);
+			}
+
+			++MatchedRooms;
+		}
+
+		// A room the JSON does not describe keeps the equivalent rectangle, which is exactly
+		// the distortion this file exists to remove. That is a data-authoring fault, not a
+		// normal fallback, so it must be visible.
+		for (const FBRiskRoomGeometry& Room : InOutRooms)
+		{
+			if (Room.FootprintPolygon.Num() == 0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk room %d ('%s') has no footprint in %s; it will render as the equivalent rectangle, ")
+					TEXT("which does not match the real floor plan."),
+					Room.RoomId, *Room.Label, *JsonPath);
+			}
+		}
+
+		UE_LOG(LogBRiskDataImporter, Log,
+			TEXT("Applied B-Risk zone footprints from %s (%d of %d rooms matched)."),
+			*JsonPath, MatchedRooms, InOutRooms.Num());
 	}
 
 	void ParseSprinklersXml(const FString& XmlPath, const TArray<FBRiskRoomGeometry>& Rooms, TArray<FBRiskSprinklerGeometry>& OutSprinklers)
@@ -723,6 +1008,16 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 		OutData.ZoneTables.Add(MoveTemp(ZoneTable));
 	}
 
+	// True room footprints from the OMA Revit add-in, when the model was exported with it.
+	// Must run before anything that consumes room geometry: it is the only source of the
+	// real plan shape, since the .smv rectangle is area/perimeter-equivalent only.
+	const FString ZonesDataJsonPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("Zones-data.json")));
+	ParseZonesDataJson(ZonesDataJsonPath, OutData.Rooms);
+	if (FPaths::FileExists(ZonesDataJsonPath))
+	{
+		OutData.ReferencedFiles.AddUnique(ZonesDataJsonPath);
+	}
+
 	const FString SprinklersXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("sprinklers.xml")));
 	ParseSprinklersXml(SprinklersXmlPath, OutData.Rooms, OutData.Sprinklers);
 	if (OutData.Sprinklers.Num() > 0)
@@ -747,10 +1042,17 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 		OutData.ReferencedFiles.AddUnique(InputXmlPath);
 	}
 
+	int32 RoomsWithFootprint = 0;
+	for (const FBRiskRoomGeometry& Room : OutData.Rooms)
+	{
+		RoomsWithFootprint += (Room.FootprintPolygon.Num() > 0) ? 1 : 0;
+	}
+
 	UE_LOG(LogBRiskDataImporter, Log,
-		TEXT("Imported B-Risk scenario: %s  (rooms=%d  fires=%d  sprinklers=%d  vents=%d  zoneTables=%d  tenabilityRooms=%d)"),
+		TEXT("Imported B-Risk scenario: %s  (rooms=%d  footprints=%d  fires=%d  sprinklers=%d  vents=%d  zoneTables=%d  tenabilityRooms=%d)"),
 		*SmvFilePath,
 		OutData.Rooms.Num(),
+		RoomsWithFootprint,
 		OutData.Fires.Num(),
 		OutData.Sprinklers.Num(),
 		OutData.Vents.Num(),

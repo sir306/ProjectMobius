@@ -24,6 +24,7 @@
 
 #include "Core/MobiusWidgetSubsystem.h"
 
+#include "Diagnostics/MobiusClickLog.h"
 #include "UI/ImprovedLoadingNotifyWidget.h"
 #include "UI/LoadingNotifyWidget.h"
 #include "ErrorHandling/ErrorWindowWidget.h"
@@ -35,12 +36,41 @@
 #include "Engine/GameInstance.h"
 #include "Widgets/Simulation/SimulationPlayBar.h"
 
+namespace
+{
+	/**
+	 * The loading sub-text is a fixed-width line inside a 400x152 popup: WBP_LoadingBar's LoadingText
+	 * wraps at 300px in Inter Regular 10 (~54 chars a line) and has room for two lines before it collides
+	 * with the percent readout and the bar. Long simulation / geometry file names blew past that, which is
+	 * what made the text look squished. Middle-elide past the budget — the head and the extension carry
+	 * the information. ASCII "..." on purpose: a narrow-string ellipsis renders as tofu (MEMORY
+	 * reference-ue-nonascii-literal-mojibake).
+	 */
+	constexpr int32 GMaxLoadingTextChars = 100;
+
+	FString ElideLoadingTextMiddle(const FString& InText)
+	{
+		if (InText.Len() <= GMaxLoadingTextChars)
+		{
+			return InText;
+		}
+
+		const int32 Keep = GMaxLoadingTextChars - 3; // room for the ellipsis
+		const int32 HeadLen = (Keep + 1) / 2;
+		return InText.Left(HeadLen) + TEXT("...") + InText.Right(Keep - HeadLen);
+	}
+}
+
 UMobiusWidgetSubsystem::UMobiusWidgetSubsystem(): ErrorWidget(nullptr), LoadingNotifyWidget(nullptr)
 {
 }
 
 void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	// Click-path diagnostics: a NO-OP unless `Mobius.LogClicks` is already non-zero — nothing is hooked
+	// while the flag is 0 (the default), and the cvar's OnChanged sink hooks it live if it is raised later.
+	MobiusClickLog::RegisterSlateListener();
+
 	// add the loading subsystem dependency to the collection and then bind our methods to its delegates
 	if (ULoadingSubsystem* LoadingSubsystem = Collection.InitializeDependency<ULoadingSubsystem>())
 	{
@@ -101,6 +131,8 @@ void UMobiusWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UMobiusWidgetSubsystem::Deinitialize()
 {
+	MobiusClickLog::UnregisterSlateListener();
+
         MoveableWindowActivityRefCount = 0;
 	if (MoveableWindowActivityHandle.IsValid())
 	{
@@ -466,13 +498,13 @@ void UMobiusWidgetSubsystem::SetLoadingText(bool bIsLoadingBar, FString NewLoadi
         UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
         return;
     }
-	FText LoadingText = FText::FromString(NewLoadingText);
+	FText LoadingText = FText::FromString(ElideLoadingTextMiddle(NewLoadingText));
 	LoadingNotifyWidget->SetLoadingText(bIsLoadingBar, LoadingText);
 }
 
 void UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText)
 {
-	FText LoadingText = FText::FromString(NewLoadingText);
+	FText LoadingText = FText::FromString(ElideLoadingTextMiddle(NewLoadingText));
 	LoadingNotifyWidget->SetLoadingText(false, LoadingText);
 	LoadingNotifyWidget->SetIsLoadingGeometry(bIsLoading);
 }

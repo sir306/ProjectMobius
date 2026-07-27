@@ -25,6 +25,7 @@
 #include "Subsystems/HeatmapSubsystem.h"
 
 #include "Actors/HeatmapPixelTextureVisualizer.h"
+#include "Async/Async.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
@@ -263,12 +264,97 @@ void UHeatmapSubsystem::UpdateHeatmapsWithLocations(const TArray<FVector>& Locat
 	if (Heatmaps.Num() <= 0)
 		return;
 
+	LastAgentLocations = LocationArray;
+
 	TArray<TArray<FVector>> ValidHeatmapLocations;
 	TArray<TArray<FVector>> BetweenValidHeatmapLocations;
 
 	ComputeValidHeatmapLocations(LocationArray, ValidHeatmapLocations, BetweenValidHeatmapLocations);
 	BroadcastAgentCounts(ValidHeatmapLocations, BetweenValidHeatmapLocations);
 	RunAsyncHeatmapUpdate(LocationArray, ValidHeatmapLocations);
+}
+
+void UHeatmapSubsystem::RefreshHeatmapFromLatestLocations(AHeatmapPixelTextureVisualizer* Heatmap)
+{
+	if (!IsValid(Heatmap) || Heatmap->bTrajectoryHeatmap || LastAgentLocations.IsEmpty())
+	{
+		return;
+	}
+
+	TArray<FVector> ValidLocations;
+	ValidLocations.Reserve(LastAgentLocations.Num());
+	for (const FVector& Location : LastAgentLocations)
+	{
+		if (Heatmap->CheckHeatmapAndLocationValid(Location))
+		{
+			ValidLocations.Add(Location);
+		}
+	}
+
+	if (!ValidLocations.IsEmpty())
+	{
+		Heatmap->UpdateHeatmapWithMultipleAgents(ValidLocations);
+	}
+}
+
+void UHeatmapSubsystem::UpdateHeatmapsWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments)
+{
+	if (Segments.IsEmpty())
+	{
+		return;
+	}
+
+	// Keep this synchronous: the actor's CPU pixel buffer is shared mutable state and trajectory
+	// sampling must not overlap with a later playback interval.
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (!IsValid(Heatmap) || Heatmap->IsHidden() || !Heatmap->bTrajectoryHeatmap)
+		{
+			continue;
+		}
+
+		TArray<FHeatmapTrajectorySegment> FloorSegments;
+		for (const FHeatmapTrajectorySegment& Segment : Segments)
+		{
+			if (Heatmap->CheckHeatmapAndLocationValid(Segment.End))
+			{
+				FloorSegments.Add(Segment);
+			}
+		}
+
+		Heatmap->UpdateHeatmapWithTrajectorySegments(FloorSegments);
+	}
+}
+
+bool UHeatmapSubsystem::AnyTrajectoryHeatmapsActive() const
+{
+	return Heatmaps.ContainsByPredicate([](const AHeatmapPixelTextureVisualizer* Heatmap)
+	{
+		return IsValid(Heatmap) && !Heatmap->IsHidden() && Heatmap->bTrajectoryHeatmap;
+	});
+}
+
+void UHeatmapSubsystem::ClearTrajectoryHeatmaps()
+{
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap) && Heatmap->bTrajectoryHeatmap)
+		{
+			Heatmap->ClearTexture();
+			Heatmap->UpdateHeatmapTextureRender();
+		}
+	}
+}
+
+void UHeatmapSubsystem::SetTrajectoryHeatmapsEnabled(bool bEnabled)
+{
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap))
+		{
+			Heatmap->SetTrajectoryHeatmapEnabled(bEnabled);
+		}
+	}
 }
 
 void UHeatmapSubsystem::UpdateHeatmapTextureRender()
@@ -553,13 +639,12 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(
 	HeatmapsSnapshot.Reserve(Heatmaps.Num());
 	for (AHeatmapPixelTextureVisualizer* HM : Heatmaps) { HeatmapsSnapshot.Add(HM); }
 
-	Async(EAsyncExecution::Thread, [HeatmapsSnapshot, ValidLocations, FallbackLocations]()
+	AsyncTask(ENamedThreads::GameThread, [HeatmapsSnapshot, ValidLocations, FallbackLocations]()
 	{
-		//TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
-		ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
+		for (int32 i = 0; i < HeatmapsSnapshot.Num(); ++i)
 		{
 			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-			if (!HM || !IsValid(HM)) return;
+			if (!IsValid(HM)) continue;
 			if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
 			{
 				HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
@@ -568,18 +653,7 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(
 			{
 				HM->UpdateHeatmapAgentCount(FallbackLocations);
 			}
-		});
-	},
-	[HeatmapsSnapshot]()
-	{
-		ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
-		{
-			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-			if (HM && IsValid(HM))
-			{
-				HM->UpdateHeatmapTextureRender();
-			}
-		});
+		}
 	});
 }
 
@@ -594,32 +668,20 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArr
 	HeatmapsSnapshot.Reserve(Heatmaps.Num());
 	for (AHeatmapPixelTextureVisualizer* HM : Heatmaps) { HeatmapsSnapshot.Add(HM); }
 
-	Async(EAsyncExecution::Thread, [HeatmapsSnapshot, LocationArray, ValidLocations]()
-	      {
-	              //TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
-	              ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
-	              {
-	                      AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-	                      if (!HM || !IsValid(HM)) return;
-	                      if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
-	                      {
-	                              HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
-	                      }
-	                      else
-	                      {
-	                              HM->UpdateHeatmapAgentCount(LocationArray);
-	                      }
-	              });
-	      },
-	      [HeatmapsSnapshot]()
-	      {
-	              ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
-	              {
-	                      AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-	                      if (HM && IsValid(HM) && !HM->IsHidden())
-	                      {
-	                              HM->UpdateHeatmapTextureRender();
-	                      }
-	              });
-	      });
+	AsyncTask(ENamedThreads::GameThread, [HeatmapsSnapshot, LocationArray, ValidLocations]()
+	{
+		for (int32 i = 0; i < HeatmapsSnapshot.Num(); ++i)
+		{
+			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
+			if (!IsValid(HM)) continue;
+			if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
+			{
+				HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
+			}
+			else
+			{
+				HM->UpdateHeatmapAgentCount(LocationArray);
+			}
+		}
+	});
 }

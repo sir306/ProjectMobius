@@ -53,6 +53,9 @@ void UButtonWithText::ApplyMobiusButtonStyle()
 	if (bIsRibbonButton)
 	{
 		RefreshRibbonAppearance();
+		// Ribbon tabs skip the SWS snapshot but NOT the hit-rect fix: GetThemedTabStyle happens to author
+		// equal Normal/Pressed padding today, and this keeps that from silently regressing into dropped clicks.
+		StabilisePressedPadding();
 		return;
 	}
 	Super::ApplyMobiusButtonStyle();
@@ -109,21 +112,11 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 	// brushes; the ribbon BP is now rewired to GetThemedTabStyle (produces a themed style directly), and
 	// no other click re-bakes a theme brush (gating checks 2026-07-21), so it is no longer load-bearing.
 
-	// Ribbon tabs: subscribe to theme changes (so a light/dark switch re-themes the tab) and apply the
-	// themed look now that MyButtonText exists. Runtime only — no game instance/subsystem at design time.
+	// Ribbon tabs: apply the themed look now that MyButtonText exists. The OnThemeChanged subscription is
+	// UBaseButton's (bound in OnWidgetRebuilt, which runs immediately after this) — every Mobius button now
+	// follows the theme by event, so there is no ribbon-specific bind here any more.
 	if (bIsRibbonButton)
 	{
-		if (const UWorld* World = GetWorld())
-		{
-			if (UGameInstance* GameInstance = World->GetGameInstance())
-			{
-				if (UUIThemeSubsystem* ThemeSubsystem = GameInstance->GetSubsystem<UUIThemeSubsystem>())
-				{
-					CachedThemeSubsystem = ThemeSubsystem;
-					ThemeSubsystem->OnThemeChanged.AddUniqueDynamic(this, &UButtonWithText::HandleThemeChanged);
-				}
-			}
-		}
 		RefreshRibbonAppearance();
 	}
 
@@ -190,18 +183,18 @@ void UButtonWithText::RefreshRibbonAppearance()
 	}
 }
 
-void UButtonWithText::HandleThemeChanged()
+bool UButtonWithText::ShouldFollowThemePalette() const
 {
-	RefreshRibbonAppearance();
+	// A ribbon tab's Normal/Hovered/Pressed brushes are the tab MATERIAL and its foregrounds are the
+	// tab-text roles, both supplied by ApplyRibbonTabStyle — a flat palette re-stamp on top would fight it
+	// (exactly the loop W2 removed).
+	return !bIsRibbonButton && Super::ShouldFollowThemePalette();
 }
 
-void UButtonWithText::BeginDestroy()
+void UButtonWithText::HandleThemeChanged()
 {
-	if (UUIThemeSubsystem* ThemeSubsystem = CachedThemeSubsystem.Get())
-	{
-		ThemeSubsystem->OnThemeChanged.RemoveDynamic(this, &UButtonWithText::HandleThemeChanged);
-	}
-	Super::BeginDestroy();
+	Super::HandleThemeChanged();
+	RefreshRibbonAppearance();
 }
 
 void UButtonWithText::ButtonClickedUpdateStyle()

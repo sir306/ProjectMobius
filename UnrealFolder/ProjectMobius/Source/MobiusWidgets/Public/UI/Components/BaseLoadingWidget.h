@@ -31,10 +31,19 @@ public:
 
 	void UpdateLoadingText(FText& NewLoadingText);
 
+	/**
+	 * Repaint a Border whose brush is an M_WidgetBackground instance (MI_LoadingInnerBackground /
+	 * MI_LoadingOuterBackground) to Fill + Outline. Those MIs bake dark colours into their "Background
+	 * Color Tint" / "Border Color Tint" params, so the theme colour has to be written through a MID —
+	 * SetBrushColor on its own only multiplies the baked value and can never reach a light surface.
+	 * Static so the notify popup can theme its outer frame with the same rule.
+	 */
+	static void ThemeMaterialCard(class UBorder* Border, const FLinearColor& Fill, const FLinearColor& Outline);
+
 #pragma endregion METHODS
 
 protected:
-	/** Born-theme: recolour the loading sub-text + percent readout to LabelText (readable on any theme). */
+	/** Born-theme: sub-text -> SublabelText, percent -> LabelText, bar -> Accent/SliderTrack, card frame MID. */
 	virtual void ApplyMobiusTheme_Implementation() override;
 
 public:

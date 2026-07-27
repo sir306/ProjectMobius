@@ -33,6 +33,13 @@ class AHeatmapPixelTextureVisualizer;
 class UHeatmapSubsystem;
 class AHeatmapVisualizer;
 
+/** A travelled section of an agent path, expressed in world-space centimetres. */
+struct FHeatmapTrajectorySegment
+{
+	FVector Start = FVector::ZeroVector;
+	FVector End = FVector::ZeroVector;
+};
+
 // Delegates used to broadcast events
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHeatmapAdded, AHeatmapPixelTextureVisualizer*, HeatmapActor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHeatmapRemoved, AHeatmapPixelTextureVisualizer*, HeatmapActor);
@@ -129,6 +136,22 @@ public:
 
 	void UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray);
 
+	/** Immediately redraws one heatmap from the most recently processed agent locations. */
+	void RefreshHeatmapFromLatestLocations(AHeatmapPixelTextureVisualizer* Heatmap);
+
+	/** Draw path segments accumulated only while the current simulation session is played. */
+	void UpdateHeatmapsWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments);
+
+	/** True when at least one visible heatmap is in trajectory-path mode. */
+	bool AnyTrajectoryHeatmapsActive() const;
+
+	/** Clears the trajectory render targets after a rewind, seek, or new playback session. */
+	void ClearTrajectoryHeatmaps();
+
+	/** Enables or disables trajectory-path mode for every registered heatmap actor. */
+	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
+	void SetTrajectoryHeatmapsEnabled(bool bEnabled);
+
 
 	void UpdateHeatmapTextureRender();
 
@@ -222,6 +245,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Heatmap|Subsystem")
 	//TArray<class AHeatmapVisualizer*> Heatmaps;
 	TArray<AHeatmapPixelTextureVisualizer*> Heatmaps;
+
+	/** Most recent simulation locations, retained only to refresh a live mode after a visual mode change. */
+	TArray<FVector> LastAgentLocations;
 
 
 private:

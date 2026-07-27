@@ -6,6 +6,8 @@
 #include "KismetProceduralMeshLibrary.h"
 #include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "Components/CapsuleComponent.h"
+#include "Diagnostics/MobiusClickLog.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -110,7 +112,18 @@ bool UMobiusControllerSubsystem::LineTraceFromMousePosition(FHitResult& OutHitRe
 			
 			bool bHit = CurrentPlayerController->GetWorld()->LineTraceSingleByChannel(
 				OutHitResult, MouseWorldPosition, MouseWorldPosition + (WorldDirection * 10000.0f), ECC_GameTraceChannel1, CollisionParams);
-			
+
+			// Click-path diagnostics: a TRACE line sharing a click id with a BUTTON line means the click
+			// was handled by BOTH the UI and the world (double-handling), not consumed by one of them.
+			if (MobiusClickLog::IsEnabled())
+			{
+				MobiusClickLog::Log(TEXT("TRACE"), FString::Printf(
+					TEXT("world line trace  hit=%s  actor=%s  component=%s"),
+					bHit ? TEXT("YES") : TEXT("no"),
+					bHit && OutHitResult.GetActor() ? *OutHitResult.GetActor()->GetName() : TEXT("-"),
+					bHit && OutHitResult.GetComponent() ? *OutHitResult.GetComponent()->GetName() : TEXT("-")));
+			}
+
 			if (bHit && OutHitResult.GetComponent()->IsA<UCapsuleComponent>())
 			{
 				OutCapsuleComponent = Cast<UCapsuleComponent>(OutHitResult.GetComponent());
@@ -143,6 +156,9 @@ void UMobiusControllerSubsystem::SelectPedestrianFromMousePosition()
 {
 	FHitResult HitResult;
 	UCapsuleComponent* CapsuleComponent = nullptr;
+
+	// Entry log: proves the Blueprint input action reached C++ for this click id, even when the trace misses.
+	MobiusClickLog::Log(TEXT("TRACE"), TEXT("SelectPedestrianFromMousePosition (BP input action reached C++)"));
 
 	LineTraceFromMousePosition(HitResult, CapsuleComponent);
 

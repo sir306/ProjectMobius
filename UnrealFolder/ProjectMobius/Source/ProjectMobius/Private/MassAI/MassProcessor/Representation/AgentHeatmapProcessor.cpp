@@ -184,6 +184,14 @@ void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 	
 	if (CurrentSimTime < LastUpdatedCurrentTime)
 	{
+		if (HeatmapSubsystem && HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
+		{
+			// Discard the old rendered history, but keep the latest sampled positions. ProcessChunk
+			// will join those positions to the scrubbed state this frame, making the rewind/skip
+			// transition visible instead of leaving a temporal hole.
+			TrajectorySegments.Reset();
+			HeatmapSubsystem->ClearTrajectoryHeatmaps();
+		}
 		LastUpdatedCurrentTime = CurrentSimTime;
 		bUpdateHeatmap = true;
 		return;
@@ -247,6 +255,16 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 			continue;
 		}
 		HeatmapLocations.Add(EntityMovement.CurrentLocation);
+
+		if (HeatmapSubsystem && HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
+		{
+			if (const FVector* PreviousLocation = LastTrajectoryLocations.Find(EntityMovement.EntityID);
+				PreviousLocation && !PreviousLocation->Equals(EntityMovement.CurrentLocation, KINDA_SMALL_NUMBER))
+			{
+				TrajectorySegments.Add({ *PreviousLocation, EntityMovement.CurrentLocation });
+			}
+			LastTrajectoryLocations.Add(EntityMovement.EntityID, EntityMovement.CurrentLocation);
+		}
 		//HeatmapLocations[(ChunkSize + i)] = EntityMovement.CurrentLocation;
 	}
 }
@@ -261,9 +279,17 @@ void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 		
 		if (bUpdateHeatmap && !bLastPauseLoop)
 		{
-			HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
-
-			//HeatmapSubsystem->UpdateHeatmapsWithLocations_Mpmc(LocationQueue);
+			if (HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
+			{
+				HeatmapSubsystem->UpdateHeatmapsWithTrajectorySegments(TrajectorySegments);
+				TrajectorySegments.Reset();
+			}
+			else
+			{
+				LastTrajectoryLocations.Reset();
+				TrajectorySegments.Reset();
+				HeatmapSubsystem->UpdateHeatmapsWithLocations(HeatmapLocations);
+			}
 		}
 
 		if (!HeatmapSubsystem->AnyHeatmapsActive())

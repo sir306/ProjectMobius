@@ -24,7 +24,18 @@
 
 #include "UI/Components/BaseButton.h"
 
-#include "ThirdParty/UE_AssimpLibrary/assimp/code/AssetLib/OpenGEX/OpenGEXStructs.h"
+#include "Blueprint/UserWidget.h"
+#include "Diagnostics/MobiusClickLog.h"
+#include "Engine/GameInstance.h"
+#include "Styling/SlateWidgetStyleAsset.h"
+#include "UI/Theme/MobiusThemePalette.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+
+namespace
+{
+	/** Outline wider than the shared 1px chrome line = a meaningful accent ring, not themeable chrome. */
+	constexpr float GChromeOutlineWidthMax = 1.5f;
+}
 
 void UBaseButton::SynchronizeProperties()
 {
@@ -41,4 +52,173 @@ void UBaseButton::ApplyMobiusButtonStyle()
 		// Set the style of the button
 		SetStyle(*SlateButtonStyle->GetStyle<FButtonStyle>());
 	}
+
+	// Order matters: fix the hit-rect FIRST (unconditional — see StabilisePressedPadding), then recolour.
+	// RefreshThemedButtonStyle reads GetStyle(), so it carries the corrected padding forward.
+	StabilisePressedPadding();
+
+	// The SWS snapshot above (or the shared "Mobius.Button" fallback) supplies the GEOMETRY; the colours
+	// come from the palette so a theme switch no longer needs the value-matching walk to find this button.
+	RefreshThemedButtonStyle();
+}
+
+void UBaseButton::StabilisePressedPadding()
+{
+	const FButtonStyle& Current = GetStyle();
+	if (Current.NormalPadding == Current.PressedPadding)
+	{
+		return; // already stable: pressing does not resize the hit rect
+	}
+
+	FButtonStyle Style = Current;
+	const FMargin& Normal = Style.NormalPadding;
+
+	// Same totals as Normal (so GetCombinedPadding returns an identically sized box in both states) with the
+	// content nudged 1px down, which reads as "pressed in" without moving a single edge of the hit rect.
+	const float Shift = FMath::Min(1.0f, Normal.Bottom);
+	Style.PressedPadding = FMargin(Normal.Left, Normal.Top + Shift, Normal.Right, Normal.Bottom - Shift);
+
+	SetStyle(Style);
+}
+
+bool UBaseButton::ShouldFollowThemePalette() const
+{
+	return bFollowThemePalette;
+}
+
+UUIThemeSubsystem* UBaseButton::ResolveThemeSubsystem()
+{
+	if (UUIThemeSubsystem* Cached = CachedThemeSubsystem.Get())
+	{
+		return Cached;
+	}
+	if (const UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>();
+			CachedThemeSubsystem = Theme;
+			return Theme;
+		}
+	}
+	return nullptr;
+}
+
+void UBaseButton::RefreshThemedButtonStyle()
+{
+	if (IsDesignTime() || !ShouldFollowThemePalette())
+	{
+		return;
+	}
+	const UUIThemeSubsystem* Theme = ResolveThemeSubsystem();
+	if (!Theme)
+	{
+		return;
+	}
+
+	const FLinearColor Fill   = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonBg);
+	const FLinearColor Hover  = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonHoverBg);
+	const FLinearColor Press  = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonPressedBg);
+	const FLinearColor Border = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonBorder);
+	const FSlateColor  Label  = FSlateColor(Theme->GetPaletteColor(EMobiusPaletteRole::ButtonText));
+
+	FButtonStyle Style = GetStyle();
+
+	// A wide outline carries state MEANING (the scalability "current tier" chip is a 2px accent ring), so
+	// leave the whole style alone rather than repainting the signal away.
+	if (Style.Normal.OutlineSettings.Width > GChromeOutlineWidthMax)
+	{
+		return;
+	}
+
+	auto Recolour = [&Border](FSlateBrush& Brush, const FLinearColor& Tint)
+	{
+		// Image/material brushes: the asset owns the art (playbar play/pause MIDs, VR button MIs), and the
+		// C++ SetPlayButtonStyle swap path re-supplies them. Tinting them would double-multiply the material.
+		if (Brush.GetResourceObject() != nullptr)
+		{
+			return;
+		}
+		Brush.TintColor = FSlateColor(Tint);
+		// Outline WIDTH stays asset-owned (the owner's split: colours = C++, geometry = asset), so only
+		// brushes that already draw a line get a themed colour.
+		if (Brush.OutlineSettings.Width > 0.0f)
+		{
+			Brush.OutlineSettings.Color = FSlateColor(Border);
+		}
+	};
+
+	Recolour(Style.Normal,   Fill);
+	Recolour(Style.Hovered,  Hover);
+	Recolour(Style.Pressed,  Press);
+	Recolour(Style.Disabled, Fill);
+
+	Style.NormalForeground   = Label;
+	Style.HoveredForeground  = Label;
+	Style.PressedForeground  = Label;
+	Style.DisabledForeground = Label;
+
+	SetStyle(Style);
+}
+
+void UBaseButton::HandleThemeChanged()
+{
+	RefreshThemedButtonStyle();
+}
+
+void UBaseButton::BeginDestroy()
+{
+	if (UUIThemeSubsystem* Theme = CachedThemeSubsystem.Get())
+	{
+		Theme->OnThemeChanged.RemoveDynamic(this, &UBaseButton::HandleThemeChanged);
+	}
+	Super::BeginDestroy();
+}
+
+void UBaseButton::OnWidgetRebuilt()
+{
+	Super::OnWidgetRebuilt();
+
+	if (IsDesignTime())
+	{
+		return;
+	}
+
+	// AddUnique: OnWidgetRebuilt runs again on every rebuild, and these UPROPERTY delegates survive it.
+	OnPressed.AddUniqueDynamic(this, &UBaseButton::HandleClickLogPressed);
+	OnReleased.AddUniqueDynamic(this, &UBaseButton::HandleClickLogReleased);
+	OnClicked.AddUniqueDynamic(this, &UBaseButton::HandleClickLogClicked);
+
+	// Event-driven theming (A4): the button re-pulls its own state colours on a theme switch instead of
+	// waiting for the whole-UI value-matching walk to recognise it by colour. AddUnique because a rebuild
+	// re-runs this and the subsystem outlives the widget.
+	if (UUIThemeSubsystem* Theme = ResolveThemeSubsystem())
+	{
+		Theme->OnThemeChanged.AddUniqueDynamic(this, &UBaseButton::HandleThemeChanged);
+	}
+	RefreshThemedButtonStyle();
+
+	MobiusClickLog::Log(TEXT("BUTTON"), FString::Printf(TEXT("REBUILD   %s"), *GetClickLogLabel()));
+}
+
+void UBaseButton::HandleClickLogPressed()
+{
+	MobiusClickLog::Log(TEXT("BUTTON"), FString::Printf(TEXT("PRESSED   %s"), *GetClickLogLabel()));
+}
+
+void UBaseButton::HandleClickLogReleased()
+{
+	MobiusClickLog::Log(TEXT("BUTTON"), FString::Printf(TEXT("RELEASED  %s"), *GetClickLogLabel()));
+}
+
+void UBaseButton::HandleClickLogClicked()
+{
+	MobiusClickLog::Log(TEXT("BUTTON"), FString::Printf(TEXT("CLICKED   %s"), *GetClickLogLabel()));
+}
+
+FString UBaseButton::GetClickLogLabel() const
+{
+	const UUserWidget* OwningWidget = GetTypedOuter<UUserWidget>();
+	return FString::Printf(TEXT("%s [%s] in %s"), *GetName(), *GetClass()->GetName(),
+		OwningWidget ? *OwningWidget->GetClass()->GetName() : TEXT("<no owning widget>"));
 }

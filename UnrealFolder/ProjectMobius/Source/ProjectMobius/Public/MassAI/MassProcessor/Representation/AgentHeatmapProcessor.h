@@ -27,6 +27,7 @@
 #include "CoreMinimal.h"
 #include "MassProcessor.h"
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
+#include "Subsystems/HeatmapSubsystem.h"
 #include "AgentHeatmapProcessor.generated.h"
 
 enum class EPedestrianMovementBracket : uint8;
@@ -111,6 +112,13 @@ private:
 	/** Stores the locations of the agents so it can be sent to the heatmap subsystem */
 	UPROPERTY()
 	TArray<FVector> HeatmapLocations;
+
+	/** Previous accepted position for each active agent while trajectory mode is enabled. */
+	TMap<int32, FVector> LastTrajectoryLocations;
+
+	/** Path sections emitted during the current heatmap sample interval. */
+	TArray<FHeatmapTrajectorySegment> TrajectorySegments;
+
 
 	/** Thread-safe queue container for heatmap locations */
 	UE::TConsumeAllMpmcQueue<FVector> LocationQueue; //TODO: Need to handle garbage collection of this queue

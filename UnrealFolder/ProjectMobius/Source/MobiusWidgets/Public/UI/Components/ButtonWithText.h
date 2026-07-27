@@ -82,7 +82,7 @@ public:
 
 	/** Re-pull + apply this ribbon button's themed tab style + label colour from the UIThemeSubsystem for
 	 *  the current bIsActiveTab. No-op unless bIsRibbonButton and the subsystem is available. */
-	UFUNCTION(BlueprintCallable, Category = "MobiusWidget|Ribbon")
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Ribbon")
 	void RefreshRibbonAppearance();
 
 	UFUNCTION(BlueprintSetter)
@@ -99,47 +99,50 @@ public:
 
 	/** Marks this button as a ribbon tab: self-themes from the UIThemeSubsystem (GetThemedTabStyle + tab
 	 *  text palette) instead of the SWS snapshot, and re-themes on OnThemeChanged. Set in the designer. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|Ribbon")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Ribbon")
 	bool bIsRibbonButton = false;
 
 	/** Active/selected state of a ribbon tab. Setting it re-applies the themed tab style + label colour
-	 *  (BlueprintSetter → SetIsActiveTab), so the ribbon BP just sets this instead of calling SetStyle. */
-	UPROPERTY(EditAnywhere, BlueprintGetter = GetIsActiveTab, BlueprintSetter = SetIsActiveTab, Category = "MobiusWidget|Ribbon")
+	 *  (BlueprintSetter -> SetIsActiveTab), so the ribbon BP just sets this instead of calling SetStyle. */
+	UPROPERTY(EditAnywhere, BlueprintGetter = GetIsActiveTab, BlueprintSetter = SetIsActiveTab, Category = "Mobius|Ribbon")
 	bool bIsActiveTab = false;
 
 	/** Ribbon tabs only: put the active-accent on the RIGHT edge (vertical side tool-rail, WBP_ToolPanel)
 	 *  instead of the bottom underline (top ribbon). Selects the MI_Tab*Right material variants via
 	 *  UIThemeSubsystem::GetThemedTabStyle. Set in the designer alongside bIsRibbonButton. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|Ribbon")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Ribbon")
 	bool bRightEdgeAccent = false;
 
 	/** Text to be set on the button */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Content")
 	FText ButtonTextValue;
 
-	/** Slate style for the text */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
+	/** Slate style for the LABEL. Falls back to the shared "Mobius.Text.Label" when unset. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
 	TObjectPtr<USlateWidgetStyleAsset> MobiusButtonTextStyle;
 
-	/** Slate style for the button - the default startup phase */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
+	/** Slate style used as the SButton's construction-time style (RebuildWidget), distinct from
+	 *  UBaseButton::SlateButtonStyle which is re-applied on every SynchronizeProperties.
+	 *  NOTE (audited 2026-07-27): not set in ANY WidgetBlueprint - the only writer is
+	 *  UScalabilitySettingWidget in C++. Prefer SlateButtonStyle in the designer. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Mobius|Style")
 	TObjectPtr<USlateWidgetStyleAsset> ButtonStyleDefault;
 
-	/** Toggle property to say if this button should switch the normal with hovered when clicked */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "MobiusWidget|ButtonProperties")
+	/** Toggle property to say if this button should switch the normal with hovered when clicked.
+	 *  NOTE: only acts through ButtonClickedUpdateStyle, whose OnClicked binding is currently commented
+	 *  out (ButtonWithText.cpp), so this is inert unless a Blueprint calls that function directly. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Mobius|Behaviour")
 	bool bShouldSwitchNormalWithHovered = true;
 
 	/** The slate text block used inside the button */
 	TSharedPtr<STextBlock> MyButtonText;
 
 protected:
-	virtual void BeginDestroy() override;
+	/** Ribbon tabs get their whole look (tab material + per-state foreground + label colour) from
+	 *  ApplyRibbonTabStyle, so the base class's flat palette re-stamp must not also run on them. */
+	virtual bool ShouldFollowThemePalette() const override;
 
-	/** Bound to UIThemeSubsystem::OnThemeChanged for ribbon buttons; re-themes on a light/dark switch. */
-	UFUNCTION()
-	void HandleThemeChanged();
-
-private:
-	/** Cached theme subsystem (ribbon buttons) so we can unbind OnThemeChanged. Weak: never keeps it alive. */
-	TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
+	/** Extends the base handler: re-themes the ribbon tab on a light/dark switch. The subsystem bind and
+	 *  the unbind live in UBaseButton (OnWidgetRebuilt / BeginDestroy) - one bind for every Mobius button. */
+	virtual void HandleThemeChanged() override;
 };

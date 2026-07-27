@@ -48,14 +48,45 @@ struct MOBIUSDATAIMPORTER_API FBRiskRoomGeometry
 	/** 1-based room identifier as declared in the ROOM keyword block. */
 	int32 RoomId = INDEX_NONE;
 
-	/** Full extents of the room along each axis (X=width, Y=depth, Z=height) in metres. */
+	/**
+	 * Full extents of the room along each axis in metres: X = room_length,
+	 * Y = room_width, Z = height (SR282 p.17, Figure 10 - "X, length" / "Y, width").
+	 *
+	 * IMPORTANT: these carry NO orientation information. B-Risk derives L and W from
+	 * floor area and perimeter (SR282 eq. 1-2), and L always takes the +sqrt branch,
+	 * so L is simply the larger root. A room longer in Y therefore arrives transposed.
+	 * Only FootprintPolygon describes the real footprint - prefer it when present.
+	 */
 	FVector Size = FVector::ZeroVector;
 
-	/** Lower-corner world origin of the room in metres. */
+	/** Lower-corner world origin of the room in metres (room_absx / room_absy / elevation). */
 	FVector Origin = FVector::ZeroVector;
 
 	/** Human-readable room name from the LABEL block immediately following this ROOM block. */
 	FString Label;
+
+	/**
+	 * True plan footprint of the room, from the companion Zones-data.json when present.
+	 * Outer ring only, in the same XY frame and units (metres) as Origin, normalised to
+	 * counter-clockwise winding. Empty when the scenario has no Zones-data.json, in which
+	 * case consumers must fall back to the Origin/Size rectangle.
+	 */
+	TArray<FVector2D> FootprintPolygon;
+
+	/** Zones-data.json floorElevation (metres). Only meaningful when FootprintPolygon is non-empty. */
+	double FootprintFloorElevationM = 0.0;
+
+	/** Zones-data.json height (metres). Only meaningful when FootprintPolygon is non-empty. */
+	double FootprintHeightM = 0.0;
+
+	/**
+	 * Zones-data.json per-space tenability.odLimitPerM. Captured for round-trip only:
+	 * Mobius drives tenability from the scenario-wide input1.xml endpoints, not from this.
+	 */
+	double OdLimitPerM = 0.0;
+
+	/** True when OdLimitPerM was present in Zones-data.json. */
+	bool bHasOdLimitPerM = false;
 };
 
 /**
@@ -105,7 +136,11 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	/** Connected room id. B-Risk uses external/outside room ids for exterior openings. */
 	int32 ToRoomId = INDEX_NONE;
 
-	/** B-Risk wall face id from VENTGEOM. */
+	/**
+	 * B-Risk wall face id from VENTGEOM, 1-based: 1 = front (-Y), 2 = right (+X),
+	 * 3 = rear (+Y), 4 = left (-X). SR282 p.17 names these "front, right, rear or left".
+	 * Note vents.xml stores the same face 0-based, so .smv face == vents.xml face + 1.
+	 */
 	int32 Face = INDEX_NONE;
 
 	/** Opening width along the wall, in metres. */
@@ -117,7 +152,14 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	/** Height of the bottom of the opening above the room floor, in metres. */
 	double SillHeight = 0.0;
 
-	/** Opening height, in metres. */
+	/**
+	 * Opening height (head minus sill), in metres.
+	 *
+	 * NOTE: the .smv VENTGEOM record's last token is the HEAD height (sill + opening
+	 * height), not the opening height - see zone.csv HVENT_n, which reports
+	 * Width * (head - sill). The parser subtracts the sill so this field means what
+	 * its name says; consumers may safely compute head as SillHeight + Height.
+	 */
 	double Height = 0.0;
 };
 

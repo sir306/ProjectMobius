@@ -23,6 +23,7 @@
  */
 
 #include "DynamicPixelRenderingTexture.h"
+#include "Async/Async.h"
 #include "Engine/Texture2D.h"
 #include "IMobiusErrorReporter.h"
 // IWYU pragma: begin_keep
@@ -243,6 +244,60 @@ void UDynamicPixelRenderingTexture::DrawLine(int32 Start_Coordinate_X, int32 End
 		e2 = 2*err;
 		if (e2 >= dy) { err += dy; Start_Coordinate_X += sx; } /* e_xy+e_x > 0 */
 		if (e2 <= dx) { err += dx; Start_Coordinate_Y += sy; } /* e_xy+e_y < 0 */
+	}
+}
+
+void UDynamicPixelRenderingTexture::DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X,
+	int32 Start_Coordinate_Y, int32 End_Coordinate_Y, FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius)
+{
+	const int32 DX = FMath::Abs(End_Coordinate_X - Start_Coordinate_X);
+	const int32 StepX = Start_Coordinate_X < End_Coordinate_X ? 1 : -1;
+	const int32 DY = -FMath::Abs(End_Coordinate_Y - Start_Coordinate_Y);
+	const int32 StepY = Start_Coordinate_Y < End_Coordinate_Y ? 1 : -1;
+	int32 Error = DX + DY;
+
+	for (;;)
+	{
+		const int32 ClampedBrushRadius = FMath::Max(0, BrushRadius);
+		const int32 MinimumX = FMath::Max(0, Start_Coordinate_X - ClampedBrushRadius);
+		const int32 MaximumX = FMath::Min(TextureDimensionX - 1, Start_Coordinate_X + ClampedBrushRadius);
+		const int32 MinimumY = FMath::Max(0, Start_Coordinate_Y - ClampedBrushRadius);
+		const int32 MaximumY = FMath::Min(TextureDimensionY - 1, Start_Coordinate_Y + ClampedBrushRadius);
+
+		for (int32 PixelY = MinimumY; PixelY <= MaximumY; ++PixelY)
+		{
+			for (int32 PixelX = MinimumX; PixelX <= MaximumX; ++PixelX)
+			{
+				uint8* PixelPtr = GetPixelPtr(PixelX, PixelY);
+				if (*(PixelPtr + 2) == 0)
+				{
+					FLinearColor FirstVisitColor = LineColor;
+					FirstVisitColor.R = FMath::Max(FirstVisitColor.R, MinimumRedValue);
+					SetPixelColor(PixelPtr, FirstVisitColor, false);
+				}
+				else
+				{
+					SetPixelColor(PixelPtr, LineColor, true);
+				}
+			}
+		}
+
+		if (Start_Coordinate_X == End_Coordinate_X && Start_Coordinate_Y == End_Coordinate_Y)
+		{
+			break;
+		}
+
+		const int32 DoubleError = 2 * Error;
+		if (DoubleError >= DY)
+		{
+			Error += DY;
+			Start_Coordinate_X += StepX;
+		}
+		if (DoubleError <= DX)
+		{
+			Error += DX;
+			Start_Coordinate_Y += StepY;
+		}
 	}
 }
 
@@ -502,31 +557,69 @@ void UDynamicPixelRenderingTexture::ClearTexture()
 
 void UDynamicPixelRenderingTexture::UpdateTextureRender() const
 {
-	
+	// Standard heatmaps can request a render update from their worker task. UTexture2D updates
+	// must be submitted on the game thread; trajectories already arrive there and retain order.
+	if (!IsInGameThread())
+	{
+		TWeakObjectPtr<UDynamicPixelRenderingTexture> WeakThis(const_cast<UDynamicPixelRenderingTexture*>(this));
+		AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+		{
+			if (UDynamicPixelRenderingTexture* Texture = WeakThis.Get())
+			{
+				Texture->UpdateTextureRender();
+			}
+		});
+		return;
+	}
+
 	if (!DynamicTexture || !UpdateTextureRegion.IsValid())
 	{
 		// Handle invalid texture or region here
 		return;
 	}
-	
-	FMemory::ParallelMemcpy(UpdateBuffer.Get(), PixelBuffer.Get(), BufferSize);
 
-	ENQUEUE_RENDER_COMMAND(UpdateTextureCommand)(
-		[this](FRHICommandListImmediate& RHICmdList)
-		{
-			DynamicTexture->UpdateTextureRegions(
-				0, // MipIndex
-				1, // NumRegions
-				UpdateTextureRegion.Get(), // Region
-				TextureDimensionX * BYTES_PER_PIXEL, // SrcPitch
-				BYTES_PER_PIXEL, // bytes per pixel 
-				UpdateBuffer.Get() // Pixel Data
-			);
-		}
-	);
+	// Keep every snapshot alive until the RHI consumes it. Calling UpdateTextureRegions directly
+	// preserves submission order; wrapping it in another render command allowed older whole-texture
+	// snapshots to be applied after newer trajectory updates.
+	TSharedRef<TArray<uint8>, ESPMode::ThreadSafe> RenderBuffer = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
+	RenderBuffer->SetNumUninitialized(BufferSize);
+	FMemory::Memcpy(RenderBuffer->GetData(), PixelBuffer.Get(), BufferSize);
+	TSharedRef<FUpdateTextureRegion2D, ESPMode::ThreadSafe> RenderRegion =
+		MakeShared<FUpdateTextureRegion2D, ESPMode::ThreadSafe>(*UpdateTextureRegion);
+	const uint32 SourcePitch = TextureDimensionX * BYTES_PER_PIXEL;
+
+	DynamicTexture->UpdateTextureRegions(
+		0, 1, &RenderRegion.Get(), SourcePitch, BYTES_PER_PIXEL, RenderBuffer->GetData(),
+		[RenderBuffer, RenderRegion](uint8*, const FUpdateTextureRegion2D*) {});
 }
 
-void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
+bool UDynamicPixelRenderingTexture::CopyPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture)
+{
+	if (!PixelBuffer || !SourceTexture.PixelBuffer || BufferSize != SourceTexture.BufferSize)
+	{
+		return false;
+	}
+
+	FMemory::Memcpy(PixelBuffer.Get(), SourceTexture.PixelBuffer.Get(), BufferSize);
+	bIsBlurRequired = false;
+	return true;
+}
+
+bool UDynamicPixelRenderingTexture::MaxPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture)
+{
+	if (!PixelBuffer || !SourceTexture.PixelBuffer || BufferSize != SourceTexture.BufferSize)
+	{
+		return false;
+	}
+
+	for (int32 ByteIndex = 0; ByteIndex < BufferSize; ++ByteIndex)
+	{
+		PixelBuffer[ByteIndex] = FMath::Max(PixelBuffer[ByteIndex], SourceTexture.PixelBuffer[ByteIndex]);
+	}
+	return true;
+}
+
+void UDynamicPixelRenderingTexture::OpenCVGaussianBlur(int32 KernelSize, bool bForceBlur)
 {
 #if !PLATFORM_MAC
 #if WITH_EDITOR
@@ -534,8 +627,13 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
 #endif
 	
 	// Check if the blur is required
-	if (bIsBlurRequired)		
+	if (bForceBlur || bIsBlurRequired)
 	{
+		KernelSize = FMath::Max(3, KernelSize);
+		if (KernelSize % 2 == 0)
+		{
+			++KernelSize;
+		}
 		/*
 		 * @note: The OpenCV UMat class is a GPU accelerated version of the Mat class, it allows for faster processing
 		 * however this has been disabled for now as it is causing crashes, this is stemming from that the this
@@ -553,7 +651,7 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
 		// upload and blur on the GPU
 		//SrcMat.copyTo(UBlurMat);
 		//cv::GaussianBlur(UBlurMat, UBlurMat, cv::Size(29,29), 0, 0);
-		cv::GaussianBlur(BlurTemp, SrcMat, cv::Size(29,29), 0, 0);
+		cv::GaussianBlur(BlurTemp, SrcMat, cv::Size(KernelSize, KernelSize), 0, 0);
 
 		// write back into the same host memory
 		//UBlurMat.copyTo(SrcMat);

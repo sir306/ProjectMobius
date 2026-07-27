@@ -31,6 +31,7 @@
 
 
 class UProceduralMeshComponent;
+struct FHeatmapTrajectorySegment;
 
 /**
  * Per-section buffers for a tiled heatmap grid. Each tile owns its own vertex table and emits
@@ -103,7 +104,7 @@ public:
 	/**
 	 * Create and setup, the render target and bind the heatmap material instance parameter to it
 	 */
-	void SetupDynamicTexture() const;
+	void SetupDynamicTexture();
 
 	/**
 	 * 
@@ -140,6 +141,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
 	void UpdateHeatmapWithMultipleAgents_NoCheck(const TArray<FVector>& AgentLocations);
+
+	/** Rasterises travelled agent-path segments with a small radius and no per-update blur. */
+	void UpdateHeatmapWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments);
 
 	/**
 	 * As statical widgets require updated agent floor counts, we can quickly itterate
@@ -182,6 +186,10 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
 	void UpdateHeatmapType(bool bIsStandardHeatmap, bool bIsLiveTrackingNeeded = true);
+
+	/** Enables the playback-history trajectory view. Enabling it clears prior heatmap pixels. */
+	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
+	void SetTrajectoryHeatmapEnabled(bool bEnabled);
 
 	/**
 	 * Update the bounds, size and location of the heatmap mesh
@@ -263,6 +271,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	bool bLiveTrackingHeatmap;
 
+	/** Draw connected travelled path segments instead of position-density circles. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Heatmap|Trajectory")
+	bool bTrajectoryHeatmap = false;
+
+	/** Live/cumulative setting to restore after leaving trajectory mode. */
+	UPROPERTY(Transient)
+	bool bLiveTrackingBeforeTrajectory = false;
+
 	/** Max Add height value, this is the maximum height from the heatmap where an entity can be added to */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	float MaxAddHeight;
@@ -303,6 +319,30 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	int32 CircleRadius = 110; // 110 = 1.1m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING
+
+	/** Path footprint in world centimetres. Default 20 cm preserves narrow pedestrian routes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))
+	int32 TrajectoryCircleRadius = 20;
+
+	/** World-space spacing of rasterised path samples. Smaller values give continuous paths at higher cost. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))
+	float TrajectorySampleSpacing = 20.0f;
+
+	/** Per-sample path contribution. Each pass adds one texture red-channel increment, preserving route frequency. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0001"))
+	float TrajectorySampleWeight = 0.05f;
+
+	/** Minimum texture red value for a newly visited trajectory texel. It stays in the lowest palette band so a single route remains light blue. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float TrajectoryMinimumVisibleValue = 0.10f;
+
+	/** Brush radius in texture texels. One produces a 3x3 footprint centred on the continuous path. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0", ClampMax = "2"))
+	int32 TrajectoryLineBrushRadius = 1;
+
+	/** Legacy trajectory blur setting. Trajectory rendering currently uses no blur. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "3", ClampMax = "15"))
+	int32 TrajectoryBlurKernelSize = 5;
 
 	/**
 	 * Is this a Standard Heatmap or a Voronoi Map:
@@ -414,6 +454,10 @@ private:
 	/** The Dynamic Texture for heatmap */
 	UPROPERTY(EditAnywhere, Category = "Heatmap|MaterialsAndTextures", Transient)
 	TObjectPtr<class UDynamicPixelRenderingTexture> DynamicTexture;
+
+	/** Unblurred path counts. It is copied into DynamicTexture before each trajectory display blur. */
+	UPROPERTY(Transient)
+	TObjectPtr<class UDynamicPixelRenderingTexture> TrajectoryAccumulationTexture;
 	
 	/** Stores the meshes inverse transform, this makes it so we can translate world space coordinates to UV coordinates */
 	UPROPERTY(VisibleAnywhere, Category = "Heatmap|MaterialsAndTextures")
@@ -426,7 +470,11 @@ private:
 	/** Scaled Circle Size */
 	UPROPERTY()
 	int32 ScaledCircleSize; // TODO: This should be a float value for more precise locations and scale to texture and mesh size
-	
+
+	/** Trajectory radius converted to render-target pixels. */
+	UPROPERTY()
+	int32 ScaledTrajectoryCircleSize = 0;
+
 #pragma endregion PRIVATE_PROPERTIES_AND_COMPONENTS
 	
 };

@@ -50,6 +50,7 @@ public class MobiusCore : ModuleRules
 			"Slate",
 			"SlateCore",
 			"ApplicationCore", /* FPlatformApplicationMisc / FDisplayMetrics for the DPI scaling rule + monitor-aware resolution helpers */
+			"InputCore", /* FKey::ToString in the click-path diagnostics (Diagnostics/MobiusClickLog.cpp) */
 			"HTTP",
 			"Json",
 			"JsonUtilities",

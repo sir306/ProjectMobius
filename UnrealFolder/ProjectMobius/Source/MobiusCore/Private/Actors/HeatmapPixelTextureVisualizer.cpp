@@ -23,6 +23,7 @@
  */
 
 #include "Actors/HeatmapPixelTextureVisualizer.h"
+#include "Subsystems/HeatmapSubsystem.h"
 
 #include "DynamicPixelRenderingTexture.h"
 #include "ProceduralMeshComponent.h"
@@ -46,7 +47,7 @@ AHeatmapPixelTextureVisualizer::AHeatmapPixelTextureVisualizer() :
 	TextureHeight(1),
 	HeightDisplacement(0),
 	ActorName("HeatmapPixelTextureVisualizer"),
-	bLiveTrackingHeatmap(false),
+	bLiveTrackingHeatmap(true),
 	MaxAddHeight(10.0f),
 	HeatmapMeshSize2D(204.8f, 204.8f),
 	UVScale(0.0f, 0.0f),
@@ -308,7 +309,7 @@ void AHeatmapPixelTextureVisualizer::CreateMaterialInstances()
 	}
 }
 
-void AHeatmapPixelTextureVisualizer::SetupDynamicTexture() const
+void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 {
 	// check texture is valid
 	if(!DynamicTexture)
@@ -352,11 +353,17 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture() const
 	}
 	
 	DynamicTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue);
+	if (!TrajectoryAccumulationTexture)
+	{
+		TrajectoryAccumulationTexture = NewObject<UDynamicPixelRenderingTexture>(this, TEXT("TrajectoryAccumulationTexture"));
+	}
+	TrajectoryAccumulationTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue);
 
 	// Only update and clear if we are in game mode
 	if(GetWorld()->IsGameWorld())
 	{
 		DynamicTexture->ClearTexture();
+		TrajectoryAccumulationTexture->ClearTexture();
 	
 		DynamicTexture->UpdateTextureRender();
 	}
@@ -440,6 +447,11 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents(const TArra
 		}
 		return;
 	}
+
+	if (bTrajectoryHeatmap)
+	{
+		return;
+	}
 	
 	// agent count
 	std::atomic<int32> ActiveAgents = 0;
@@ -510,6 +522,42 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents(const TArra
 	// Update Agent Count with the number of agents being rendered
 	NumberOfAgentsOnHeatmap = ActiveAgents.load();
 	
+}
+
+void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments)
+{
+	if (!DynamicTexture || !TrajectoryAccumulationTexture || !bTrajectoryHeatmap || Segments.IsEmpty())
+	{
+		return;
+	}
+
+	FLinearColor PathColor = AgentColorValue * TrajectorySampleWeight;
+
+	for (const FHeatmapTrajectorySegment& Segment : Segments)
+	{
+		const float Length = FVector::Dist(Segment.Start, Segment.End);
+		if (Length <= KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		const FVector2D StartTexturePoint = ActorWorldToUV(Segment.Start);
+		const FVector2D EndTexturePoint = ActorWorldToUV(Segment.End);
+		const int32 StartX = FMath::Clamp(FMath::RoundToInt(StartTexturePoint.X), 0, TextureWidth - 1);
+		const int32 StartY = FMath::Clamp(FMath::RoundToInt(StartTexturePoint.Y), 0, TextureHeight - 1);
+		const int32 EndX = FMath::Clamp(FMath::RoundToInt(EndTexturePoint.X), 0, TextureWidth - 1);
+		const int32 EndY = FMath::Clamp(FMath::RoundToInt(EndTexturePoint.Y), 0, TextureHeight - 1);
+
+		// A raster line has no sampling gaps: every pixel traversed by an agent segment receives
+		// one additive count. The first visit is seeded at the palette's visible floor because the
+		// material derives its output alpha from the red channel and otherwise hides low values.
+		TrajectoryAccumulationTexture->DrawLineWithMinimumRed(StartX, EndX, StartY, EndY, PathColor,
+			TrajectoryMinimumVisibleValue, TrajectoryLineBrushRadius);
+	}
+
+	// The trajectory material binds directly to this raw texture while the mode is active.
+	// No copy, blur, or other post-process can alter the sampled path values.
+	TrajectoryAccumulationTexture->UpdateTextureRender();
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents_NoCheck(const TArray<FVector>& AgentLocations)
@@ -673,6 +721,10 @@ void AHeatmapPixelTextureVisualizer::ClearTexture()
 		return;
 	}
 	DynamicTexture->ClearTexture();
+	if (TrajectoryAccumulationTexture)
+	{
+		TrajectoryAccumulationTexture->ClearTexture();
+	}
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateMeshSize(const FVector2D& NewMeshSize)
@@ -741,11 +793,60 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapType(bool bIsStandardHeatmap, 
 		HeatmapMaterialInstance->SetScalarParameterValue(FName("HeightScale"), HeightDisplacement);
 	}
 
-	// We clear the texture so no residual color is left
+	// Visual type changes do not discard accumulated data. A live map is refreshed immediately
+	// below from the subsystem's latest agent locations.
+	if (bLiveTrackingHeatmap && !bTrajectoryHeatmap)
+	{
+		if (UWorld* CurrentWorld = GetWorld())
+		{
+			if (UHeatmapSubsystem* HeatmapSubsystem = CurrentWorld->GetSubsystem<UHeatmapSubsystem>())
+			{
+				HeatmapSubsystem->RefreshHeatmapFromLatestLocations(this);
+			}
+		}
+	}
+}
+
+void AHeatmapPixelTextureVisualizer::SetTrajectoryHeatmapEnabled(bool bEnabled)
+{
+	if (bTrajectoryHeatmap == bEnabled)
+	{
+		return;
+	}
+
+	if (bEnabled)
+	{
+		bLiveTrackingBeforeTrajectory = bLiveTrackingHeatmap;
+		bTrajectoryHeatmap = true;
+		bLiveTrackingHeatmap = false;
+
+		// Entering trajectory mode starts a visibly empty, new played-session history.
+		ClearTexture();
+		if (TrajectoryAccumulationTexture)
+		{
+			HeatmapMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
+			VoronoiMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
+			TrajectoryAccumulationTexture->UpdateTextureRender();
+		}
+		return;
+	}
+
+	// Leaving trajectory mode discards its view, restores the previous normal mode and immediately
+	// paints the most recent simulation locations so no extra widget toggle is required.
+	bTrajectoryHeatmap = bEnabled;
+	bLiveTrackingHeatmap = bLiveTrackingBeforeTrajectory;
 	ClearTexture();
-	
-	// Update the heatmap texture render
+	HeatmapMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), DynamicTexture->GetDynamicTexture());
+	VoronoiMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), DynamicTexture->GetDynamicTexture());
 	UpdateHeatmapTextureRender();
+
+	if (UWorld* CurrentWorld = GetWorld())
+	{
+		if (UHeatmapSubsystem* HeatmapSubsystem = CurrentWorld->GetSubsystem<UHeatmapSubsystem>())
+		{
+			HeatmapSubsystem->RefreshHeatmapFromLatestLocations(this);
+		}
+	}
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapMeshBounds()
@@ -761,6 +862,9 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapMeshBounds()
 	
 	// Using the UV scale, calculate the circle size
 	ScaledCircleSize = CircleRadius * FMath::Min(UVScale.X, UVScale.Y);
+	// Large floor meshes can convert a 20 cm path footprint to a fractional texel. Keep one
+	// texel minimum so a trajectory remains visible without inflating its world-space radius.
+	ScaledTrajectoryCircleSize = FMath::Max(1, FMath::RoundToInt(TrajectoryCircleRadius * FMath::Min(UVScale.X, UVScale.Y)));
 	UE_LOG(LogTemp, Log, TEXT("UVScale: (%f, %f), ScaledCircleSize: %d"), UVScale.X, UVScale.Y, ScaledCircleSize);
 
 }

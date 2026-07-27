@@ -93,6 +93,261 @@ namespace
 			&& WriteTextFile(OutCsvPath, MakeZoneCsv())
 			&& WriteTextFile(SprinklersPath, SprinklersXml);
 	}
+
+	/**
+	 * An SMV whose single room is an L-shaped corridor, exercising the case B-Risk cannot
+	 * represent: the equivalent rectangle (area+perimeter preserving, SR282 eq. 1-2) is
+	 * 22.986 x 1.0 while the true footprint spans 17.8 x 6.186. Vent has a non-zero sill so
+	 * the head-vs-opening-height decode is covered too: head token 2.25, sill 0.9 -> 1.35.
+	 */
+	FString MakeLShapedSmv()
+	{
+		return
+			TEXT("ROOM   1\n")
+			TEXT(" 2.2986E+001 1.0000E+000 4.0000E+000\n")
+			TEXT("-1.4750E+001-1.7019E+001 0.0000E+000\n")
+			TEXT("LABEL\n")
+			TEXT(" 0 0 0\n")
+			TEXT("Corridor 15\n")
+			TEXT("VENTGEOM\n")
+			TEXT("1 2 3 1.05 0.0 0.9 2.25\n")
+			TEXT("ZONE\n")
+			TEXT("basemodel_testBox_zone.csv\n");
+	}
+
+	/** Zones-data.json carrying the true L-shaped footprint for room 1, wound clockwise. */
+	FString MakeZonesDataJson()
+	{
+		// Deliberately CW (negative shoelace) so the importer's winding normalisation is
+		// exercised rather than assumed - the exporter guarantees no particular winding.
+		return
+			TEXT("{\n")
+			TEXT("  \"format\": \"simulex-zones-data\",\n")
+			TEXT("  \"version\": 1,\n")
+			TEXT("  \"source\": { \"coordinateSystem\": \"revit-internal\", \"iteration\": 1 },\n")
+			TEXT("  \"spaces\": [\n")
+			TEXT("    {\n")
+			TEXT("      \"roomNumber\": 1,\n")
+			TEXT("      \"name\": \"Corridor 15\",\n")
+			TEXT("      \"floorElevation\": 0,\n")
+			TEXT("      \"height\": 4,\n")
+			TEXT("      \"tenability\": { \"odLimitPerM\": 0.26 },\n")
+			TEXT("      \"polygons\": [ { \"vertices\": [\n")
+			TEXT("        [-8.7635, -16.0189], [-8.7635, -10.8329], [-7.7635, -10.8329],\n")
+			TEXT("        [-7.7635, -16.0189], [3.0505, -16.0189], [3.0505, -17.0189],\n")
+			TEXT("        [-14.7495, -17.0189], [-14.7495, -16.0189]\n")
+			TEXT("      ] } ]\n")
+			TEXT("    }\n")
+			TEXT("  ]\n")
+			TEXT("}\n");
+	}
+
+	bool WriteLShapedScenario(const FString& TestDir, FString& OutSmvPath, bool bIncludeZonesJson)
+	{
+		OutSmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+		const FString CsvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox_zone.csv"));
+		bool bOk = WriteTextFile(OutSmvPath, MakeLShapedSmv()) && WriteTextFile(CsvPath, MakeZoneCsv());
+		if (bIncludeZonesJson)
+		{
+			bOk = bOk && WriteTextFile(FPaths::Combine(TestDir, TEXT("Zones-data.json")), MakeZonesDataJson());
+		}
+		return bOk;
+	}
+
+	double SignedAreaOf(const TArray<FVector2D>& Ring)
+	{
+		double Twice = 0.0;
+		for (int32 i = 0, n = Ring.Num(); i < n; ++i)
+		{
+			Twice += (Ring[i].X * Ring[(i + 1) % n].Y) - (Ring[(i + 1) % n].X * Ring[i].Y);
+		}
+		return Twice * 0.5;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskFortranGluedNegativesTest,
+	"ProjectMobius.BRisk.Importer.FortranGluedNegatives",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskFortranGluedNegativesTest::RunTest(const FString& Parameters)
+{
+	// B-Risk writes .smv coordinates fixed-width, so a negative value's sign eats the
+	// separating space: "-1.4750E+001-1.7019E+001 0.0000E+000" is THREE values, not two.
+	// Whitespace splitting saw two and rejected the whole ROOM block, silently importing
+	// rooms=0. Both shipped datasets have all-positive origins at (0,0), which is why this
+	// stayed hidden until a model with real-world coordinates arrived.
+	const FString TestDir = MakeBRiskTestDir();
+	FString SmvPath;
+	if (!TestTrue(TEXT("Scenario with glued negative origin should be written"),
+		WriteLShapedScenario(TestDir, SmvPath, false)))
+	{
+		return false;
+	}
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("Scenario should import"), FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("ROOM block with glued negatives must still parse"), Data.Rooms.Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("Origin X from glued token"), Data.Rooms[0].Origin.X, -14.750, 1.0e-3);
+	TestEqual(TEXT("Origin Y from glued token"), Data.Rooms[0].Origin.Y, -17.019, 1.0e-3);
+	TestEqual(TEXT("Origin Z"), Data.Rooms[0].Origin.Z, 0.0, 1.0e-6);
+	TestEqual(TEXT("Size X"), Data.Rooms[0].Size.X, 22.986, 1.0e-3);
+	TestEqual(TEXT("Size Y"), Data.Rooms[0].Size.Y, 1.0, 1.0e-6);
+	TestEqual(TEXT("Size Z"), Data.Rooms[0].Size.Z, 4.0, 1.0e-6);
+
+	IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentHeadHeightTest,
+	"ProjectMobius.BRisk.Importer.VentHeadHeight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentHeadHeightTest::RunTest(const FString& Parameters)
+{
+	const FString TestDir = MakeBRiskTestDir();
+	FString SmvPath;
+	if (!TestTrue(TEXT("L-shaped scenario should be written"), WriteLShapedScenario(TestDir, SmvPath, false)))
+	{
+		return false;
+	}
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("Scenario should import"), FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("Expected one vent"), Data.Vents.Num(), 1))
+	{
+		return false;
+	}
+
+	// VENTGEOM token[6] is the head height (2.25), token[5] the sill (0.9). The opening is
+	// the difference. Getting this wrong overstates the vent area by the sill on every
+	// window - here 1.05 x 2.25 = 2.36 m2 instead of the true 1.05 x 1.35 = 1.4175 m2.
+	TestEqual(TEXT("Sill height should be the raw token"), Data.Vents[0].SillHeight, 0.9, 1.0e-6);
+	TestEqual(TEXT("Opening height should be head minus sill"), Data.Vents[0].Height, 1.35, 1.0e-6);
+	TestEqual(TEXT("Vent area should match B-Risk HVENT"), Data.Vents[0].Width * Data.Vents[0].Height, 1.4175, 1.0e-6);
+
+	IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskZonesDataFootprintTest,
+	"ProjectMobius.BRisk.Importer.ZonesDataFootprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskZonesDataFootprintTest::RunTest(const FString& Parameters)
+{
+	const FString TestDir = MakeBRiskTestDir();
+	FString SmvPath;
+	if (!TestTrue(TEXT("L-shaped scenario with zones JSON should be written"),
+		WriteLShapedScenario(TestDir, SmvPath, true)))
+	{
+		return false;
+	}
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("Scenario should import"), FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("Expected one room"), Data.Rooms.Num(), 1))
+	{
+		return false;
+	}
+
+	const FBRiskRoomGeometry& Room = Data.Rooms[0];
+	if (!TestEqual(TEXT("Footprint should have 8 vertices"), Room.FootprintPolygon.Num(), 8))
+	{
+		return false;
+	}
+
+	// The JSON ring is authored clockwise; the importer must normalise it to CCW so
+	// triangulation and point-in-polygon downstream get one convention.
+	TestTrue(TEXT("Footprint winding should be normalised to CCW"), SignedAreaOf(Room.FootprintPolygon) > 0.0);
+
+	// Area is the whole point: the equivalent rectangle and the true polygon agree on area
+	// (that is how B-Risk derives it) but not on shape. Bounding box is ~4.8x the area.
+	TestEqual(TEXT("Footprint area should match the B-Risk equivalent rectangle"),
+		SignedAreaOf(Room.FootprintPolygon), 22.986, 1.0e-2);
+
+	FBox2D Bounds(ForceInit);
+	for (const FVector2D& V : Room.FootprintPolygon)
+	{
+		Bounds += V;
+	}
+	TestEqual(TEXT("Footprint should span the real 17.8 m X extent"), Bounds.GetSize().X, 17.8, 1.0e-3);
+	TestEqual(TEXT("Footprint should span the real 6.186 m Y extent"), Bounds.GetSize().Y, 6.186, 1.0e-3);
+
+	TestEqual(TEXT("Floor elevation should come from the JSON"), Room.FootprintFloorElevationM, 0.0, 1.0e-6);
+	TestEqual(TEXT("Height should come from the JSON"), Room.FootprintHeightM, 4.0, 1.0e-6);
+	TestTrue(TEXT("odLimitPerM should be captured"), Room.bHasOdLimitPerM);
+	TestEqual(TEXT("odLimitPerM value"), Room.OdLimitPerM, 0.26, 1.0e-6);
+
+	TestTrue(TEXT("Zones-data.json should be recorded as a referenced file"),
+		Data.ReferencedFiles.ContainsByPredicate([](const FString& Path)
+		{
+			return Path.EndsWith(TEXT("Zones-data.json"));
+		}));
+
+	IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskZonesDataAbsentTest,
+	"ProjectMobius.BRisk.Importer.ZonesDataAbsent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskZonesDataAbsentTest::RunTest(const FString& Parameters)
+{
+	const FString TestDir = MakeBRiskTestDir();
+	FString SmvPath;
+	if (!TestTrue(TEXT("L-shaped scenario without zones JSON should be written"),
+		WriteLShapedScenario(TestDir, SmvPath, false)))
+	{
+		return false;
+	}
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("Scenario should still import"), FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	// No JSON is a supported case: the add-in only emits it when the custom Revit plugin
+	// was used. Rooms must fall back to the Origin/Size rectangle, not fail the import.
+	if (!TestEqual(TEXT("Expected one room"), Data.Rooms.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Footprint should be empty without Zones-data.json"), Data.Rooms[0].FootprintPolygon.Num(), 0);
+	TestFalse(TEXT("odLimitPerM should be absent"), Data.Rooms[0].bHasOdLimitPerM);
+	TestEqual(TEXT("Legacy equivalent-rectangle size should be untouched"), Data.Rooms[0].Size.X, 22.986, 1.0e-3);
+
+	IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

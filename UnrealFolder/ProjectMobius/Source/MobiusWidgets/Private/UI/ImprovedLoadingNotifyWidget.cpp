@@ -40,12 +40,11 @@ void UImprovedLoadingNotifyWidget::ApplyMobiusTheme_Implementation()
 		LoadingTitleText->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::LabelText)));
 	}
 
-	// SetBrushColor drives the Border's BorderBackgroundColor; RibbonBg only reads true if the WBP Border
-	// keeps its brush TintColor white (SBorder multiplies the two — see MEMORY reference-umg-border-double-tint).
-	if (LoadingBackground)
-	{
-		LoadingBackground->SetBrushColor(GetThemeColor(EMobiusPaletteRole::RibbonBg));
-	}
+	// The popup frame's brush is MI_LoadingOuterBackground (M_WidgetBackground, rounded 4px + 2px border)
+	// with its colours BAKED DARK, so the old SetBrushColor(RibbonBg) only multiplied that near-black fill
+	// and the card stayed dark in the light theme. Colour now goes through the MID params instead.
+	UBaseLoadingWidget::ThemeMaterialCard(LoadingBackground,
+		GetThemeColor(EMobiusPaletteRole::RibbonBg), GetThemeColor(EMobiusPaletteRole::WindowBorder));
 }
 
 void UImprovedLoadingNotifyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
