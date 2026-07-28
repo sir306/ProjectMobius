@@ -3,10 +3,9 @@
 #include "Commandlets/GenerateDatasmithMaterialsCommandlet.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetToolsModule.h"
 #include "Factories/MaterialInstanceConstantFactoryNew.h"
-#include "IAssetTools.h"
-#include "ObjectTools.h"
+#include "Misc/App.h"
+#include "Misc/PackageName.h"
 #include "MaterialEditingLibrary.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionFunctionInput.h"
@@ -14,29 +13,68 @@
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
 #include "Materials/MaterialFunction.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGenDatasmithMats, Log, All);
 
 // ── Asset helpers (replaces UEditorAssetLibrary without the EditorScriptingUtilities plugin dep) ──
+//
+// Everything here answers from the file system and the object graph, never from the asset
+// registry, and never through a helper that can raise a modal dialog. This commandlet is also
+// invoked from MobiusEditor's startup hook, and both entry points have to survive a run with no
+// Slate application, where constructing any SWindow asserts.
 
-static bool AssetExists(const FString& PackagePath)
+static bool PackageExistsOnDisk(const FString& PackagePath)
 {
-	IAssetRegistry& AR = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-	TArray<FAssetData> Found;
-	AR.GetAssetsByPackageName(FName(*PackagePath), Found);
-	return Found.Num() > 0;
+	return FPackageName::DoesPackageExist(PackagePath);
 }
 
-static void DeleteAssetAtPath(const FString& PackagePath)
+/**
+ * Free a name inside a destination package so a freshly authored asset can take it.
+ *
+ * Deliberately avoids ObjectTools' delete helpers: those are interactive editor paths that can
+ * raise confirmation and reference-check dialogs. Renaming the previous object into the transient
+ * package and dropping its asset flags leaves the name free and the old object collectable, which
+ * is all the delete was there to achieve.
+ */
+static void ClearAssetForOverwrite(UPackage* DestPackage, const FString& AssetName)
 {
-	const FString ObjectPath = PackagePath + TEXT(".") + FPackageName::GetShortName(PackagePath);
-	UObject* Asset = LoadObject<UObject>(nullptr, *ObjectPath);
-	if (Asset)
+	UObject* Existing = StaticFindObject(UObject::StaticClass(), DestPackage, *AssetName);
+	if (!Existing)
 	{
-		TArray<UObject*> ToDelete = { Asset };
-		ObjectTools::ForceDeleteObjects(ToDelete, /*bShowConfirmation=*/false);
+		return;
 	}
+
+	UE_LOG(LogGenDatasmithMats, Display, TEXT("  Replacing existing %s in %s"), *AssetName, *DestPackage->GetName());
+
+	Existing->ClearFlags(RF_Public | RF_Standalone);
+	Existing->SetFlags(RF_Transient);
+
+	const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), Existing->GetClass(), *(AssetName + TEXT("_REPLACED")));
+	Existing->Rename(*TransientName.ToString(), GetTransientPackage(),
+		REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
+}
+
+/**
+ * Get the destination package ready to be written over.
+ *
+ * If it is already in memory (the interactive editor case) it must be fully loaded before an
+ * object inside it is replaced and the file saved. If it is not in memory the package is created
+ * fresh and marked loaded, so the save overwrites whatever file is on disk without first pulling
+ * the previous generation's material — and its whole reference graph — back in.
+ */
+static UPackage* PrepareDestPackage(const FString& PackagePath)
+{
+	if (UPackage* Loaded = FindPackage(nullptr, *PackagePath))
+	{
+		Loaded->FullyLoad();
+		return Loaded;
+	}
+
+	UPackage* Package = CreatePackage(*PackagePath);
+	Package->MarkAsFullyLoaded();
+	return Package;
 }
 
 static UObject* DuplicateAssetToPath(const FString& SourcePackagePath, const FString& DestPackagePath)
@@ -47,8 +85,28 @@ static UObject* DuplicateAssetToPath(const FString& SourcePackagePath, const FSt
 	{
 		return nullptr;
 	}
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	return AssetTools.DuplicateAsset(FPackageName::GetShortName(DestPackagePath), FPackageName::GetLongPackagePath(DestPackagePath), Source);
+
+	// Hand-rolled rather than IAssetTools::DuplicateAsset. That routes through
+	// UAssetToolsImpl::CanCreateAsset, which constructs an SMessageDialog to ask whether to
+	// overwrite when the destination object already exists (AssetTools.cpp, UE 5.5). With no
+	// Slate application the SWindow constructor asserts in FSlateInvalidationRoot and the process
+	// dies, so the engine path cannot be reached from a commandlet or an -unattended editor.
+	const FString DestAssetName = FPackageName::GetShortName(DestPackagePath);
+	UPackage* DestPackage = PrepareDestPackage(DestPackagePath);
+	ClearAssetForOverwrite(DestPackage, DestAssetName);
+
+	UObject* Duplicated = StaticDuplicateObject(Source, DestPackage, *DestAssetName);
+	if (!Duplicated)
+	{
+		return nullptr;
+	}
+
+	// Assets must carry both flags to be saved and to be seen by the content browser.
+	Duplicated->SetFlags(RF_Public | RF_Standalone);
+	FAssetRegistryModule::AssetCreated(Duplicated);
+	Duplicated->MarkPackageDirty();
+
+	return Duplicated;
 }
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
@@ -71,6 +129,55 @@ namespace DatasmithMatPaths
 
 	// Twinmotion target path prefix
 	static const FString TwinmotionDest = TEXT("/Game/01_Dev/RuntimeMeshGenerator/DatasmithMasterMaterials/");
+}
+
+// ── Expected output (shared with the MobiusEditor startup check) ───────────────
+
+bool UGenerateDatasmithMaterialsCommandlet::IsTwinmotionContentPresent()
+{
+	return FPaths::DirectoryExists(FPaths::ProjectContentDir() / TEXT("Twinmotion"));
+}
+
+TArray<FString> UGenerateDatasmithMaterialsCommandlet::GetExpectedAssetPaths()
+{
+	TArray<FString> ExpectedAssets = {
+		DatasmithMatPaths::GameDest + TEXT("M_Opaque"),
+		DatasmithMatPaths::GameDest + TEXT("M_PbrOpaque"),
+		DatasmithMatPaths::GameDest + TEXT("M_PbrOpaque_2Sided"),
+		DatasmithMatPaths::GameDest + TEXT("M_Cutout"),
+		DatasmithMatPaths::GameDest + TEXT("M_Transparent"),
+		DatasmithMatPaths::GameDest + TEXT("M_PbrTranslucent"),
+		DatasmithMatPaths::GameDest + TEXT("M_PbrTranslucent_2Sided"),
+		DatasmithMatPaths::GameDest + TEXT("MI_Opaque"),
+		DatasmithMatPaths::GameDest + TEXT("MI_Transparent"),
+	};
+
+	// The Twinmotion-derived overrides are only expected when the source content is present.
+	if (IsTwinmotionContentPresent())
+	{
+		ExpectedAssets.Append({
+			DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithOpaqueMasked"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithTranslucent"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithOpaqueMasked"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithTranslucent"),
+			DatasmithMatPaths::TwinmotionDest + TEXT("WindowsGlass/MI_DatasmithTranslucent"),
+		});
+	}
+
+	return ExpectedAssets;
+}
+
+TArray<FString> UGenerateDatasmithMaterialsCommandlet::GetMissingAssetPaths()
+{
+	TArray<FString> Missing;
+	for (const FString& Path : GetExpectedAssetPaths())
+	{
+		if (!PackageExistsOnDisk(Path))
+		{
+			Missing.Add(Path);
+		}
+	}
+	return Missing;
 }
 
 // ── Constructor ────────────────────────────────────────────────────────────────
@@ -154,6 +261,17 @@ int32 UGenerateDatasmithMaterialsCommandlet::Main(const FString& Params)
 	if (bAllOk)
 	{
 		UE_LOG(LogGenDatasmithMats, Display, TEXT("=== GenerateDatasmithMaterials: SUCCESS — all %d assets generated ==="), TotalAssets);
+
+		// Texture streaming data is derived at material compile time and needs a rendering
+		// device, so a commandlet cannot produce it. The graphs are otherwise identical to an
+		// interactive generation; the streamer just falls back to conservative estimates for
+		// these materials until the data is rebuilt.
+		if (!FApp::CanEverRender())
+		{
+			UE_LOG(LogGenDatasmithMats, Warning,
+				TEXT("Generated without a rendering device: these materials carry no texture streaming data. ")
+				TEXT("Rebuild it with Build > Build Texture Streaming in the editor, or regenerate them there."));
+		}
 	}
 	else
 	{
@@ -171,14 +289,7 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMasterMaterial(const FMateri
 
 	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating: %s -> %s"), *SourcePath, *Entry.DestPath);
 
-	// Delete any existing asset at the destination so we start clean
-	if (AssetExists(Entry.DestPath))
-	{
-		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing asset at %s"), *Entry.DestPath);
-		DeleteAssetAtPath(Entry.DestPath);
-	}
-
-	// Step 1: Duplicate engine material to target path
+	// Step 1: Duplicate engine material to target path, replacing anything already there
 	UObject* Duplicated = DuplicateAssetToPath(SourcePath, Entry.DestPath);
 	if (!Duplicated)
 	{
@@ -319,13 +430,6 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMaterialInstance(const FMate
 {
 	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating MI: %s (parent: %s)"), *Entry.DestPath, *Entry.ParentPath);
 
-	// Delete any existing asset at the destination
-	if (AssetExists(Entry.DestPath))
-	{
-		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing MI at %s"), *Entry.DestPath);
-		DeleteAssetAtPath(Entry.DestPath);
-	}
-
 	// Load the parent material
 	UMaterial* ParentMaterial = LoadObject<UMaterial>(nullptr, *Entry.ParentPath);
 	if (!ParentMaterial)
@@ -338,10 +442,13 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMaterialInstance(const FMate
 	UMaterialInstanceConstantFactoryNew* Factory = NewObject<UMaterialInstanceConstantFactoryNew>();
 	Factory->InitialParent = ParentMaterial;
 
-	const FString PackagePath = FPackageName::GetLongPackagePath(Entry.DestPath);
 	const FString AssetName = FPackageName::GetShortName(Entry.DestPath);
 
-	UPackage* Package = CreatePackage(*Entry.DestPath);
+	// Free the name first: FactoryCreateNew would otherwise construct over an existing object of
+	// the same name in this package.
+	UPackage* Package = PrepareDestPackage(Entry.DestPath);
+	ClearAssetForOverwrite(Package, AssetName);
+
 	UMaterialInstanceConstant* MIC = Cast<UMaterialInstanceConstant>(
 		Factory->FactoryCreateNew(UMaterialInstanceConstant::StaticClass(), Package, *AssetName, RF_Standalone | RF_Public, nullptr, GWarn));
 
@@ -352,6 +459,7 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMaterialInstance(const FMate
 	}
 
 	MIC->SetParentEditorOnly(ParentMaterial);
+	FAssetRegistryModule::AssetCreated(MIC);
 
 	// Save
 	MIC->PreEditChange(nullptr);
@@ -377,11 +485,11 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateMaterialInstance(const FMate
 
 bool UGenerateDatasmithMaterialsCommandlet::IsTwinmotionContentAvailable() const
 {
-	const FString TwinmotionDir = FPaths::ProjectContentDir() / TEXT("Twinmotion");
-	const bool bExists = FPaths::DirectoryExists(TwinmotionDir);
+	const bool bExists = IsTwinmotionContentPresent();
 	if (!bExists)
 	{
-		UE_LOG(LogGenDatasmithMats, Display, TEXT("Twinmotion content not found at %s — skipping Twinmotion material generation."), *TwinmotionDir);
+		UE_LOG(LogGenDatasmithMats, Display, TEXT("Twinmotion content not found at %s — skipping Twinmotion material generation."),
+			*(FPaths::ProjectContentDir() / TEXT("Twinmotion")));
 	}
 	return bExists;
 }
@@ -392,14 +500,7 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateTwinmotionMasterMaterial(con
 {
 	UE_LOG(LogGenDatasmithMats, Display, TEXT("Generating Twinmotion: %s -> %s"), *Entry.SourcePath, *Entry.DestPath);
 
-	// Delete any existing asset at the destination so we start clean
-	if (AssetExists(Entry.DestPath))
-	{
-		UE_LOG(LogGenDatasmithMats, Display, TEXT("  Deleting existing asset at %s"), *Entry.DestPath);
-		DeleteAssetAtPath(Entry.DestPath);
-	}
-
-	// Step 1: Duplicate Twinmotion material to target path
+	// Step 1: Duplicate Twinmotion material to target path, replacing anything already there
 	UObject* Duplicated = DuplicateAssetToPath(Entry.SourcePath, Entry.DestPath);
 	if (!Duplicated)
 	{
@@ -569,34 +670,14 @@ bool UGenerateDatasmithMaterialsCommandlet::GenerateTwinmotionMaterials()
 
 bool UGenerateDatasmithMaterialsCommandlet::ValidateGeneratedAssets()
 {
-	TArray<FString> ExpectedAssets = {
-		DatasmithMatPaths::GameDest + TEXT("M_Opaque"),
-		DatasmithMatPaths::GameDest + TEXT("M_PbrOpaque"),
-		DatasmithMatPaths::GameDest + TEXT("M_PbrOpaque_2Sided"),
-		DatasmithMatPaths::GameDest + TEXT("M_Cutout"),
-		DatasmithMatPaths::GameDest + TEXT("M_Transparent"),
-		DatasmithMatPaths::GameDest + TEXT("M_PbrTranslucent"),
-		DatasmithMatPaths::GameDest + TEXT("M_PbrTranslucent_2Sided"),
-		DatasmithMatPaths::GameDest + TEXT("MI_Opaque"),
-		DatasmithMatPaths::GameDest + TEXT("MI_Transparent"),
-	};
-
-	// Conditionally add Twinmotion assets if that content is present
-	if (IsTwinmotionContentAvailable())
-	{
-		ExpectedAssets.Append({
-			DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithOpaqueMasked"),
-			DatasmithMatPaths::TwinmotionDest + TEXT("M_DatasmithTranslucent"),
-			DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithOpaqueMasked"),
-			DatasmithMatPaths::TwinmotionDest + TEXT("MI_DatasmithTranslucent"),
-			DatasmithMatPaths::TwinmotionDest + TEXT("WindowsGlass/MI_DatasmithTranslucent"),
-		});
-	}
+	const TArray<FString> ExpectedAssets = GetExpectedAssetPaths();
 
 	bool bAllExist = true;
 	for (const FString& Path : ExpectedAssets)
 	{
-		if (!AssetExists(Path))
+		// Checked on disk, not in the registry: the packages were just written, and in a
+		// commandlet the registry has never scanned this content at all.
+		if (!PackageExistsOnDisk(Path))
 		{
 			UE_LOG(LogGenDatasmithMats, Error, TEXT("  Validation FAILED — missing: %s"), *Path);
 			bAllExist = false;
