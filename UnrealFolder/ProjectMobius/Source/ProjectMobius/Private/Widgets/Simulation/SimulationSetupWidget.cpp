@@ -43,10 +43,6 @@ void USimulationSetupWidget::NativeConstruct()
 	SetupWidgetComponents();
 }
 
-void USimulationSetupWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-}
-
 void USimulationSetupWidget::SetupWidgetComponents()
 {
 	// Setup the time dilation text block

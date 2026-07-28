@@ -55,8 +55,3 @@ void UMoveableErrorWidget::NativeConstruct()
 	//this->SetVisibility(ESlateVisibility::Hidden);// debug set to hidden when not debugging
 
 }
-
-void UMoveableErrorWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-}

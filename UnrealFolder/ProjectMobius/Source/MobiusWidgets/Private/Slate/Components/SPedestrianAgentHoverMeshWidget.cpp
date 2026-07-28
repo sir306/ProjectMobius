@@ -31,7 +31,7 @@ int32 SPedestrianAgentHoverMeshWidget::OnPaint(
 	const int32 MeshId = ParentWidget->HoverWidgetMeshViewerID;
 
 	// Get all the pedestrian agent data from the parent widget that we need for rendering
-	const TArray<FAgentMeshViewer> PedestrianAgentData = ParentWidget->PedestrianHoverAgentData;//This may not be thread safe, and may need to be protected with a mutex or similar if accessed from multiple threads
+	const TArray<FAgentMeshViewer>& PedestrianAgentData = ParentWidget->PedestrianHoverAgentData;//This may not be thread safe, and may need to be protected with a mutex or similar if accessed from multiple threads
 
 	// first create an empty layer
 	int32 CurrentLayer = SMeshWidget::OnPaint(
@@ -54,7 +54,7 @@ int32 SPedestrianAgentHoverMeshWidget::OnPaint(
 		// loop through the agent data and update the mesh instance data in reverse order
 		for (int32 i = PedestrianAgentData.Num() - 1; i >= 0; --i)
 		{
-			FAgentMeshViewer AgentData = PedestrianAgentData[i];
+			const FAgentMeshViewer& AgentData = PedestrianAgentData[i];
 
 			if (ParentWidget->SelectedAgentData.AgentID == AgentData.AgentID)
 			{

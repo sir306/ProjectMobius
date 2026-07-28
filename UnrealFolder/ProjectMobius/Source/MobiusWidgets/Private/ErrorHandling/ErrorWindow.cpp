@@ -25,6 +25,14 @@ namespace
 	// per-paint via a colour lambda, so the body surface follows a live theme toggle.
 	UUIThemeSubsystem* FindThemeSubsystemForErrorWindow()
 	{
+		// Cached for the same reason as SWindowTitleBarWidget's copy: the callers are per-paint colour
+		// lambdas. The weak pointer self-clears with the GameInstance, so the walk re-runs only then.
+		static TWeakObjectPtr<UUIThemeSubsystem> CachedTheme;
+		if (UUIThemeSubsystem* Cached = CachedTheme.Get())
+		{
+			return Cached;
+		}
+
 		if (!GEngine)
 		{
 			return nullptr;
@@ -37,6 +45,7 @@ namespace
 				{
 					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
 					{
+						CachedTheme = Theme;
 						return Theme;
 					}
 				}
@@ -140,6 +149,10 @@ void SErrorWindowWidget::OpenErrorWindow()
         MessageTextStyle.Font.Size = 13.0f;
         LocationTextStyle.Font.Size = 12.0f;
 
+        // A18: title-bar × reads as the destructive affordance it is. Stamped at open (like the rest of
+        // this window style), so a theme toggle while the window is up is picked up on the next open.
+        MobiusWindowButtonStyle::ApplyDangerCloseGlyph(ErrorWindowStyle, FindThemeSubsystemForErrorWindow());
+
         // Themed Close button (member: SButton caches raw pointers into the style's brushes).
         CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(FindThemeSubsystemForErrorWindow());
 
@@ -235,15 +248,16 @@ void SErrorWindowWidget::OpenErrorWindow()
                         BodyPanel
                 ];
 
-        // Live re-theme for the Close button. This controller is never slotted under any window, so its own
-        // active timers/Tick never fire (SWidget::Paint pumps active timers, and the controller is never
-        // painted — the dead OnPaint override proves it). Register on CloseButton instead: it lives inside
-        // WindowPanel, which IS painted every frame (the body's colour lambda fires there). The delegate is
-        // SP-bound to this controller, and the timer is owned by the button — it dies on window close and a
-        // fresh button gets its own timer on reopen (no duplicates, no dangling).
-        if (CloseButton.IsValid())
+        // Live re-theme for the Close button, event-driven off OnThemeChangedNative. The bind normally
+        // succeeds right here, since the window only opens once there is a game instance to report an error
+        // from. If it does not, fall back to a 2 Hz bootstrap timer that stops the moment it binds.
+        //
+        // The timer has to be registered on CloseButton, not on this controller: this widget is never
+        // slotted under any window, so it is never painted, and SWidget::Paint is what pumps active timers.
+        // CloseButton lives inside WindowPanel, which is painted.
+        if (!TryBindThemeChanged() && CloseButton.IsValid())
         {
-                CloseButton->RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SErrorWindowWidget::PollCloseButtonTheme));
+                CloseButton->RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SErrorWindowWidget::EnsureThemeBinding));
         }
 
         SAssignNew(ErrorWindowPtr, SMoveableWindow)
@@ -265,6 +279,9 @@ void SErrorWindowWidget::OpenErrorWindow()
 
 void SErrorWindowWidget::CloseErrorWindow()
 {
+	// Unconditional: the binding outlives the window pointer, and OpenErrorWindow re-binds on reopen.
+	UnbindThemeChanged();
+
 	if (!ErrorWindowPtr.IsValid() || !FSlateApplication::IsInitialized())
 	{
 		ErrorWindowPtr.Reset();
@@ -289,7 +306,7 @@ FReply SErrorWindowWidget::HandleCloseClicked()
 	return FReply::Handled();
 }
 
-EActiveTimerReturnType SErrorWindowWidget::PollCloseButtonTheme(double InCurrentTime, float InDeltaTime)
+void SErrorWindowWidget::ApplyCloseButtonTheme()
 {
 	// Only rebuild when the theme actually changed (sentinel forces the first apply). The CloseButtonStyle
 	// built at construct is frozen at the construct-time theme; a reused window shown in another theme
@@ -307,5 +324,42 @@ EActiveTimerReturnType SErrorWindowWidget::PollCloseButtonTheme(double InCurrent
 			LastAppliedCloseButtonTheme = CurrentThemeValue;
 		}
 	}
-	return EActiveTimerReturnType::Continue;
+}
+
+bool SErrorWindowWidget::TryBindThemeChanged()
+{
+	if (ThemeChangedHandle.IsValid())
+	{
+		return true;
+	}
+
+	UUIThemeSubsystem* ThemeSubsystem = FindThemeSubsystemForErrorWindow();
+	if (!ThemeSubsystem)
+	{
+		return false;
+	}
+
+	BoundThemeSubsystem = ThemeSubsystem;
+	ThemeChangedHandle = ThemeSubsystem->OnThemeChangedNative.AddSP(this, &SErrorWindowWidget::ApplyCloseButtonTheme);
+
+	// The event only fires on a later toggle, so stamp the current theme now.
+	ApplyCloseButtonTheme();
+	return true;
+}
+
+EActiveTimerReturnType SErrorWindowWidget::EnsureThemeBinding(double InCurrentTime, float InDeltaTime)
+{
+	return TryBindThemeChanged() ? EActiveTimerReturnType::Stop : EActiveTimerReturnType::Continue;
+}
+
+void SErrorWindowWidget::UnbindThemeChanged()
+{
+	// Removing by handle needs no AsShared(), so this is safe from the destructor. An SP binding would also
+	// expire on its own, but a reopened window re-binds and duplicates would stack up.
+	if (UUIThemeSubsystem* ThemeSubsystem = BoundThemeSubsystem.Get())
+	{
+		ThemeSubsystem->OnThemeChangedNative.Remove(ThemeChangedHandle);
+	}
+	BoundThemeSubsystem.Reset();
+	ThemeChangedHandle.Reset();
 }

@@ -45,11 +45,6 @@ void ULoadingNotifyWidget::NativeConstruct()
 	}
 }
 
-void ULoadingNotifyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-}
-
 void ULoadingNotifyWidget::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();

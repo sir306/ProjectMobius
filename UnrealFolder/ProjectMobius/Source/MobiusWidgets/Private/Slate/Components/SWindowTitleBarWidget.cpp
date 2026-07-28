@@ -20,6 +20,16 @@ namespace
 	// StyleColors / combo OnGenerate idiom) so the title bar follows a live theme toggle.
 	UUIThemeSubsystem* FindMobiusThemeSubsystem()
 	{
+		// Cached: the callers are per-paint colour lambdas, so the world-context walk below would otherwise
+		// run several times a frame for the life of the window. A weak pointer self-clears when the
+		// GameInstance goes (PIE stop, level travel), so the walk re-runs exactly when it has to.
+		// Game thread only, which is where Slate paints.
+		static TWeakObjectPtr<UUIThemeSubsystem> CachedTheme;
+		if (UUIThemeSubsystem* Cached = CachedTheme.Get())
+		{
+			return Cached;
+		}
+
 		if (!GEngine)
 		{
 			return nullptr;
@@ -32,6 +42,7 @@ namespace
 				{
 					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
 					{
+						CachedTheme = Theme;
 						return Theme;
 					}
 				}

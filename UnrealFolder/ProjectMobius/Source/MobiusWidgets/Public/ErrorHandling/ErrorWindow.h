@@ -11,6 +11,7 @@
 class SButton;
 class SMoveableWindow;
 class SWindowContentPanel;
+class UUIThemeSubsystem;
 enum class EMobiusUITheme : uint8;
 
 /**
@@ -90,13 +91,28 @@ public:
 
 private:
 	/**
-	 * Re-theme the Close button when the theme changes. Driven by an active timer registered ON THE CLOSE
-	 * BUTTON (in OpenErrorWindow), not on this controller: this widget is free-standing chrome — it spawns a
-	 * separate SMoveableWindow and is never slotted under any window — so it is never painted (the OnPaint
-	 * override above is dead) and SWidget::Paint is what pumps active timers. CloseButton lives inside the
-	 * painted WindowPanel, so its timer fires. Cheap: only rebuilds CloseButtonStyle when GetTheme() differs.
+	 * Re-theme the Close button for the current theme. Event-driven: bound to
+	 * UUIThemeSubsystem::OnThemeChangedNative, and also called once at bind time for the initial apply.
+	 *
+	 * This used to be an active timer with a 0-second period registered on the Close button (this widget is
+	 * free-standing chrome, never slotted under any window, so its own timers never fire — the OnPaint
+	 * override above is dead). A 0-second timer fires every frame and holds the owning window in Slate's
+	 * must-tick set; only the style rebuild was theme-guarded, not the poll itself.
 	 */
-	EActiveTimerReturnType PollCloseButtonTheme(double InCurrentTime, float InDeltaTime);
+	void ApplyCloseButtonTheme();
+
+	/**
+	 * Bind ApplyCloseButtonTheme to the theme subsystem and do the first apply. Returns false if the
+	 * subsystem does not exist yet — it is a GameInstanceSubsystem, so there may be no game instance.
+	 * Idempotent: a second call while already bound is a no-op that returns true.
+	 */
+	bool TryBindThemeChanged();
+
+	/** Bootstrap retry for TryBindThemeChanged; returns Stop as soon as it binds, so this is not a poll. */
+	EActiveTimerReturnType EnsureThemeBinding(double InCurrentTime, float InDeltaTime);
+
+	/** Drop the OnThemeChangedNative binding, if any. Safe to call when never bound. */
+	void UnbindThemeChanged();
 
 	/** Creates and shows the test error window. */
 	void OpenErrorWindow();
@@ -124,9 +140,14 @@ private:
 
 	/**
 	 * Theme last stamped into CloseButtonStyle. Initialised to an out-of-range sentinel (Dark=0/Light=1)
-	 * so the first poll always rebuilds and applies the button style.
+	 * so the first apply always rebuilds the button style.
 	 */
 	EMobiusUITheme LastAppliedCloseButtonTheme = static_cast<EMobiusUITheme>(0xFF);
+
+	/** Subsystem we bound OnThemeChangedNative on, and the handle to remove. Weak: the GameInstance can go
+	 *  first (PIE stop) and this window is free-standing chrome that outlives nothing in particular. */
+	TWeakObjectPtr<UUIThemeSubsystem> BoundThemeSubsystem;
+	FDelegateHandle ThemeChangedHandle;
 
 	/**
 	 * Drives the top accent colour by severity. Held in a shared value (not a plain member) so the

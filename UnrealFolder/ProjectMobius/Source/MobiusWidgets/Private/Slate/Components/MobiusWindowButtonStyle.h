@@ -57,4 +57,22 @@ namespace MobiusWindowButtonStyle
 			.SetNormalPadding(FMargin(8.0f, 3.0f))
 			.SetPressedPadding(FMargin(8.0f, 3.0f));
 	}
+
+	/**
+	 * A18: a window's title-bar close (×) is a destructive/dismiss affordance, so its glyph reads as one —
+	 * DangerText in every state instead of the engine's off-palette white.
+	 *
+	 * Only the GLYPH TINT changes. The red-fill-on-hover ramp that Fluent-style close buttons use needs
+	 * DangerHoverBg / DangerBorder / DangerPressedBg, which deliberately do not exist yet; that decision
+	 * belongs with A19, and the A5 ruling stands until then — destructive means red glyph on the normal
+	 * surface, not a red fill.
+	 */
+	inline void ApplyDangerCloseGlyph(FWindowStyle& WindowStyle, const UUIThemeSubsystem* Theme)
+	{
+		const FSlateColor Danger = FSlateColor(Resolve(Theme, EMobiusPaletteRole::DangerText));
+		WindowStyle.CloseButtonStyle.Normal.TintColor = Danger;
+		WindowStyle.CloseButtonStyle.Hovered.TintColor = Danger;
+		WindowStyle.CloseButtonStyle.Pressed.TintColor = Danger;
+		WindowStyle.CloseButtonStyle.Disabled.TintColor = Danger;
+	}
 }

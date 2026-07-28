@@ -49,24 +49,28 @@ void UMoveableWidget::NativeConstruct()
 	}
 }
 
-void UMoveableWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-}
-
 void UMoveableWidget::OnMoveableButtonPressed()
 {
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
 	// Get the current position of the mouse
-	FVector2D MousePosition = UWidgetLayoutLibrary::GetMousePositionOnViewport(GetWorld());
+	FVector2D MousePosition = UWidgetLayoutLibrary::GetMousePositionOnViewport(World);
 
 	// Get the current position of the widget
 	FVector2D CanvasViewportPosition = UWidgetLayoutLibrary::SlotAsCanvasSlot(MoveableCanvas)->GetPosition();
 
 	// Get the difference between the two
 	MousePositionDifference = MousePosition - CanvasViewportPosition;
-	
-	UpdateLocation();
 
+	// Arm the drag here, once. This used to live in UpdateLocation, which meant every one of the 100
+	// callbacks per second re-set its own looping timer for the whole drag.
+	World->GetTimerManager().SetTimer(MoveableTimerHandle, this, &UMoveableWidget::UpdateLocation, 0.01f, true);
+
+	UpdateLocation();
 }
 
 void UMoveableWidget::OnMoveableButtonReleased()
@@ -80,14 +84,12 @@ void UMoveableWidget::UpdateLocation()
 {
 	UWorld* World = GetWorld();
 
+	// No log here: this runs at 100 Hz for the length of a drag, which is exactly the latency path the
+	// project's no-logging rule is about.
 	if(!World)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("World is nullptr"));
 		return;
 	}
-	
-	// Set the timer by event
-	World->GetTimerManager().SetTimer(MoveableTimerHandle, this, &UMoveableWidget::UpdateLocation, 0.01f, true);
 
 	// Get the current position of the mouse
 	FVector2D MousePosition = UWidgetLayoutLibrary::GetMousePositionOnViewport(World);

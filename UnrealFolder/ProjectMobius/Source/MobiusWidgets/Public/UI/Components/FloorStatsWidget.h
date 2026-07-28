@@ -52,14 +52,6 @@ public:
         /** Override to unbind runtime delegates. */
         virtual void NativeDestruct() override;
 
-        /**
-         * Override to tick the widget during runtime.
-         *
-         * @param MyGeometry Cached geometry for this widget.
-         * @param InDeltaTime Time elapsed since the last tick.
-         */
-        virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-
         /** Override to keep design-time properties synchronized. */
         virtual void SynchronizeProperties() override;
 

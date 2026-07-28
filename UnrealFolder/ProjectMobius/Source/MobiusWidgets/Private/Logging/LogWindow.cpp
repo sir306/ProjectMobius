@@ -23,6 +23,14 @@ namespace
 	// SWindowTitleBarWidget) so the log window body + mono text follow a live theme toggle.
 	UUIThemeSubsystem* FindThemeSubsystemForLogWindow()
 	{
+		// Cached for the same reason as SWindowTitleBarWidget's copy: the callers are per-paint colour
+		// lambdas. The weak pointer self-clears with the GameInstance, so the walk re-runs only then.
+		static TWeakObjectPtr<UUIThemeSubsystem> CachedTheme;
+		if (UUIThemeSubsystem* Cached = CachedTheme.Get())
+		{
+			return Cached;
+		}
+
 		if (!GEngine)
 		{
 			return nullptr;
@@ -35,6 +43,7 @@ namespace
 				{
 					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
 					{
+						CachedTheme = Theme;
 						return Theme;
 					}
 				}
@@ -108,6 +117,9 @@ void SLogWindowWidget::ShowLogWindow()
 
 void SLogWindowWidget::CloseLogWindow()
 {
+	// Unconditional: the binding outlives the window pointer, and OpenLogWindow re-binds on reopen.
+	UnbindThemeChanged();
+
 	if (!LogWindowPtr.IsValid() || !FSlateApplication::IsInitialized())
 	{
 		LogWindowPtr.Reset();
@@ -143,6 +155,10 @@ void SLogWindowWidget::OpenLogWindow()
 	// (No title-brush tints here: SWindowTitleBarWidget forces the title brushes to NoBrush and polls
 	// the palette for the title bar / title text, so any tint set here would be dead.)
 	LogWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+
+	// A18: title-bar × reads as the destructive affordance it is. Stamped at open (like the rest of this
+	// window style), so a theme toggle while the window is up is picked up on the next open.
+	MobiusWindowButtonStyle::ApplyDangerCloseGlyph(LogWindowStyle, FindThemeSubsystemForLogWindow());
 
 	// App typeface: Inter (composite UFont at /Game). Regular face, keep the ~10px log size. Colour is
 	// polled per-paint below (InputMonoText). Falls back to the engine default face if the asset is
@@ -210,14 +226,15 @@ void SLogWindowWidget::OpenLogWindow()
 			]
 		];
 
-	// Live re-theme for the Close button. This controller is never slotted under any window, so its own
-	// active timers/Tick never fire (SWidget::Paint pumps active timers, and the controller is never
-	// painted). Register on CloseButton instead: it lives inside WindowPanel, which IS painted every frame
-	// (the body's colour lambda fires there). The delegate is SP-bound to this controller, and the timer is
-	// owned by the button — it dies on window close and a fresh button gets its own timer on reopen.
-	if (CloseButton.IsValid())
+	// Live re-theme for the Close button, event-driven off OnThemeChangedNative. The bind normally succeeds
+	// right here; if it does not, fall back to a 2 Hz bootstrap timer that stops the moment it binds.
+	//
+	// The timer has to be registered on CloseButton, not on this controller: this widget is never slotted
+	// under any window, so it is never painted, and SWidget::Paint is what pumps active timers. CloseButton
+	// lives inside WindowPanel, which is painted.
+	if (!TryBindThemeChanged() && CloseButton.IsValid())
 	{
-		CloseButton->RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SLogWindowWidget::PollCloseButtonTheme));
+		CloseButton->RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SLogWindowWidget::EnsureThemeBinding));
 	}
 
 	SAssignNew(LogWindowPtr, SMoveableWindow)
@@ -278,7 +295,7 @@ void SLogWindowWidget::HandleLogWindowClosedEvent(const TSharedRef<SWindow>& InW
 	OnLogWindowClosed.ExecuteIfBound();
 }
 
-EActiveTimerReturnType SLogWindowWidget::PollCloseButtonTheme(double InCurrentTime, float InDeltaTime)
+void SLogWindowWidget::ApplyCloseButtonTheme()
 {
 	// Only rebuild when the theme actually changed (sentinel forces the first apply). The CloseButtonStyle
 	// built at construct is frozen at the construct-time theme; a reused window shown in another theme would
@@ -296,5 +313,42 @@ EActiveTimerReturnType SLogWindowWidget::PollCloseButtonTheme(double InCurrentTi
 			LastAppliedCloseButtonTheme = CurrentThemeValue;
 		}
 	}
-	return EActiveTimerReturnType::Continue;
+}
+
+bool SLogWindowWidget::TryBindThemeChanged()
+{
+	if (ThemeChangedHandle.IsValid())
+	{
+		return true;
+	}
+
+	UUIThemeSubsystem* ThemeSubsystem = FindThemeSubsystemForLogWindow();
+	if (!ThemeSubsystem)
+	{
+		return false;
+	}
+
+	BoundThemeSubsystem = ThemeSubsystem;
+	ThemeChangedHandle = ThemeSubsystem->OnThemeChangedNative.AddSP(this, &SLogWindowWidget::ApplyCloseButtonTheme);
+
+	// The event only fires on a later toggle, so stamp the current theme now.
+	ApplyCloseButtonTheme();
+	return true;
+}
+
+EActiveTimerReturnType SLogWindowWidget::EnsureThemeBinding(double InCurrentTime, float InDeltaTime)
+{
+	return TryBindThemeChanged() ? EActiveTimerReturnType::Stop : EActiveTimerReturnType::Continue;
+}
+
+void SLogWindowWidget::UnbindThemeChanged()
+{
+	// Removing by handle needs no AsShared(), so this is safe from the destructor. An SP binding would also
+	// expire on its own, but a reopened window re-binds and duplicates would stack up.
+	if (UUIThemeSubsystem* ThemeSubsystem = BoundThemeSubsystem.Get())
+	{
+		ThemeSubsystem->OnThemeChangedNative.Remove(ThemeChangedHandle);
+	}
+	BoundThemeSubsystem.Reset();
+	ThemeChangedHandle.Reset();
 }

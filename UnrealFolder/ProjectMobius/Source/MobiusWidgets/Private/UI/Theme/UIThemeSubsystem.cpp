@@ -43,6 +43,7 @@
 #include "UObject/UObjectIterator.h"
 #include "Engine/Font.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Slate/Components/MobiusWindowButtonStyle.h"   // A18: shared DangerText close-glyph stamp
 #include "Styling/CoreStyle.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -698,6 +699,11 @@ FWindowStyle UUIThemeSubsystem::GetThemedWindowStyle() const
 	Style.BackgroundBrush.TintColor = FSlateColor(TitleBg);
 	Style.OutlineBrush.TintColor = FSlateColor(Border);
 	Style.TitleTextStyle.ColorAndOpacity = FSlateColor(TitleText);
+
+	// A18: the title-bar × is a destructive affordance, so its glyph takes DangerText. Callers that
+	// re-fetch this style on OnThemeChanged (the ImPlot chart windows) therefore follow a live toggle.
+	MobiusWindowButtonStyle::ApplyDangerCloseGlyph(Style, this);
+
 	return Style;
 }
 
@@ -719,6 +725,7 @@ void UUIThemeSubsystem::ApplyTheme(const bool bLight)
 
 	// Event replacement for the walk: event-driven widgets re-pull their role colours on this.
 	OnThemeChanged.Broadcast();
+	OnThemeChangedNative.Broadcast();
 }
 
 void UUIThemeSubsystem::ThemeInWorldWidgetComponents()

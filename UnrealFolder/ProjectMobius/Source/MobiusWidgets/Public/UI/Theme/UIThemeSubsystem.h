@@ -103,6 +103,17 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Mobius|Theme")
 	FOnMobiusThemeChanged OnThemeChanged;
 
+	/**
+	 * Same event for listeners that are not UObjects. OnThemeChanged is a DYNAMIC delegate, so it can only
+	 * be bound by (UObject, UFUNCTION) pairs — the Slate-side chrome (SErrorWindowWidget, SLogWindowWidget,
+	 * the title bar) is plain SWidget and cannot subscribe to it at all, which is why those windows used to
+	 * poll on a 0-second active timer instead. Bind this with AddSP: an SP binding self-expires when the
+	 * widget dies, so a missed Remove cannot dangle.
+	 *
+	 * Broadcast immediately after OnThemeChanged, from the same place, so the two never disagree.
+	 */
+	FSimpleMulticastDelegate OnThemeChangedNative;
+
 	/** Re-run the palette walk for the CURRENT theme (idempotent; picks up late-spawned widgets). */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
 	void ReapplyTheme();

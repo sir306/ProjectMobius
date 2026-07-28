@@ -72,11 +72,6 @@ void UMobiusSettingPanel::ApplyMobiusTheme_Implementation()
 	}
 }
 
-void UMobiusSettingPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-}
-
 void UMobiusSettingPanel::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
