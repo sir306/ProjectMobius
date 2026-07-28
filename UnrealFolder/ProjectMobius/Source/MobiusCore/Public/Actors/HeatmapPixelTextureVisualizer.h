@@ -225,7 +225,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
 	void SaveHeatmapToPNG() const;
 	void SaveHeatmapToPNG(const FString& CurrentTimeString) const;
-	
+
+#if !UE_BUILD_SHIPPING
+	/**
+	 * Automation access to the raw trajectory accumulation buffer.
+	 *
+	 * The trajectory texture is private because nothing in the runtime should draw to it outside
+	 * UpdateHeatmapWithTrajectorySegments. Calibration tests still need to read the accumulated
+	 * counts back, so this exposes it read-only rather than widening the drawing surface.
+	 *
+	 * @return The accumulation texture, or nullptr before SetupDynamicTexture has run.
+	 */
+	const class UDynamicPixelRenderingTexture* GetTrajectoryAccumulationTextureForTesting() const { return TrajectoryAccumulationTexture; }
+
+	/**
+	 * Mutable variant, for diagnostics that must call the texture's non-const helpers - specifically
+	 * SaveDynamicTextureToPNG, which needs to build a colourised copy. Still read-only in intent: the
+	 * accumulation must only ever be drawn to by UpdateHeatmapWithTrajectorySegments.
+	 */
+	class UDynamicPixelRenderingTexture* GetTrajectoryAccumulationTextureMutableForTesting() const { return TrajectoryAccumulationTexture; }
+
+	/** Maps a world location to the texel the trajectory rasteriser would write, for test assertions. */
+	FIntPoint WorldToTexelForTesting(const FVector& WorldLocation) const;
+#endif
+
 #pragma endregion PUBLIC_METHODS
 
 #pragma region PUBLIC_PROPERTIES_AND_COMPONENTS

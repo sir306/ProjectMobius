@@ -35,6 +35,8 @@
 // Subsystems to include with the processor
 #include "Subsystems/HeatmapSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+// Diagnostics
+#include "Diagnostics/TrajectoryCaptureRecorder.h"
 // multithreading and async
 #include "Async/ParallelFor.h"
 
@@ -86,6 +88,13 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 
 	// determine if heatmaps should be updated this frame
 	UpdateHeatmapInterval();
+
+#if !UE_BUILD_SHIPPING
+	// Diagnostic capture heartbeat. Called before this frame is processed, so the window is half-open:
+	// the frame that crosses the deadline ends the capture and is itself excluded, which keeps the
+	// written texture consistent with the last logged row.
+	FTrajectoryCaptureRecorder::Get().Tick(TimeDilationSubSystem->GetCurrentSimTime());
+#endif
 
 	// reuse the array storage instead of reallocating
 	HeatmapLocations.Reset();
@@ -244,27 +253,63 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 	// });
 	
 	
+#if !UE_BUILD_SHIPPING
+	// Hoisted out of the loop: one bool test and, when armed, one sim-time read per chunk.
+	FTrajectoryCaptureRecorder& Capture = FTrajectoryCaptureRecorder::Get();
+	const bool bCapturing = Capture.IsArmed();
+	const float CaptureSimTime = (bCapturing && TimeDilationSubSystem) ? TimeDilationSubSystem->GetCurrentSimTime() : 0.0f;
+#endif
+
 	// TODO: this loop is not parallelized, implement ParallelFor for performance and a threadsafe container for HeatmapLocations for simplicity
 	for (int i = 0; i < Entities.Num(); i++)
 	{
 		auto EntityMovement = EntityMovementFragment[i];
 		auto& EntityRendering = EntityRenderingFragment[i];
-		
+
 		if (!EntityRendering.bRenderAgent || EntityRendering.bReadyToDestroy) // changed from && to || as likely either condition is sufficient to skip
 		{
+#if !UE_BUILD_SHIPPING
+			// Recorded rather than silently skipped: "the processor never offered this agent" is a
+			// finding in its own right when reconciling against the source movement data.
+			if (bCapturing)
+			{
+				Capture.RecordCollect(CaptureSimTime, EntityMovement.EntityID, EntityMovement.CurrentLocation,
+					EntityRendering.bRenderAgent, EntityRendering.bReadyToDestroy,
+					LastTrajectoryLocations.Contains(EntityMovement.EntityID),
+					/*bPositionChanged*/ false, /*bSegmentEmitted*/ false);
+			}
+#endif
 			continue;
 		}
 		HeatmapLocations.Add(EntityMovement.CurrentLocation);
 
+		bool bHasPrevious = false;
+		bool bPositionChanged = false;
+		bool bSegmentEmitted = false;
+
 		if (HeatmapSubsystem && HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
 		{
-			if (const FVector* PreviousLocation = LastTrajectoryLocations.Find(EntityMovement.EntityID);
-				PreviousLocation && !PreviousLocation->Equals(EntityMovement.CurrentLocation, KINDA_SMALL_NUMBER))
+			if (const FVector* PreviousLocation = LastTrajectoryLocations.Find(EntityMovement.EntityID))
 			{
-				TrajectorySegments.Add({ *PreviousLocation, EntityMovement.CurrentLocation });
+				bHasPrevious = true;
+				bPositionChanged = !PreviousLocation->Equals(EntityMovement.CurrentLocation, KINDA_SMALL_NUMBER);
+				if (bPositionChanged)
+				{
+					TrajectorySegments.Add({ *PreviousLocation, EntityMovement.CurrentLocation });
+					bSegmentEmitted = true;
+				}
 			}
 			LastTrajectoryLocations.Add(EntityMovement.EntityID, EntityMovement.CurrentLocation);
 		}
+
+#if !UE_BUILD_SHIPPING
+		if (bCapturing)
+		{
+			Capture.RecordCollect(CaptureSimTime, EntityMovement.EntityID, EntityMovement.CurrentLocation,
+				EntityRendering.bRenderAgent, EntityRendering.bReadyToDestroy,
+				bHasPrevious, bPositionChanged, bSegmentEmitted);
+		}
+#endif
 		//HeatmapLocations[(ChunkSize + i)] = EntityMovement.CurrentLocation;
 	}
 }
@@ -281,6 +326,14 @@ void UAgentHeatmapProcessor::ApplyHeatmapUpdates()
 		{
 			if (HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
 			{
+#if !UE_BUILD_SHIPPING
+				if (FTrajectoryCaptureRecorder::Get().IsArmed())
+				{
+					FTrajectoryCaptureRecorder::Get().RecordFlush(
+						TimeDilationSubSystem ? TimeDilationSubSystem->GetCurrentSimTime() : 0.0f,
+						TrajectorySegments.Num(), /*bTrajectoryActive*/ true);
+				}
+#endif
 				HeatmapSubsystem->UpdateHeatmapsWithTrajectorySegments(TrajectorySegments);
 				TrajectorySegments.Reset();
 			}

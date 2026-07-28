@@ -386,5 +386,24 @@ public:
 	/** Gets the Dynamic Texture Size */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Getters")
 	FORCEINLINE FVector2D GetDynamicTextureSize() const { return FVector2D(TextureDimensionX, TextureDimensionY); }
+
+#if !UE_BUILD_SHIPPING
+	/**
+	 * Diagnostics / automation readback of one raw stored byte, straight out of the CPU pixel buffer
+	 * before any material banding is applied.
+	 *
+	 * Pixels are stored BGRA, so ChannelIndex is 0=B, 1=G, 2=R, 3=A. The heatmap's accumulated value
+	 * lives in the red channel, so callers almost always want GetRawPixelRed.
+	 *
+	 * Returns 0 for an out-of-bounds coordinate, an invalid channel, or an uninitialised buffer, so a
+	 * miscomputed coordinate reads as "untouched" rather than crashing a test.
+	 *
+	 * @return The stored 0-255 byte for that channel.
+	 */
+	uint8 GetRawPixelChannel(int32 X_Coordinate, int32 Y_Coordinate, int32 ChannelIndex) const;
+
+	/** Red-channel convenience wrapper — the channel the heatmap accumulates into. */
+	uint8 GetRawPixelRed(int32 X_Coordinate, int32 Y_Coordinate) const { return GetRawPixelChannel(X_Coordinate, Y_Coordinate, 2); }
+#endif
 #pragma endregion GETTERS_SETTERS
 };

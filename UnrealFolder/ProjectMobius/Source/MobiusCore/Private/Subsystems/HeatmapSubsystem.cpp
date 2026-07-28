@@ -26,8 +26,10 @@
 
 #include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Async/Async.h"
+#include "Diagnostics/TrajectoryCaptureRecorder.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 #include "Engine/Engine.h"
 
 UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
@@ -314,12 +316,38 @@ void UHeatmapSubsystem::UpdateHeatmapsWithTrajectorySegments(const TArray<FHeatm
 		}
 
 		TArray<FHeatmapTrajectorySegment> FloorSegments;
+#if !UE_BUILD_SHIPPING
+		FTrajectoryCaptureRecorder& Capture = FTrajectoryCaptureRecorder::Get();
+		const bool bCapturing = Capture.IsTargetFloor(Heatmap->FloorID);
+		float CaptureSimTime = 0.0f;
+		if (bCapturing)
+		{
+			if (const UWorld* CaptureWorld = GetWorld())
+			{
+				if (const UTimeDilationSubSystem* Time = CaptureWorld->GetSubsystem<UTimeDilationSubSystem>())
+				{
+					CaptureSimTime = Time->GetCurrentSimTime();
+				}
+			}
+		}
+#endif
 		for (const FHeatmapTrajectorySegment& Segment : Segments)
 		{
-			if (Heatmap->CheckHeatmapAndLocationValid(Segment.End))
+			const bool bKept = Heatmap->CheckHeatmapAndLocationValid(Segment.End);
+			if (bKept)
 			{
 				FloorSegments.Add(Segment);
 			}
+#if !UE_BUILD_SHIPPING
+			// Rejections are the point: a segment dropped here never reaches the rasteriser, and
+			// because only Segment.End is tested, a straddling segment loses its in-band portion too.
+			if (bCapturing)
+			{
+				Capture.RecordFilter(CaptureSimTime, Heatmap->FloorID,
+					static_cast<float>(Heatmap->MeshOriginLocation.Z), Heatmap->MaxAddHeight,
+					Segment.Start, Segment.End, bKept);
+			}
+#endif
 		}
 
 		Heatmap->UpdateHeatmapWithTrajectorySegments(FloorSegments);

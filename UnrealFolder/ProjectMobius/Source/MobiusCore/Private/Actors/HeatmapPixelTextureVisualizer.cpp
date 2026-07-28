@@ -36,6 +36,8 @@
 #include "Rendering/PositionVertexBuffer.h" 
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
+#include "Diagnostics/TrajectoryCaptureRecorder.h"
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
 
@@ -533,11 +535,36 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithTrajectorySegments(const T
 
 	FLinearColor PathColor = AgentColorValue * TrajectorySampleWeight;
 
+#if !UE_BUILD_SHIPPING
+	FTrajectoryCaptureRecorder& Capture = FTrajectoryCaptureRecorder::Get();
+	const bool bCapturing = Capture.IsTargetFloor(FloorID);
+	float CaptureSimTime = 0.0f;
+	if (bCapturing)
+	{
+		if (const UWorld* CaptureWorld = GetWorld())
+		{
+			if (const UTimeDilationSubSystem* Time = CaptureWorld->GetSubsystem<UTimeDilationSubSystem>())
+			{
+				CaptureSimTime = Time->GetCurrentSimTime();
+			}
+		}
+	}
+#endif
+
 	for (const FHeatmapTrajectorySegment& Segment : Segments)
 	{
 		const float Length = FVector::Dist(Segment.Start, Segment.End);
 		if (Length <= KINDA_SMALL_NUMBER)
 		{
+#if !UE_BUILD_SHIPPING
+			// Degenerate segments are recorded as not-drawn so the raster stream reconciles 1:1 with
+			// the filter stream; an unexplained row count difference would otherwise look like loss.
+			if (bCapturing)
+			{
+				Capture.RecordRaster(CaptureSimTime, FloorID, Segment.Start, Segment.End,
+					FIntPoint(-1, -1), FIntPoint(-1, -1), /*bDrawn*/ false);
+			}
+#endif
 			continue;
 		}
 
@@ -553,12 +580,34 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithTrajectorySegments(const T
 		// material derives its output alpha from the red channel and otherwise hides low values.
 		TrajectoryAccumulationTexture->DrawLineWithMinimumRed(StartX, EndX, StartY, EndY, PathColor,
 			TrajectoryMinimumVisibleValue, TrajectoryLineBrushRadius);
+
+#if !UE_BUILD_SHIPPING
+		if (bCapturing)
+		{
+			// Post-clamp texels: if a segment's world position falls outside the mesh, this is where
+			// it silently collapses onto the texture edge, and only the recorded texels reveal it.
+			Capture.RecordRaster(CaptureSimTime, FloorID, Segment.Start, Segment.End,
+				FIntPoint(StartX, StartY), FIntPoint(EndX, EndY), /*bDrawn*/ true);
+		}
+#endif
 	}
 
 	// The trajectory material binds directly to this raw texture while the mode is active.
 	// No copy, blur, or other post-process can alter the sampled path values.
 	TrajectoryAccumulationTexture->UpdateTextureRender();
 }
+
+#if !UE_BUILD_SHIPPING
+FIntPoint AHeatmapPixelTextureVisualizer::WorldToTexelForTesting(const FVector& WorldLocation) const
+{
+	// Deliberately duplicates the coordinate maths in UpdateHeatmapWithTrajectorySegments so a test
+	// asserts against the same texel the rasteriser wrote. If that conversion changes, this must too.
+	const FVector2D TexturePoint = ActorWorldToUV(WorldLocation);
+	return FIntPoint(
+		FMath::Clamp(FMath::RoundToInt(TexturePoint.X), 0, TextureWidth - 1),
+		FMath::Clamp(FMath::RoundToInt(TexturePoint.Y), 0, TextureHeight - 1));
+}
+#endif
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents_NoCheck(const TArray<FVector>& AgentLocations)
 {

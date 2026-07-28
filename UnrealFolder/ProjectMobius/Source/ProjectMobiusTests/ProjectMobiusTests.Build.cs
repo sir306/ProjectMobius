@@ -24,6 +24,7 @@ public class ProjectMobiusTests : ModuleRules
 			"Json",
 			"JsonUtilities",
 			"MobiusCore",
+			"Visualization", // TrajectoryHeatmapCalibrationTest drives UDynamicPixelRenderingTexture directly
 		});
 	}
 }

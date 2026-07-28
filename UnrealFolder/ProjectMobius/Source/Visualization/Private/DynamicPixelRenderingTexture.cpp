@@ -913,6 +913,25 @@ FORCEINLINE uint8* UDynamicPixelRenderingTexture::GetPixelPtr(const TUniquePtr<u
 	return (BufferToGetPtr.Get() + (X_Coordinate + Y_Coordinate * TextureDimensionX) * BYTES_PER_PIXEL);
 }
 
+#if !UE_BUILD_SHIPPING
+uint8 UDynamicPixelRenderingTexture::GetRawPixelChannel(int32 X_Coordinate, int32 Y_Coordinate, int32 ChannelIndex) const
+{
+	// Read straight from the CPU buffer the draw calls mutate — deliberately NOT from the GPU texture,
+	// so a readback is valid without an UpdateTextureRender and reflects exactly what was accumulated.
+	if (!PixelBuffer.IsValid() || ChannelIndex < 0 || ChannelIndex >= BYTES_PER_PIXEL)
+	{
+		return 0;
+	}
+
+	if (X_Coordinate < 0 || X_Coordinate >= TextureDimensionX || Y_Coordinate < 0 || Y_Coordinate >= TextureDimensionY)
+	{
+		return 0;
+	}
+
+	return *(GetPixelPtr(X_Coordinate, Y_Coordinate) + ChannelIndex);
+}
+#endif
+
 float UDynamicPixelRenderingTexture::CalculateAreaOfPolygon(const TArray<FVector2D>& Vertices, const float Scale)
 {
 	float Area = 0.0f;
