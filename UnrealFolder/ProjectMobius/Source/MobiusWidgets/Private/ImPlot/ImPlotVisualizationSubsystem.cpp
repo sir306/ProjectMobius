@@ -28,6 +28,58 @@
 #include "implot.h"
 namespace
 {
+	/**
+	 * R1: paint the ImGui/ImPlot colour table from the Mobius palette.
+	 *
+	 * ImGui::StyleColorsDark() / ImPlot::StyleColorsDark() are the STOCK upstream themes, not ours, and
+	 * ImPlot's dark PlotBg is literally ImVec4(0, 0, 0, 0.50) (implot.cpp) — which is why the chart's
+	 * plotting area rendered near-black while the window chrome around it followed the theme. Nothing
+	 * here was ever palette-driven; the stock call is the whole story.
+	 *
+	 * Called per frame, right after the stock call seeds every remaining entry — same idiom already used
+	 * for the stock call itself, and it means a freshly created context and a live theme toggle both land
+	 * without any change tracking.
+	 *
+	 * The palette is authored in LINEAR space (Slate takes FLinearColor), but ImGui's colour table is
+	 * consumed as sRGB-ish floats — the stock 0.06 dark window background reads as #101010 on screen, not
+	 * as linear 0.06. So every value is sRGB-encoded on the way in, or the whole chart would come out
+	 * far too dark.
+	 */
+	void ApplyMobiusPaletteToImGui(const bool bLight)
+	{
+		auto Role = [bLight](const EMobiusPaletteRole InRole, const float Alpha = 1.0f) -> ImVec4
+		{
+			const FColor Srgb = MobiusThemePalette::Color(InRole, bLight).ToFColor(/*bSRGB=*/true);
+			return ImVec4(Srgb.R / 255.0f, Srgb.G / 255.0f, Srgb.B / 255.0f, Alpha);
+		};
+
+		ImVec4* Colors = ImGui::GetStyle().Colors;
+		Colors[ImGuiCol_WindowBg]      = Role(EMobiusPaletteRole::RibbonBg);
+		Colors[ImGuiCol_ChildBg]       = Role(EMobiusPaletteRole::RibbonBg);
+		Colors[ImGuiCol_PopupBg]       = Role(EMobiusPaletteRole::RibbonBg);
+		Colors[ImGuiCol_Border]        = Role(EMobiusPaletteRole::PanelHeaderBorder);
+		Colors[ImGuiCol_Text]          = Role(EMobiusPaletteRole::LabelText);
+		Colors[ImGuiCol_TextDisabled]  = Role(EMobiusPaletteRole::MicroText);
+		Colors[ImGuiCol_FrameBg]       = Role(EMobiusPaletteRole::InputBg);
+		Colors[ImGuiCol_TitleBg]       = Role(EMobiusPaletteRole::TitlebarBg);
+		Colors[ImGuiCol_TitleBgActive] = Role(EMobiusPaletteRole::TitlebarBg);
+
+		ImVec4* Plot = ImPlot::GetStyle().Colors;
+		// PlotBg is the card the series are drawn on — same role the migrated card backgrounds use.
+		Plot[ImPlotCol_PlotBg]       = Role(EMobiusPaletteRole::InputBg);
+		Plot[ImPlotCol_PlotBorder]   = Role(EMobiusPaletteRole::InputBorder);
+		Plot[ImPlotCol_FrameBg]      = Role(EMobiusPaletteRole::RibbonBg);
+		Plot[ImPlotCol_LegendBg]     = Role(EMobiusPaletteRole::RibbonBg);
+		Plot[ImPlotCol_LegendBorder] = Role(EMobiusPaletteRole::PanelHeaderBorder);
+		Plot[ImPlotCol_LegendText]   = Role(EMobiusPaletteRole::LabelText);
+		Plot[ImPlotCol_TitleText]    = Role(EMobiusPaletteRole::LabelText);
+		Plot[ImPlotCol_InlayText]    = Role(EMobiusPaletteRole::LabelText);
+		Plot[ImPlotCol_AxisText]     = Role(EMobiusPaletteRole::SublabelText);
+		// Grid and ticks stay deliberately faint so they sit under the series, not next to them.
+		Plot[ImPlotCol_AxisGrid]     = Role(EMobiusPaletteRole::PanelDivider, 0.6f);
+		Plot[ImPlotCol_AxisTick]     = Role(EMobiusPaletteRole::PanelDivider);
+	}
+
 	const FName VisualizationDefaultChartId = NAME_None;
 }
 
@@ -555,7 +607,8 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         // toggle without any change tracking. FontScaleMain is set again after this each frame.
         {
                 const UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
-                if (!UserSettings || UserSettings->GetUseLightUITheme())
+                const bool bLight = !UserSettings || UserSettings->GetUseLightUITheme();
+                if (bLight)
                 {
                         ImGui::StyleColorsLight();
                         ImPlot::StyleColorsLight();
@@ -565,6 +618,10 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         ImGui::StyleColorsDark();
                         ImPlot::StyleColorsDark();
                 }
+
+                // The stock call above seeds the whole table; this overwrites the entries the Mobius
+                // palette owns. Order matters — the stock call resets every colour, so it has to run first.
+                ApplyMobiusPaletteToImGui(bLight);
         }
 
         ImGuiIO& IO = ImGui::GetIO();
