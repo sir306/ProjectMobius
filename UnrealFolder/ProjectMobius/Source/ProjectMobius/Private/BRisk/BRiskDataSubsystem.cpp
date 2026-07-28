@@ -8,9 +8,17 @@
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "Algo/Reverse.h"
 #include "Async/Async.h"
 #include "Kismet/GameplayStatics.h"
 #include "Math/UnrealMathUtility.h"
+
+#include <array>
+#include <vector>
+
+// Vendored at Source/MobiusCore/ThirdParty; reachable here because MobiusCore exposes that
+// directory as a PublicIncludePath and ProjectMobius depends on MobiusCore.
+#include <earcut_hpp/earcut.hpp>
 
 DEFINE_LOG_CATEGORY_STATIC(LogBRiskDataSubsystem, Log, All);
 
@@ -433,6 +441,7 @@ bool UBRiskDataSubsystem::BuildRoomGeometryMeshData(
 		ScenarioData.Rooms,
 		ScenarioData.Vents,
 		RoomGeometryScale,
+		ScenarioData.RoomFrame,
 		OutVertices,
 		OutTriangles,
 		OutNormals,
@@ -609,11 +618,26 @@ bool UBRiskDataSubsystem::GenerateAndLoadSmokeVolumes()
 		return false;
 	}
 
-	if (!SmokeVisualizerActor->ConfigureFromRooms(ScenarioData.Rooms, RoomGeometryScale))
+	if (!SmokeVisualizerActor->ConfigureFromRooms(
+		ScenarioData.Rooms, RoomGeometryScale, ScenarioData.RoomFrame))
 	{
 		LastError = TEXT("Failed to configure B-Risk smoke visualizer volumes.");
 		UE_LOG(LogBRiskDataSubsystem, Warning, TEXT("%s"), *LastError);
 		return false;
+	}
+
+	// Report the scenario's soot yield beside the albedo actually in use. The two are NOT connected
+	// in code on purpose (see Mobius.BRisk.SmokeAlbedo); logging them together is what lets the
+	// numbers be compared by eye, and is the groundwork for a calibrated mapping if one ever exists.
+	{
+		static const IConsoleVariable* AlbedoCVar =
+			IConsoleManager::Get().FindConsoleVariable(TEXT("Mobius.BRisk.SmokeAlbedo"));
+		UE_LOG(LogBRiskDataSubsystem, Log,
+			TEXT("B-Risk smoke appearance: albedo=%.3f (Mobius.BRisk.SmokeAlbedo)  sootYield=%s g/g."),
+			AlbedoCVar ? AlbedoCVar->GetFloat() : 0.5f,
+			ScenarioData.bHasSootYield
+				? *FString::SanitizeFloat(ScenarioData.SootYieldGPerG)
+				: TEXT("absent from input1.xml"));
 	}
 
 	if (UTimeDilationSubSystem* TimeSubsystem = GetTimeDilationSubsystem())
@@ -678,7 +702,8 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 		ScenarioData.Fires,
 		ScenarioData.Sprinklers,
 		ScenarioData.Vents,
-		RoomGeometryScale))
+		RoomGeometryScale,
+		ScenarioData.RoomFrame))
 	{
 		LastError = TEXT("Failed to configure B-Risk hazard visuals.");
 		UE_LOG(LogBRiskDataSubsystem, Warning, TEXT("%s"), *LastError);
@@ -1047,20 +1072,37 @@ bool UBRiskDataSubsystem::SampleRoomChannelAtTime(int32 OneBasedIndex, const TCH
 	return false;
 }
 
+namespace
+{
+	/** Tolerance, in metres, for cross-checking Zones-data.json elevations against the .smv. */
+	constexpr double FootprintElevationToleranceM = 0.01;
+}
+
 bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 	const TArray<FBRiskRoomGeometry>& Rooms,
 	const TArray<FBRiskVentGeometry>& Vents,
 	float Scale,
+	BRiskCoord::ERoomFrame Frame,
 	TArray<FVector>& OutVertices,
 	TArray<int32>& OutTriangles,
 	TArray<FVector>& OutNormals,
 	FString* OutError)
 {
-	// Generates solid room walls (with door openings) in Unreal space, coordinate-consistent
-	// with the smoke/hazard visualizers via BRiskCoord (X<->Y swap). Currently DORMANT
-	// (bAutoGenerateRoomGeometryOnLoad defaults false) — intended for a future "load extra
-	// geometry" toggle. Known limitation: at most one opening per wall (multiple vents sharing
-	// a single wall are not yet cut). Output is unverified in-editor while dormant.
+	// Generates solid, single-sided, outward-facing room shells in Unreal space. Currently
+	// DORMANT (bAutoGenerateRoomGeometryOnLoad defaults false) — intended for a future "load
+	// extra geometry" toggle.
+	//
+	// Two paths, chosen per room and never mixed within a room:
+	//
+	//  * Room HAS a Zones-data.json footprint -> extruded polygon prism, converted with
+	//    BRiskCoord::FootprintToUnreal (Y negated). This is the real floor plan. Door/window
+	//    openings are NOT cut — see the comment on the polygon path below.
+	//  * Room has NO footprint -> the legacy equivalent-rectangle box, converted with
+	//    BRiskCoord::ToUnreal (X<->Y swap), with one door opening per wall.
+	//
+	// The two conversions differ by a 90 degree rotation about the world origin, so a scenario
+	// containing both kinds of room produces geometry in two frames. That is a data-authoring
+	// fault, not a supported mode, and is warned about below.
 	OutVertices.Reset();
 	OutTriangles.Reset();
 	OutNormals.Reset();
@@ -1113,8 +1155,193 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 		});
 	};
 
+	// Emits one triangle wound so that it faces DesiredNormal. Deriving the winding from the
+	// requested facing rather than from the input ordering keeps the result independent of the
+	// triangulator's own winding convention.
+	const auto AddTriangleFacing = [&OutVertices, &OutTriangles, &OutNormals](
+		const FVector& A,
+		const FVector& B,
+		const FVector& C,
+		const FVector& DesiredNormal)
+	{
+		FVector Normal = FVector::CrossProduct(B - A, C - A).GetSafeNormal();
+		if (Normal.IsNearlyZero())
+		{
+			return;
+		}
+
+		const bool bFlipWinding = FVector::DotProduct(Normal, DesiredNormal) < 0.0;
+		if (bFlipWinding)
+		{
+			Normal = -Normal;
+		}
+
+		const int32 Base = OutVertices.Num();
+		OutVertices.Append({ A, bFlipWinding ? C : B, bFlipWinding ? B : C });
+		OutNormals.Append({ Normal, Normal, Normal });
+		OutTriangles.Append({ Base, Base + 1, Base + 2 });
+	};
+
+	// Builds the true floor plan for one room: triangulated floor and ceiling caps plus one
+	// extruded quad per polygon edge.
+	const auto AppendFootprintRoom = [&AddTriangleFacing, Scale, Frame](
+		const FBRiskRoomGeometry& Room,
+		FString& OutRoomError) -> bool
+	{
+		// Conversion, vertex welding and winding normalisation all live in MakeRoomFootprint so
+		// that the mesh, the smoke volume and the egress bounds cannot drift apart.
+		const BRiskCoord::FRoomFootprintCm Footprint = BRiskCoord::MakeRoomFootprint(Room, Scale, Frame);
+		if (!Footprint.bFromPolygon)
+		{
+			OutRoomError = FString::Printf(
+				TEXT("Room %d ('%s') has a degenerate Zones-data.json footprint (%d source vertices)."),
+				Room.RoomId, *Room.Label, Room.FootprintPolygon.Num());
+			return false;
+		}
+
+		const TArray<FVector2D>& Ring = Footprint.Polygon;
+
+		if (Room.Size.Z <= 0.0)
+		{
+			OutRoomError = FString::Printf(
+				TEXT("Room %d ('%s') has a footprint but an invalid height %g m."),
+				Room.RoomId, *Room.Label, Room.Size.Z);
+			return false;
+		}
+
+		// Z comes from the .smv, which is also what the smoke and hazard visualizers read;
+		// taking it from the JSON instead would create a second source of truth. The JSON pair
+		// is only cross-checked, because §10.3 of the findings leaves that mapping unverified
+		// for anything other than the flat, elevation-zero datasets shipped so far.
+		if (Room.bHasFootprintExtents
+			&& (!FMath::IsNearlyEqual(Room.FootprintFloorElevationM, Room.Origin.Z, FootprintElevationToleranceM)
+				|| !FMath::IsNearlyEqual(Room.FootprintHeightM, Room.Size.Z, FootprintElevationToleranceM)))
+		{
+			UE_LOG(LogBRiskDataSubsystem, Warning,
+				TEXT("Room %d ('%s') Zones-data.json elevation/height (%g / %g m) disagrees with the .smv ")
+				TEXT("(%g / %g m); the .smv values are used so the mesh matches the smoke volume."),
+				Room.RoomId, *Room.Label,
+				Room.FootprintFloorElevationM, Room.FootprintHeightM,
+				Room.Origin.Z, Room.Size.Z);
+		}
+
+		const double FloorZ = Room.Origin.Z * Scale;
+		const double CeilingZ = (Room.Origin.Z + Room.Size.Z) * Scale;
+
+		std::vector<std::vector<std::array<double, 2>>> EarcutRings(1);
+		EarcutRings[0].reserve(static_cast<size_t>(Ring.Num()));
+		for (const FVector2D& Point : Ring)
+		{
+			EarcutRings[0].push_back({ Point.X, Point.Y });
+		}
+
+		const std::vector<size_t> CapIndices = mapbox::earcut<size_t>(EarcutRings);
+		if (CapIndices.size() < 3 || CapIndices.size() % 3 != 0)
+		{
+			OutRoomError = FString::Printf(
+				TEXT("Room %d ('%s') footprint could not be triangulated (%d vertices produced %d indices)."),
+				Room.RoomId, *Room.Label, Ring.Num(), static_cast<int32>(CapIndices.size()));
+			return false;
+		}
+
+		for (size_t Index = 0; Index + 2 < CapIndices.size(); Index += 3)
+		{
+			const FVector2D& P0 = Ring[static_cast<int32>(CapIndices[Index])];
+			const FVector2D& P1 = Ring[static_cast<int32>(CapIndices[Index + 1])];
+			const FVector2D& P2 = Ring[static_cast<int32>(CapIndices[Index + 2])];
+
+			// Outward-facing shell, matching the box path: floor looks down, ceiling looks up.
+			AddTriangleFacing(
+				FVector(P0.X, P0.Y, FloorZ),
+				FVector(P1.X, P1.Y, FloorZ),
+				FVector(P2.X, P2.Y, FloorZ),
+				FVector::DownVector);
+			AddTriangleFacing(
+				FVector(P0.X, P0.Y, CeilingZ),
+				FVector(P1.X, P1.Y, CeilingZ),
+				FVector(P2.X, P2.Y, CeilingZ),
+				FVector::UpVector);
+		}
+
+		// Walls are solid: no door or window openings are cut on the polygon path. A B-Risk vent
+		// is located by (face, offset) along the perimeter of the EQUIVALENT RECTANGLE, which has
+		// neither the edge count nor the perimeter length of the real footprint, so an offset
+		// cannot be mapped onto a polygon edge. Punching a hole in a guessed wall is worse than
+		// leaving the shell closed. Vent XY in Zones-data.json would fix this upstream.
+		for (int32 Index = 0; Index < Ring.Num(); ++Index)
+		{
+			const FVector2D& Start = Ring[Index];
+			const FVector2D& End = Ring[(Index + 1) % Ring.Num()];
+
+			// Ring is counter-clockwise, so (dy, -dx) points out of the room.
+			const FVector2D Edge = End - Start;
+			const FVector Outward = FVector(Edge.Y, -Edge.X, 0.0).GetSafeNormal();
+			if (Outward.IsNearlyZero())
+			{
+				continue;
+			}
+
+			const FVector BottomStart(Start.X, Start.Y, FloorZ);
+			const FVector BottomEnd(End.X, End.Y, FloorZ);
+			const FVector TopEnd(End.X, End.Y, CeilingZ);
+			const FVector TopStart(Start.X, Start.Y, CeilingZ);
+
+			AddTriangleFacing(BottomStart, BottomEnd, TopEnd, Outward);
+			AddTriangleFacing(BottomStart, TopEnd, TopStart, Outward);
+		}
+
+		return true;
+	};
+
+	// A scenario that mixes the two conversions places some rooms 90 degrees away from the
+	// others, which looks plausible in isolation. The importer already warns per unmatched room,
+	// but this is a geometry-coherence failure rather than an import gap, so say it here too.
+	int32 FootprintRoomCount = 0;
 	for (const FBRiskRoomGeometry& Room : Rooms)
 	{
+		FootprintRoomCount += (Room.FootprintPolygon.Num() >= 3) ? 1 : 0;
+	}
+
+	if (FootprintRoomCount > 0 && FootprintRoomCount < Rooms.Num())
+	{
+		TArray<FString> RectangleRoomIds;
+		for (const FBRiskRoomGeometry& Room : Rooms)
+		{
+			if (Room.FootprintPolygon.Num() < 3)
+			{
+				RectangleRoomIds.Add(FString::FromInt(Room.RoomId));
+			}
+		}
+
+		UE_LOG(LogBRiskDataSubsystem, Warning,
+			TEXT("B-Risk room geometry mixes coordinate frames: %d of %d rooms have a Zones-data.json ")
+			TEXT("footprint. Room(s) %s fall back to the equivalent rectangle, which uses the legacy ")
+			TEXT("X<->Y swap instead of the Revit frame — those rooms will be rotated 90 degrees about ")
+			TEXT("the world origin relative to the rest."),
+			FootprintRoomCount,
+			Rooms.Num(),
+			*FString::Join(RectangleRoomIds, TEXT(", ")));
+	}
+
+	for (const FBRiskRoomGeometry& Room : Rooms)
+	{
+		if (Room.FootprintPolygon.Num() >= 3)
+		{
+			FString RoomError;
+			if (!AppendFootprintRoom(Room, RoomError))
+			{
+				if (OutError)
+				{
+					*OutError = MoveTemp(RoomError);
+				}
+				OutVertices.Reset();
+				OutTriangles.Reset();
+				OutNormals.Reset();
+				return false;
+			}
+			continue;
+		}
+
 		if (Room.Size.X <= 0.0 || Room.Size.Y <= 0.0 || Room.Size.Z <= 0.0)
 		{
 			if (OutError)
@@ -1253,6 +1480,25 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 		AddWallWithOptionalOpening(2, FVector(Max.X, Max.Y, Min.Z), FVector(Min.X, Max.Y, Min.Z), FVector(Min.X, Max.Y, Max.Z), FVector(Max.X, Max.Y, Max.Z), true, true, Min.X, Max.X);
 		AddWallWithOptionalOpening(1, FVector(Min.X, Max.Y, Min.Z), FVector(Min.X, Min.Y, Min.Z), FVector(Min.X, Min.Y, Max.Z), FVector(Min.X, Max.Y, Max.Z), false, true, Min.Y, Max.Y);
 		AddWallWithOptionalOpening(3, FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Max.Y, Min.Z), FVector(Max.X, Max.Y, Max.Z), FVector(Max.X, Min.Y, Max.Z), false, false, Min.Y, Max.Y);
+	}
+
+	if (FootprintRoomCount > 0)
+	{
+		int32 UncutVents = 0;
+		for (const FBRiskVentGeometry& Vent : Vents)
+		{
+			const FBRiskRoomGeometry* Owner = Rooms.FindByPredicate(
+				[&Vent](const FBRiskRoomGeometry& Candidate) { return Candidate.RoomId == Vent.FromRoomId; });
+			UncutVents += (Owner && Owner->FootprintPolygon.Num() >= 3) ? 1 : 0;
+		}
+
+		UE_LOG(LogBRiskDataSubsystem, Log,
+			TEXT("B-Risk room geometry: %d of %d rooms built from Zones-data.json footprints; ")
+			TEXT("%d vent opening(s) left uncut because B-Risk locates vents on the equivalent ")
+			TEXT("rectangle, not on the real polygon."),
+			FootprintRoomCount,
+			Rooms.Num(),
+			UncutVents);
 	}
 
 	return true;

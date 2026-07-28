@@ -32,13 +32,20 @@ class PROJECTMOBIUS_API ABRiskHazardVisualizer : public AActor
 public:
 	ABRiskHazardVisualizer();
 
-	/** Rebuild fire, sprinkler and vent components for the active B-Risk scenario. */
+	/**
+	 * Rebuild fire, sprinkler and vent components for the active B-Risk scenario.
+	 *
+	 * Frame must be the scenario's FBRiskScenarioData::RoomFrame. Every placement here is relative
+	 * to a room, so passing a different frame than the smoke volumes used puts the markers and
+	 * vents in a rotated copy of the building.
+	 */
 	bool ConfigureFromScenario(
 		const TArray<FBRiskRoomGeometry>& Rooms,
 		const TArray<FBRiskFireGeometry>& Fires,
 		const TArray<FBRiskSprinklerGeometry>& Sprinklers,
 		const TArray<FBRiskVentGeometry>& Vents,
-		float Scale);
+		float Scale,
+		BRiskCoord::ERoomFrame Frame);
 
 	/** Remove all generated hazard components. */
 	void ClearHazardVisuals();
@@ -73,12 +80,24 @@ public:
 	 * and from the B-Risk/CFAST face id (1=-Y front, 2=+X right, 3=+Y rear,
 	 * 4=-X left) only for vents to the exterior (ToRoom == nullptr). Returns
 	 * false if FromRoom is missing or the opening has no area.
+	 *
+	 * Frame-dependent in two ways beyond the room box itself, because the B-Risk face ids and the
+	 * along-wall offset are expressed in B-Risk axes:
+	 *   - SmokeviewSwap: B-Risk +/-X -> UE +/-Y and +/-Y -> +/-X. Both are order-preserving, so an
+	 *     offset measured from the box minimum stays correct on every wall.
+	 *   - Revit: B-Risk +/-X -> UE +/-X unchanged, but +/-Y -> UE -/+Y. The Y direction REVERSES,
+	 *     so on a YZ-plane wall the offset must be measured from the box maximum downwards.
+	 *
+	 * Known limitation, unchanged by the frame work: for a room with a real polygon the box is the
+	 * footprint's bounding box, not a wall, so a vent on a non-convex room can sit off the true
+	 * wall line. Fixing that needs vent XY in Zones-data.json.
 	 */
 	static bool ComputeVentSlab(
 		const FBRiskVentGeometry& Vent,
 		const FBRiskRoomGeometry* FromRoom,
 		const FBRiskRoomGeometry* ToRoom,
 		float Scale,
+		BRiskCoord::ERoomFrame Frame,
 		float ThicknessCm,
 		FVector& OutCenterCm,
 		FVector& OutSizeCm);

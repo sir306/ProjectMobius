@@ -273,6 +273,15 @@ public:
 	/** All rooms declared in the ROOM blocks of the loaded .smv. */
 	const TArray<FBRiskRoomGeometry>& GetRooms() const { return ScenarioData.Rooms; }
 
+	/**
+	 * The coordinate frame every consumer of this scenario's geometry must convert through.
+	 *
+	 * Single source of truth for the whole pipeline: pass it to BRiskCoord::MakeRoomFootprint,
+	 * BRiskCoord::WorldToUnreal, ABRiskSmokeVisualizer::ConfigureFromRooms and
+	 * ABRiskHazardVisualizer::ConfigureFromScenario. Never re-derive it locally.
+	 */
+	BRiskCoord::ERoomFrame GetRoomFrame() const { return ScenarioData.RoomFrame; }
+
 	/** All fire-source locations declared in the FIRE blocks of the loaded .smv. */
 	const TArray<FBRiskFireGeometry>& GetFires() const { return ScenarioData.Fires; }
 
@@ -316,11 +325,15 @@ public:
 	bool SampleSeriesAtTime(int32 ZoneTableIndex, const FString& SeriesName,
 	                        double TimeSeconds, double& OutValue) const;
 
-	/** Build mesh arrays for a set of B-Risk rooms. Intended for C++ tests and non-Blueprint callers. */
+	/**
+	 * Build mesh arrays for a set of B-Risk rooms. Intended for C++ tests and non-Blueprint callers.
+	 * Frame must be the scenario's RoomFrame (see GetRoomFrame).
+	 */
 	static bool BuildRoomMeshDataFromRooms(
 		const TArray<FBRiskRoomGeometry>& Rooms,
 		const TArray<FBRiskVentGeometry>& Vents,
 		float Scale,
+		BRiskCoord::ERoomFrame Frame,
 		TArray<FVector>& OutVertices,
 		TArray<int32>& OutTriangles,
 		TArray<FVector>& OutNormals,

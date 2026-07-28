@@ -54,18 +54,43 @@ namespace
 		return FMath::Lerp(Stops[Lo], Stops[Lo + 1], Frac);
 	}
 
-	FVector TransformHazardRoomLocalToWorldM(const FBRiskRoomGeometry* Room, const FVector& RoomLocalLocationM)
+	/**
+	 * World position in the B-Risk frame (metres). The conversion into Unreal space is applied by
+	 * the caller via BRiskCoord::FootprintToUnreal, so there is no per-axis flip here — but the
+	 * room-local offset itself may need transposing, because B-Risk measures it against the
+	 * equivalent rectangle. See BRiskCoord::RoomLocalToWorld.
+	 */
+	FVector TransformHazardRoomLocalToWorldM(
+		const FBRiskRoomGeometry* Room,
+		const FVector& RoomLocalLocationM,
+		BRiskCoord::ERoomLocalAxes& OutAxes)
 	{
+		OutAxes = BRiskCoord::ERoomLocalAxes::Unverified;
 		if (!Room)
 		{
 			return RoomLocalLocationM;
 		}
 
-		// World position in the B-Risk frame (metres). The X<->Y swap into Unreal space is
-		// applied by the caller via BRiskCoord::ToUnreal, so there is no per-axis flip here.
-		// (Previously this mirrored X to patch a coordinate mismatch; that is now handled
-		// correctly and consistently for all geometry by BRiskCoord.)
-		return Room->Origin + RoomLocalLocationM;
+		return BRiskCoord::RoomLocalToWorld(*Room, RoomLocalLocationM, OutAxes);
+	}
+
+	/** One-line explanation of why a marker may be in the wrong spot inside its room. */
+	void WarnIfRoomLocalAxesUnmappable(
+		const TCHAR* MarkerKind,
+		int32 MarkerId,
+		const FBRiskRoomGeometry* Room,
+		BRiskCoord::ERoomLocalAxes Axes)
+	{
+		if (Axes != BRiskCoord::ERoomLocalAxes::Unmappable || !Room)
+		{
+			return;
+		}
+
+		UE_LOG(LogBRiskHazardVisualizer, Warning,
+			TEXT("B-Risk %s %d sits in room %d ('%s'), whose footprint is not a rectangle, so its ")
+			TEXT("equivalent rectangle (%g x %g m) cannot be lined up with the real plan. The ")
+			TEXT("in-room offset is used as authored and may be in the wrong part of the room."),
+			MarkerKind, MarkerId, Room->RoomId, *Room->Label, Room->Size.X, Room->Size.Y);
 	}
 
 	UMaterialInstanceDynamic* MakeColoredMaterial(
@@ -183,6 +208,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	const FBRiskRoomGeometry* FromRoom,
 	const FBRiskRoomGeometry* ToRoom,
 	float Scale,
+	BRiskCoord::ERoomFrame Frame,
 	float ThicknessCm,
 	FVector& OutCenterCm,
 	FVector& OutSizeCm)
@@ -192,7 +218,10 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		return false;
 	}
 
-	const FBox FromBoxCm = BRiskCoord::ToUnrealBox(FromRoom->Origin, FromRoom->Size, Scale);
+	// Same source of truth as the smoke volumes and egress bounds, so a vent cannot end up in a
+	// different frame from the room it is cut into. Under SmokeviewSwap this returns exactly what
+	// ToUnrealBox used to.
+	const FBox FromBoxCm = BRiskCoord::MakeRoomFootprint(*FromRoom, Scale, Frame).Bounds;
 	const FVector MinCm = FromBoxCm.Min;
 	const FVector MaxCm = FromBoxCm.Max;
 
@@ -220,7 +249,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	// numbers vent faces.
 	if (ToRoom)
 	{
-		const FBox ToBoxCm = BRiskCoord::ToUnrealBox(ToRoom->Origin, ToRoom->Size, Scale);
+		const FBox ToBoxCm = BRiskCoord::MakeRoomFootprint(*ToRoom, Scale, Frame).Bounds;
 		const FVector ToMinCm = ToBoxCm.Min;
 		const FVector ToMaxCm = ToBoxCm.Max;
 		constexpr double AdjacencyEpsCm = 1.0;
@@ -231,27 +260,57 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	}
 
 	// Fallback for exterior vents (ToRoom not a real room). The .smv/CFAST face id is in
-	// B-Risk axes: 1=-Y(front) 2=+X(right) 3=+Y(rear) 4=-X(left). Map to Unreal walls
-	// under the X<->Y swap (BRiskCoord): B-Risk +/-X -> UE +/-Y, B-Risk +/-Y -> UE +/-X.
+	// B-Risk axes: 1=-Y(front) 2=+X(right) 3=+Y(rear) 4=-X(left), and which Unreal wall that
+	// lands on depends on the scenario frame.
 	if (!bResolved)
 	{
-		switch (Vent.Face)
+		if (Frame == BRiskCoord::ERoomFrame::Revit)
 		{
-		case 1: Wall = WallNegX; break; // B-Risk -Y -> UE -X
-		case 2: Wall = WallPosY; break; // B-Risk +X -> UE +Y
-		case 3: Wall = WallPosX; break; // B-Risk +Y -> UE +X
-		case 4: Wall = WallNegY; break; // B-Risk -X -> UE -Y
-		default: return false;
+			// B-Risk +/-X -> UE +/-X unchanged; B-Risk +/-Y -> UE -/+Y (negated).
+			switch (Vent.Face)
+			{
+			case 1: Wall = WallPosY; break; // B-Risk -Y -> UE +Y
+			case 2: Wall = WallPosX; break; // B-Risk +X -> UE +X
+			case 3: Wall = WallNegY; break; // B-Risk +Y -> UE -Y
+			case 4: Wall = WallNegX; break; // B-Risk -X -> UE -X
+			default: return false;
+			}
+		}
+		else
+		{
+			// Legacy X<->Y swap: B-Risk +/-X -> UE +/-Y, B-Risk +/-Y -> UE +/-X.
+			switch (Vent.Face)
+			{
+			case 1: Wall = WallNegX; break; // B-Risk -Y -> UE -X
+			case 2: Wall = WallPosY; break; // B-Risk +X -> UE +Y
+			case 3: Wall = WallPosX; break; // B-Risk +Y -> UE +X
+			case 4: Wall = WallNegY; break; // B-Risk -X -> UE -Y
+			default: return false;
+			}
 		}
 	}
 
 	if (Wall == WallNegX || Wall == WallPosX)
 	{
-		// Wall lies in the YZ plane; the opening runs along Y.
+		// Wall lies in the YZ plane; the opening runs along Y - the one axis the Revit mapping
+		// reverses. B-Risk measures Offset from its own -Y end of the wall, which is UE MAX Y once
+		// Y is negated, so the opening has to be laid out downwards from the maximum. Getting this
+		// wrong mirrors every vent about its wall's midpoint, which looks plausible on a centred
+		// opening and obviously wrong on an off-centre one.
 		const double SpanMin = MinCm.Y;
 		const double SpanMax = MaxCm.Y;
-		const double OpenStart = FMath::Clamp(SpanMin + OffsetCm, SpanMin, SpanMax);
-		const double OpenEnd = FMath::Clamp(OpenStart + WidthCm, SpanMin, SpanMax);
+		double OpenStart = 0.0;
+		double OpenEnd = 0.0;
+		if (Frame == BRiskCoord::ERoomFrame::Revit)
+		{
+			OpenEnd = FMath::Clamp(SpanMax - OffsetCm, SpanMin, SpanMax);
+			OpenStart = FMath::Clamp(OpenEnd - WidthCm, SpanMin, SpanMax);
+		}
+		else
+		{
+			OpenStart = FMath::Clamp(SpanMin + OffsetCm, SpanMin, SpanMax);
+			OpenEnd = FMath::Clamp(OpenStart + WidthCm, SpanMin, SpanMax);
+		}
 		if (OpenEnd <= OpenStart)
 		{
 			return false;
@@ -263,6 +322,10 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	}
 
 	// Wall lies in the XZ plane; the opening runs along X.
+	//
+	// Deliberately NOT frame-branched, unlike the YZ case above. Both mappings reach UE X through
+	// an order-preserving step - Revit takes B-Risk X straight through, and the legacy swap maps
+	// B-Risk +Y to UE +X - so measuring the offset from the minimum is correct either way.
 	const double SpanMin = MinCm.X;
 	const double SpanMax = MaxCm.X;
 	const double OpenStart = FMath::Clamp(SpanMin + OffsetCm, SpanMin, SpanMax);
@@ -282,7 +345,8 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	const TArray<FBRiskFireGeometry>& Fires,
 	const TArray<FBRiskSprinklerGeometry>& Sprinklers,
 	const TArray<FBRiskVentGeometry>& Vents,
-	float Scale)
+	float Scale,
+	BRiskCoord::ERoomFrame Frame)
 {
 	ClearHazardVisuals();
 
@@ -322,8 +386,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	{
 		const FBRiskFireGeometry& Fire = Fires[FireIndex];
 		const FBRiskRoomGeometry* Room = FindRoomById(Rooms, Fire.RoomId);
-		const FVector WorldLocationM = TransformHazardRoomLocalToWorldM(Room, Fire.Location);
-		FireBaseLocationsCm[FireIndex] = BRiskCoord::ToUnreal(WorldLocationM, Scale);
+		BRiskCoord::ERoomLocalAxes FireAxes = BRiskCoord::ERoomLocalAxes::Unverified;
+		const FVector WorldLocationM = TransformHazardRoomLocalToWorldM(Room, Fire.Location, FireAxes);
+		WarnIfRoomLocalAxesUnmappable(TEXT("fire"), FireIndex, Room, FireAxes);
+		// Same frame as MakeRoomFootprint used for this scenario, so the fire lands inside its own
+		// room's smoke volume in both the Revit and legacy Smokeview cases.
+		FireBaseLocationsCm[FireIndex] = BRiskCoord::WorldToUnreal(WorldLocationM, Scale, Frame);
 
 		UStaticMeshComponent* FireCone = NewObject<UStaticMeshComponent>(
 			this,
@@ -390,8 +458,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		const FBRiskSprinklerGeometry& Sprinkler = Sprinklers[SprinklerIndex];
 		const FBRiskRoomGeometry* Room = FindRoomById(Rooms, Sprinkler.RoomId);
 		const float RoomHeightCm = Room ? Room->Size.Z * Scale : 260.0f;
-		SprinklerHeadLocationsCm[SprinklerIndex] =
-			BRiskCoord::ToUnreal(TransformHazardRoomLocalToWorldM(Room, Sprinkler.Location), Scale);
+		// Scenario frame, matching MakeRoomFootprint - see the fire cone above.
+		BRiskCoord::ERoomLocalAxes SprinklerAxes = BRiskCoord::ERoomLocalAxes::Unverified;
+		const FVector SprinklerWorldM =
+			TransformHazardRoomLocalToWorldM(Room, Sprinkler.Location, SprinklerAxes);
+		WarnIfRoomLocalAxesUnmappable(TEXT("sprinkler"), Sprinkler.SprinklerId, Room, SprinklerAxes);
+		SprinklerHeadLocationsCm[SprinklerIndex] = BRiskCoord::WorldToUnreal(SprinklerWorldM, Scale, Frame);
 		SprinklerRoomHeightsCm[SprinklerIndex] = RoomHeightCm;
 
 		UStaticMeshComponent* SprinklerCone = NewObject<UStaticMeshComponent>(
@@ -449,7 +521,7 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 
 		FVector CenterCm = FVector::ZeroVector;
 		FVector SizeCm = FVector::ZeroVector;
-		if (!CubeMesh || !ComputeVentSlab(Vent, FromRoom, ToRoom, Scale, VentSlabThicknessCm, CenterCm, SizeCm))
+		if (!CubeMesh || !ComputeVentSlab(Vent, FromRoom, ToRoom, Scale, Frame, VentSlabThicknessCm, CenterCm, SizeCm))
 		{
 			UE_LOG(LogBRiskHazardVisualizer, Warning,
 				TEXT("Skipping B-Risk vent %d (fromRoom=%d toRoom=%d face=%d width=%g height=%g): no FromRoom geometry or zero opening."),

@@ -220,9 +220,16 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 		FBRiskEgressRoomState& RoomState = RoomStates[RoomIndex];
 		RoomState.RoomIndex = RoomIndex;
 		RoomState.RoomId = Room.RoomId;
-		// Must use the exact same conversion as the smoke/hazard visualizers (BRiskCoord,
-		// X<->Y swap) so agent world positions map to the correct room (tenability lookup).
-		RoomState.WorldBounds = BRiskCoord::ToUnrealBox(Room.Origin, Room.Size, Scale);
+		// Must use the exact same conversion as the smoke visualizer (BRiskCoord::MakeRoomFootprint)
+		// so agent world positions map to the correct room (tenability lookup).
+		//
+		// This is the polygon's BOUNDING BOX when Zones-data.json supplied one. For a non-convex
+		// room that over-claims: an agent standing in the notch of the L-shaped corridor resolves
+		// into it. Correcting that needs a 2D point-in-polygon test in ResolveRoomIndexAtLocation,
+		// which is a separate change on a per-frame MASS path. The bbox is still strictly better
+		// than what it replaced, which had the room in the wrong place entirely.
+		RoomState.WorldBounds =
+			BRiskCoord::MakeRoomFootprint(Room, Scale, BRiskDataSubsystem->GetRoomFrame()).Bounds;
 		// Default the smoke layer to the ceiling until zone data overrides it in ResolveTypedRoomState.
 		RoomState.LayerHeightWorldCm = RoomState.WorldBounds.Max.Z;
 

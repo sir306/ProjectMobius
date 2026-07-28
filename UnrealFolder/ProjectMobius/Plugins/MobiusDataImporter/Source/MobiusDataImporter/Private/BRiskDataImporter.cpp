@@ -616,8 +616,12 @@ namespace
 			}
 
 			Room->FootprintPolygon = MoveTemp(Ring);
-			Space->TryGetNumberField(TEXT("floorElevation"), Room->FootprintFloorElevationM);
-			Space->TryGetNumberField(TEXT("height"), Room->FootprintHeightM);
+
+			// Record presence, not just value: an omitted height would otherwise read as 0 m and
+			// look like a disagreement with the .smv to anyone cross-checking the two.
+			const bool bHasElevation = Space->TryGetNumberField(TEXT("floorElevation"), Room->FootprintFloorElevationM);
+			const bool bHasHeight = Space->TryGetNumberField(TEXT("height"), Room->FootprintHeightM);
+			Room->bHasFootprintExtents = bHasElevation && bHasHeight;
 
 			const TSharedPtr<FJsonObject>* Tenability = nullptr;
 			if (Space->TryGetObjectField(TEXT("tenability"), Tenability) && Tenability && Tenability->IsValid())
@@ -884,6 +888,42 @@ namespace
 		ReadEndpoint(TEXT("endpoint_radiation"), OutEndpoints.EndpointRadiation, OutEndpoints.bHasEndpointRadiation);
 		ReadEndpoint(TEXT("endpoint_temp"), OutEndpoints.EndpointTempRaw, OutEndpoints.bHasEndpointTemp);
 	}
+
+	/**
+	 * Parse input1.xml <soot_yield> (g soot per g fuel; 0.07 for pre-flashover VM2).
+	 *
+	 * Separate from ParseTenabilityEndpointsXml because soot_yield is NOT inside <tenability> - it
+	 * is a combustion parameter and sits elsewhere in the document, so it is located by a recursive
+	 * tag search from the root. If a scenario ever declares more than one fire item, this takes the
+	 * FIRST occurrence; it is reported, not simulated, so a single representative value is enough.
+	 */
+	void ParseSootYieldXml(const FString& XmlPath, double& OutSootYieldGPerG, bool& bOutHasSootYield)
+	{
+		if (!FPaths::FileExists(XmlPath))
+		{
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			// ParseTenabilityEndpointsXml already warns for this same file; stay quiet.
+			return;
+		}
+
+		const FXmlNode* SootNode = FindNodeByTagRecursive(XmlFile.GetRootNode(), TEXT("soot_yield"));
+		if (!SootNode)
+		{
+			return;
+		}
+
+		double Parsed = 0.0;
+		if (TryParseDouble(SootNode->GetContent(), Parsed))
+		{
+			OutSootYieldGPerG = Parsed;
+			bOutHasSootYield = true;
+		}
+	}
 }
 
 bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRiskScenarioData& OutData, FString* OutError)
@@ -1018,6 +1058,25 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 		OutData.ReferencedFiles.AddUnique(ZonesDataJsonPath);
 	}
 
+	// Decide the scenario's coordinate frame ONCE, here, and only here.
+	//
+	// Keyed on whether the JSON actually delivered a footprint, NOT on whether the file exists: a
+	// malformed or non-matching JSON leaves every room on the .smv rectangle, and those numbers are
+	// only trustworthy in the legacy Smokeview frame. Presence of a polygon is the same condition
+	// that makes the Revit mapping measurable, so the two cannot disagree.
+	const bool bAnyFootprintApplied = OutData.Rooms.ContainsByPredicate(
+		[](const FBRiskRoomGeometry& Room) { return Room.FootprintPolygon.Num() >= 3; });
+	OutData.RoomFrame = bAnyFootprintApplied
+		? BRiskCoord::ERoomFrame::Revit
+		: BRiskCoord::ERoomFrame::SmokeviewSwap;
+
+	UE_LOG(LogBRiskDataImporter, Log,
+		TEXT("B-Risk scenario coordinate frame: %s (%s)."),
+		bAnyFootprintApplied ? TEXT("Revit (x,-y,z)") : TEXT("legacy Smokeview X<->Y swap"),
+		bAnyFootprintApplied
+			? TEXT("Zones-data.json footprints applied")
+			: TEXT("no Zones-data.json footprints; preserving historical orientation"));
+
 	const FString SprinklersXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("sprinklers.xml")));
 	ParseSprinklersXml(SprinklersXmlPath, OutData.Rooms, OutData.Sprinklers);
 	if (OutData.Sprinklers.Num() > 0)
@@ -1037,6 +1096,7 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	// Analysis endpoints (monitor height, endpoint_FED, ...) live in input1.xml.
 	const FString InputXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("input1.xml")));
 	ParseTenabilityEndpointsXml(InputXmlPath, OutData.TenabilityEndpoints);
+	ParseSootYieldXml(InputXmlPath, OutData.SootYieldGPerG, OutData.bHasSootYield);
 	if (FPaths::FileExists(InputXmlPath))
 	{
 		OutData.ReferencedFiles.AddUnique(InputXmlPath);

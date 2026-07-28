@@ -24,8 +24,16 @@ class PROJECTMOBIUS_API ABRiskSmokeVisualizer : public AActor
 public:
 	ABRiskSmokeVisualizer();
 
-	/** Rebuild smoke volume components to match the supplied B-Risk rooms. */
-	bool ConfigureFromRooms(const TArray<FBRiskRoomGeometry>& Rooms, float Scale);
+	/**
+	 * Rebuild smoke volume components to match the supplied B-Risk rooms.
+	 *
+	 * Frame must be the scenario's FBRiskScenarioData::RoomFrame - the same value handed to the
+	 * hazard visualizer and the egress subsystem.
+	 */
+	bool ConfigureFromRooms(
+		const TArray<FBRiskRoomGeometry>& Rooms,
+		float Scale,
+		BRiskCoord::ERoomFrame Frame);
 
 	/** Remove all generated smoke volume components. */
 	void ClearSmokeVolumes();
@@ -73,8 +81,30 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UNiagaraComponent>> SmokeNiagaraComponents;
 
+	/** Per-room bounding box of the footprint (polygon bbox when there is one). */
 	TArray<FVector> SmokeRoomOriginsCm;
 	TArray<FVector> SmokeRoomSizesCm;
+
+	/**
+	 * Per-room footprint ring in UE XY (cm), counter-clockwise, from Zones-data.json. Empty for a
+	 * room that fell back to the equivalent rectangle; those keep the 12-edge box outline.
+	 */
+	TArray<TArray<FVector2D>> SmokeRoomPolygonsCm;
+
+	/**
+	 * Start index of each room's block in SmokeOutlineEdgeComponents. The block size is per-room
+	 * (a polygon prism needs 4 edges per vertex, a box needs 16), so there is no fixed stride.
+	 */
+	TArray<int32> SmokeOutlineEdgeOffsets;
+
+	/**
+	 * Per-room footprint coverage mask handed to Niagara as User.FootprintMask. Keeps the volume a
+	 * box over the bounding box while restricting which voxels render to the real plan. UPROPERTY
+	 * because these are transient textures with no other owner - without it they are collected.
+	 */
+	UPROPERTY()
+	TArray<TObjectPtr<UTexture2D>> SmokeFootprintMasks;
+
 	TArray<FBRiskSmokeVisualState> LastSmokeStates;
 	bool bSmokeSimulationPaused = true;
 

@@ -300,6 +300,9 @@ bool FBRiskZonesDataFootprintTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("Floor elevation should come from the JSON"), Room.FootprintFloorElevationM, 0.0, 1.0e-6);
 	TestEqual(TEXT("Height should come from the JSON"), Room.FootprintHeightM, 4.0, 1.0e-6);
+	// Distinguishes "the JSON said 0" from "the JSON said nothing", which matters because the
+	// mesh builder only cross-checks these against the .smv when they were actually supplied.
+	TestTrue(TEXT("Both JSON extents should be flagged as present"), Room.bHasFootprintExtents);
 	TestTrue(TEXT("odLimitPerM should be captured"), Room.bHasOdLimitPerM);
 	TestEqual(TEXT("odLimitPerM value"), Room.OdLimitPerM, 0.26, 1.0e-6);
 
@@ -455,7 +458,7 @@ bool FBRiskRoomMeshDataTest::RunTest(const FString& Parameters)
 	FString Error;
 
 	TestTrue(TEXT("Room geometry should build"),
-		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, Vertices, Triangles, Normals, &Error));
+		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, BRiskCoord::ERoomFrame::SmokeviewSwap, Vertices, Triangles, Normals, &Error));
 	TestEqual(TEXT("One single-sided box should produce twenty-four vertices"), Vertices.Num(), 24);
 	TestEqual(TEXT("One single-sided box should produce thirty-six triangle indices"), Triangles.Num(), 36);
 	TestEqual(TEXT("Normals should match vertex count"), Normals.Num(), Vertices.Num());
@@ -472,7 +475,7 @@ bool FBRiskRoomMeshDataTest::RunTest(const FString& Parameters)
 	const FBRiskRoomGeometry RoomCopy = Room;
 	Rooms.Add(RoomCopy);
 	TestTrue(TEXT("Multiple rooms should build"),
-		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, Vertices, Triangles, Normals, &Error));
+		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, BRiskCoord::ERoomFrame::SmokeviewSwap, Vertices, Triangles, Normals, &Error));
 	TestEqual(TEXT("Two single-sided boxes should produce forty-eight vertices"), Vertices.Num(), 48);
 	TestEqual(TEXT("Two single-sided boxes should produce seventy-two triangle indices"), Triangles.Num(), 72);
 
@@ -486,7 +489,7 @@ bool FBRiskRoomMeshDataTest::RunTest(const FString& Parameters)
 	Vent.SillHeight = 0.0;
 	Vent.Height = 2.4;
 	TestTrue(TEXT("Room geometry with vent should build"),
-		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, Vertices, Triangles, Normals, &Error));
+		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, BRiskCoord::ERoomFrame::SmokeviewSwap, Vertices, Triangles, Normals, &Error));
 	TestEqual(TEXT("One floor-sill vented single-sided room should produce thirty-two vertices"), Vertices.Num(), 32);
 	TestEqual(TEXT("One floor-sill vented single-sided room should produce forty-eight triangle indices"), Triangles.Num(), 48);
 
@@ -510,7 +513,498 @@ bool FBRiskRoomMeshDataTest::RunTest(const FString& Parameters)
 
 	Rooms.Reset();
 	TestFalse(TEXT("Empty room list should fail"),
-		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, Vertices, Triangles, Normals, &Error));
+		UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, Vents, 100.0f, BRiskCoord::ERoomFrame::SmokeviewSwap, Vertices, Triangles, Normals, &Error));
+
+	return true;
+}
+
+namespace
+{
+	/**
+	 * Real footprints from the 12 RoomTest Zones-data.json, verbatim. Room 1 is a plain
+	 * rectangle; room 2 is the L-shaped corridor whose equivalent rectangle (22.986 x 1.0 m)
+	 * bears no resemblance to its actual shape. Both rings are counter-clockwise in the source
+	 * frame, so the Y negation turns them clockwise and the builder must re-wind them.
+	 */
+	FBRiskRoomGeometry MakeLobby14Room()
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = 1;
+		Room.Label = TEXT("Lobby 14");
+		Room.Origin = FVector(3.2505, -19.0189, 0.0);
+		Room.Size = FVector(5.0, 2.786, 4.0);
+		Room.FootprintFloorElevationM = 0.0;
+		Room.FootprintHeightM = 4.0;
+		Room.bHasFootprintExtents = true;
+		Room.FootprintPolygon = {
+			FVector2D(6.0365, -14.0189),
+			FVector2D(3.2505, -14.0189),
+			FVector2D(3.2505, -19.0189),
+			FVector2D(6.0365, -19.0189),
+		};
+		return Room;
+	}
+
+	FBRiskRoomGeometry MakeCorridor15Room()
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = 2;
+		Room.Label = TEXT("Corridor 15");
+		Room.Origin = FVector(-14.7495, -17.0189, 0.0);
+		Room.Size = FVector(22.986, 1.0, 4.0);
+		Room.FootprintFloorElevationM = 0.0;
+		Room.FootprintHeightM = 4.0;
+		Room.bHasFootprintExtents = true;
+		Room.FootprintPolygon = {
+			FVector2D(-14.7495, -16.0189),
+			FVector2D(-14.7495, -17.0189),
+			FVector2D(3.0505,   -17.0189),
+			FVector2D(3.0505,   -16.0189),
+			FVector2D(-7.7635,  -16.0189),
+			FVector2D(-7.7635,  -10.8329),
+			FVector2D(-8.7635,  -10.8329),
+			FVector2D(-8.7635,  -16.0189),
+		};
+		return Room;
+	}
+
+	/** Total area of every triangle whose normal faces straight down, i.e. the floor cap. */
+	double FloorCapArea(const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals)
+	{
+		double Area = 0.0;
+		for (int32 Index = 0; Index + 2 < Triangles.Num(); Index += 3)
+		{
+			if (!Normals[Triangles[Index]].Equals(FVector::DownVector))
+			{
+				continue;
+			}
+
+			const FVector& A = Vertices[Triangles[Index]];
+			const FVector& B = Vertices[Triangles[Index + 1]];
+			const FVector& C = Vertices[Triangles[Index + 2]];
+			Area += 0.5 * FVector::CrossProduct(B - A, C - A).Size();
+		}
+		return Area;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskFootprintMaskTest,
+	"ProjectMobius.BRisk.Geometry.FootprintMask",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskFootprintMaskTest::RunTest(const FString& Parameters)
+{
+	constexpr int32 Resolution = 256;
+	const double TexelCount = static_cast<double>(Resolution) * Resolution;
+
+	const auto CoverageOf = [](const TArray<uint8>& Mask)
+	{
+		int32 Inside = 0;
+		for (uint8 Texel : Mask)
+		{
+			Inside += (Texel != 0) ? 1 : 0;
+		}
+		return static_cast<double>(Inside);
+	};
+
+	TArray<uint8> Mask;
+
+	// --- Rectangle fills its own bounding box completely --------------------------------------
+	{
+		const BRiskCoord::FRoomFootprintCm Footprint =
+			BRiskCoord::MakeRoomFootprint(MakeLobby14Room(), 100.0f, BRiskCoord::ERoomFrame::Revit);
+		BRiskCoord::RasteriseFootprintMask(Footprint, Resolution, Mask);
+
+		TestEqual(TEXT("Mask should be Resolution squared"), Mask.Num(), Resolution * Resolution);
+		TestEqual(TEXT("A rectangular room should cover its whole bbox"),
+			CoverageOf(Mask) / TexelCount, 1.0, 1.0e-6);
+	}
+
+	// --- L-shaped corridor covers exactly its area fraction -----------------------------------
+	//
+	// This is the assertion that catches a wrong UV mapping or a flipped row order: the corridor's
+	// true area is 22.986 m2 inside a 17.8 x 6.186 m bounding box, so coverage must be
+	// 22.986 / 110.1108 = 0.2088. A mask that filled the bbox, or was transposed, would not.
+	{
+		const BRiskCoord::FRoomFootprintCm Footprint =
+			BRiskCoord::MakeRoomFootprint(MakeCorridor15Room(), 100.0f, BRiskCoord::ERoomFrame::Revit);
+		BRiskCoord::RasteriseFootprintMask(Footprint, Resolution, Mask);
+
+		const double BBoxArea = Footprint.Bounds.GetSize().X * Footprint.Bounds.GetSize().Y;
+		const double Expected = 229860.0 / BBoxArea;
+		TestEqual(TEXT("L-shaped coverage should match its area fraction"),
+			CoverageOf(Mask) / TexelCount, Expected, 0.005);
+
+		// Row 0 is the bbox minimum Y, and which end of the corridor that is depends on the Y
+		// NEGATION in FootprintToUnreal - not on the authored Revit values. Reasoning in Revit Y
+		// here gets it exactly backwards, so spell the transform out:
+		//
+		//   long run   Revit Y [-17.0189, -16.0189] -> UE Y [16.0189, 17.0189]  = bbox MAXIMUM
+		//   1 m stub   Revit Y [-16.0189, -10.8329] -> UE Y [10.8329, 16.0189]
+		//   bbox       UE Y [10.8329, 17.0189], size 6.186 m
+		//
+		// So the long 17.8 m run hugs the bbox TOP, and row 0 crosses only the 1 m stub:
+		// 1.0 / 17.8 = 5.6% of the row. Asserting both ends pins the row order in the one
+		// direction that matters, because a vertical flip swaps these two numbers.
+		int32 BottomRowInside = 0;
+		int32 TopRowInside = 0;
+		for (int32 Column = 0; Column < Resolution; ++Column)
+		{
+			BottomRowInside += (Mask[Column] != 0) ? 1 : 0;
+			TopRowInside += (Mask[(Resolution - 1) * Resolution + Column] != 0) ? 1 : 0;
+		}
+		// ~5.6% (the stub only), and non-zero: an empty row would mean the stub was lost entirely.
+		TestTrue(TEXT("Bottom mask row should cross the stub only"),
+			BottomRowInside > 0 && BottomRowInside < Resolution / 8);
+		// ~100%: the full length of the long run.
+		TestTrue(TEXT("Top mask row should be almost fully inside"),
+			TopRowInside > Resolution * 9 / 10);
+	}
+
+	// --- No polygon: all inside, so consumers need no branch ----------------------------------
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = 1;
+		Room.Origin = FVector::ZeroVector;
+		Room.Size = FVector(24.0, 5.5, 2.6);
+
+		const BRiskCoord::FRoomFootprintCm Footprint = BRiskCoord::MakeRoomFootprint(Room, 100.0f, BRiskCoord::ERoomFrame::Revit);
+		BRiskCoord::RasteriseFootprintMask(Footprint, Resolution, Mask);
+
+		TestEqual(TEXT("A room with no footprint should mask nothing out"),
+			CoverageOf(Mask) / TexelCount, 1.0, 1.0e-6);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskRoomLocalAxesTest,
+	"ProjectMobius.BRisk.Geometry.RoomLocalAxes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskRoomLocalAxesTest::RunTest(const FString& Parameters)
+{
+	// B-Risk measures in-room positions against the equivalent rectangle, whose local X runs along
+	// `L` - the LARGER root, not an oriented axis. Lobby 14's long side runs along world Y, so its
+	// rectangle (5.0 x 2.786) is the real footprint (2.786 x 5.0) transposed, and every in-room
+	// offset is transposed with it.
+
+	// --- Transposed room: the real sprinkler and fire from 12 RoomTest ------------------------
+	{
+		const FBRiskRoomGeometry Room = MakeLobby14Room();
+		BRiskCoord::ERoomLocalAxes Axes = BRiskCoord::ERoomLocalAxes::Unverified;
+
+		// sprinklers.xml: sprx 2.8464, spry 1.3876, sprz 0.025 -> local Z = Size.Z - sprz.
+		const FVector SprinklerWorld =
+			BRiskCoord::RoomLocalToWorld(Room, FVector(2.8464, 1.3876, 3.975), Axes);
+		TestTrue(TEXT("Lobby 14 should be detected as transposed"),
+			Axes == BRiskCoord::ERoomLocalAxes::Transposed);
+
+		const FVector SprinklerCm = BRiskCoord::FootprintToUnreal(SprinklerWorld, 100.0f);
+		// Used as authored this lands at X = 609.69, which is 6 cm OUTSIDE the room's 603.65 edge.
+		TestEqual(TEXT("Sprinkler X should be corrected to 463.81 cm"), SprinklerCm.X, 463.81, 0.01);
+		TestEqual(TEXT("Sprinkler Y should be corrected to 1617.25 cm"), SprinklerCm.Y, 1617.25, 0.01);
+
+		const BRiskCoord::FRoomFootprintCm Footprint = BRiskCoord::MakeRoomFootprint(Room, 100.0f, BRiskCoord::ERoomFrame::Revit);
+		TestTrue(TEXT("Corrected sprinkler should be inside the room in X"),
+			SprinklerCm.X >= Footprint.Bounds.Min.X && SprinklerCm.X <= Footprint.Bounds.Max.X);
+		TestTrue(TEXT("Corrected sprinkler should be inside the room in Y"),
+			SprinklerCm.Y >= Footprint.Bounds.Min.Y && SprinklerCm.Y <= Footprint.Bounds.Max.Y);
+		// A sprinkler head centred across the room's short axis is the physically sensible answer,
+		// and is the independent signal that the swap is right rather than merely in-bounds.
+		TestEqual(TEXT("Corrected sprinkler should sit on the room's X centre"),
+			SprinklerCm.X, Footprint.Bounds.GetCenter().X, 1.0);
+
+		// .smv FIRE block for room 1: 2.65, 1.543, 0.30.
+		const FVector FireWorld = BRiskCoord::RoomLocalToWorld(Room, FVector(2.65, 1.543, 0.30), Axes);
+		const FVector FireCm = BRiskCoord::FootprintToUnreal(FireWorld, 100.0f);
+		TestEqual(TEXT("Fire X should be corrected to 479.35 cm"), FireCm.X, 479.35, 0.01);
+		TestEqual(TEXT("Fire Y should be corrected to 1636.89 cm"), FireCm.Y, 1636.89, 0.01);
+		// 15 cm off dead centre both ways, versus 1.257 m off-centre in a 2.786 m room if untouched.
+		TestEqual(TEXT("Corrected fire should sit 15 cm off the room centre in X"),
+			FireCm.X - Footprint.Bounds.GetCenter().X, 15.0, 0.5);
+	}
+
+	// --- Aligned room: no swap --------------------------------------------------------------
+	{
+		FBRiskRoomGeometry Room = MakeLobby14Room();
+		// Swap the equivalent rectangle so it matches the footprint as-is.
+		Room.Size = FVector(2.786, 5.0, 4.0);
+
+		BRiskCoord::ERoomLocalAxes Axes = BRiskCoord::ERoomLocalAxes::Unverified;
+		const FVector World = BRiskCoord::RoomLocalToWorld(Room, FVector(1.0, 2.0, 0.5), Axes);
+
+		TestTrue(TEXT("A matching rectangle should report Aligned"),
+			Axes == BRiskCoord::ERoomLocalAxes::Aligned);
+		TestEqual(TEXT("Aligned room should not swap X"), World.X, Room.Origin.X + 1.0, 1.0e-6);
+		TestEqual(TEXT("Aligned room should not swap Y"), World.Y, Room.Origin.Y + 2.0, 1.0e-6);
+	}
+
+	// --- Non-rectangular room: unmappable, offsets left alone ---------------------------------
+	{
+		const FBRiskRoomGeometry Room = MakeCorridor15Room();
+		BRiskCoord::ERoomLocalAxes Axes = BRiskCoord::ERoomLocalAxes::Unverified;
+		const FVector World = BRiskCoord::RoomLocalToWorld(Room, FVector(1.0, 2.0, 0.5), Axes);
+
+		// Equivalent rectangle 22.986 x 1.0 against a 17.8 x 6.186 footprint matches neither way,
+		// so B-Risk's local frame genuinely cannot be recovered. Say so rather than guess.
+		TestTrue(TEXT("The L-shaped corridor should report Unmappable"),
+			Axes == BRiskCoord::ERoomLocalAxes::Unmappable);
+		TestEqual(TEXT("Unmappable room should use the offset as authored"),
+			World.X, Room.Origin.X + 1.0, 1.0e-6);
+	}
+
+	// --- No footprint at all: unverified, offsets left alone ----------------------------------
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = 9;
+		Room.Origin = FVector(1.0, 2.0, 0.0);
+		Room.Size = FVector(24.0, 5.5, 2.6);
+
+		BRiskCoord::ERoomLocalAxes Axes = BRiskCoord::ERoomLocalAxes::Transposed;
+		const FVector World = BRiskCoord::RoomLocalToWorld(Room, FVector(3.0, 4.0, 0.0), Axes);
+
+		TestTrue(TEXT("A room with no JSON should report Unverified"),
+			Axes == BRiskCoord::ERoomLocalAxes::Unverified);
+		TestEqual(TEXT("Unverified room should use the offset as authored"), World.X, 4.0, 1.0e-6);
+		TestEqual(TEXT("Unverified room should not swap Y"), World.Y, 6.0, 1.0e-6);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskRoomFootprintAccessorTest,
+	"ProjectMobius.BRisk.Geometry.RoomFootprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskRoomFootprintAccessorTest::RunTest(const FString& Parameters)
+{
+	// MakeRoomFootprint is the single answer to "where is this room", shared by the smoke
+	// volumes, the egress bounds that drive agent->room, and the generated mesh. If this drifts,
+	// those three drift apart silently, so both branches are pinned here.
+
+	// --- Polygon branch ---------------------------------------------------------------------
+	{
+		const BRiskCoord::FRoomFootprintCm Footprint =
+			BRiskCoord::MakeRoomFootprint(MakeLobby14Room(), 100.0f, BRiskCoord::ERoomFrame::Revit);
+
+		TestTrue(TEXT("Lobby 14 should resolve from its polygon"), Footprint.bFromPolygon);
+		TestEqual(TEXT("Ring should keep all four vertices"), Footprint.Polygon.Num(), 4);
+		// The source ring is CCW in B-Risk space; the Y negation flips it, so the accessor must
+		// re-wind. A negative area here means that normalisation was skipped or done too early.
+		TestTrue(TEXT("Ring should be counter-clockwise in UE space"),
+			BRiskCoord::SignedRingArea(Footprint.Polygon) > 0.0);
+		TestEqual(TEXT("Ring area should be 13.93 m2"),
+			BRiskCoord::SignedRingArea(Footprint.Polygon), 139300.0, 1.0);
+
+		TestEqual(TEXT("Polygon bounds min X"), Footprint.Bounds.Min.X, 325.05, 0.01);
+		TestEqual(TEXT("Polygon bounds max X"), Footprint.Bounds.Max.X, 603.65, 0.01);
+		TestEqual(TEXT("Polygon bounds min Y"), Footprint.Bounds.Min.Y, 1401.89, 0.01);
+		TestEqual(TEXT("Polygon bounds max Y"), Footprint.Bounds.Max.Y, 1901.89, 0.01);
+		TestEqual(TEXT("Polygon bounds min Z"), Footprint.Bounds.Min.Z, 0.0, 0.01);
+		TestEqual(TEXT("Polygon bounds max Z from the .smv height"), Footprint.Bounds.Max.Z, 400.0, 0.01);
+	}
+
+	// --- Rectangle fallback, at the origin ----------------------------------------------------
+	//
+	// The InGameTenabilityScrub fixture depends on exactly these numbers: B-Risk dims 24 x 5.5 x 2.6
+	// at origin (0,0,0) must give Min=(0,-550,0) Max=(2400,0,260). Under the old X<->Y swap it was
+	// Min=(0,0,0) Max=(550,2400,260) — the transposed, unnegated form.
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = 1;
+		Room.Origin = FVector::ZeroVector;
+		Room.Size = FVector(24.0, 5.5, 2.6);
+
+		const BRiskCoord::FRoomFootprintCm Footprint = BRiskCoord::MakeRoomFootprint(Room, 100.0f, BRiskCoord::ERoomFrame::Revit);
+
+		TestFalse(TEXT("A room with no JSON should not claim a polygon"), Footprint.bFromPolygon);
+		TestEqual(TEXT("Fallback should carry no ring"), Footprint.Polygon.Num(), 0);
+		TestEqual(TEXT("Fallback min X"), Footprint.Bounds.Min.X, 0.0, 0.01);
+		TestEqual(TEXT("Fallback max X"), Footprint.Bounds.Max.X, 2400.0, 0.01);
+		TestEqual(TEXT("Fallback min Y"), Footprint.Bounds.Min.Y, -550.0, 0.01);
+		TestEqual(TEXT("Fallback max Y"), Footprint.Bounds.Max.Y, 0.0, 0.01);
+		TestEqual(TEXT("Fallback max Z"), Footprint.Bounds.Max.Z, 260.0, 0.01);
+	}
+
+	// --- Rectangle fallback, offset -----------------------------------------------------------
+	//
+	// At the origin the negation is invisible. Offset the room so it is not: room 1's real .smv
+	// origin has a negative absy, so the min corner maps to the Y MAXIMUM. An FBox built from the
+	// corner pair in order would come out inverted, which is why the accessor accumulates points.
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = 1;
+		Room.Origin = FVector(3.2505, -19.0189, 0.0);
+		Room.Size = FVector(5.0, 2.786, 4.0);
+
+		const BRiskCoord::FRoomFootprintCm Footprint = BRiskCoord::MakeRoomFootprint(Room, 100.0f, BRiskCoord::ERoomFrame::Revit);
+
+		TestTrue(TEXT("Offset fallback bounds should be valid"), Footprint.Bounds.IsValid != 0);
+		TestEqual(TEXT("Offset fallback min X"), Footprint.Bounds.Min.X, 325.05, 0.01);
+		TestEqual(TEXT("Offset fallback max X"), Footprint.Bounds.Max.X, 825.05, 0.01);
+		TestEqual(TEXT("Offset fallback min Y"), Footprint.Bounds.Min.Y, 1623.29, 0.01);
+		TestEqual(TEXT("Offset fallback max Y"), Footprint.Bounds.Max.Y, 1901.89, 0.01);
+	}
+
+	// --- Degenerate ring falls back rather than returning nothing -----------------------------
+	//
+	// Deliberately different from BuildRoomMeshDataFromRooms, which hard-fails on this: a mesh can
+	// refuse to draw, but the smoke volume and the egress bounds must still get a box.
+	{
+		FBRiskRoomGeometry Room = MakeLobby14Room();
+		Room.FootprintPolygon = {
+			FVector2D(1.0, 1.0),
+			FVector2D(1.0, 1.0),
+			FVector2D(1.0, 1.0),
+		};
+
+		const BRiskCoord::FRoomFootprintCm Footprint = BRiskCoord::MakeRoomFootprint(Room, 100.0f, BRiskCoord::ERoomFrame::Revit);
+
+		TestFalse(TEXT("Degenerate ring should not report a polygon"), Footprint.bFromPolygon);
+		TestEqual(TEXT("Degenerate ring should be discarded"), Footprint.Polygon.Num(), 0);
+		TestTrue(TEXT("Degenerate ring should still yield rectangle bounds"), Footprint.Bounds.IsValid != 0);
+		TestEqual(TEXT("Degenerate fallback min X"), Footprint.Bounds.Min.X, 325.05, 0.01);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskRoomMeshFootprintTest,
+	"ProjectMobius.BRisk.Geometry.RoomMeshFootprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskRoomMeshFootprintTest::RunTest(const FString& Parameters)
+{
+	const TArray<FBRiskVentGeometry> NoVents;
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector> Normals;
+	FString Error;
+
+	// --- Rectangle footprint: pins the coordinate transform -------------------------------
+	//
+	// This is the assertion that would catch the wrong frame. Room 1 sits at absx 3.2505,
+	// absy -19.0189 in the .smv. Under BRiskCoord::FootprintToUnreal (Y negated) it must land
+	// at X [325.05, 603.65], Y [1401.89, 1901.89]; under the legacy X<->Y swap it would land at
+	// X [-1901.89, -1623.30] instead. The expected numbers come from the Datasmith door actors,
+	// an artifact independent of both the .smv and the JSON.
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeLobby14Room() };
+
+		TestTrue(TEXT("Rectangular footprint room should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, NoVents, 100.0f, BRiskCoord::ERoomFrame::Revit, Vertices, Triangles, Normals, &Error));
+
+		// A simple N-gon prism is 2*(N-2) cap triangles + 2*N wall triangles, emitted unindexed.
+		TestEqual(TEXT("A 4-gon prism should produce twelve triangles"), Triangles.Num() / 3, 12);
+		TestEqual(TEXT("Every triangle should carry its own vertices"), Vertices.Num(), Triangles.Num());
+		TestEqual(TEXT("Normals should match vertex count"), Normals.Num(), Vertices.Num());
+
+		const FBox Bounds(Vertices);
+		TestEqual(TEXT("Footprint min X should be 325.05 cm"), Bounds.Min.X, 325.05, 0.01);
+		TestEqual(TEXT("Footprint max X should be 603.65 cm"), Bounds.Max.X, 603.65, 0.01);
+		TestEqual(TEXT("Footprint min Y should be 1401.89 cm"), Bounds.Min.Y, 1401.89, 0.01);
+		TestEqual(TEXT("Footprint max Y should be 1901.89 cm"), Bounds.Max.Y, 1901.89, 0.01);
+		TestEqual(TEXT("Footprint min Z should be 0 cm"), Bounds.Min.Z, 0.0, 0.01);
+		TestEqual(TEXT("Footprint max Z should come from the .smv height, 400 cm"), Bounds.Max.Z, 400.0, 0.01);
+
+		// 2.786 x 5.0 m = 13.93 m^2. A triangulation that dropped or double-covered a triangle
+		// would still produce a correct bounding box, so check the covered area too.
+		TestEqual(TEXT("Floor cap area should equal the polygon area"),
+			FloorCapArea(Vertices, Triangles, Normals), 139300.0, 1.0);
+
+		int32 FloorTriangles = 0;
+		int32 CeilingTriangles = 0;
+		int32 WallTriangles = 0;
+		for (int32 Index = 0; Index + 2 < Triangles.Num(); Index += 3)
+		{
+			const FVector& Normal = Normals[Triangles[Index]];
+			FloorTriangles += Normal.Equals(FVector::DownVector) ? 1 : 0;
+			CeilingTriangles += Normal.Equals(FVector::UpVector) ? 1 : 0;
+			WallTriangles += FMath::IsNearlyZero(Normal.Z, 1e-4) ? 1 : 0;
+		}
+		TestEqual(TEXT("Floor cap should be two triangles"), FloorTriangles, 2);
+		TestEqual(TEXT("Ceiling cap should be two triangles"), CeilingTriangles, 2);
+		TestEqual(TEXT("Walls should be eight triangles"), WallTriangles, 8);
+
+		// Outward-facing shell, matching the legacy box path. The rectangle is convex, so every
+		// wall normal must point away from the footprint centre.
+		const FVector Centre = Bounds.GetCenter();
+		bool bAllWallsFaceOutward = true;
+		for (int32 Index = 0; Index + 2 < Triangles.Num(); Index += 3)
+		{
+			const FVector& Normal = Normals[Triangles[Index]];
+			if (!FMath::IsNearlyZero(Normal.Z, 1e-4))
+			{
+				continue;
+			}
+
+			const FVector ToFace = Vertices[Triangles[Index]] - Centre;
+			bAllWallsFaceOutward &= FVector::DotProduct(Normal, ToFace) > 0.0;
+		}
+		TestTrue(TEXT("Wall normals should face out of the room"), bAllWallsFaceOutward);
+	}
+
+	// --- L-shaped footprint: the case the equivalent rectangle cannot express ---------------
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeCorridor15Room() };
+
+		TestTrue(TEXT("L-shaped footprint room should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, NoVents, 100.0f, BRiskCoord::ERoomFrame::Revit, Vertices, Triangles, Normals, &Error));
+		TestEqual(TEXT("An 8-gon prism should produce twenty-eight triangles"), Triangles.Num() / 3, 28);
+
+		const FBox Bounds(Vertices);
+		TestEqual(TEXT("Corridor min X should be -1474.95 cm"), Bounds.Min.X, -1474.95, 0.01);
+		TestEqual(TEXT("Corridor max X should be 305.05 cm"), Bounds.Max.X, 305.05, 0.01);
+		TestEqual(TEXT("Corridor min Y should be 1083.29 cm"), Bounds.Min.Y, 1083.29, 0.01);
+		TestEqual(TEXT("Corridor max Y should be 1701.89 cm"), Bounds.Max.Y, 1701.89, 0.01);
+
+		// 22.986 m^2 — the true L-shaped area, not the 22.986 x 1.0 m equivalent rectangle's
+		// bounding box (17.8 x 6.186 m = 110 m^2).
+		TestEqual(TEXT("Floor cap area should equal the L-shaped polygon area"),
+			FloorCapArea(Vertices, Triangles, Normals), 229860.0, 1.0);
+	}
+
+	// --- Mixed scenario: footprint room plus a legacy rectangle room ------------------------
+	{
+		FBRiskRoomGeometry RectangleRoom;
+		RectangleRoom.RoomId = 3;
+		RectangleRoom.Label = TEXT("No footprint");
+		RectangleRoom.Origin = FVector::ZeroVector;
+		RectangleRoom.Size = FVector(24.0, 5.5, 2.6);
+
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeLobby14Room(), RectangleRoom };
+
+		// Registered at Warning, not via AddExpectedError: that one registers the pattern at
+		// Error verbosity, which would not intercept this message.
+		AddExpectedMessagePlain(TEXT("mixes coordinate frames"), ELogVerbosity::Warning,
+			EAutomationExpectedMessageFlags::Contains, 1);
+		TestTrue(TEXT("Mixed footprint/rectangle scenario should still build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, NoVents, 100.0f, BRiskCoord::ERoomFrame::Revit, Vertices, Triangles, Normals, &Error));
+		// 12 polygon triangles + the box path's 12 (six quads).
+		TestEqual(TEXT("Mixed scenario should produce twenty-four triangles"), Triangles.Num() / 3, 24);
+	}
+
+	// --- Degenerate footprint fails loudly rather than silently falling back ----------------
+	{
+		FBRiskRoomGeometry DegenerateRoom = MakeLobby14Room();
+		DegenerateRoom.FootprintPolygon = {
+			FVector2D(1.0, 1.0),
+			FVector2D(1.0, 1.0),
+			FVector2D(1.0, 1.0),
+		};
+
+		const TArray<FBRiskRoomGeometry> Rooms = { DegenerateRoom };
+		Error.Reset();
+		TestFalse(TEXT("Degenerate footprint should fail"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(Rooms, NoVents, 100.0f, BRiskCoord::ERoomFrame::Revit, Vertices, Triangles, Normals, &Error));
+		TestTrue(TEXT("Degenerate footprint should name the room"), Error.Contains(TEXT("Lobby 14")));
+		TestEqual(TEXT("Failed build should emit no geometry"), Vertices.Num(), 0);
+	}
 
 	return true;
 }
@@ -767,7 +1261,7 @@ bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
 	// Vent 1->2: room 2 is adjacent on Unreal +Y, so the slab is on room 1's +Y wall
 	// (y = 800 cm), thin in Y, spanning X.
 	TestTrue(TEXT("vent 1->2 resolves"),
-		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 2, 2, 0.0), &Room1, &Room2, Scale, Thickness, Center, Size));
+		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 2, 2, 0.0), &Room1, &Room2, Scale, BRiskCoord::ERoomFrame::SmokeviewSwap, Thickness, Center, Size));
 	// FVector components are double in UE5.5; compare against double literals so
 	// TestEqual binds to the (double,double,double) overload unambiguously.
 	const double ThicknessCm = static_cast<double>(Thickness);
@@ -779,7 +1273,7 @@ bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
 	// Vent 1->3: room 3 is adjacent on Unreal +X, so the slab is on room 1's +X wall
 	// (x = 800 cm), thin in X, spanning Y.
 	TestTrue(TEXT("vent 1->3 resolves"),
-		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 3, 3, 0.0), &Room1, &Room3, Scale, Thickness, Center, Size));
+		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 3, 3, 0.0), &Room1, &Room3, Scale, BRiskCoord::ERoomFrame::SmokeviewSwap, Thickness, Center, Size));
 	TestEqual(TEXT("vent 1->3 on +X wall"), Center.X, 800.0, 0.01);
 	TestEqual(TEXT("vent 1->3 thin in X"), Size.X, ThicknessCm, 0.01);
 	TestEqual(TEXT("vent 1->3 spans Y by width"), Size.Y, 240.0, 0.01);
@@ -787,9 +1281,48 @@ bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
 	// Vent 1->4: exterior (no such room) -> CFAST face id 4 = B-Risk -X, which maps to the
 	// Unreal -Y wall under the swap. Offset (0.8 m) runs along Unreal X.
 	TestTrue(TEXT("vent 1->exterior resolves"),
-		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 4, 4, 0.8), &Room1, nullptr, Scale, Thickness, Center, Size));
+		ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 4, 4, 0.8), &Room1, nullptr, Scale, BRiskCoord::ERoomFrame::SmokeviewSwap, Thickness, Center, Size));
 	TestEqual(TEXT("exterior vent on -Y wall"), Center.Y, 0.0, 0.01);
 	TestEqual(TEXT("exterior vent offset applied on X"), Center.X, 200.0, 0.01); // (80 + 320)/2
+
+	// --- Same three vents under the Revit frame -------------------------------------------------
+	//
+	// Everything above pins the LEGACY swap and must never move; this block covers the frame a
+	// Zones-data.json scenario actually uses. Under FootprintToUnreal (UE X = B-Risk X,
+	// UE Y = -B-Risk Y) the same rooms land at:
+	//   room 1  X [0, 800]    Y [-800, 0]
+	//   room 2  X [800, 1600] Y [-800, 0]      (B-Risk +X -> UE +X, unchanged)
+	//   room 3  X [0, 800]    Y [-1600, -800]  (B-Risk +Y -> UE -Y, NEGATED)
+	// so the two interior vents swap which axis they sit on relative to the legacy case.
+	{
+		const BRiskCoord::ERoomFrame Revit = BRiskCoord::ERoomFrame::Revit;
+
+		// Room 2 is adjacent on UE +X now, not +Y.
+		TestTrue(TEXT("revit vent 1->2 resolves"),
+			ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 2, 2, 0.0), &Room1, &Room2, Scale, Revit, Thickness, Center, Size));
+		TestEqual(TEXT("revit vent 1->2 on +X wall"), Center.X, 800.0, 0.01);
+		TestEqual(TEXT("revit vent 1->2 thin in X"), Size.X, ThicknessCm, 0.01);
+		TestEqual(TEXT("revit vent 1->2 spans Y by width"), Size.Y, 240.0, 0.01);
+
+		// Room 3 is adjacent on UE -Y, the direction the negation reverses.
+		TestTrue(TEXT("revit vent 1->3 resolves"),
+			ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 3, 3, 0.0), &Room1, &Room3, Scale, Revit, Thickness, Center, Size));
+		TestEqual(TEXT("revit vent 1->3 on -Y wall"), Center.Y, -800.0, 0.01);
+		TestEqual(TEXT("revit vent 1->3 thin in Y"), Size.Y, ThicknessCm, 0.01);
+		TestEqual(TEXT("revit vent 1->3 spans X by width"), Size.X, 240.0, 0.01);
+
+		// The one that catches a wrong offset DIRECTION rather than a wrong wall. Face 4 = B-Risk
+		// -X, which is still UE -X here (not -Y as under the swap). The opening runs along Y, the
+		// negated axis, so the 0.8 m offset is measured DOWN from the box maximum:
+		//   OpenEnd = 0 - 80 = -80, OpenStart = -80 - 240 = -320, centre = -200.
+		// Measuring from the minimum instead would give +200 - a mirrored vent that looks
+		// perfectly plausible until the offset is non-zero, which is exactly why this asserts it.
+		TestTrue(TEXT("revit vent 1->exterior resolves"),
+			ABRiskHazardVisualizer::ComputeVentSlab(MakeVent(1, 4, 4, 0.8), &Room1, nullptr, Scale, Revit, Thickness, Center, Size));
+		TestEqual(TEXT("revit exterior vent on -X wall"), Center.X, 0.0, 0.01);
+		TestEqual(TEXT("revit exterior vent offset measured from max Y"), Center.Y, -200.0, 0.01);
+		TestEqual(TEXT("revit exterior vent spans Y by width"), Size.Y, 240.0, 0.01);
+	}
 
 	return true;
 }
