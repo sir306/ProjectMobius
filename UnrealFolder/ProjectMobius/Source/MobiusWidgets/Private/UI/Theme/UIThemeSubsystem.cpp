@@ -55,6 +55,7 @@
 #include "Styling/SlateTypes.h"
 #include "Styling/SlateWidgetStyleAsset.h"
 #include "UI/Components/ButtonWithText.h"
+#include "UI/Components/MobiusThemedBorder.h"   // A6b: walk guard — self-theming borders
 #include "UI/Components/VerticalTextBlock.h"
 #include "UI/Components/FieldAndTextWidget.h"
 #include "Widgets/SCompoundWidget.h"
@@ -487,6 +488,10 @@ void UUIThemeSubsystem::ReapplyToUserWidget(UUserWidget* UserWidget)
 		return;
 	}
 	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+	// A5: the standard controls left ApplyToWidget, so re-add them here explicitly — the in-world
+	// flow-counter card owns a UScrollBox (UFlowCounterWidget::OptionalScrollBox) and would otherwise stop
+	// being themed the moment those branches moved out. Not a construct pass: this is the re-theme route.
+	ThemeStandardControlsInTree(UserWidget, /*bConstruct*/false);
 	// Same per-widget pass ApplyToLiveWidgets runs, scoped to this one tree (used for in-world widget-
 	// component cards, which GetAllWidgetsOfClass never returns). RECURSE into embedded user widgets so a
 	// flow-counter card themes its section-counter children too (the main walk handles embedded widgets as
@@ -581,15 +586,18 @@ FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected, const bo
 	return Style;
 }
 
-void UUIThemeSubsystem::ApplyTabHoverFill(FButtonStyle& Style, UObject* Outer, const bool bLight) const
+void UUIThemeSubsystem::ApplyTabStateFills(FButtonStyle& Style, UObject* Outer, const bool bLight) const
 {
 	using namespace MobiusTheme;
 
-	// A16 (2026-07-28): ribbon tabs had NO hover fill. GetThemedTabStyle assigns the SAME MI_Tab* material
-	// to Normal/Hovered/Pressed/Disabled, so a hovered tab was byte-identical to an unhovered one and only
-	// the label colour changed. Fix: give the HOVERED brush its own MaterialInstanceDynamic off that same
-	// MI and override just FillColour with the app-wide hover role, so ribbon tabs speak the same hover
-	// language as every other Mobius button (owner: "expand this onto the ribbon buttons too").
+	// A16 + A17 (2026-07-28): ribbon tabs had NO hover fill and NO pressed fill. GetThemedTabStyle assigns
+	// the SAME MI_Tab* material to Normal/Hovered/Pressed/Disabled, so a hovered (or held) tab was
+	// byte-identical to an idle one and only the label colour changed. Fix: give the HOVERED and PRESSED
+	// brushes their own MaterialInstanceDynamic off that same MI and override just FillColour with the
+	// app-wide hover / pressed roles, so ribbon tabs speak the same interaction language as every other
+	// Mobius button (owner: "expand this onto the ribbon buttons too"). Hover shipped first as A16; A17
+	// added pressed, because once hover landed a press DROPPED back to the base fill and read as the hover
+	// vanishing rather than as a press. Both live in one helper so the two states cannot drift apart.
 	//
 	// Why a MID and not simply a brighter Brush.TintColor: Slate packs the brush tint into the vertex
 	// colour (FColor), so a tint > 1.0 clamps and CANNOT brighten a material — that route works in light
@@ -597,27 +605,44 @@ void UUIThemeSubsystem::ApplyTabHoverFill(FButtonStyle& Style, UObject* Outer, c
 	//
 	// The MID's parent is the very MI the Normal brush uses, so every other tab parameter (UseUnderline,
 	// AccentEdge, UseTopBar, UnderlineColour, UnderlineThickness) inherits per-theme/per-state for free.
-	// That is also why hover does not muddy the active tab: the accent UNDERLINE is the active signifier
-	// (UseUnderline 1 vs 0), not fill brightness, so a hovered inactive tab reads brighter-but-not-active.
-	UMaterialInterface* TabMaterial = Cast<UMaterialInterface>(Style.Hovered.GetResourceObject());
-	if (!TabMaterial)
+	// That is also why hover/press do not muddy the active tab: the accent UNDERLINE is the active
+	// signifier (UseUnderline 1 vs 0), not fill brightness, so a hovered inactive tab reads
+	// brighter-but-not-active.
+	//
+	// NOT touched here: NormalPadding / PressedPadding, which GetThemedTabStyle leaves EQUAL at (0,4).
+	// Keep them equal — a smaller PressedPadding shrinks the hit rect mid-press, Slate fires OnMouseLeave
+	// and discards the click (the A15 "unresponsive button" trap). Fill is the whole press affordance here.
+	auto FillState = [Outer, bLight](FSlateBrush& Brush, const EMobiusPaletteRole FillRole,
+	                                 const EMobiusPaletteRole BorderRole)
 	{
-		return; // no tab material (SWS fallback) — leave the style alone
-	}
+		UMaterialInterface* TabMaterial = Cast<UMaterialInterface>(Brush.GetResourceObject());
+		if (!TabMaterial)
+		{
+			return; // no tab material (SWS fallback) — leave this state alone
+		}
 
-	// Outer = the button, so the MID is GC-rooted through its WidgetStyle UPROPERTY and dies with it.
-	// No subsystem-side cache: ~8 tabs re-themed only on construct / activation / theme toggle.
-	UMaterialInstanceDynamic* HoverMaterial = UMaterialInstanceDynamic::Create(TabMaterial, Outer);
-	if (!HoverMaterial)
-	{
-		return;
-	}
-	HoverMaterial->SetVectorParameterValue(TEXT("FillColour"), PaletteColor(EMobiusPaletteRole::ButtonHoverBg, bLight));
-	Style.Hovered.SetResourceObject(HoverMaterial);
-	if (Style.Hovered.OutlineSettings.Width > 0.0f)
-	{
-		Style.Hovered.OutlineSettings.Color = FSlateColor(PaletteColor(EMobiusPaletteRole::ButtonHoverBorder, bLight));
-	}
+		// Outer = the button, so the MID is GC-rooted through its WidgetStyle UPROPERTY and dies with it.
+		// No subsystem-side cache: ~8 tabs re-themed only on construct / activation / theme toggle, and
+		// two MIDs per tab is still nothing next to a per-frame allocation.
+		UMaterialInstanceDynamic* StateMaterial = UMaterialInstanceDynamic::Create(TabMaterial, Outer);
+		if (!StateMaterial)
+		{
+			return;
+		}
+		StateMaterial->SetVectorParameterValue(TEXT("FillColour"), PaletteColor(FillRole, bLight));
+		Brush.SetResourceObject(StateMaterial);
+		if (Brush.OutlineSettings.Width > 0.0f)
+		{
+			Brush.OutlineSettings.Color = FSlateColor(PaletteColor(BorderRole, bLight));
+		}
+	};
+
+	// Hover border = ButtonHoverBorder (its own spec-4 role). Pressed border = ButtonBorder, matching
+	// UBaseButton::RefreshThemedButtonStyle, which themes every state's outline with the plain border role
+	// — there is no ButtonPressedBorder in the palette. Both branches are inert while the tab brushes carry
+	// OutlineSettings.Width 0 (they do today); they exist so a future outlined tab stays theme-correct.
+	FillState(Style.Hovered, EMobiusPaletteRole::ButtonHoverBg, EMobiusPaletteRole::ButtonHoverBorder);
+	FillState(Style.Pressed, EMobiusPaletteRole::ButtonPressedBg, EMobiusPaletteRole::ButtonBorder);
 }
 
 void UUIThemeSubsystem::ApplyRibbonTabStyle(UButtonWithText* Button, const bool bActive)
@@ -636,17 +661,21 @@ void UUIThemeSubsystem::ApplyRibbonTabStyle(UButtonWithText* Button, const bool 
 		bActive ? EMobiusPaletteRole::TabActiveText : EMobiusPaletteRole::TabInactiveText, bLight);
 	// bRightEdgeAccent picks the right-edge tab material variant (side tool-rail) vs bottom (top ribbon).
 	FButtonStyle TabStyle = GetThemedTabStyle(bActive, Button->bRightEdgeAccent);
-	ApplyTabHoverFill(TabStyle, Button, bLight);
+	ApplyTabStateFills(TabStyle, Button, bLight);
 	Button->SetStyle(TabStyle);
 	// Top-ribbon labels are MyButtonText; colour them here as before.
 	Button->ApplyThemedLabelColor(LabelColor);
 	// Side-rail ribbon buttons show their label via a CHILD UVerticalTextBlock (not MyButtonText), so
-	// colour that too: active = TabActiveText, inactive = TabInactiveText (matches the top ribbon). Runs
-	// after the walk's RefreshThemedStyle (OnThemeChanged fires at the end of ApplyTheme), so this wins.
+	// colour that too: active = TabActiveText, inactive = TabInactiveText (matches the top ribbon).
+	// A5: the style refresh is now done HERE rather than relying on the walk having run first. The button
+	// owns this label outright — RefreshThemedStyle re-lands the themed base style, then the override paints
+	// the active/inactive accent over it, in that order, every time. (UVerticalTextBlock's own
+	// OnThemeChanged handler deliberately stands down for ribbon-owned labels so the two cannot race.)
 	if (UWidget* Content = Button->GetChildAt(0))
 	{
 		if (UVerticalTextBlock* VLabel = Cast<UVerticalTextBlock>(Content))
 		{
+			VLabel->RefreshThemedStyle();
 			VLabel->SetThemedLabelColor(LabelColor);
 		}
 	}
@@ -855,6 +884,324 @@ void UUIThemeSubsystem::StyleComboBoxForBuild(UComboBoxString* Combo, const bool
 	// InitForegroundColor() — the only pre-build foreground setter, and not reachable from here.
 }
 
+// =================================================================================================
+// A5 (2026-07-28) — event-driven control theming (rebuild Phase 4). See the header for the contract.
+// Each helper is the walker's branch for that control TYPE, lifted verbatim except where noted, so a
+// widget can theme its own controls on construct / OnThemeChanged and the global walk is no longer the
+// only thing that reaches them. Idempotent — a control themed twice in one pass lands the same values.
+// =================================================================================================
+
+void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const bool bConstruct)
+{
+	if (!Root || !Root->WidgetTree)
+	{
+		return;
+	}
+	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+	// Recurse into embedded user widgets: a panel's controls are usually a level or two down in nested
+	// WBPs that have no C++ owner of their own, and those are exactly the ones that would otherwise be
+	// left behind when the walk goes. Overlap with a nested themed widget's own call is harmless.
+	//
+	// The recursion is also the ONLY route to the widgets whose C++ class lives in the ProjectMobius
+	// module — USimulationPlayBar (PlaybackSlider + ScrubFillBar) and USimulationSetupWidget (the time-
+	// dilation input). MobiusWidgets already depends on ProjectMobius, so those classes cannot derive from
+	// UMobiusThemedUserWidget without a circular module dependency. They are reached because
+	// WBP_CompleteMobiusUI (UTopMainUiWrapper, this module) embeds them: the root themes the whole tree.
+	Root->WidgetTree->ForEachWidget([this, bLight, bConstruct](UWidget* Widget)
+	{
+		if (!Widget)
+		{
+			return;
+		}
+		if (UUserWidget* ChildUserWidget = Cast<UUserWidget>(Widget))
+		{
+			ThemeStandardControlsInTree(ChildUserWidget, bConstruct);
+		}
+		else if (USlider* Slider = Cast<USlider>(Widget))
+		{
+			StyleSliderForTheme(Slider, bLight);
+		}
+		else if (UCheckBox* CheckBox = Cast<UCheckBox>(Widget))
+		{
+			StyleCheckBoxForTheme(CheckBox, bLight);
+		}
+		else if (UScrollBox* ScrollBox = Cast<UScrollBox>(Widget))
+		{
+			StyleScrollBoxForTheme(ScrollBox, bLight);
+		}
+		else if (UProgressBar* ProgressBar = Cast<UProgressBar>(Widget))
+		{
+			StyleProgressBarForTheme(ProgressBar, bLight);
+		}
+		else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(Widget))
+		{
+			StyleEditableTextBoxForTheme(EditBox, bLight, bConstruct);
+		}
+	});
+}
+
+void UUIThemeSubsystem::StyleSliderForTheme(USlider* Slider, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	if (!Slider)
+	{
+		return;
+	}
+
+	if (Slider->GetName() == TEXT("PlaybackSlider"))
+	{
+		// Q51/C4 (CR item B): the scrub track + accent-@35% fill are drawn by a UProgressBar (ScrubFillBar)
+		// layered BEHIND this slider, so the slider itself must be bar-transparent — only its accent thumb
+		// shows on top.
+		Slider->SetSliderBarColor(FLinearColor::Transparent);
+	}
+	else
+	{
+		// A5: the walk used to run this through the SurfaceMap value pairs, which protected gradient / data
+		// bars only as a side effect of them matching no palette row. Test the property directly instead:
+		// a GREYSCALE bar is chrome and takes the SliderTrack role; a saturated one is data (the material
+		// picker's HSV sliders) and is left exactly as authored. Same outcome, no value table.
+		const FLinearColor Bar = Slider->GetSliderBarColor();
+		const bool bGreyscaleBar = FMath::IsNearlyEqual(Bar.R, Bar.G, 0.02f) && FMath::IsNearlyEqual(Bar.G, Bar.B, 0.02f);
+		if (bGreyscaleBar && Bar.A > 0.0f)
+		{
+			Slider->SetSliderBarColor(PaletteColor(EMobiusPaletteRole::SliderTrack, bLight));
+		}
+	}
+
+	// Q24: force the thumb to the accent per theme (design: slider thumb = accent). Explicit, not a
+	// remap — the stock thumbs are grey and match no accent bucket.
+	Slider->SetSliderHandleColor(PaletteColor(EMobiusPaletteRole::SliderThumb, bLight));
+
+	// D171: neutralize the slider double-tint. SetSliderHandleColor (above) and the bar colour are
+	// multipliers applied ON TOP of the style's brush TintColors. A slider that baked the accent/track
+	// INTO its brush tint (e.g. OpacitySlider: thumb tint = accent) multiplies twice -> accent^2 (a dark
+	// navy handle) / dark track. Force the style brush tints to white so the colour multipliers render
+	// cleanly. Thumbs always (flat); bars only when resource-less (leave gradient / HSV-picker bars,
+	// which legitimately carry their colour in the brush, untouched).
+	FSliderStyle SliderStyle = Slider->GetWidgetStyle();
+	bool bSliderStyleChanged = false;
+	FSlateBrush* ThumbBrushes[] = { &SliderStyle.NormalThumbImage, &SliderStyle.HoveredThumbImage, &SliderStyle.DisabledThumbImage };
+	for (FSlateBrush* ThumbBrush : ThumbBrushes)
+	{
+		if (!ThumbBrush->TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+		{
+			ThumbBrush->TintColor = FSlateColor(FLinearColor::White);
+			bSliderStyleChanged = true;
+		}
+	}
+	FSlateBrush* BarBrushes[] = { &SliderStyle.NormalBarImage, &SliderStyle.HoveredBarImage, &SliderStyle.DisabledBarImage };
+	for (FSlateBrush* BarBrush : BarBrushes)
+	{
+		if (BarBrush->GetResourceObject() == nullptr
+			&& !BarBrush->TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+		{
+			BarBrush->TintColor = FSlateColor(FLinearColor::White);
+			bSliderStyleChanged = true;
+		}
+	}
+	if (bSliderStyleChanged)
+	{
+		Slider->SetWidgetStyle(SliderStyle);
+	}
+}
+
+void UUIThemeSubsystem::StyleCheckBoxForTheme(UCheckBox* CheckBox, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	if (!CheckBox)
+	{
+		return;
+	}
+
+	// The ThemeToggle is a bespoke pill/slider control assembled from a checkbox — the standard box would
+	// destroy it. It self-themes (UThemeToggleWidget), so skip it here.
+	if (CheckBox->GetName().Contains(TEXT("ThemeToggle")))
+	{
+		return;
+	}
+
+	// Q24 (C4): checked = accent fill; unchecked = input-bg box + checkbox border, radius 3.
+	// A5: the walk also ran RemapBrush over all nine brushes first. Dropped — the six explicit writes
+	// below fully overwrite every brush that mattered, and the three Undetermined* brushes are dead
+	// (nothing in Mobius uses ECheckBoxState::Undetermined; grepped). That removes the last value-match
+	// from the checkbox path.
+	FCheckBoxStyle Style = CheckBox->GetWidgetStyle();
+	auto ApplyRoundedBox = [](FSlateBrush& B, const FLinearColor& Fill, const FLinearColor& Outline, float OutlineWidth)
+	{
+		// Mutate in place so the asset's authored ImageSize (D43 = 20x20) survives.
+		B.DrawAs = ESlateBrushDrawType::RoundedBox;
+		B.SetResourceObject(nullptr);
+		B.TintColor = FSlateColor(Fill);
+		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		B.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+		B.OutlineSettings.Color = FSlateColor(Outline);
+		B.OutlineSettings.Width = OutlineWidth;
+	};
+	const FLinearColor Accent = PaletteColor(EMobiusPaletteRole::CheckboxCheckedBg, bLight);
+	const FLinearColor BoxBg = PaletteColor(EMobiusPaletteRole::CheckboxBg, bLight);
+	const FLinearColor BoxBorder = PaletteColor(EMobiusPaletteRole::CheckboxBorder, bLight);
+	// Checked = accent fill + white 1u outline (accent-on signal; the white-check glyph needs a
+	// composite/checkmark brush asset — the remaining Q24 limitation).
+	ApplyRoundedBox(Style.CheckedImage, Accent, FLinearColor::White, 1.0f);
+	ApplyRoundedBox(Style.CheckedHoveredImage, Accent, FLinearColor::White, 1.0f);
+	ApplyRoundedBox(Style.CheckedPressedImage, Accent, FLinearColor::White, 1.0f);
+	ApplyRoundedBox(Style.UncheckedImage, BoxBg, BoxBorder, 1.0f);
+	ApplyRoundedBox(Style.UncheckedHoveredImage, BoxBg, BoxBorder, 1.0f);
+	ApplyRoundedBox(Style.UncheckedPressedImage, BoxBg, BoxBorder, 1.0f);
+	CheckBox->SetWidgetStyle(Style);
+}
+
+void UUIThemeSubsystem::StyleScrollBoxForTheme(UScrollBox* ScrollBox, const bool bLight)
+{
+	if (!ScrollBox)
+	{
+		return;
+	}
+
+	// Audit #4: a UScrollBox's authored scrollbar thumb colour stayed fixed across a toggle (dark thumb on
+	// light chrome / vice-versa) whenever a list overflowed. Tint the three thumb states per theme (grey
+	// thumb readable on either chrome); track/background left to the box style. No dedicated scrollbar
+	// palette role, so explicit greys: light #adadad, dark #9a9a9a.
+	FScrollBarStyle BarStyle = ScrollBox->GetWidgetBarStyle();
+	const FLinearColor ThumbTint = bLight ? FLinearColor(0.4179f, 0.4179f, 0.4179f) : FLinearColor(0.323f, 0.323f, 0.323f);
+	FSlateBrush* ThumbBrushes[] = { &BarStyle.NormalThumbImage, &BarStyle.HoveredThumbImage, &BarStyle.DraggedThumbImage };
+	for (FSlateBrush* ThumbBrush : ThumbBrushes)
+	{
+		ThumbBrush->TintColor = FSlateColor(ThumbTint);
+	}
+	ScrollBox->SetWidgetBarStyle(BarStyle);
+}
+
+void UUIThemeSubsystem::StyleProgressBarForTheme(UProgressBar* ProgressBar, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	if (!ProgressBar)
+	{
+		return;
+	}
+
+	if (ProgressBar->GetName() == TEXT("ScrubFillBar"))
+	{
+		// Q51/C4 (CR item B): scrub fill behind PlaybackSlider — a flat SliderTrack-grey track with an
+		// accent @35%-alpha fill (NOT the §3.8 loading-bar look). Both themes via palette. The fill is
+		// white-tinted in the style and coloured via FillColorAndOpacity so the 0.35 alpha is exact.
+		FProgressBarStyle ScrubStyle = ProgressBar->GetWidgetStyle();
+		ScrubStyle.EnableFillAnimation = false;
+		ScrubStyle.BackgroundImage.DrawAs = ESlateBrushDrawType::Box;
+		ScrubStyle.BackgroundImage.SetResourceObject(nullptr);
+		ScrubStyle.BackgroundImage.OutlineSettings.Width = 0.0f;
+		ScrubStyle.BackgroundImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::SliderTrack, bLight));
+		ScrubStyle.FillImage.DrawAs = ESlateBrushDrawType::Box;
+		ScrubStyle.FillImage.SetResourceObject(nullptr);
+		ScrubStyle.FillImage.OutlineSettings.Width = 0.0f;
+		ScrubStyle.FillImage.TintColor = FSlateColor(FLinearColor::White);
+		ProgressBar->SetWidgetStyle(ScrubStyle);
+		FLinearColor ScrubFill = PaletteColor(EMobiusPaletteRole::Accent, bLight);
+		ScrubFill.A = 0.35f;
+		ProgressBar->SetFillColorAndOpacity(ScrubFill);
+		return;
+	}
+
+	// §3.8 (D55): progress bars = accent fill on an input-bg track with a 1u input-border. The fill image
+	// is a material/texture on some bars — tint it to accent (keeps any authored shape); the background
+	// becomes a rounded input-bg box. Height (11u) is asset geometry, not style.
+	FProgressBarStyle Style = ProgressBar->GetWidgetStyle();
+	Style.FillImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::Accent, bLight));
+	Style.BackgroundImage.DrawAs = ESlateBrushDrawType::RoundedBox;
+	Style.BackgroundImage.SetResourceObject(nullptr);
+	Style.BackgroundImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBg, bLight));
+	Style.BackgroundImage.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+	Style.BackgroundImage.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+	Style.BackgroundImage.OutlineSettings.Color = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBorder, bLight));
+	Style.BackgroundImage.OutlineSettings.Width = 1.0f;
+	ProgressBar->SetWidgetStyle(Style);
+	ProgressBar->SetFillColorAndOpacity(PaletteColor(EMobiusPaletteRole::Accent, bLight));
+}
+
+void UUIThemeSubsystem::StyleEditableTextBoxForTheme(UEditableTextBox* EditBox, const bool bLight, const bool bApplyFont)
+{
+	using namespace MobiusTheme;
+
+	if (!EditBox)
+	{
+		return;
+	}
+
+	bool bStyleChanged = false;
+
+	// Q26: numeric/path edit boxes → Font_Inter Mono (input_mono token). THEME-INDEPENDENT, so it runs on
+	// the construct pass only — there is nothing for a theme change to re-decide. Convert only boxes not
+	// already on Inter, so a deliberate Inter face/size is never re-stomped. (This lived in the walk
+	// because that was the one C++ hook touching every live widget; FEditableTextBoxStyle.Font is not
+	// settable from Python either.)
+	if (bApplyFont)
+	{
+		if (UFont* Inter = GetInterFont())
+		{
+			if (EditBox->WidgetStyle.TextStyle.Font.FontObject != Inter)
+			{
+				EditBox->WidgetStyle.TextStyle.Font = FSlateFontInfo(Inter, 11, FName(TEXT("Mono"))); // BW6 density: 14->11
+				bStyleChanged = true;
+			}
+		}
+	}
+
+	// Edit boxes carry their surface in FEditableTextBoxStyle, which the Border/Image value walk never
+	// reaches — a dark-authored input (e.g. the flow-counter rename field) stayed dark in light mode. Set
+	// the input palette roles EXPLICITLY: a generic SurfaceMap remap is not safe here — the input values
+	// collide with other rows (0.0243 matched a rail pair), so each theme toggle walked the fill to a
+	// different bucket (0.0243 -> 0.791 -> 0.913 drift).
+	const FLinearColor InputBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
+	const FLinearColor InputBorderColor = PaletteColor(EMobiusPaletteRole::InputBorder, bLight);
+	FSlateBrush* BoxBrushes[] =
+	{
+		&EditBox->WidgetStyle.BackgroundImageNormal, &EditBox->WidgetStyle.BackgroundImageHovered,
+		&EditBox->WidgetStyle.BackgroundImageFocused, &EditBox->WidgetStyle.BackgroundImageReadOnly,
+	};
+	for (FSlateBrush* Brush : BoxBrushes)
+	{
+		// Flat colour fills only — leave any texture/material-backed input art alone.
+		if (Brush->GetResourceObject() != nullptr)
+		{
+			continue;
+		}
+		if (!Brush->TintColor.GetSpecifiedColor().Equals(InputBg, 0.004f))
+		{
+			Brush->TintColor = FSlateColor(InputBg);
+			bStyleChanged = true;
+		}
+		if (Brush->OutlineSettings.Width > 0.0f
+			&& !Brush->OutlineSettings.Color.GetSpecifiedColor().Equals(InputBorderColor, 0.004f))
+		{
+			Brush->OutlineSettings.Color = FSlateColor(InputBorderColor);
+			bStyleChanged = true;
+		}
+	}
+
+	// Text colour: set the InputText palette role EXPLICITLY. Do NOT value-remap these — edit boxes
+	// commonly leave ForegroundColor/TextStyle colour on an inheritance rule, and reading
+	// GetSpecifiedColor() off those yields the magenta sentinel, which a remap-write then bakes in.
+	const FSlateColor InputTextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
+	if (EditBox->WidgetStyle.TextStyle.ColorAndOpacity != InputTextColor
+		|| EditBox->WidgetStyle.ForegroundColor != InputTextColor
+		|| EditBox->WidgetStyle.FocusedForegroundColor != InputTextColor)
+	{
+		EditBox->WidgetStyle.TextStyle.ColorAndOpacity = InputTextColor;
+		EditBox->WidgetStyle.ForegroundColor = InputTextColor;
+		EditBox->WidgetStyle.FocusedForegroundColor = InputTextColor;
+		bStyleChanged = true;
+	}
+
+	if (bStyleChanged)
+	{
+		EditBox->SynchronizeProperties(); // push the style to the live SEditableTextBox
+	}
+}
+
 int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 {
 	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
@@ -917,9 +1264,9 @@ int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 			}
 		});
 	}
-	UE_LOG(LogMobiusTheme, Display, TEXT("ApplyToLiveWidgets(%s): %d user widgets, %d leaf widgets visited"),
-		bLight ? TEXT("light") : TEXT("dark"), AllUserWidgets.Num(), WidgetsVisited);
-
+	// A11/A6a (2026-07-28): per-pass UE_LOG removed. The startup ticker calls this up to 100 times in the
+	// first 30 s, so it was ~100 Display lines before the user sees anything, and it re-fires on every theme
+	// toggle. The ticker's own pass-count logic uses the RETURN value, not the log, so nothing depended on it.
 	return WidgetsVisited;
 }
 
@@ -934,6 +1281,17 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	// instead; until then their dropdown rows fall back to default styling. If this stops the crash, the
 	// combo-churn / lifetime (UAF) theory is confirmed.
 	if (Widget && Widget->IsA<UComboBoxString>())
+	{
+		return;
+	}
+
+	// A6b (2026-07-28): a UMobiusThemedBorder owns its colour from its DECLARED role and repaints on
+	// OnThemeChanged. Without this guard the two writers fight during the migration window, and the walk
+	// wins or loses by ordering: e.g. a reparented HDiv_* takes HelpRowDivider (dark 0.05951), then the
+	// UBorder branch below value-matches its LIGHT value 0.7913 against the "tab strip" SurfaceMap row —
+	// which is byte-identical — and stamps 0.0284 instead. That is the exact collision the rebuild exists
+	// to remove, and it would appear ONLY on already-migrated borders. Guard the TYPE, not the name.
+	if (Widget && Widget->IsA<UMobiusThemedBorder>())
 	{
 		return;
 	}
@@ -995,139 +1353,20 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 			Text->SetColorAndOpacity(Color);
 		}
 	}
-	else if (UVerticalTextBlock* VerticalText = Cast<UVerticalTextBlock>(Widget))
-	{
-		// Round 11: the rail labels (Floor Stats / Flow Counters) copy their style at construct and had
-		// no live re-land — after a toggle they kept the previous theme's colour (black-on-dark rail).
-		VerticalText->RefreshThemedStyle();
-	}
-	else if (UFieldAndTextWidget* FieldText = Cast<UFieldAndTextWidget>(Widget))
-	{
-		// Audit #1: SFieldAndTitleText's inner STextBlocks are raw Slate (not in any WidgetTree), so this
-		// walk can never reach them and they froze at construct. Pass THIS walk's theme (bLight) — the
-		// in-world card's widget-component GetWorld()/GameInstance resolves an unreliable theme, so letting
-		// the widget self-resolve gave grey (dark-value) text on a light card.
-		FieldText->RefreshThemedStyle(bLight);
-	}
-	else if (UScrollBox* ScrollBox = Cast<UScrollBox>(Widget))
-	{
-		// Audit #4: UScrollBox had no walk branch and its authored scrollbar thumb colour stayed fixed
-		// across a toggle (dark thumb on light chrome / vice-versa) whenever a list overflowed. Tint the
-		// three thumb states per theme (grey thumb readable on either chrome); track/background left to the
-		// box style. No dedicated scrollbar palette role, so explicit greys: light #adadad, dark #9a9a9a.
-		FScrollBarStyle BarStyle = ScrollBox->GetWidgetBarStyle();
-		const FLinearColor ThumbTint = bLight ? FLinearColor(0.4179f, 0.4179f, 0.4179f) : FLinearColor(0.323f, 0.323f, 0.323f);
-		FSlateBrush* ThumbBrushes[] = { &BarStyle.NormalThumbImage, &BarStyle.HoveredThumbImage, &BarStyle.DraggedThumbImage };
-		for (FSlateBrush* ThumbBrush : ThumbBrushes)
-		{
-			ThumbBrush->TintColor = FSlateColor(ThumbTint);
-		}
-		ScrollBox->SetWidgetBarStyle(BarStyle);
-	}
-	else if (USlider* Slider = Cast<USlider>(Widget))
-	{
-		if (Slider->GetName() == TEXT("PlaybackSlider"))
-		{
-			// Q51/C4 (CR item B): the scrub track + accent-@35% fill are now drawn by a UProgressBar
-			// (ScrubFillBar) layered BEHIND this slider, so the slider itself must be bar-transparent —
-			// only its accent thumb shows on top. Forced here (a plain transparent value would otherwise
-			// be pulled to grey by the SurfaceMap bottom-bar bucket on the value walk).
-			Slider->SetSliderBarColor(FLinearColor::Transparent);
-		}
-		else
-		{
-			// Track stays on the value-walk so gradient/data bars (HSV colour pickers) are not flattened
-			// to grey; only greyscale tracks that match a SurfaceMap row are remapped.
-			FLinearColor Bar = Slider->GetSliderBarColor();
-			if (Remap(Bar, bLight, SurfaceMap))
-			{
-				Slider->SetSliderBarColor(Bar);
-			}
-		}
-		// Q24: force the thumb to the accent per theme (design: slider thumb = accent). Not a value
-		// remap — the stock thumbs are grey and match no accent bucket, so set it explicitly.
-		Slider->SetSliderHandleColor(PaletteColor(EMobiusPaletteRole::SliderThumb, bLight));
-		// D171: neutralize the slider double-tint. SetSliderHandleColor (above) and the bar colour are
-		// multipliers applied ON TOP of the style's brush TintColors. A slider that baked the accent/track
-		// INTO its brush tint (e.g. OpacitySlider: thumb tint = accent) multiplies twice -> accent^2 (a
-		// dark navy handle) / dark track. Force the style brush tints to white so the colour multipliers
-		// render cleanly. Thumbs always (flat); bars only when resource-less (leave gradient / HSV-picker
-		// bars, which legitimately carry their colour in the brush, untouched).
-		FSliderStyle SliderStyle = Slider->GetWidgetStyle();
-		bool bSliderStyleChanged = false;
-		FSlateBrush* ThumbBrushes[] = { &SliderStyle.NormalThumbImage, &SliderStyle.HoveredThumbImage, &SliderStyle.DisabledThumbImage };
-		for (FSlateBrush* ThumbBrush : ThumbBrushes)
-		{
-			if (!ThumbBrush->TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
-			{
-				ThumbBrush->TintColor = FSlateColor(FLinearColor::White);
-				bSliderStyleChanged = true;
-			}
-		}
-		FSlateBrush* BarBrushes[] = { &SliderStyle.NormalBarImage, &SliderStyle.HoveredBarImage, &SliderStyle.DisabledBarImage };
-		for (FSlateBrush* BarBrush : BarBrushes)
-		{
-			if (BarBrush->GetResourceObject() == nullptr
-				&& !BarBrush->TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
-			{
-				BarBrush->TintColor = FSlateColor(FLinearColor::White);
-				bSliderStyleChanged = true;
-			}
-		}
-		if (bSliderStyleChanged)
-		{
-			Slider->SetWidgetStyle(SliderStyle);
-		}
-	}
-	else if (UCheckBox* CheckBox = Cast<UCheckBox>(Widget))
-	{
-		FCheckBoxStyle Style = CheckBox->GetWidgetStyle();
-		bool bChanged = false;
-		FSlateBrush* Brushes[] =
-		{
-			&Style.UncheckedImage, &Style.UncheckedHoveredImage, &Style.UncheckedPressedImage,
-			&Style.CheckedImage, &Style.CheckedHoveredImage, &Style.CheckedPressedImage,
-			&Style.UndeterminedImage, &Style.UndeterminedHoveredImage, &Style.UndeterminedPressedImage,
-		};
-		for (FSlateBrush* Brush : Brushes)
-		{
-			bChanged |= RemapBrush(*Brush, bLight);
-		}
-
-		// Q24 (C4): checkbox checked = accent fill; unchecked = input-bg box + checkbox border, radius 3.
-		// The ThemeToggle is a bespoke pill/slider control — leave its brushes to the value walk.
-		if (!Widget->GetName().Contains(TEXT("ThemeToggle")))
-		{
-			auto ApplyRoundedBox = [](FSlateBrush& B, const FLinearColor& Fill, const FLinearColor& Outline, float OutlineWidth)
-			{
-				// Mutate in place so the asset's authored ImageSize (D43 = 20x20) survives.
-				B.DrawAs = ESlateBrushDrawType::RoundedBox;
-				B.SetResourceObject(nullptr);
-				B.TintColor = FSlateColor(Fill);
-				B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-				B.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
-				B.OutlineSettings.Color = FSlateColor(Outline);
-				B.OutlineSettings.Width = OutlineWidth;
-			};
-			const FLinearColor Accent = PaletteColor(EMobiusPaletteRole::CheckboxCheckedBg, bLight);
-			const FLinearColor BoxBg = PaletteColor(EMobiusPaletteRole::CheckboxBg, bLight);
-			const FLinearColor BoxBorder = PaletteColor(EMobiusPaletteRole::CheckboxBorder, bLight);
-			// Checked = accent fill + white 1u outline (accent-on signal; the white-check glyph needs a
-			// composite/checkmark brush asset — logged as the remaining Q24 limitation).
-			ApplyRoundedBox(Style.CheckedImage, Accent, FLinearColor::White, 1.0f);
-			ApplyRoundedBox(Style.CheckedHoveredImage, Accent, FLinearColor::White, 1.0f);
-			ApplyRoundedBox(Style.CheckedPressedImage, Accent, FLinearColor::White, 1.0f);
-			ApplyRoundedBox(Style.UncheckedImage, BoxBg, BoxBorder, 1.0f);
-			ApplyRoundedBox(Style.UncheckedHoveredImage, BoxBg, BoxBorder, 1.0f);
-			ApplyRoundedBox(Style.UncheckedPressedImage, BoxBg, BoxBorder, 1.0f);
-			bChanged = true;
-		}
-
-		if (bChanged)
-		{
-			CheckBox->SetWidgetStyle(Style);
-		}
-	}
+	// A6a (2026-07-28): the UVerticalTextBlock and UFieldAndTextWidget branches are DELETED. Both widgets
+	// self-bind OnThemeChanged since A5 (VerticalTextBlock.cpp / FieldAndTextWidget.cpp), so calling
+	// RefreshThemedStyle from here was a second, redundant driver — and for UFieldAndTextWidget an actively
+	// WORSE one: it passed this walk's bLight, whereas the widget's own handler reads the theme off the
+	// subsystem it is bound to, which is the fix for the in-world card resolving the wrong theme via GetWorld().
+	// A5's PIE run verified both in light and dark with these branches already inert.
+	//
+	// A5 (2026-07-28): the USlider / UCheckBox / UScrollBox / UProgressBar / UEditableTextBox branches
+	// USED to live here. They are now StyleSliderForTheme / StyleCheckBoxForTheme / StyleScrollBoxForTheme
+	// / StyleProgressBarForTheme / StyleEditableTextBoxForTheme, driven from each widget's own construct +
+	// OnThemeChanged via ThemeStandardControlsInTree (UMobiusThemedUserWidget). Deliberately NOT also left
+	// here: two live paths would make a PIE dump unable to say which one delivered the value, and A6 wants
+	// to delete this walk outright rather than a husk of it. If a control ever looks unthemed, the fix is
+	// to give its OWNER the themed base / an OnThemeChanged bind — not to add a branch back.
 	else if (UButton* Button = Cast<UButton>(Widget))
 	{
 		// Buttons with an SWS style asset SNAPSHOT it at construct (BaseButton::ApplyMobiusButtonStyle),
@@ -1167,11 +1406,12 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 				FSlateBrush* TabBrushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
 				for (FSlateBrush* TabBrush : TabBrushes)
 				{
-					// A16: leave a MaterialInstanceDynamic alone. ApplyTabHoverFill gives the HOVERED brush
-					// its own MID (of this very material) carrying the hover FillColour; this walk would see
-					// "MID != TabMaterial" and stamp the flat material back over it, silently deleting the
-					// tab hover on any walk not followed by an OnThemeChanged re-apply. The MID is already
-					// theme-correct — its parent came from the current theme's folder.
+					// A16/A17: leave a MaterialInstanceDynamic alone. ApplyTabStateFills gives the HOVERED and
+					// PRESSED brushes their own MIDs (of this very material) carrying the hover / pressed
+					// FillColour; this walk would see "MID != TabMaterial" and stamp the flat material back
+					// over them, silently deleting both states on any walk not followed by an OnThemeChanged
+					// re-apply. The MIDs are already theme-correct — their parent came from the current
+					// theme's folder.
 					if (TabBrush->GetResourceObject() && TabBrush->GetResourceObject() != TabMaterial
 						&& !TabBrush->GetResourceObject()->IsA<UMaterialInstanceDynamic>())
 					{
@@ -1232,98 +1472,12 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		// UseForeground isn't reaching the label (candidate A) → explicit per-state label colour needed.
 		// KEEP the foreground remaps above (they feed UseForeground). Restore this block only if candidate A.
 	}
-	else if (UComboBoxString* ComboBox = Cast<UComboBoxString>(Widget))
-	{
-		FComboBoxStyle Style = ComboBox->GetWidgetStyle();
-		bool bChanged = false;
-		FSlateBrush* Brushes[] =
-		{
-			&Style.ComboButtonStyle.ButtonStyle.Normal, &Style.ComboButtonStyle.ButtonStyle.Hovered,
-			&Style.ComboButtonStyle.ButtonStyle.Pressed, &Style.ComboButtonStyle.ButtonStyle.Disabled,
-			&Style.ComboButtonStyle.MenuBorderBrush, &Style.ComboButtonStyle.DownArrowImage,
-		};
-		for (FSlateBrush* Brush : Brushes)
-		{
-			bChanged |= RemapBrush(*Brush, bLight);
-			// The dark combo uses a pure-white 1px outline (which the neutral-white guard
-			// protects) — swap it explicitly for a readable border on the light chrome.
-			FSlateColor Outline = Brush->OutlineSettings.Color;
-			if (Outline.IsColorSpecified())
-			{
-				const FLinearColor OutlineColor = Outline.GetSpecifiedColor();
-				if (bLight && OutlineColor.R > 0.99f && OutlineColor.G > 0.99f && OutlineColor.B > 0.99f)
-				{
-					Brush->OutlineSettings.Color = FSlateColor(FLinearColor(0.1945f, 0.1945f, 0.1945f)); // #7a7a7a
-					bChanged = true;
-				}
-				else if (!bLight && FMath::IsNearlyEqual(OutlineColor.R, 0.1945f, 0.012f)
-					&& FMath::IsNearlyEqual(OutlineColor.G, 0.1945f, 0.012f)
-					&& FMath::IsNearlyEqual(OutlineColor.B, 0.1945f, 0.012f)
-					&& Brush != &Style.ComboButtonStyle.MenuBorderBrush)
-				{
-					Brush->OutlineSettings.Color = FSlateColor(FLinearColor::White);
-					bChanged = true;
-				}
-			}
-		}
-		// Round 11: EXPLICIT combo foregrounds per theme. The authored values are cyan sentinels no
-		// TextMap pair matches, so the closed combo's DEFAULT content text (engine STextBlock on the
-		// FCoreStyle "NormalText" UseForeground rule) rendered near-black in BOTH themes — invisible
-		// on the dark chrome (owner report: Display-tab dropdowns).
-		const FSlateColor ComboTextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
-		if (Style.ComboButtonStyle.ButtonStyle.NormalForeground != ComboTextColor)
-		{
-			Style.ComboButtonStyle.ButtonStyle.NormalForeground = ComboTextColor;
-			Style.ComboButtonStyle.ButtonStyle.HoveredForeground = ComboTextColor;
-			Style.ComboButtonStyle.ButtonStyle.PressedForeground = ComboTextColor;
-			bChanged = true;
-		}
-		if (bChanged)
-		{
-			ComboBox->SetWidgetStyle(Style);
-		}
-		// The live SComboBox was constructed with .ForegroundColor(<authored per-widget property>) —
-		// style foregrounds never reach an already-built widget and UComboBoxString has no
-		// post-construction setter (SetForegroundColor ensures !MyComboBox). Set the compound
-		// foreground directly so the UseForeground content re-lands per theme (idempotent, toggle-safe).
-		if (const TSharedPtr<SWidget> LiveCombo = ComboBox->GetCachedWidget())
-		{
-			StaticCastSharedPtr<SCompoundWidget>(LiveCombo)->SetForegroundColor(ComboTextColor);
-		}
-		// Dropdown MENU rows + item text (FTableRowStyle) — explicit per theme; the authored values
-		// are dark-only.
-		{
-			FTableRowStyle Items = ComboBox->GetItemStyle();
-			const FLinearColor RowBg = bLight ? FLinearColor(0.964f, 0.964f, 0.964f) : FLinearColor(0.010f, 0.012f, 0.015f);
-			const FLinearColor RowHover = bLight ? FLinearColor(0.7913f, 0.7913f, 0.7913f) : FLinearColor(0.068f, 0.068f, 0.068f);
-			const FLinearColor RowSelected = bLight ? FLinearColor(0.0f, 0.1356f, 0.5271f) : FLinearColor(0.100f, 0.330f, 0.661f);
-			auto SetRowBrush = [](FSlateBrush& InBrush, const FLinearColor& InColor)
-			{
-				InBrush.TintColor = FSlateColor(InColor);
-				InBrush.DrawAs = ESlateBrushDrawType::Image;
-				InBrush.SetResourceObject(nullptr);
-			};
-			SetRowBrush(Items.EvenRowBackgroundBrush, RowBg);
-			SetRowBrush(Items.OddRowBackgroundBrush, RowBg);
-			SetRowBrush(Items.EvenRowBackgroundHoveredBrush, RowHover);
-			SetRowBrush(Items.OddRowBackgroundHoveredBrush, RowHover);
-			SetRowBrush(Items.ActiveBrush, RowSelected);
-			SetRowBrush(Items.ActiveHoveredBrush, RowSelected);
-			SetRowBrush(Items.InactiveBrush, RowBg);
-			SetRowBrush(Items.InactiveHoveredBrush, RowHover);
-			Items.TextColor = FSlateColor(bLight ? FLinearColor(0.016f, 0.016f, 0.016f) : FLinearColor(0.625f, 0.625f, 0.625f));
-			Items.SelectedTextColor = FSlateColor(FLinearColor::White);
-			ComboBox->SetItemStyle(Items);
-
-			FComboBoxStyle MenuStyle = ComboBox->GetWidgetStyle();
-			MenuStyle.ComboButtonStyle.MenuBorderBrush.TintColor = FSlateColor(RowBg);
-			ComboBox->SetWidgetStyle(MenuStyle);
-		}
-		// W2 (2026-07-21): themed-combo-entry generator REMOVED — killed the HandleGenerateThemedComboEntry
-		// NewObject<UTextBlock>(this) leak the owner flagged. Combos are off the walk entirely (the
-		// crash-fix skip at the top of ApplyToWidget), so this whole branch is unreachable dead code;
-		// combo theming is rebuilt churn-free in W1 (UComboBoxString subclass, styled before Slate build).
-	}
+	// A6a (2026-07-28): the UComboBoxString branch is DELETED as UNREACHABLE dead code, not as a
+	// behaviour change. The crash guard at the top of this function returns for any UComboBoxString
+	// before the type chain is ever reached (added 2026-07-21 for the SMenuAnchor delegate-access ensure),
+	// so none of it has run since. Combo theming lives in StyleComboBoxForBuild, which styles the widget
+	// BEFORE Slate builds it and so never churns a live SComboBox. The guard itself stays: it is what keeps
+	// a combo out of the walk, and it outlives this branch.
 	else if (UImage* Image = Cast<UImage>(Widget))
 	{
 		PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -1336,112 +1490,6 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		if (bChanged)
 		{
 			Image->SetBrush(Brush);
-		}
-	}
-	else if (UProgressBar* ProgressBar = Cast<UProgressBar>(Widget))
-	{
-		if (ProgressBar->GetName() == TEXT("ScrubFillBar"))
-		{
-			// Q51/C4 (CR item B): scrub fill behind PlaybackSlider — a flat SliderTrack-grey track with an
-			// accent @35%-alpha fill (NOT the §3.8 loading-bar look). Both themes via palette. The fill is
-			// white-tinted in the style and coloured via FillColorAndOpacity so the 0.35 alpha is exact.
-			FProgressBarStyle Style = ProgressBar->GetWidgetStyle();
-			Style.EnableFillAnimation = false;
-			Style.BackgroundImage.DrawAs = ESlateBrushDrawType::Box;
-			Style.BackgroundImage.SetResourceObject(nullptr);
-			Style.BackgroundImage.OutlineSettings.Width = 0.0f;
-			Style.BackgroundImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::SliderTrack, bLight));
-			Style.FillImage.DrawAs = ESlateBrushDrawType::Box;
-			Style.FillImage.SetResourceObject(nullptr);
-			Style.FillImage.OutlineSettings.Width = 0.0f;
-			Style.FillImage.TintColor = FSlateColor(FLinearColor::White);
-			ProgressBar->SetWidgetStyle(Style);
-			FLinearColor Fill = PaletteColor(EMobiusPaletteRole::Accent, bLight);
-			Fill.A = 0.35f;
-			ProgressBar->SetFillColorAndOpacity(Fill);
-			return;
-		}
-		// §3.8 (D55): progress bars = accent fill on an input-bg track with a 1u input-border. The fill
-		// image is a material/texture on some bars — tint it to accent (keeps any authored shape); the
-		// background becomes a rounded input-bg box. Height (11u) is asset geometry, not style.
-		FProgressBarStyle Style = ProgressBar->GetWidgetStyle();
-		Style.FillImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::Accent, bLight));
-		Style.BackgroundImage.DrawAs = ESlateBrushDrawType::RoundedBox;
-		Style.BackgroundImage.SetResourceObject(nullptr);
-		Style.BackgroundImage.TintColor = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBg, bLight));
-		Style.BackgroundImage.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-		Style.BackgroundImage.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
-		Style.BackgroundImage.OutlineSettings.Color = FSlateColor(PaletteColor(EMobiusPaletteRole::InputBorder, bLight));
-		Style.BackgroundImage.OutlineSettings.Width = 1.0f;
-		ProgressBar->SetWidgetStyle(Style);
-		ProgressBar->SetFillColorAndOpacity(PaletteColor(EMobiusPaletteRole::Accent, bLight));
-	}
-	else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(Widget))
-	{
-		bool bStyleChanged = false;
-
-		// Q26: numeric/path edit boxes → Font_Inter Mono 14 (input_mono token). Font is
-		// theme-independent, but the walk is the only C++ hook that touches every live widget, and
-		// FEditableTextBoxStyle.Font is not settable from Python (protected). Convert only boxes not
-		// already on Inter, so a deliberate Inter face/size is never re-stomped (idempotent on toggle).
-		if (UFont* Inter = GetInterFont())
-		{
-			if (EditBox->WidgetStyle.TextStyle.Font.FontObject != Inter)
-			{
-				EditBox->WidgetStyle.TextStyle.Font = FSlateFontInfo(Inter, 11, FName(TEXT("Mono"))); // BW6 density: 14->11
-				bStyleChanged = true;
-			}
-		}
-
-		// Edit boxes carry their surface in FEditableTextBoxStyle, which the Border/Image value walk
-		// never reaches — a dark-authored input (e.g. the flow-counter rename field) stayed dark in
-		// light mode. Set the input palette roles EXPLICITLY: a generic SurfaceMap remap is not safe
-		// here — the input values collide with other rows (0.0243 matched a rail pair), so each theme
-		// toggle walked the fill to a different bucket (0.0243 -> 0.791 -> 0.913 drift).
-		const FLinearColor InputBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
-		const FLinearColor InputBorderColor = PaletteColor(EMobiusPaletteRole::InputBorder, bLight);
-		FSlateBrush* BoxBrushes[] =
-		{
-			&EditBox->WidgetStyle.BackgroundImageNormal, &EditBox->WidgetStyle.BackgroundImageHovered,
-			&EditBox->WidgetStyle.BackgroundImageFocused, &EditBox->WidgetStyle.BackgroundImageReadOnly,
-		};
-		for (FSlateBrush* Brush : BoxBrushes)
-		{
-			// Flat colour fills only — leave any texture/material-backed input art alone.
-			if (Brush->GetResourceObject() != nullptr)
-			{
-				continue;
-			}
-			if (!Brush->TintColor.GetSpecifiedColor().Equals(InputBg, 0.004f))
-			{
-				Brush->TintColor = FSlateColor(InputBg);
-				bStyleChanged = true;
-			}
-			if (Brush->OutlineSettings.Width > 0.0f
-				&& !Brush->OutlineSettings.Color.GetSpecifiedColor().Equals(InputBorderColor, 0.004f))
-			{
-				Brush->OutlineSettings.Color = FSlateColor(InputBorderColor);
-				bStyleChanged = true;
-			}
-		}
-
-		// Text colour: set the InputText palette role EXPLICITLY. Do NOT value-remap these — edit
-		// boxes commonly leave ForegroundColor/TextStyle colour on an inheritance rule, and reading
-		// GetSpecifiedColor() off those yields the magenta sentinel, which a remap-write then bakes in.
-		const FSlateColor InputTextColor(PaletteColor(EMobiusPaletteRole::InputText, bLight));
-		if (EditBox->WidgetStyle.TextStyle.ColorAndOpacity != InputTextColor
-			|| EditBox->WidgetStyle.ForegroundColor != InputTextColor
-			|| EditBox->WidgetStyle.FocusedForegroundColor != InputTextColor)
-		{
-			EditBox->WidgetStyle.TextStyle.ColorAndOpacity = InputTextColor;
-			EditBox->WidgetStyle.ForegroundColor = InputTextColor;
-			EditBox->WidgetStyle.FocusedForegroundColor = InputTextColor;
-			bStyleChanged = true;
-		}
-
-		if (bStyleChanged)
-		{
-			EditBox->SynchronizeProperties(); // push the style to the live SEditableTextBox
 		}
 	}
 }
@@ -1661,8 +1709,10 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 			}
 		}
 	}
-	UE_LOG(LogMobiusTheme, Display, TEXT("ApplySharedStyles(%s): %d style assets themed"),
-		bLight ? TEXT("light") : TEXT("dark"), StyleAssetsThemed);
+	// A11/A6a (2026-07-28): per-pass UE_LOG removed, same reason as the one in ApplyToLiveWidgets — the
+	// startup ticker re-runs this function on every tick until the UI settles. StyleAssetsThemed is now
+	// unused; kept as a local so the counting code above stays intact for A6b, which deletes the sweep.
+	(void)StyleAssetsThemed;
 
 	// "Mobius.Button" (Browse et al) — 4b light buttons are white-ish with #adadad outline, #222 label.
 	FButtonStyle& MobiusButton = const_cast<FButtonStyle&>(FMobiusStyle::Get().GetWidgetStyle<FButtonStyle>("Mobius.Button"));

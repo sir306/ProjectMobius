@@ -74,6 +74,24 @@ public:
 	 */
 	void ApplyThemedLabelColor(FLinearColor Color);
 
+	/**
+	 * A5 (2026-07-28): the LABEL half of the SWS retirement — A4 moved the button's brushes and foregrounds
+	 * onto the palette and explicitly left MobiusButtonTextStyle behind. Re-pushes the label's text style
+	 * (font face/size stay asset-owned, per the owner's geometry-vs-colour split) and then sets the label
+	 * COLOUR explicitly, so the label no longer needs UUIThemeSubsystem::ApplySharedStyles to mutate the
+	 * shared SWS_*TextStyle asset in place on every theme apply — the thing A6 deletes.
+	 *
+	 * Colour rule: the ButtonText role, UNLESS the assigned text style carries a SATURATED authored colour,
+	 * which means the label is a deliberate SIGNAL rather than chrome — then it takes the DangerText role.
+	 * The asset is only the detector; the value is the palette's, so the destructive red is theme-correct in
+	 * both directions instead of the single authored red that only has contrast on a dark button. Tested by
+	 * saturation, not by asset name, because §6c warns that the name-matched branches in ApplySharedStyles
+	 * die silently on a rename. Destructive = red TEXT on the normal surface, not a red fill (owner, 07-28).
+	 *
+	 * Ribbon tabs are excluded — ApplyRibbonTabStyle owns their label colour (active vs inactive accent).
+	 */
+	void RefreshThemedLabelStyle();
+
 	// -------- Ribbon-tab self-theming (W2, 2026-07-21) --------
 	// A ribbon tab drives its OWN look from the UIThemeSubsystem instead of the old split (SWS snapshot in
 	// construct + BP SetStyle on activation + walk re-landing the label) that fought itself and left the

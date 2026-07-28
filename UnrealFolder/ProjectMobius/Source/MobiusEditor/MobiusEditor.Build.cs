@@ -21,6 +21,13 @@ public class MobiusEditor : ModuleRules
 			"DatasmithRuntime",
 			"DatasmithContent",
 			"AssetTools",
+			// A6b (2026-07-28): MobiusWidgetEditorTools — scripted widget-class swap for the
+			// UMobiusThemedBorder migration. UMG = runtime widget/tree API (UWidgetTree,
+			// UPanelWidget::ReplaceChild); UMGEditor = UWidgetBlueprint itself, which is editor-only.
+			"UMG",
+			"UMGEditor",
+			"Slate",
+			"SlateCore",
 		});
 
 		PublicIncludePaths.AddRange(new[] { "MobiusEditor/Public" });

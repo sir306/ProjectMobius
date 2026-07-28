@@ -38,6 +38,12 @@ void UMobiusThemedUserWidget::NativeConstruct()
 		// Event-driven: re-pull on every theme apply instead of being value-walked by the subsystem.
 		ThemeSubsystem->OnThemeChanged.AddUniqueDynamic(this, &UMobiusThemedUserWidget::HandleThemeChanged);
 
+		// A5: theme the standard engine controls in this widget's tree (sliders, checkboxes, scroll boxes,
+		// progress bars, input boxes) BEFORE the subclass hook, so a subclass override can still overrule
+		// any of it. Done here rather than inside ApplyMobiusTheme because existing overrides do not call
+		// Super — putting it in the base implementation would silently skip every subclass that has one.
+		ThemeSubsystem->ThemeStandardControlsInTree(this, /*bConstruct*/true);
+
 		// Pull the current palette once so the widget matches the active theme at construct.
 		ApplyMobiusTheme();
 	}
@@ -55,6 +61,13 @@ void UMobiusThemedUserWidget::NativeDestruct()
 
 void UMobiusThemedUserWidget::HandleThemeChanged()
 {
+	// A5: same order as construct — controls first, subclass hook second. bConstruct=false: the one-shot
+	// theme-INDEPENDENT work (the input-box Mono face) has nothing to re-decide on a toggle.
+	if (UUIThemeSubsystem* ThemeSubsystem = CachedThemeSubsystem.Get())
+	{
+		ThemeSubsystem->ThemeStandardControlsInTree(this, /*bConstruct*/false);
+	}
+
 	ApplyMobiusTheme();
 }
 

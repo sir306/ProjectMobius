@@ -3,17 +3,27 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "EnumsAndStructs/ScalabilityEnums.h"
 #include "ScalabilityWidgetBase.generated.h"
 
 
 class UButtonWithText;
 /**
- * 
+ * A6b (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget. Pure C++ base insertion — the
+ * WBPs still parent to the same classes, so no .uasset changes. One reparent here covers all three
+ * scalability widget families at once: UScalabilitySettingWidget (WBP_ScalabilitySettingBase),
+ * UResolutionScalabilityWidget (WBP_AdjustResolution) and WBP_ScalabilitySettingGlobal, which parents
+ * straight to this class.
+ *
+ * WHY it is needed before the walker dies: the active-tier "current setting" chip is signalled by a 2px
+ * accent RING, and UBaseButton::RefreshThemedButtonStyle deliberately early-returns on any outline wider
+ * than 1.5px (A4 — a thick outline is a meaning-carrying accent, not chrome). So nothing in the A4 event
+ * path re-lands that chip, and ApplyToLiveWidgets is the only thing doing it today. Deleting the walker
+ * without this leaves the active tier wearing the PREVIOUS theme's fill and ring after every toggle.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UScalabilityWidgetBase : public UUserWidget
+class MOBIUSWIDGETS_API UScalabilityWidgetBase : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 public:

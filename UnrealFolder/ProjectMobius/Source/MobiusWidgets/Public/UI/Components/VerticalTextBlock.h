@@ -9,6 +9,7 @@
 class SRotatedText;
 class STextBlock;
 class USlateWidgetStyleAsset;
+class UUIThemeSubsystem;
 
 UENUM(BlueprintType)
 enum class EVerticalTextMode : uint8
@@ -69,6 +70,17 @@ public:
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void OnWidgetRebuilt() override;
+	virtual void BeginDestroy() override;
+
+	/**
+	 * A5 (2026-07-28): bound to UUIThemeSubsystem::OnThemeChanged so a stand-alone vertical label follows a
+	 * live toggle on its own. RefreshThemedStyle() was previously reachable ONLY from the value walk, so
+	 * this widget would have stopped theming entirely when A6 deletes it. Skips labels owned by a ribbon
+	 * button — see the .cpp for why that is an ownership rule and not an optimisation.
+	 */
+	UFUNCTION()
+	void HandleThemeChanged();
 
 private:
 	/** "FLOOR STATS" -> "F\nL\nO\nO\nR\n\nS\n..." for stacked mode (space becomes a blank gap line). */
@@ -78,4 +90,7 @@ private:
 
 	TSharedPtr<SRotatedText> RotatedText;
 	TSharedPtr<STextBlock> StackedText;
+
+	/** Weak so a torn-down game instance cannot be kept alive through this label (A5 theme bind). */
+	TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
 };

@@ -7,6 +7,10 @@
 #include "Styling/SlateWidgetStyleAsset.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "UI/Components/ButtonWithText.h"   // A5: ribbon-owner check in HandleThemeChanged
+#include "UI/Theme/UIThemeSubsystem.h"
 
 void UVerticalTextBlock::SetText(FText InText)
 {
@@ -43,6 +47,58 @@ void UVerticalTextBlock::SetThemedLabelColor(FLinearColor Color)
 	{
 		StackedText->SetColorAndOpacity(FSlateColor(Color));
 	}
+}
+
+void UVerticalTextBlock::OnWidgetRebuilt()
+{
+	Super::OnWidgetRebuilt();
+
+	if (IsDesignTime())
+	{
+		return;
+	}
+
+	// A5: event-driven theming. Mirrors UBaseButton::OnWidgetRebuilt — AddUnique because a rebuild re-runs
+	// this and the subsystem outlives the widget.
+	if (const UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				CachedThemeSubsystem = Theme;
+				Theme->OnThemeChanged.AddUniqueDynamic(this, &UVerticalTextBlock::HandleThemeChanged);
+			}
+		}
+	}
+}
+
+void UVerticalTextBlock::BeginDestroy()
+{
+	if (UUIThemeSubsystem* Theme = CachedThemeSubsystem.Get())
+	{
+		Theme->OnThemeChanged.RemoveDynamic(this, &UVerticalTextBlock::HandleThemeChanged);
+	}
+	Super::BeginDestroy();
+}
+
+void UVerticalTextBlock::HandleThemeChanged()
+{
+	// OWNERSHIP RULE, not an optimisation: a side-rail ribbon button paints its child label's colour
+	// (TabActiveText vs TabInactiveText) from ApplyRibbonTabStyle on this SAME event. Refreshing here too
+	// would make the outcome depend on delegate registration order — and the uniform Mobius.Text.RailButton
+	// colour would erase the active-tab accent whenever this handler happened to run last. The button is the
+	// single owner for those labels (it calls RefreshThemedStyle itself, then the override); this handler
+	// covers stand-alone vertical labels.
+	if (const UButtonWithText* OwningButton = Cast<UButtonWithText>(GetParent()))
+	{
+		if (OwningButton->bIsRibbonButton)
+		{
+			return;
+		}
+	}
+
+	RefreshThemedStyle();
 }
 
 void UVerticalTextBlock::SynchronizeProperties()

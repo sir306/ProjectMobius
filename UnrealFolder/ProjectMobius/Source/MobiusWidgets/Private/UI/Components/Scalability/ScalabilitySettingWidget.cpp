@@ -150,6 +150,14 @@ void UScalabilitySettingWidget::ApplyButtonStyleForActiveSetting()
 	
 }
 
+void UScalabilitySettingWidget::ApplyMobiusTheme_Implementation()
+{
+	// A6b: the walker used to re-land this chip; now the widget does it on the theme event. Deliberately
+	// NOT calling Super — the base implementation is empty by design, and the standard-control pass runs
+	// from NativeConstruct / HandleThemeChanged, not from here (see MobiusThemedUserWidget.cpp).
+	ApplyButtonStyleForActiveSetting();
+}
+
 void UScalabilitySettingWidget::UpdateScalabilityAndButtonStyle(EScalabilitySettings NewSetting)
 {
 	// Update the Scalability Level

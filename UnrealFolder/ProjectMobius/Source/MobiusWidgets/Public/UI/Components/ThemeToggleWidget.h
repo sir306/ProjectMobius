@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"  // A5: event-driven theming base
 #include "ThemeToggleWidget.generated.h"
 
 class UCheckBox;
@@ -38,7 +39,7 @@ class UCheckBox;
  * exists), which is how the persisted theme choice survives restarts.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UThemeToggleWidget : public UUserWidget
+class MOBIUSWIDGETS_API UThemeToggleWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -46,6 +47,17 @@ public:
 	virtual void NativeConstruct() override;
 
 protected:
+	/**
+	 * A5 (2026-07-28): the pill self-themes. UUIThemeSubsystem::StyleCheckBoxForTheme deliberately SKIPS
+	 * any checkbox named *ThemeToggle* — the standard rounded box would destroy a pill/track control — and
+	 * until now the pill's two theme-dependent fills were landed by the value walk (the "field bg" and
+	 * "accent" SurfaceMap pairs), which means it would have silently stopped theming when A6 deletes it.
+	 * Now: unchecked track = InputBg, checked track = CheckboxCheckedBg, with the checked hover/press
+	 * states derived from that accent so all three stay in one family per theme. Geometry (radii 2,
+	 * outline width, ImageSize, padding) and the blue-grey track outline are asset-owned and untouched.
+	 */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
 	UFUNCTION()
 	void HandleThemeCheckChanged(bool bIsChecked);
 

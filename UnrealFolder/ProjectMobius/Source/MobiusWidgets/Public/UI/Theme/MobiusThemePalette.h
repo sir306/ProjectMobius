@@ -85,6 +85,14 @@ enum class EMobiusPaletteRole : uint8
 	HoverBg,             // spec-4 "hoverbg" — generic row hover, distinct from ButtonHoverBg (Q11)
 	HintText,            // spec-4 "hint" (Q12)
 	WindowBorder,        // spec-4 "winborder" — SMoveableWindow chrome (Q13)
+	/**
+	 * DESTRUCTIVE / ERROR text + glyph (owner directive 2026-07-28: "we want danger/error role in the
+	 * palette as that is better UX design making it more accessible to what people expect"). Consumers:
+	 * the Remove flow-counter label today; close (×) icon buttons and the error-window styling next.
+	 * Deliberately ONE role for now — a full danger ramp (fill / border / hover / pressed) waits on the
+	 * error-UI task rather than being invented here.
+	 */
+	DangerText,
 	Count UMETA(Hidden)
 };
 
@@ -148,6 +156,30 @@ namespace MobiusThemePalette
 		/* HoverBg           */ { FLinearColor(0.69387f, 0.69387f, 0.69387f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
 		/* HintText          */ { FLinearColor(0.31855f, 0.31855f, 0.31855f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
 		/* WindowBorder      */ { FLinearColor(0.43415f, 0.43415f, 0.43415f),     FLinearColor(0.01033f, 0.01033f, 0.01033f) },
+		// DangerText — DARK REVISED 2026-07-28 to #FF6B5E after the owner saw #FF8A80 in PIE: "the removal
+		// text color in dark mode looks washed out not the vibrant red it was before, light mode looks
+		// correct". Light is unchanged (confirmed correct); only the dark pair moved.
+		//
+		// There is a HARD CEILING here, so this is a deliberate trade, not a tuning miss. Contrast is driven
+		// by relative luminance, and a saturated red has almost none: pure #FF0000 tops out at **2.22:1** on
+		// the dark ButtonBg (0.06848). Every point of contrast above that has to come from adding green and
+		// blue — i.e. from desaturating toward salmon, which is exactly the "washed out" the owner rejected.
+		// So "vibrant AND 4.5:1" does not exist on this surface. #FF6B5E is about the most saturated red that
+		// still clears **3:1** (measured 3.17:1) — the WCAG bar for large text and UI components, and it
+		// still reads red rather than the orange you get by pushing further (#FF7043 buys only 3.23:1 and
+		// turns orange). For reference on the same background: #FF8A80 3.9:1 (rejected, washed out),
+		// #E7392D 2.1:1 (the original authored red — the accessibility bug this role exists to fix).
+		// If the 11px Remove label must hit strict AA, the fix is a lighter BUTTON, not a lighter red.
+		//
+		// Light #C42B1C — the Fluent/Win11 error red, which is the family the rest
+		// of the light theme already comes from; measured 5.3:1 on ButtonBg (0.93869), so AA for normal text.
+		// Dark #FF8A80 rather than the red that was authored into SWS_FlowRemoveButtonTextStyle
+		// (0.7836, 0.0409, 0.0252 = #E7392D): that value measures only **2.1:1** on the dark ButtonBg
+		// (0.06848) and is exactly the accessibility problem this role exists to fix. #FF8A80 measures
+		// 3.9:1 — a clear pass for large text, a hair under the 4.5:1 normal-text bar. If strict AA is
+		// wanted for the 11px labels, #FF9E9E is 4.5:1; it reads more salmon than red, so it is the
+		// owner's call, not a silent substitution.
+		/* DangerText        */ { FLinearColor(0.55199f, 0.02415f, 0.01162f),     FLinearColor(1.0f, 0.14701f, 0.11192f) },
 	};
 
 	static_assert(UE_ARRAY_COUNT(GMobiusPalette) == static_cast<int32>(EMobiusPaletteRole::Count),

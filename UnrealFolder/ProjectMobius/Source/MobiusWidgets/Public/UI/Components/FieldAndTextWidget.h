@@ -7,6 +7,7 @@
 #include "FieldAndTextWidget.generated.h"
 
 class SFieldAndTitleText;
+class UUIThemeSubsystem;
 /**
  * 
  */
@@ -42,8 +43,23 @@ public:
 
 protected:
 	TSharedPtr<SFieldAndTitleText> FieldAndTextWidget;
-	
+
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void OnWidgetRebuilt() override;
+	virtual void BeginDestroy() override;
+
+	/**
+	 * A5 (2026-07-28): bound to UUIThemeSubsystem::OnThemeChanged so these rows follow a live toggle on
+	 * their own. RefreshThemedStyle was previously reachable only from the value walk, so the row would
+	 * have stopped theming entirely when A6 deletes it. Takes the theme from the subsystem it is BOUND to
+	 * rather than self-resolving through GetWorld() — that is what made the in-world flow-counter card
+	 * render dark-value text on a light card.
+	 */
+	UFUNCTION()
+	void HandleThemeChanged();
+
+	/** Weak so a torn-down game instance cannot be kept alive through this row (A5 theme bind). */
+	TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
 
 public:
 	virtual void SynchronizeProperties() override;

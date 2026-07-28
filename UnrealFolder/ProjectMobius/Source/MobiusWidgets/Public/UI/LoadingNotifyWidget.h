@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"  // A5: event-driven control theming base
 #include "LoadingNotifyWidget.generated.h"
 
 class UOverlay;
@@ -35,7 +36,11 @@ class UTextBlock;
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API ULoadingNotifyWidget : public UUserWidget
+// A5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget so this widget themes its own
+// standard controls on construct + every OnThemeChanged (see UUIThemeSubsystem::ThemeStandardControlsInTree)
+// instead of waiting for the value walk to find them. Pure C++ base insertion - the WBP still parents to
+// this class, so no .uasset changes.
+class MOBIUSWIDGETS_API ULoadingNotifyWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 

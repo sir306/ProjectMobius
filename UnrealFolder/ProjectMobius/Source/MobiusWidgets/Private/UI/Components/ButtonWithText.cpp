@@ -119,6 +119,12 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 	{
 		RefreshRibbonAppearance();
 	}
+	else
+	{
+		// A5: land the themed label colour now that MyButtonText exists, so the label does not depend on
+		// ApplySharedStyles having retinted the shared SWS text asset first.
+		RefreshThemedLabelStyle();
+	}
 
 	return MyButton.ToSharedRef();
 }
@@ -140,6 +146,53 @@ void UButtonWithText::RefreshTextStyle()
 		MyButtonText->SetTextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>()
 			                           : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"));
 	}
+}
+
+void UButtonWithText::RefreshThemedLabelStyle()
+{
+	// Ribbon tabs: ApplyRibbonTabStyle already re-pushes the style AND paints the active/inactive accent.
+	if (bIsRibbonButton || !MyButtonText.IsValid())
+	{
+		return;
+	}
+
+	// Font face/size/typeface stay asset-owned (owner ruling: geometry from the asset, colour from C++).
+	RefreshTextStyle();
+
+	const UUIThemeSubsystem* Theme = ResolveThemeSubsystem();
+	if (!Theme)
+	{
+		return; // design time / no game instance — the UseForeground fallback from RebuildWidget stands
+	}
+
+	// A saturated authored colour on the text style is a deliberate SIGNAL, not chrome — today that means
+	// exactly one thing in Mobius, the destructive Remove action. The asset is the DETECTOR; the value comes
+	// from the palette (DangerText), so the signal is theme-correct in both directions instead of shipping
+	// one hard-coded red that only has contrast on a dark button. Greyscale test rather than an asset-name
+	// test: white/black/grey labels are chrome, and the magenta USE_COLOR_FOREGROUND sentinels live on BUTTON
+	// styles, not on these text styles, so nothing else in the project trips the saturated branch.
+	//
+	// Owner-confirmed 2026-07-28: destructive buttons are red TEXT on the normal button surface, NOT a red
+	// fill ("i think it looks better than a background red") — so only the label colour moves here.
+	EMobiusPaletteRole LabelRole = EMobiusPaletteRole::ButtonText;
+	if (MobiusButtonTextStyle)
+	{
+		if (const FTextBlockStyle* AuthoredStyle = MobiusButtonTextStyle->GetStyle<FTextBlockStyle>())
+		{
+			const FSlateColor& AuthoredColor = AuthoredStyle->ColorAndOpacity;
+			if (AuthoredColor.IsColorSpecified())
+			{
+				const FLinearColor Authored = AuthoredColor.GetSpecifiedColor();
+				const float MaxChannel = FMath::Max3(Authored.R, Authored.G, Authored.B);
+				const float MinChannel = FMath::Min3(Authored.R, Authored.G, Authored.B);
+				if (MaxChannel - MinChannel > 0.05f)
+				{
+					LabelRole = EMobiusPaletteRole::DangerText;
+				}
+			}
+		}
+	}
+	ApplyThemedLabelColor(Theme->GetPaletteColor(LabelRole));
 }
 
 void UButtonWithText::ApplyThemedLabelColor(FLinearColor Color)
@@ -195,6 +248,8 @@ void UButtonWithText::HandleThemeChanged()
 {
 	Super::HandleThemeChanged();
 	RefreshRibbonAppearance();
+	// A5: non-ribbon labels re-pull their own colour here (RefreshRibbonAppearance no-ops for them).
+	RefreshThemedLabelStyle();
 }
 
 void UButtonWithText::ButtonClickedUpdateStyle()

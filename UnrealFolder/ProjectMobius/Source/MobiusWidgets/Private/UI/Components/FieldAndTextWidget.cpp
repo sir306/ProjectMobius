@@ -28,6 +28,50 @@ TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 	return FieldAndTextWidget.ToSharedRef();
 }
 
+void UFieldAndTextWidget::OnWidgetRebuilt()
+{
+	Super::OnWidgetRebuilt();
+
+	if (IsDesignTime())
+	{
+		return;
+	}
+
+	// A5: event-driven theming (mirrors UBaseButton::OnWidgetRebuilt). AddUnique because a rebuild re-runs
+	// this and the subsystem outlives the widget.
+	if (const UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				CachedThemeSubsystem = Theme;
+				Theme->OnThemeChanged.AddUniqueDynamic(this, &UFieldAndTextWidget::HandleThemeChanged);
+			}
+		}
+	}
+}
+
+void UFieldAndTextWidget::BeginDestroy()
+{
+	if (UUIThemeSubsystem* Theme = CachedThemeSubsystem.Get())
+	{
+		Theme->OnThemeChanged.RemoveDynamic(this, &UFieldAndTextWidget::HandleThemeChanged);
+	}
+	Super::BeginDestroy();
+}
+
+void UFieldAndTextWidget::HandleThemeChanged()
+{
+	// Theme comes from the subsystem we are BOUND to, which is by definition the one that just changed —
+	// no GetWorld() round trip, so an in-world card on a UWidgetComponent gets the same answer as a
+	// viewport row. That was the whole reason the walk had to pass bLight in explicitly.
+	if (const UUIThemeSubsystem* Theme = CachedThemeSubsystem.Get())
+	{
+		RefreshThemedStyle(Theme->GetTheme() == EMobiusUITheme::Light);
+	}
+}
+
 void UFieldAndTextWidget::RefreshThemedStyle()
 {
 	// No-arg (build/sync cold-start): resolve the current theme via any live game world, then apply.

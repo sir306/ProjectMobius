@@ -57,6 +57,38 @@ void UThemeToggleWidget::NativeConstruct()
 	}
 }
 
+void UThemeToggleWidget::ApplyMobiusTheme_Implementation()
+{
+	Super::ApplyMobiusTheme_Implementation();
+
+	if (!ThemeToggleCheckBox)
+	{
+		return;
+	}
+
+	// Only the two FILLS are theme-dependent; everything else about the pill (radii 2, the 1u blue-grey
+	// track outline, ImageSize, padding) is authored geometry the walk never matched, so it stays put.
+	const FLinearColor TrackOff = GetThemeColor(EMobiusPaletteRole::InputBg);
+	const FLinearColor TrackOn = GetThemeColor(EMobiusPaletteRole::CheckboxCheckedBg);
+	// Checked hover / press derived from the accent rather than authored per state: x1.22 / x0.74
+	// reproduces the asset's dark-theme values (0.135,0.405,0.750 and 0.070,0.240,0.500) to within ~0.02,
+	// and gives light mode a matching pair instead of the dark accent's bright-blue hover leaking into it.
+	auto ScaleRGB = [](const FLinearColor& In, const float Scale)
+	{
+		return FLinearColor(FMath::Min(In.R * Scale, 1.0f), FMath::Min(In.G * Scale, 1.0f),
+			FMath::Min(In.B * Scale, 1.0f), In.A);
+	};
+
+	FCheckBoxStyle Style = ThemeToggleCheckBox->GetWidgetStyle();
+	Style.UncheckedImage.TintColor = FSlateColor(TrackOff);
+	Style.UncheckedHoveredImage.TintColor = FSlateColor(TrackOff);
+	Style.UncheckedPressedImage.TintColor = FSlateColor(TrackOff);
+	Style.CheckedImage.TintColor = FSlateColor(TrackOn);
+	Style.CheckedHoveredImage.TintColor = FSlateColor(ScaleRGB(TrackOn, 1.22f));
+	Style.CheckedPressedImage.TintColor = FSlateColor(ScaleRGB(TrackOn, 0.74f));
+	ThemeToggleCheckBox->SetWidgetStyle(Style);
+}
+
 void UThemeToggleWidget::HandleThemeCheckChanged(const bool bIsChecked)
 {
 	if (UUIThemeSubsystem* ThemeSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UUIThemeSubsystem>() : nullptr)

@@ -32,9 +32,16 @@
 #include "UIThemeSubsystem.generated.h"
 
 class UWidget;
+class UUserWidget;
 class UMaterialInterface;
 class UComboBoxString;
 class UButtonWithText;
+// A5: the standard controls the event-driven path themes by type.
+class UCheckBox;
+class UEditableTextBox;
+class UProgressBar;
+class UScrollBox;
+class USlider;
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -159,15 +166,18 @@ public:
 	void ApplyRibbonTabStyle(UButtonWithText* Button, bool bActive);
 
 	/**
-	 * A16 (2026-07-28): give a themed tab style a real HOVER FILL. GetThemedTabStyle assigns one MI_Tab*
-	 * material to all four state brushes, so hovering a tab changed nothing but the label colour. This
-	 * repoints Style.Hovered at a MaterialInstanceDynamic of that same MI with FillColour overridden to
-	 * the app-wide ButtonHoverBg role — one hover language for tabs and buttons alike. Outer owns the MID
-	 * (pass the button). A brighter Brush.TintColor cannot do this: Slate packs the tint into an FColor
-	 * vertex colour, so > 1.0 clamps and dark mode would not lift at all. Called by ApplyRibbonTabStyle;
-	 * separate so a Blueprint feeding SetStyle straight from GetThemedTabStyle can opt in too.
+	 * A16 + A17 (2026-07-28): give a themed tab style real HOVER and PRESSED FILLS. GetThemedTabStyle
+	 * assigns one MI_Tab* material to all four state brushes, so hovering or holding a tab changed nothing
+	 * but the label colour. This repoints Style.Hovered / Style.Pressed at MaterialInstanceDynamics of that
+	 * same MI with FillColour overridden to the app-wide ButtonHoverBg / ButtonPressedBg roles — one
+	 * interaction language for tabs and buttons alike. Outer owns the MIDs (pass the button). A brighter
+	 * Brush.TintColor cannot do this: Slate packs the tint into an FColor vertex colour, so > 1.0 clamps and
+	 * dark mode would not lift at all. Padding is untouched: NormalPadding/PressedPadding stay EQUAL so the
+	 * hit rect cannot shrink mid-press (the A15 dropped-click trap) — fill is the entire press affordance.
+	 * Called by ApplyRibbonTabStyle; separate so a Blueprint feeding SetStyle straight from
+	 * GetThemedTabStyle can opt in too.
 	 */
-	void ApplyTabHoverFill(FButtonStyle& Style, UObject* Outer, bool bLight) const;
+	void ApplyTabStateFills(FButtonStyle& Style, UObject* Outer, bool bLight) const;
 
 	/**
 	 * Themed SWindow chrome for the CURRENT theme (D8/Q3): a Core "Window" FWindowStyle with title/
@@ -190,6 +200,73 @@ public:
 	 * InitForegroundColor() — the only pre-build foreground setter — so it is not handled here.
 	 */
 	static void StyleComboBoxForBuild(UComboBoxString* Combo, bool bLight);
+
+	// ---------------------------------------------------------------------------------------------
+	// A5 (2026-07-28) — event-driven theming for the standard engine controls (rebuild Phase 4).
+	//
+	// These five are the walker's per-control-TYPE branches, lifted out so a widget can theme its own
+	// controls on construct + OnThemeChanged instead of waiting for ApplyToLiveWidgets to find it. Type
+	// in, palette role out — no colour value-matching, no name table, no polling, which is what lets A6
+	// delete the walker rather than keep a husk of it. Static: they need the palette and nothing else.
+	//
+	// Three widget-NAME special cases are carried inside (they are behaviour, not theming, and each one
+	// regresses a specific control if dropped): PlaybackSlider's bar is forced transparent because a
+	// UProgressBar draws its track; ScrubFillBar is that progress bar and takes a different look from
+	// every other bar; ThemeToggle is a bespoke pill built out of a checkbox and must NOT get the
+	// standard box treatment (it self-themes instead).
+	// ---------------------------------------------------------------------------------------------
+
+	/**
+	 * Theme every standard control in one UserWidget's tree for the CURRENT theme, dispatching on widget
+	 * TYPE. Recurses into embedded user widgets so one call from a panel covers its whole subtree (the
+	 * helpers are idempotent, so overlapping calls from nested themed widgets are harmless). Called by
+	 * UMobiusThemedUserWidget on NativeConstruct and on every OnThemeChanged.
+	 *
+	 * bConstruct additionally applies the theme-INDEPENDENT one-offs that only make sense once per build
+	 * (the input-box Mono font) — pass false from a theme-change handler.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
+	void ThemeStandardControlsInTree(UUserWidget* Root, bool bConstruct = false);
+
+	/**
+	 * Slider: handle = SliderThumb role (design: thumb is the accent), track = SliderTrack for a plain
+	 * greyscale bar and LEFT ALONE for a saturated one, because a coloured bar is data (the material
+	 * picker's HSV sliders) and not chrome. Also neutralises the style's own brush tints to white so the
+	 * handle/bar colour multipliers land once instead of squared (D171 — an accent baked into both a
+	 * brush tint and SetSliderHandleColor rendered a near-black handle).
+	 */
+	static void StyleSliderForTheme(USlider* Slider, bool bLight);
+
+	/**
+	 * CheckBox: checked = CheckboxCheckedBg fill + white 1u outline, unchecked = CheckboxBg fill +
+	 * CheckboxBorder 1u outline, both radius 3 (Q24/C4). Mutates the brushes in place so the authored
+	 * ImageSize (D43 = 20x20) survives. Skips any widget named *ThemeToggle* — see the note above.
+	 */
+	static void StyleCheckBoxForTheme(UCheckBox* CheckBox, bool bLight);
+
+	/**
+	 * ScrollBox: tint the three scrollbar THUMB states a mid grey that reads on either chrome (there is
+	 * no scrollbar palette role); track/background stay asset-owned. Without this an overflowing list
+	 * kept a dark thumb on light chrome and vice-versa.
+	 */
+	static void StyleScrollBoxForTheme(UScrollBox* ScrollBox, bool bLight);
+
+	/**
+	 * ProgressBar: §3.8 — Accent fill on a rounded InputBg track with a 1u InputBorder. The scrub bar
+	 * behind the playback slider (ScrubFillBar) is the one exception and gets a flat SliderTrack track
+	 * with an accent-at-35%-alpha fill instead.
+	 */
+	static void StyleProgressBarForTheme(UProgressBar* ProgressBar, bool bLight);
+
+	/**
+	 * EditableTextBox: the surface lives in FEditableTextBoxStyle, which no Border/Image pass can reach,
+	 * so set the input roles EXPLICITLY — InputBg fill, InputBorder outline (only where one is authored),
+	 * InputText on all three foregrounds. Never value-remap these: an edit box commonly leaves its
+	 * foreground on an inheritance rule, and reading GetSpecifiedColor() off that yields the magenta
+	 * sentinel, which a remap-write then bakes in. bApplyFont also lands the Font_Inter Mono 11 input
+	 * face (theme-independent, so construct-only).
+	 */
+	static void StyleEditableTextBoxForTheme(UEditableTextBox* EditBox, bool bLight, bool bApplyFont);
 
 private:
 	void ApplyTheme(bool bLight);
