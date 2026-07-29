@@ -64,4 +64,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Editor|Widgets")
 	static bool GetWidgetPropertyText(const FString& WidgetBlueprintPath, const FString& WidgetName,
 	                                  const FString& PropertyName, FString& OutValue, FString& OutError);
+
+	/**
+	 * Delete a widget from a Widget Blueprint's tree.
+	 *
+	 * Added for the tool-panel consolidation: folding a BaseButton + its sibling TextBlock into one
+	 * UButtonWithText leaves the text block orphaned, and leaving a collapsed dead widget behind is exactly
+	 * the residue the asset-hygiene sweep is trying to remove.
+	 *
+	 * REFUSES (rather than producing an asset that fails to compile) when:
+	 *  - a REQUIRED `BindWidget` property on the parent class names this widget — the bind would fail at
+	 *    compile; flip it to BindWidgetOptional in C++ first if the removal is intended,
+	 *  - a designer BINDING references it (FDelegateEditorBinding stores the owning widget, and the
+	 *    HeatmapColourBand batch proved these are silent compile-breakers),
+	 *  - it still has children, so a subtree cannot be deleted by accident,
+	 *  - it is the tree ROOT.
+	 *
+	 * Does NOT compile or save — pair it with CompileAndSaveWidgetBlueprint like the other helpers.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Editor|Widgets")
+	static bool RemoveWidget(const FString& WidgetBlueprintPath, const FString& WidgetName, FString& OutError);
 };

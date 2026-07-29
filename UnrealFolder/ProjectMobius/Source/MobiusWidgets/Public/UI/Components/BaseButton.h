@@ -114,6 +114,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Theme")
 	bool bFollowThemePalette = true;
 
+	/**
+	 * Set: this button is a TOOL PANEL ROW, not a standard button — the third styling variant alongside
+	 * the default fill and UButtonWithText's ribbon tabs.
+	 *
+	 * Per UE_IMPLEMENTATION_SPEC_v2 §3.2, a tool-panel row is a flat click target on the pane surface:
+	 * the pane's own background shows through at rest and only HOVER carries a fill ("hover = btnhover
+	 * tint"). Emphasis on a row is the job of a sibling border with a declared role — e.g. the floor-stats
+	 * Total row's wellbg + hairline well — not of the button's own fill.
+	 *
+	 * So Normal/Disabled become fully transparent and the label takes LabelText rather than ButtonText.
+	 * That also removes a real defect: these rows author Normal as DrawAs=Box with NO ResourceObject
+	 * (Hovered/Pressed are RoundedBox), and an unresourced Box brush paints a hard dark slab, which is
+	 * what made the floor-stats header and rows read as black in dark theme.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Theme")
+	bool bIsToolPanelRow = false;
+
 protected:
 	/** Gate for RefreshThemedButtonStyle. Overridden by UButtonWithText to exclude ribbon tabs. */
 	virtual bool ShouldFollowThemePalette() const;

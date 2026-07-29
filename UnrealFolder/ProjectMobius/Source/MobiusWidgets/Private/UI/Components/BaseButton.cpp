@@ -116,11 +116,17 @@ void UBaseButton::RefreshThemedButtonStyle()
 		return;
 	}
 
-	const FLinearColor Fill   = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonBg);
+	// Tool-panel rows (spec §3.2) sit ON the pane surface: no fill at rest, hover carries the only fill,
+	// and the label is panel text rather than button text. Row emphasis belongs to a sibling themed border
+	// with a declared role (the floor-stats Total well), not to the button.
+	const FLinearColor Fill   = bIsToolPanelRow
+		? FLinearColor::Transparent
+		: Theme->GetPaletteColor(EMobiusPaletteRole::ButtonBg);
 	const FLinearColor Hover  = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonHoverBg);
 	const FLinearColor Press  = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonPressedBg);
 	const FLinearColor Border = Theme->GetPaletteColor(EMobiusPaletteRole::ButtonBorder);
-	const FSlateColor  Label  = FSlateColor(Theme->GetPaletteColor(EMobiusPaletteRole::ButtonText));
+	const FSlateColor  Label  = FSlateColor(Theme->GetPaletteColor(
+		bIsToolPanelRow ? EMobiusPaletteRole::LabelText : EMobiusPaletteRole::ButtonText));
 
 	FButtonStyle Style = GetStyle();
 
@@ -131,7 +137,11 @@ void UBaseButton::RefreshThemedButtonStyle()
 		return;
 	}
 
-	auto Recolour = [&Border](FSlateBrush& Brush, const FLinearColor& Tint)
+	// A tool-panel row is flat: the hairline belongs to the well border beside it, so the row's own outline
+	// is painted away. WIDTH is still asset-owned (colours = C++, geometry = asset) — only the colour goes.
+	const FLinearColor OutlineColour = bIsToolPanelRow ? FLinearColor::Transparent : Border;
+
+	auto Recolour = [&OutlineColour](FSlateBrush& Brush, const FLinearColor& Tint)
 	{
 		// Image/material brushes: the asset owns the art (playbar play/pause MIDs, VR button MIs), and the
 		// C++ SetPlayButtonStyle swap path re-supplies them. Tinting them would double-multiply the material.
@@ -144,7 +154,7 @@ void UBaseButton::RefreshThemedButtonStyle()
 		// brushes that already draw a line get a themed colour.
 		if (Brush.OutlineSettings.Width > 0.0f)
 		{
-			Brush.OutlineSettings.Color = FSlateColor(Border);
+			Brush.OutlineSettings.Color = FSlateColor(OutlineColour);
 		}
 	};
 

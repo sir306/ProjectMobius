@@ -308,14 +308,15 @@ void UFloorStatsWidget::RefreshFloorDisplay()
                 TotalRowWell->SetVisibility(bTotal ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
         }
 
-        // Row hover = HoverBg on the click-to-chart button (best-effort, current theme; the button's
-        // click→ToggleImPlotOverlay path is untouched).
-        if (Theme && CurrentFloorBtn)
-        {
-                FButtonStyle Style = CurrentFloorBtn->GetStyle();
-                Style.Hovered.TintColor = FSlateColor(Theme->GetPaletteColor(EMobiusPaletteRole::HoverBg));
-                CurrentFloorBtn->SetStyle(Style);
-        }
+        // Row hover is NOT set here any more. CurrentFloorBtn carries bIsToolPanelRow, so
+        // UBaseButton::RefreshThemedButtonStyle owns every state colour (transparent at rest, ButtonHoverBg
+        // on hover per UE_IMPLEMENTATION_SPEC_v2 §3.2) and re-pulls it on OnThemeChanged by itself.
+        //
+        // The old block here read GetStyle(), patched Hovered.TintColor with the HoverBg role, and wrote the
+        // WHOLE struct back. Both this widget and the button bind OnThemeChanged, so on a theme TOGGLE that
+        // round-tripped a style snapshot taken at an arbitrary point in the handler order — startup has only
+        // one ordering and looked correct, while switching themes did not. It also disagreed with the button
+        // about which role a row hover uses (HoverBg vs ButtonHoverBg). One owner, one role, no ordering.
 }
 
 void UFloorStatsWidget::BuildImPlotChartTitle() const

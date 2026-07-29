@@ -246,3 +246,95 @@ bool UMobiusWidgetEditorTools::GetWidgetPropertyText(const FString& WidgetBluepr
 	Property->ExportText_Direct(OutValue, Property->ContainerPtrToValuePtr<void>(Widget), nullptr, Widget, PPF_None);
 	return true;
 }
+
+bool UMobiusWidgetEditorTools::RemoveWidget(const FString& WidgetBlueprintPath, const FString& WidgetName,
+                                            FString& OutError)
+{
+	using namespace MobiusWidgetEditorToolsLocal;
+	OutError.Empty();
+
+	// UE Python collapses a bool UFUNCTION with out-params into "out-params on success, bare None on
+	// failure", so a script can never read OutError — log every refusal or the reason is lost.
+	auto Fail = [&OutError, &WidgetBlueprintPath, &WidgetName](FString Reason) -> bool
+	{
+		OutError = MoveTemp(Reason);
+		UE_LOG(LogTemp, Warning, TEXT("MobiusWidgetEditorTools::RemoveWidget('%s', '%s'): %s"),
+			*WidgetBlueprintPath, *WidgetName, *OutError);
+		return false;
+	};
+
+	UWidgetBlueprint* WidgetBlueprint = LoadWidgetBlueprint(WidgetBlueprintPath, OutError);
+	if (!WidgetBlueprint)
+	{
+		return Fail(OutError);
+	}
+	UWidget* Widget = FindWidget(WidgetBlueprint, WidgetName, OutError);
+	if (!Widget)
+	{
+		return Fail(OutError);
+	}
+
+	// A REQUIRED BindWidget makes this widget part of the C++ contract: deleting it compiles to an error
+	// ("A required widget binding is missing"). Optional binds are fine — the pointer just stays null.
+	if (const UClass* ParentClass = WidgetBlueprint->ParentClass)
+	{
+		for (TFieldIterator<FObjectPropertyBase> It(ParentClass); It; ++It)
+		{
+			if (It->GetFName() == Widget->GetFName() && It->HasMetaData(TEXT("BindWidget")))
+			{
+				return Fail(FString::Printf(
+					TEXT("'%s' is a REQUIRED BindWidget on '%s' — change it to BindWidgetOptional before removing"),
+					*WidgetName, *ParentClass->GetName()));
+			}
+		}
+	}
+
+	// A designer binding stores the owning widget, so removing the widget leaves a dangling binding. This is
+	// the same failure that made the HeatmapColourBand class swap fatal, caught here instead of at compile.
+	for (const FDelegateEditorBinding& Binding : WidgetBlueprint->Bindings)
+	{
+		if (Binding.ObjectName == WidgetName)
+		{
+			return Fail(FString::Printf(TEXT("'%s' has a designer binding ('%s') — clear it in the editor first"),
+				*WidgetName, *Binding.PropertyName.ToString()));
+		}
+	}
+
+	UWidgetTree* Tree = WidgetBlueprint->WidgetTree;
+	if (Tree->RootWidget == Widget)
+	{
+		return Fail(FString::Printf(TEXT("'%s' is the tree ROOT — refusing to remove it"), *WidgetName));
+	}
+	// Never delete a subtree implicitly: a panel's children would go with it, silently.
+	if (const UPanelWidget* AsPanel = Cast<UPanelWidget>(Widget))
+	{
+		if (AsPanel->GetChildrenCount() > 0)
+		{
+			return Fail(FString::Printf(TEXT("'%s' still has %d child(ren) — reparent them first"),
+				*WidgetName, AsPanel->GetChildrenCount()));
+		}
+	}
+	if (const UContentWidget* AsContent = Cast<UContentWidget>(Widget))
+	{
+		if (AsContent->GetContentSlot() && AsContent->GetContentSlot()->Content)
+		{
+			return Fail(FString::Printf(TEXT("'%s' still holds content ('%s') — move it first"),
+				*WidgetName, *AsContent->GetContentSlot()->Content->GetName()));
+		}
+	}
+
+	Tree->Modify();
+	WidgetBlueprint->Modify();
+	if (UPanelWidget* ParentPanel = Widget->GetParent())
+	{
+		ParentPanel->Modify();
+	}
+	// Do NOT detach from the parent first: UWidgetTree::RemoveWidget resolves the parent via GetParent()
+	// and does the RemoveChild itself (WidgetTree.cpp:132-139). Pre-detaching leaves GetParent() null, so it
+	// falls through to the root / named-slot cases and returns false with the widget already orphaned.
+	if (!Tree->RemoveWidget(Widget))
+	{
+		return Fail(FString::Printf(TEXT("WidgetTree::RemoveWidget failed for '%s'"), *WidgetName));
+	}
+	return true;
+}
