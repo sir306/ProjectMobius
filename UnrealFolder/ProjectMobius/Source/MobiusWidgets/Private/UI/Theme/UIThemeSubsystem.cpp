@@ -1013,6 +1013,11 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		{
 			StyleEditableTextBoxForTheme(EditBox, bLight, bConstruct);
 		}
+		// A6b-5: UImage. No project class derives from UImage, so there is no self-theming family to skip.
+		else if (UImage* Image = Cast<UImage>(Widget))
+		{
+			StyleImageForTheme(Image, bLight);
+		}
 		// A6b-5: plain UButton. No-ops on a UBaseButton, which self-themes — so this covers exactly the
 		// residue the walk was still carrying. 8 of the 13 belong to USimulationPlayBar, which is reached
 		// only because the recursion above descends into it.
@@ -1034,6 +1039,28 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 			StyleTextBlockForTheme(Text, bLight);
 		}
 	});
+}
+
+void UUIThemeSubsystem::StyleImageForTheme(UImage* Image, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	if (!Image)
+	{
+		return;
+	}
+
+	// GetBrush() rather than the deprecated Brush member the walk read behind a pragma — same value, and it
+	// lets this compile without suppressing a warning. Copied because the helpers mutate in place.
+	FSlateBrush Brush = Image->GetBrush();
+	bool bChanged = RemapBrush(Brush, bLight);
+	bChanged |= ThemeIconBrush(Brush, Image, bLight);
+	bChanged |= ThemeBackgroundBrush(Brush, Image, bLight);
+	bChanged |= ThemePillBrush(Brush, Image, bLight); // agent-visibility pill toggle (D51)
+	if (bChanged)
+	{
+		Image->SetBrush(Brush);
+	}
 }
 
 void UUIThemeSubsystem::StyleButtonForTheme(UButton* Button, const bool bLight)
@@ -1667,17 +1694,10 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	// a combo out of the walk, and it outlives this branch.
 	else if (UImage* Image = Cast<UImage>(Widget))
 	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		FSlateBrush Brush = Image->Brush;
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		bool bChanged = RemapBrush(Brush, bLight);
-		bChanged |= ThemeIconBrush(Brush, Image, bLight);
-		bChanged |= ThemeBackgroundBrush(Brush, Image, bLight);
-		bChanged |= ThemePillBrush(Brush, Image, bLight); // agent-visibility pill toggle (D51)
-		if (bChanged)
-		{
-			Image->SetBrush(Brush);
-		}
+		// A6b-5: relocated to StyleImageForTheme, driven from each owner's construct + OnThemeChanged.
+		// Delegated rather than duplicated, same as the text and button branches — this one was a verbatim
+		// lift, so there is nothing left here to keep. Goes in A6b-6 with the rest of the walk.
+		StyleImageForTheme(Image, bLight);
 	}
 }
 

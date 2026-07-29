@@ -44,6 +44,7 @@ class UScrollBox;
 class USlider;
 class UTextBlock;   // A6b-5: the relocated text remap
 class UButton;      // A6b-5: the relocated plain-button pass
+class UImage;       // A6b-5: the relocated image-brush pass
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -320,6 +321,22 @@ public:
 	 * and is not one.
 	 */
 	static void StyleButtonForTheme(UButton* Button, bool bLight);
+
+	/**
+	 * A6b-5 (2026-07-29): UImage — the brush through the same four helpers a button's state brushes get.
+	 * Lifted from the walk's UImage branch, which the walk now delegates to. No project class derives from
+	 * UImage (grepped), so unlike the button case there is no self-theming family to exclude.
+	 *
+	 * Touches ONLY the brush. UImage::ColorAndOpacity is a separate multiplier applied on top and the walk
+	 * never remapped it — measured across a toggle, it does not move on any live image. Adding it here would
+	 * be a behaviour change dressed as a relocation.
+	 *
+	 * Measured scope: of 6 live images, 4 are walk-dependent (a brush tint + outline on a resource-less
+	 * brush) and all 4 are design-time children, so this pass reaches them. The other 2 are material-backed
+	 * by instances that none of the three material helpers claim, so a theme flip never touched them and
+	 * deleting the walk cannot either.
+	 */
+	static void StyleImageForTheme(UImage* Image, bool bLight);
 
 private:
 	void ApplyTheme(bool bLight);
