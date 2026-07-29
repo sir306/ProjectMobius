@@ -62,6 +62,7 @@ UnrealFolder/ProjectMobius/Content/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithO
 *.cmake text eol=lf
 *.json text eol=lf
 *.xml text eol=lf
+*.svg text eol=lf
 *.ini text eol=lf
 *.cfg text eol=lf
 *.yaml text eol=lf

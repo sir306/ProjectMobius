@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Gas tenability failure (ETenabilityCriterion::ToxicFED). Atlas slot 1.
+       Warning triangle with a scalloped gas cloud outline and three rising wisps.
+
+       Transparent background, strokes only: the strokes ARE the mask. Colour comes from
+       the runtime material; #333333 is an authoring colour only.
+
+       The cloud is nine small circular arcs, one per lobe. That lobe scale is what reads
+       as a cloud -- a few broad curves at this size read as a speech bubble instead. Each
+       lobe being its own arc also means one lobe can be resized by hand without
+       disturbing its neighbours. The outline is left OPEN at the bottom where the wisps
+       rise.
+
+       Line weight 7 (~3% of the triangle width). Wisp swing is +/-4.
+
+       Motif keepout: all motif geometry including stroke width and round caps stays
+       inside the triangle inset 10 units per edge (apex 128,51 / base y 212). -->
+  <g fill="none" stroke="#333333">
+    <!-- Sharp warning triangle, mitered corners -->
+    <path d="M128 31 L238 222 L18 222 Z" stroke-width="7" stroke-linejoin="miter" stroke-linecap="butt"/>
+
+    <!-- Gas cloud: nine outward lobes, open at the bottom -->
+    <path d="M114 150
+             A10 10 0 0 1 100 140
+             A10 10 0 0 1 98 123
+             A10 10 0 0 1 107 108
+             A10.5 10.5 0 0 1 123 99
+             A9.5 9.5 0 0 1 139 101
+             A9.5 9.5 0 0 1 151 112
+             A9.5 9.5 0 0 1 158 127
+             A9 9 0 0 1 155 142
+             A9 9 0 0 1 142 150"
+          stroke-width="7" stroke-linecap="round"/>
+
+    <!-- Three rising wisps, centre one tallest -->
+    <g stroke-width="7" stroke-linecap="round">
+      <path d="M110 206 C104 200, 116 194, 110 188 C105 183, 114 180, 110 176"/>
+      <path d="M128 208 C122 201, 134 194, 128 187 C122 180, 134 173, 128 166"/>
+      <path d="M146 206 C140 200, 152 194, 146 188 C141 183, 150 180, 146 176"/>
+    </g>
+  </g>
+</svg>

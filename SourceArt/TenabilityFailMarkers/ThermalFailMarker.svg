@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Thermal tenability failure (ETenabilityCriterion::ThermalFED). Atlas slot 0.
+       Warning triangle with a hot-surface bar and three rising heat waves.
+
+       Transparent background, strokes only: the strokes ARE the mask. The runtime atlas
+       stores one greyscale coverage channel and the material supplies the colour, so the
+       #333333 below is an authoring colour that makes the file viewable in a browser --
+       it is not the in-world colour.
+
+       Line weight 7 (~3% of the triangle width); the hot-surface bar is the single
+       heavier element at 8. Wave swing is deliberately small (+/-4) so the squiggles
+       read as lines rather than thickening into blobs when downscaled.
+
+       Motif keepout: every motif stroke, stroke width and round caps included, stays
+       inside the triangle inset 10 units perpendicular to each edge (apex 128,51 /
+       base y 212). Nothing crosses a triangle edge. -->
+  <g fill="none" stroke="#333333">
+    <!-- Sharp warning triangle, mitered corners -->
+    <path d="M128 31 L238 222 L18 222 Z" stroke-width="7" stroke-linejoin="miter" stroke-linecap="butt"/>
+
+    <!-- Hot surface -->
+    <path d="M81 197 H178" stroke-width="8" stroke-linecap="round"/>
+
+    <!-- Three heat waves, centre one tallest -->
+    <g stroke-width="7" stroke-linecap="round">
+      <path d="M106 182 C99 172, 113 161, 106 150 C99 139, 113 130, 106 119"/>
+      <path d="M128 182 C121 173, 135 164, 128 155 C121 146, 135 137, 128 128 C121 119, 135 116, 128 107"/>
+      <path d="M152 182 C145 172, 159 161, 152 150 C145 139, 159 130, 152 119"/>
+    </g>
+  </g>
+</svg>
