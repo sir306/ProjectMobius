@@ -43,6 +43,7 @@ class UProgressBar;
 class UScrollBox;
 class USlider;
 class UTextBlock;   // A6b-5: the relocated text remap
+class UButton;      // A6b-5: the relocated plain-button pass
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -296,6 +297,29 @@ public:
 	 * this cannot re-acquire the self-theming widgets A6a deliberately dropped from the walk.
 	 */
 	static void StyleTextBlockForTheme(UTextBlock* TextBlock, bool bLight);
+
+	/**
+	 * A6b-5 (2026-07-29): plain UButton — the four state brushes, the ButtonText foreground, and the
+	 * BackgroundColor multiplier. Lifted from the walk's UButton branch, which reduces EXACTLY to this once
+	 * the ribbon-tab and UBaseButton paths are excluded, so the walk now delegates here rather than keeping
+	 * a second copy free to drift.
+	 *
+	 * NO-OPS ON A UBaseButton, deliberately. Those already self-theme: UBaseButton binds OnThemeChanged in
+	 * its own construct and re-runs RefreshThemedButtonStyle from HandleThemeChanged (BaseButton.cpp), and
+	 * UButtonWithText extends that with RefreshRibbonAppearance. Styling them here as well would recreate
+	 * the two-writers-fighting condition A6a and W2 removed — including the ribbon tab whose Normal brush
+	 * carries a BP-managed active-tab material that a re-stamp silently wipes.
+	 *
+	 * Measured scope: 13 live plain buttons, ALL of them walk-dependent (unlike the borders, none were
+	 * incidentally static) and all reachable through this pass, since every one is a design-time child. 8 of
+	 * the 13 belong to USimulationPlayBar, which cannot take the themed base (module cycle) and is reached
+	 * only by the recursion.
+	 *
+	 * The foreground write covers Normal/Hovered/Pressed and deliberately NOT Disabled — matching the walk,
+	 * and confirmed against a live toggle where DisabledForeground does not move. It looks like an omission
+	 * and is not one.
+	 */
+	static void StyleButtonForTheme(UButton* Button, bool bLight);
 
 private:
 	void ApplyTheme(bool bLight);

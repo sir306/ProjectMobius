@@ -1013,6 +1013,13 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		{
 			StyleEditableTextBoxForTheme(EditBox, bLight, bConstruct);
 		}
+		// A6b-5: plain UButton. No-ops on a UBaseButton, which self-themes — so this covers exactly the
+		// residue the walk was still carrying. 8 of the 13 belong to USimulationPlayBar, which is reached
+		// only because the recursion above descends into it.
+		else if (UButton* Button = Cast<UButton>(Widget))
+		{
+			StyleButtonForTheme(Button, bLight);
+		}
 		// A6b-5: text LAST, so any control-specific branch above still wins its own subtree.
 		//
 		// Widgets that colour their own labels (UFlowCounterListRow paints its text white when the row is
@@ -1027,6 +1034,57 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 			StyleTextBlockForTheme(Text, bLight);
 		}
 	});
+}
+
+void UUIThemeSubsystem::StyleButtonForTheme(UButton* Button, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	// A UBaseButton self-themes (its own OnThemeChanged bind -> RefreshThemedButtonStyle), and a ribbon tab
+	// is a UButtonWithText, so this single test excludes both. See the header for why touching them here
+	// would be actively harmful rather than merely redundant.
+	if (!Button || Button->IsA<UBaseButton>())
+	{
+		return;
+	}
+
+	FButtonStyle Style = Button->GetStyle();
+	bool bChanged = false;
+	FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
+	for (FSlateBrush* Brush : Brushes)
+	{
+		// Button (not Style) is the MID outer, exactly as the walk passed it: the icon/pill/background
+		// helpers create their MIDs against it, and an outer that dies takes the themed material with it.
+		bChanged |= RemapBrush(*Brush, bLight);
+		bChanged |= ThemeIconBrush(*Brush, Button, bLight);
+		bChanged |= ThemeBackgroundBrush(*Brush, Button, bLight);
+		bChanged |= ThemePillBrush(*Brush, Button, bLight); // agent-visibility pill toggle (D51)
+	}
+
+	// EXPLICIT, not a remap: the authored foregrounds are per-widget sentinels (cyan on the icon buttons)
+	// that no TextMap pair matches, so any UseForeground content resolving through these styles never
+	// themed in either direction. Guarded by the inequality so a second pass in one theme writes nothing.
+	const FSlateColor ButtonForeground(PaletteColor(EMobiusPaletteRole::ButtonText, bLight));
+	if (Style.NormalForeground != ButtonForeground)
+	{
+		Style.NormalForeground = ButtonForeground;
+		Style.HoveredForeground = ButtonForeground;
+		Style.PressedForeground = ButtonForeground;
+		bChanged = true;
+	}
+
+	if (bChanged)
+	{
+		Button->SetStyle(Style);
+	}
+
+	// Some buttons (floor-stat bars et al) get their colour from UButton::BackgroundColor, which
+	// MULTIPLIES the (white) style brushes — remap it too or they stay dark.
+	FLinearColor ButtonBackground = Button->GetBackgroundColor();
+	if (Remap(ButtonBackground, bLight, SurfaceMap))
+	{
+		Button->SetBackgroundColor(ButtonBackground);
+	}
 }
 
 void UUIThemeSubsystem::StyleTextBlockForTheme(UTextBlock* TextBlock, const bool bLight)
@@ -1480,6 +1538,24 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	// to give its OWNER the themed base / an OnThemeChanged bind — not to add a branch back.
 	else if (UButton* Button = Cast<UButton>(Widget))
 	{
+		// A6b-5: a PLAIN UButton is now themed by StyleButtonForTheme, driven from each owner's construct +
+		// OnThemeChanged. Delegated rather than duplicated: with the ribbon-tab and UBaseButton paths
+		// excluded, everything below reduces EXACTLY to that helper, and a second copy of it here would be
+		// free to drift from the one A6b-6 keeps. The test is a single IsA because a ribbon tab is a
+		// UButtonWithText and therefore a UBaseButton, so both self-theming families fall through together.
+		//
+		// Returning is equivalent to falling out of the chain: the UImage branch is the last one and nothing
+		// follows it in this function. Everything past this point now runs ONLY for a UBaseButton.
+		//
+		// Both paths are live until A6b-6, so a plain button is styled twice per toggle. Safe for the same
+		// reasons text is: the brush remaps have no cross-column collision, the foreground write is guarded
+		// by an inequality, and the MID parameter writes are absolute rather than relative.
+		if (!Button->IsA<UBaseButton>())
+		{
+			StyleButtonForTheme(Button, bLight);
+			return;
+		}
+
 		// Buttons with an SWS style asset SNAPSHOT it at construct (BaseButton::ApplyMobiusButtonStyle),
 		// so a theme flip leaves the live copy's foregrounds/hover tints stale even though
 		// ApplySharedStyles retinted the asset — e.g. the side tool tabs hovered light-on-light in
