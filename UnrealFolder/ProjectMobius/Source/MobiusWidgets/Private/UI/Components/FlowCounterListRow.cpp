@@ -43,31 +43,24 @@ UUIThemeSubsystem* UFlowCounterListRow::ResolveThemeSubsystem() const
 
 void UFlowCounterListRow::NativeConstruct()
 {
-	Super::NativeConstruct();
-
+	// Seed the selection cache BEFORE Super: the themed base applies the theme from inside its
+	// NativeConstruct, and that path reads bSelectedCached. Bind widgets are already resolved here.
 	if (SelectedFlowCounter_ChkBox)
 	{
 		SelectedFlowCounter_ChkBox->OnCheckStateChanged.AddUniqueDynamic(this, &UFlowCounterListRow::HandleSelectChanged);
 		bSelectedCached = SelectedFlowCounter_ChkBox->IsChecked();
 	}
 
-	if (UUIThemeSubsystem* Theme = ResolveThemeSubsystem())
-	{
-		ThemeSubsystem = Theme;
-		Theme->OnThemeChanged.AddUniqueDynamic(this, &UFlowCounterListRow::HandleThemeChanged);
-		bThemeBound = true;
-	}
+	// A6b-5: the OnThemeChanged bind that used to be here is the base's job now.
+	Super::NativeConstruct();
 
+	// Kept unconditional: the base only calls ApplyMobiusTheme when it FOUND a subsystem, and the row
+	// still has to render its selected/idle state when there is none (idempotent if it already ran).
 	ApplyRowVisual();
 }
 
 void UFlowCounterListRow::NativeDestruct()
 {
-	if (bThemeBound && ThemeSubsystem.IsValid())
-	{
-		ThemeSubsystem->OnThemeChanged.RemoveDynamic(this, &UFlowCounterListRow::HandleThemeChanged);
-	}
-	bThemeBound = false;
 	if (SelectedFlowCounter_ChkBox)
 	{
 		SelectedFlowCounter_ChkBox->OnCheckStateChanged.RemoveDynamic(this, &UFlowCounterListRow::HandleSelectChanged);
@@ -81,7 +74,7 @@ void UFlowCounterListRow::SetRowSelected(const bool bSelected)
 	ApplyRowVisual();
 }
 
-void UFlowCounterListRow::HandleThemeChanged()
+void UFlowCounterListRow::ApplyMobiusTheme_Implementation()
 {
 	ApplyRowVisual();
 }
@@ -95,7 +88,14 @@ void UFlowCounterListRow::HandleSelectChanged(const bool bIsChecked)
 void UFlowCounterListRow::ApplyRowVisual()
 {
 	using namespace MobiusThemePalette;
-	const UUIThemeSubsystem* Theme = ThemeSubsystem.IsValid() ? ThemeSubsystem.Get() : ResolveThemeSubsystem();
+	// The base's cached lookup first, then this class's own resolver. The fallback is kept deliberately: it
+	// also sweeps GEngine's world contexts, which the base's GetGameInstance()-only path does not, and this
+	// row is spawned into a list rather than constructed with the panel.
+	const UUIThemeSubsystem* Theme = GetThemeSubsystem();
+	if (!Theme)
+	{
+		Theme = ResolveThemeSubsystem();
+	}
 	const bool bLight = !Theme || Theme->GetTheme() == EMobiusUITheme::Light;
 
 	// Selected = accent fill + white text; idle = transparent fill + primary (InputText) text.

@@ -137,6 +137,13 @@ void UFloorStatsWidget::NativeConstruct()
 	RefreshFloorDisplay();
 }
 
+void UFloorStatsWidget::ApplyMobiusTheme_Implementation()
+{
+	// A6b-5: RefreshFloorDisplay already resolves LabelText / SublabelText off the subsystem, so a theme
+	// toggle is just a re-run. Text is unchanged by it, so nothing flickers.
+	RefreshFloorDisplay();
+}
+
 void UFloorStatsWidget::NativeDestruct()
 {
 	Super::NativeDestruct();

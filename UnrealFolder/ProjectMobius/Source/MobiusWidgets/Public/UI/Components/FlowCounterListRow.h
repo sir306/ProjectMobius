@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "FlowCounterListRow.generated.h"
 
 class UImage;
@@ -22,9 +22,15 @@ class UUIThemeSubsystem;
  * also watches the checkbox) is untouched and coexists.
  *
  * BindWidgetOptional keeps this safe if a widget is renamed in the WBP: the row simply skips that element.
+ *
+ * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget. This class had already hand-rolled
+ * the base's entire contract — a weak subsystem pointer, a bThemeBound flag, its own OnThemeChanged
+ * bind/unbind and its own HandleThemeChanged — so the swap DELETES that duplication rather than adding to it.
+ * The hand-rolled handler also had to go regardless: its name collides with the base's UFUNCTION of the same
+ * name. Its body is now the ApplyMobiusTheme override, which is the same call at the same two moments.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UFlowCounterListRow : public UUserWidget
+class MOBIUSWIDGETS_API UFlowCounterListRow : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -37,11 +43,10 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
-private:
-	/** Re-apply the current visual for the current theme (OnThemeChanged handler + checkbox handler). */
-	UFUNCTION()
-	void HandleThemeChanged();
+	/** Theme toggled — re-state the row visual. Replaces the hand-rolled HandleThemeChanged. */
+	virtual void ApplyMobiusTheme_Implementation() override;
 
+private:
 	/** Checkbox (SELECT column) toggled — refresh the row visual to match. */
 	UFUNCTION()
 	void HandleSelectChanged(bool bIsChecked);
@@ -67,7 +72,5 @@ private:
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional, AllowPrivateAccess = "true"))
 	TObjectPtr<UCheckBox> SelectedFlowCounter_ChkBox;
 
-	TWeakObjectPtr<UUIThemeSubsystem> ThemeSubsystem;
-	bool bThemeBound = false;
 	bool bSelectedCached = false;
 };

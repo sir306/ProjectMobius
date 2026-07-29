@@ -26,7 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "UI/WidgetInterface.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "FloorStatsWidget.generated.h"
 
 class UBaseButton;
@@ -34,13 +34,17 @@ class UBorder;
 class UTextBlock;
 class UImPlotDataSubsystem;
 /**
- *
+ * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget (WBP_NumberOfAgents). This row
+ * already resolved its own label/value colours from the palette inside RefreshFloorDisplay, but only on
+ * construct — nothing re-ran it on a theme toggle, so it depended on the global value walk to follow one.
+ * The themed base gives it the OnThemeChanged bind, and ApplyMobiusTheme just re-runs RefreshFloorDisplay,
+ * which means the explicit role lookups it already had become the live path.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UFloorStatsWidget : public UUserWidget, public IWidgetInterface
+class MOBIUSWIDGETS_API UFloorStatsWidget : public UMobiusThemedUserWidget, public IWidgetInterface
 {
 	GENERATED_BODY()
-	
+
 #pragma region METHODS
 public:
         /** Override to handle design-time setup. */
@@ -51,6 +55,13 @@ public:
 
         /** Override to unbind runtime delegates. */
         virtual void NativeDestruct() override;
+
+        /**
+         * Re-pull this row's palette colours on a theme toggle. RefreshFloorDisplay already reads its roles
+         * from the subsystem, so re-running it is the whole implementation — it also re-lands the fonts and
+         * the transit indent, all of which are idempotent.
+         */
+        virtual void ApplyMobiusTheme_Implementation() override;
 
         /** Override to keep design-time properties synchronized. */
         virtual void SynchronizeProperties() override;

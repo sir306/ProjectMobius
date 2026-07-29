@@ -166,7 +166,12 @@ namespace MobiusTheme
 		{ FLinearColor(0.625f, 0.625f, 0.625f),              FLinearColor(0.0160f, 0.0160f, 0.0160f) }, // primary text  #cfcfcf -> #222222
 		{ FLinearColor(0.745f, 0.745f, 0.745f),              FLinearColor(0.0331f, 0.0331f, 0.0331f) }, // chip/button   #e0e0e0 -> #333333
 		{ FLinearColor(0.6867f, 0.7084f, 0.7454f),           FLinearColor(0.0160f, 0.0160f, 0.0160f) }, // legacy body text
-		{ FLinearColor(0.925f, 0.933f, 0.945f),              FLinearColor(0.0160f, 0.0160f, 0.0160f) }, // bright mono   #e6e8eb -> #222222
+		// A6b-5 (2026-07-28): the `bright mono` row (#e6e8eb <-> #222222) was DELETED. It had zero consumers
+		// and was one of three rows colliding on light #222222, which is what made the table lossy across a
+		// toggle. Verified before removing, not assumed: no design-time UTextBlock carried it (census), and
+		// neither did any of the 10 SWS FTextBlockStyle assets or the 7 FButtonStyle foreground sets, which
+		// are TextMap's other two consumers. Removal is a no-op in BOTH directions — light #222222 already
+		// resolved to `primary text` on first match, so nothing ever routed back to #e6e8eb anyway.
 		{ FLinearColor(0.100f, 0.330f, 0.661f),              FLinearColor(0.0f, 0.13563f, 0.52712f) },  // accent text/link (CR item D) #5a9bd5 <-> #0067c0
 	};
 
@@ -944,7 +949,38 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		{
 			StyleEditableTextBoxForTheme(EditBox, bLight, bConstruct);
 		}
+		// A6b-5: text LAST, so any control-specific branch above still wins its own subtree.
+		//
+		// One ordering note, because it is the only place two owners can write the same text block. A row
+		// widget that colours its OWN labels (UFlowCounterListRow: white when selected) sits inside a themed
+		// container, so the container's recursion remaps those labels before the row's ApplyMobiusTheme
+		// re-states them. That lands correctly because the row binds OnThemeChanged at ITS construct, which
+		// is after the container's, and a dynamic multicast fires listeners in registration order — so the
+		// owner that knows the real answer always writes last. Rows are also spawned into the list well
+		// after the container is built, which makes the ordering structural rather than incidental.
+		else if (UTextBlock* Text = Cast<UTextBlock>(Widget))
+		{
+			StyleTextBlockForTheme(Text, bLight);
+		}
 	});
+}
+
+void UUIThemeSubsystem::StyleTextBlockForTheme(UTextBlock* TextBlock, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	if (!TextBlock)
+	{
+		return;
+	}
+
+	// bGuardNeutralWhite stays false: white text is a real role (the single largest bucket — 90 of the 192
+	// matched blocks ride it), unlike white on a brush, where it is the neutral multiplier.
+	FSlateColor Color = TextBlock->GetColorAndOpacity();
+	if (RemapSlate(Color, bLight, TextMap, /*bGuardNeutralWhite*/ false))
+	{
+		TextBlock->SetColorAndOpacity(Color);
+	}
 }
 
 void UUIThemeSubsystem::StyleSliderForTheme(USlider* Slider, const bool bLight)
@@ -1354,11 +1390,15 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 	}
 	else if (UTextBlock* Text = Cast<UTextBlock>(Widget))
 	{
-		FSlateColor Color = Text->GetColorAndOpacity();
-		if (RemapSlate(Color, bLight, TextMap, /*bGuardNeutralWhite*/ false))
-		{
-			Text->SetColorAndOpacity(Color);
-		}
+		// A6b-5 (2026-07-28): this branch is now a DELIBERATE duplicate of StyleTextBlockForTheme, which is
+		// where text is themed from — driven by each owner's construct + OnThemeChanged. Unlike the A5/A6a
+		// relocations, this one is not deleted yet, and the reason is ownership, not caution: two reachable
+		// WBPs still hold matched text blocks and cannot be reparented while the owner is editing them —
+		// WBP_ChangeAllHeatmaps (6 blocks) and WBP_HeatmapSettingPanel (4). Deleting the branch now would
+		// leave those ten unthemed. Running both paths is safe because the remap has no cross-column
+		// collision, so a second pass in the same direction is a no-op. Delete this WITH the two reparents,
+		// as part of A6b-6.
+		StyleTextBlockForTheme(Text, bLight);
 	}
 	// A6a (2026-07-28): the UVerticalTextBlock and UFieldAndTextWidget branches are DELETED. Both widgets
 	// self-bind OnThemeChanged since A5 (VerticalTextBlock.cpp / FieldAndTextWidget.cpp), so calling

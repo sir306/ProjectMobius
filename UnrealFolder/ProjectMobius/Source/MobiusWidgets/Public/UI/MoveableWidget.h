@@ -25,14 +25,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "MoveableWidget.generated.h"
 
 /**
- * 
+ * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget so this widget and its subclass
+ * UMoveableErrorWidget (WBP_ErrorPopup1) theme their own tree on construct + OnThemeChanged. Without it,
+ * their text would go unthemed the moment the global value walk is deleted. No behaviour of its own is
+ * added: this widget has no role colours to pull, only standard controls and text in its tree, which the
+ * base handles. Both classes already call Super::NativeConstruct, so the base's bind runs.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UMoveableWidget : public UUserWidget
+class MOBIUSWIDGETS_API UMoveableWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 #pragma region METHODS

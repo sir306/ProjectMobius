@@ -42,6 +42,7 @@ class UEditableTextBox;
 class UProgressBar;
 class UScrollBox;
 class USlider;
+class UTextBlock;   // A6b-5: the relocated text remap
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -278,6 +279,23 @@ public:
 	 * face (theme-independent, so construct-only).
 	 */
 	static void StyleEditableTextBoxForTheme(UEditableTextBox* EditBox, bool bLight, bool bApplyFont);
+
+	/**
+	 * A6b-5 (2026-07-28): TextBlock — the one relocated helper that is still a VALUE REMAP rather than a
+	 * role write, because there is no UMobiusThemedTextBlock and there will not be one: 192 matched design-time
+	 * blocks would have to be reparented to buy back three near-identical greys, and that re-fires the
+	 * delegate-binding trap. So the remap MOVES here instead of being rebuilt, scoped to one owner's tree and
+	 * driven by an event. Evidence in _ClaudeHandoff/A6b5_TEXT_PLAN.md.
+	 *
+	 * The remap is safe to run repeatedly in one theme: TextMap has no cross-column collision, so a second
+	 * pass in the same direction is a no-op (it is only lossy ACROSS a toggle, which the border migration
+	 * already removed the teeth from). The neutral-white guard stays OFF, because white text IS a role.
+	 *
+	 * Reaches only plain UMG text blocks. UVerticalTextBlock, UFieldAndTextWidget and UButtonWithText's label
+	 * are all raw STextBlock under a UWidget, not UTextBlock subclasses (there are none in the project), so
+	 * this cannot re-acquire the self-theming widgets A6a deliberately dropped from the walk.
+	 */
+	static void StyleTextBlockForTheme(UTextBlock* TextBlock, bool bLight);
 
 private:
 	void ApplyTheme(bool bLight);
