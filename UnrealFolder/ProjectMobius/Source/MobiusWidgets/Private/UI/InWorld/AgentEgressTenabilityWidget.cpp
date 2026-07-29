@@ -19,6 +19,15 @@ UAgentEgressTenabilityWidget::UAgentEgressTenabilityWidget(const FObjectInitiali
 		AgentEgressTenabilityMeshAsset = DefaultMeshAsset.Object;
 	}
 
+	static ConstructorHelpers::FObjectFinder<USlateVectorArtData> DefaultFailMarkerAsset(
+		TEXT("/Game/01_Dev/Widgets/WidgetMaterials/WorldWidgetMats/TenabilityFailMarkers/"
+			"SVAD_TenabilityFailMarker.SVAD_TenabilityFailMarker"));
+
+	if (DefaultFailMarkerAsset.Succeeded())
+	{
+		FailMarkerMeshAsset = DefaultFailMarkerAsset.Object;
+	}
+
 	SetVisibility(ESlateVisibility::HitTestInvisible);
 	ForceVolatile(true);
 }
@@ -60,9 +69,13 @@ void UAgentEgressTenabilityWidget::SynchronizeProperties()
 	ReferenceDistance = FMath::Max(ReferenceDistance, 1.0f);
 	InitialInstanceCapacity = FMath::Max(InitialInstanceCapacity, 1);
 
+	FailMarkerHeightOffset = FMath::Max(FailMarkerHeightOffset, 0.0f);
+
 	if (SlateWidget.IsValid())
 	{
 		SlateWidget->SetMeshAsset(AgentEgressTenabilityMeshAsset, InitialInstanceCapacity);
+		// After the bar, always: registration order is the only thing fixing which mesh paints on top.
+		SlateWidget->SetFailMarkerMeshAsset(FailMarkerMeshAsset, InitialInstanceCapacity);
 	}
 }
 
@@ -76,5 +89,6 @@ TSharedRef<SWidget> UAgentEgressTenabilityWidget::RebuildWidget()
 {
 	SlateWidget = SNew(SAgentEgressTenability, *this);
 	SlateWidget->SetMeshAsset(AgentEgressTenabilityMeshAsset, InitialInstanceCapacity);
+	SlateWidget->SetFailMarkerMeshAsset(FailMarkerMeshAsset, InitialInstanceCapacity);
 	return SlateWidget.ToSharedRef();
 }

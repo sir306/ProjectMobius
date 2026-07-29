@@ -33,6 +33,15 @@ public:
 	TObjectPtr<USlateVectorArtData> AgentEgressTenabilityMeshAsset;
 
 	/**
+	 * Vector-art quad for the in-world fail markers, drawn as a SECOND hardware-instanced mesh by the
+	 * same renderer, so the whole crowd's markers cost one extra draw call. Registered after the bar
+	 * mesh deliberately: Slate has no depth buffer, so the order meshes are added in is what fixes
+	 * their relative order, and markers must paint above bars.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability")
+	TObjectPtr<USlateVectorArtData> FailMarkerMeshAsset;
+
+	/**
 	 * World-space vertical offset, in centimetres above the agent origin, giving the head point
 	 * the marker is anchored to. Projected through the view like any world point, so the marker
 	 * sits perspective-correctly above each agent's head with no distance-driven screen drift.
@@ -40,6 +49,23 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "0.0"))
 	float WorldHeightOffset = 200.0f;
+
+	/**
+	 * World-space vertical offset, in centimetres, of a fail marker above the point where that agent's
+	 * tenability failed. Above WorldHeightOffset so the marker clears the live bar. Note the anchor
+	 * differs from the bar's: the bar tracks the agent, the marker stays at the failure point, which is
+	 * what makes it a forensic record rather than a second health readout.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "0.0"))
+	float FailMarkerHeightOffset = 260.0f;
+
+	/**
+	 * Master gate for the in-world fail markers. Off submits an empty instance buffer rather than
+	 * branching per agent, so the mesh stays resident and toggling back on needs no reallocation.
+	 * Per-criterion toggles are a separate concern and not implemented here yet.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability")
+	bool bShowFailMarkers = true;
 
 	/** Distance at which the vector-art mesh is rendered at scale 1. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "1.0"))

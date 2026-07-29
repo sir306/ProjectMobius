@@ -26,6 +26,31 @@ namespace
 		default: return TEXT("---");
 		}
 	}
+
+	/**
+	 * Criterion -> slot in T_TenabilityFailMarkerAtlas, which is 2x2 row-major from the top left.
+	 * Returned as the float the instance scalar carries.
+	 *
+	 * Slot 3 is a diagnostic, not a hazard type. Temperature and LayerHeight both default off in
+	 * FTenabilityAnalysisSettings, and a failure flag alongside criterion None is a timeline-builder
+	 * bug; drawing a marker for those makes the case visible instead of leaving "no marker"
+	 * indistinguishable from "no failure". It stands in for a log line because the only places the
+	 * condition is detectable are this function's caller and the MASS processors, all per-frame paths
+	 * where this project does not log.
+	 *
+	 * Values match ETenabilityCriterion, carried as uint8 in the viewer struct to keep MobiusCore free
+	 * of a ProjectMobius dependency, so they are matched numerically here.
+	 */
+	float TenabilityFailMarkerAtlasSlot(const uint8 FirstFailureCriterion)
+	{
+		switch (FirstFailureCriterion)
+		{
+		case 3: return 0.0f; // ThermalFED
+		case 2: return 1.0f; // ToxicFED
+		case 1: return 2.0f; // Visibility
+		default: return 3.0f; // Temperature, LayerHeight, None -> unattributed diagnostic
+		}
+	}
 }
 
 void SAgentEgressTenability::Construct(const FArguments& InArgs, UAgentEgressTenabilityWidget& InThis)
@@ -43,6 +68,16 @@ void SAgentEgressTenability::SetMeshAsset(
 	if (MeshId == MAX_uint32 && InMeshAsset)
 	{
 		MeshId = AddMeshWithInstancing(*InMeshAsset, FMath::Max(InitialInstanceCapacity, 1));
+	}
+}
+
+void SAgentEgressTenability::SetFailMarkerMeshAsset(
+	USlateVectorArtData* InMeshAsset,
+	const int32 InitialInstanceCapacity)
+{
+	if (FailMarkerMeshId == MAX_uint32 && InMeshAsset)
+	{
+		FailMarkerMeshId = AddMeshWithInstancing(*InMeshAsset, FMath::Max(InitialInstanceCapacity, 1));
 	}
 }
 
@@ -78,6 +113,10 @@ int32 SAgentEgressTenability::OnPaint(
 
 	const bool bWantDebug = Widget->bShowDebugText;
 	MutableThis->DebugMarkers.Reset(bWantDebug ? AgentData.Num() : 0);
+
+	// Reset() keeps the allocation, so the marker scratch costs nothing per frame after the first.
+	const bool bWantFailMarkers = Widget->bShowFailMarkers && FailMarkerMeshId != MAX_uint32;
+	MutableThis->PendingFailMarkers.Reset();
 
 	const FVector2D WidgetTopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
 	const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
@@ -143,6 +182,49 @@ int32 SAgentEgressTenability::OnPaint(
 		InstanceData.SetBaseAddress(EncodedTenability);
 		PerInstanceUpdate.Add(FVector4f(InstanceData.GetData()));
 
+		// Fail marker. Anchored at FailureLocation, NOT at the agent, so it needs its own projection —
+		// the agent walks on after failing while the marker stays where conditions went untenable.
+		// That extra projection is paid only for agents that have actually failed, not per agent.
+		//
+		// FailureMask is NOT a has-failed test: an agent that has not failed retains the instantaneous
+		// current-frame mask, which is routinely non-zero. bTenabilityFailed is the only such test.
+		// The zero-location guard is not paranoia either — see FAgentEgressTenabilityViewer::
+		// FailureLocation for the two windows where a genuinely failed agent has no pose yet.
+		if (bWantFailMarkers && Agent.bTenabilityFailed && !Agent.FailureLocation.IsNearlyZero())
+		{
+			FVector MarkerWorldLocation = Agent.FailureLocation;
+			MarkerWorldLocation.Z += Widget->FailMarkerHeightOffset;
+
+			FVector2D MarkerViewportPosition;
+			const double MarkerDistance = FVector::Dist(CameraLocation, MarkerWorldLocation);
+			if (MarkerDistance > UE_DOUBLE_SMALL_NUMBER
+				&& UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+					PlayerController, MarkerWorldLocation, MarkerViewportPosition,
+					/*bPlayerViewportRelative*/ false))
+			{
+				const float MarkerScale = FMath::Clamp(
+					Widget->ReferenceDistance / static_cast<float>(MarkerDistance),
+					Widget->MinimumScale,
+					Widget->MaximumScale);
+
+				const FVector2D MarkerAbsolutePosition(
+					WidgetTopLeft.X + MarkerViewportPosition.X * AllottedGeometry.Scale,
+					WidgetTopLeft.Y + MarkerViewportPosition.Y * AllottedGeometry.Scale);
+
+				// FirstFailureCriterion, never CurrentDominantCriterion: risks keep evolving after the
+				// failure, so an icon driven by the live dominant criterion flickers between types.
+				FSlateVectorArtInstanceData MarkerInstanceData;
+				MarkerInstanceData.SetPosition(MarkerAbsolutePosition);
+				MarkerInstanceData.SetScale(MarkerScale);
+				MarkerInstanceData.SetBaseAddress(
+					TenabilityFailMarkerAtlasSlot(Agent.FirstFailureCriterion));
+
+				FPendingFailMarker& Pending = MutableThis->PendingFailMarkers.AddDefaulted_GetRef();
+				Pending.InstanceData = FVector4f(MarkerInstanceData.GetData());
+				Pending.CameraDistance = static_cast<float>(MarkerDistance);
+			}
+		}
+
 		if (bWantDebug)
 		{
 			FDebugMarker& Marker = MutableThis->DebugMarkers.AddDefaulted_GetRef();
@@ -158,6 +240,29 @@ int32 SAgentEgressTenability::OnPaint(
 	}
 
 	MutableThis->UpdatePerInstanceBuffer(MeshId, PerInstanceUpdate);
+
+	if (FailMarkerMeshId != MAX_uint32)
+	{
+		// Slate has no depth buffer. SMeshWidget batches instances into custom verts and draws them in
+		// submit order, so instance order IS z-order: submit far first and the nearest marker paints
+		// last, on top. The sort key is the marker's own point, which is why CameraDistance was
+		// measured against FailureLocation and not reused from the bar loop's agent distance.
+		MutableThis->PendingFailMarkers.Sort(
+			[](const FPendingFailMarker& A, const FPendingFailMarker& B)
+			{
+				return A.CameraDistance > B.CameraDistance;
+			});
+
+		// With the master toggle off this submits empty, which costs one call and keeps the mesh
+		// resident so switching back on needs no reallocation.
+		FSlateInstanceBufferData FailMarkerUpdate;
+		FailMarkerUpdate.Reserve(PendingFailMarkers.Num());
+		for (const FPendingFailMarker& Pending : PendingFailMarkers)
+		{
+			FailMarkerUpdate.Add(Pending.InstanceData);
+		}
+		MutableThis->UpdatePerInstanceBuffer(FailMarkerMeshId, FailMarkerUpdate);
+	}
 
 	const int32 MaxLayerId = SMeshWidget::OnPaint(
 		Args,
@@ -207,9 +312,15 @@ int32 SAgentEgressTenability::OnPaint(
 void SAgentEgressTenability::ClearInstances()
 {
 	DebugMarkers.Reset();
+	PendingFailMarkers.Reset();
 	if (MeshId != MAX_uint32)
 	{
 		FSlateInstanceBufferData EmptyData;
 		UpdatePerInstanceBuffer(MeshId, EmptyData);
+	}
+	if (FailMarkerMeshId != MAX_uint32)
+	{
+		FSlateInstanceBufferData EmptyData;
+		UpdatePerInstanceBuffer(FailMarkerMeshId, EmptyData);
 	}
 }
