@@ -101,4 +101,19 @@ struct FAgentEgressTenabilityViewer
 
 	float FirstFailureTimeSeconds = -1.0f;
 	bool bTenabilityFailed = false;
+
+	/**
+	 * World point where this agent's egress tenability first failed — the pose a fail marker pins to.
+	 * Deliberately NOT AgentWorldPosition: the agent keeps walking after it fails, while the marker
+	 * has to stay where the failure happened for it to be a forensic record. Sourced from
+	 * FAgentEgressTenabilityFragment::DeathLocation, itself the precomputed
+	 * FAgentTenabilityTimeline::FailureLocation.
+	 *
+	 * ZeroVector means "no usable pose yet", which happens for two legitimate reasons and not only
+	 * as an error: the timeline rebuild window clears it, and a settings-only rebuild skips pose
+	 * capture and fetches poses lazily on the game thread afterwards. So a consumer must test
+	 * bTenabilityFailed && !FailureLocation.IsNearlyZero(), never bTenabilityFailed alone — one
+	 * briefly missing marker beats a pile of them stacked on the world origin.
+	 */
+	FVector FailureLocation = FVector::ZeroVector;
 };

@@ -102,6 +102,11 @@ void UAgentEgressHealthProcessor::Execute(
 				Viewer.FailureMask = Tenability.FailureMask;
 				Viewer.FirstFailureTimeSeconds = Tenability.FirstFailureTimeSeconds;
 				Viewer.bTenabilityFailed = Tenability.bTenabilityFailed;
+
+				// DeathLocation is the fragment's older name for the timeline's FailureLocation, and
+				// is already guarded to ZeroVector when the timeline has no failure or its pose has
+				// not been captured yet. Published as-is; the renderer applies the zero test.
+				Viewer.FailureLocation = Tenability.DeathLocation;
 			}
 		});
 
