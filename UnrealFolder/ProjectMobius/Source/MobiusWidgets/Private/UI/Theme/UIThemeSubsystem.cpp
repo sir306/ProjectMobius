@@ -951,13 +951,13 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		}
 		// A6b-5: text LAST, so any control-specific branch above still wins its own subtree.
 		//
-		// One ordering note, because it is the only place two owners can write the same text block. A row
-		// widget that colours its OWN labels (UFlowCounterListRow: white when selected) sits inside a themed
-		// container, so the container's recursion remaps those labels before the row's ApplyMobiusTheme
-		// re-states them. That lands correctly because the row binds OnThemeChanged at ITS construct, which
-		// is after the container's, and a dynamic multicast fires listeners in registration order — so the
-		// owner that knows the real answer always writes last. Rows are also spawned into the list well
-		// after the container is built, which makes the ordering structural rather than incidental.
+		// Widgets that colour their own labels (UFlowCounterListRow paints its text white when the row is
+		// selected) are not in conflict with this remap, and the reason is the recursion's reach rather than
+		// any ordering luck: ForEachWidget walks the DESIGN-TIME WidgetTree, so a row spawned into a list at
+		// runtime is never visited by its container's pass at all — it is themed only through its own bind,
+		// where the base runs this control pass first and the widget's ApplyMobiusTheme second. The explicit
+		// write therefore always lands after the remap WITHIN one widget, which is the guarantee that matters
+		// and does not depend on the order two different owners happen to be bound in.
 		else if (UTextBlock* Text = Cast<UTextBlock>(Widget))
 		{
 			StyleTextBlockForTheme(Text, bLight);
