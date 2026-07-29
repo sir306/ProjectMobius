@@ -39,6 +39,8 @@ public class MobiusCore : ModuleRules
 			"UE_Assimp",
 			"UE_AssimpLibrary",
 			"MobiusLogging",
+			// Public: Actors/HeatmapPixelTextureVisualizer.h holds an FHeatmapLOSBands UPROPERTY by value.
+			"Visualization",
 			"MovieSceneCapture", /* For image writing support -> built-in screenshot api causes issues when scene not fully loaded */
 		});
 
@@ -57,7 +59,6 @@ public class MobiusCore : ModuleRules
 			"WebSockets",
 			"DatasmithRuntime",
 			"DatasmithCore",
-			"Visualization",
 			"RenderCore",
 			"DatasmithContent", "MobiusDataImporter",
 		});

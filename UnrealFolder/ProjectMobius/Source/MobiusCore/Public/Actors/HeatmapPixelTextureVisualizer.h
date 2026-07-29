@@ -26,6 +26,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"         // FTSTicker for staggered tile emit
+#include "HeatmapLOSBands.h"            // FHeatmapLOSBands is a by-value UPROPERTY below
 #include "GameFramework/Actor.h"
 #include "HeatmapPixelTextureVisualizer.generated.h"
 
@@ -368,6 +369,18 @@ public:
 	int32 TrajectoryBlurKernelSize = 5;
 
 	/**
+	 * Colour band edges for the trajectory surface, pushed to both the trajectory material and the
+	 * accumulation texture's PNG colouriser so the two stay in step.
+	 *
+	 * These are deliberately NOT the Fruin density edges. The density edges put empty floor and the
+	 * first few passes in the same band, which made a correctly accumulated route render as background.
+	 * BandA sits below the first-visit seed instead, so LOS_A means "no data" and the remaining five
+	 * bands carry passage count. See FHeatmapLOSBands::Trajectory.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
+	FHeatmapLOSBands TrajectoryLOSBands = FHeatmapLOSBands::Trajectory();
+
+	/**
 	 * Is this a Standard Heatmap or a Voronoi Map:
 	 * 1 = Standard Heatmap
 	 * 0 = Voronoi Map
@@ -405,6 +418,13 @@ public:
 
 private:
 #pragma region PRIVATE_METHODS
+	/**
+	 * Push TrajectoryLOSBands to the trajectory material instance and to the accumulation texture's
+	 * colouriser. Both consume the same edges: the material bands what is on screen, the texture bands
+	 * what SaveDynamicTextureToPNG writes. Called whenever the bands or the trajectory MID change.
+	 */
+	void ApplyTrajectoryLOSBands();
+
 	/**
 	 * Method to generate a square cell size that 2 triangles will be within
 	 *
@@ -473,6 +493,14 @@ private:
 	/** The Dynamic Material Instance for voronoi heatmaps */
 	UPROPERTY(EditAnywhere, Category = "Heatmap|MaterialsAndTextures", Transient)
 	TObjectPtr<UMaterialInstanceDynamic> VoronoiMaterialInstance;
+
+	/**
+	 * The Dynamic Material Instance for the trajectory surface. Same graph as the standard heatmap, but
+	 * its band edges are scalar parameters set from TrajectoryLOSBands rather than the density constants
+	 * baked into M_HeatmapRT_V2 — see FHeatmapLOSBands for why the two surfaces cannot share edges.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Heatmap|MaterialsAndTextures", Transient)
+	TObjectPtr<UMaterialInstanceDynamic> TrajectoryMaterialInstance;
 
 	/** The Dynamic Texture for heatmap */
 	UPROPERTY(EditAnywhere, Category = "Heatmap|MaterialsAndTextures", Transient)

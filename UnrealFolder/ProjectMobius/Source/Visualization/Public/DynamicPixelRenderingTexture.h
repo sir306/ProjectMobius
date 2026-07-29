@@ -26,6 +26,7 @@
 
 
 #include "CoreMinimal.h"
+#include "HeatmapLOSBands.h"
 #include "UObject/Object.h"
 #include "RHI.h"
 #if !PLATFORM_MAC
@@ -39,6 +40,8 @@
 
 
 class FVoronoiDiagramPlugin;
+
+
 /**
  * This class is used to create a dynamic pixel rendering texture
  * A replacement for render targets as they are bad for performance when drawing repeatedly, this is due to render targets
@@ -289,9 +292,9 @@ private:
 	/** As the problem with doing colour deficiency in vr, prevents colours from updating this method handles applying LOS Colour to the texture based on the input texture */
 	void UpdateTextureToLOSColour();
 	void UpdateTextureToLOSColour(TUniquePtr<uint8[]>& BufferToColourPtr);
-	
-	
-	
+
+
+
 #pragma endregion METHODS
 
 #pragma region PROPERTIES
@@ -327,6 +330,10 @@ protected:
 	/** Threshold for triggering blur when the red channel exceeds this value */
 	UPROPERTY(EditAnywhere, Category = "DynamicPixelRenderingTexture|Properties|Blur")
 	float BlurTriggerThreshold = 0.1419f;
+
+	/** Band edges used by UpdateTextureToLOSColour. Density edges unless a surface overrides them. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|LOS")
+	FHeatmapLOSBands LOSBands;
 
 	/** The colour vision deficiency - by default it is set to normal */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|ColourDeficiency")
@@ -386,6 +393,27 @@ public:
 	/** Gets the Dynamic Texture Size */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Getters")
 	FORCEINLINE FVector2D GetDynamicTextureSize() const { return FVector2D(TextureDimensionX, TextureDimensionY); }
+
+	/**
+	 * Choose which set of band edges the colouriser and the PNG export use. A surface must set the same
+	 * edges here that it pushes to its material, otherwise the exported image and the in-world render
+	 * disagree about where the bands are.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Setters")
+	void SetLOSBands(const FHeatmapLOSBands& InBands) { LOSBands = InBands; }
+
+	/** The band edges currently applied by the colouriser. Defaults to the Fruin density edges. */
+	UFUNCTION(BlueprintPure, Category = "DynamicPixelRenderingTexture|Getters")
+	const FHeatmapLOSBands& GetLOSBands() const { return LOSBands; }
+
+	/**
+	 * The single place the band comparison chain lives on the CPU side. Exposed so tests can assert the
+	 * colour a stored byte produces without going through a texture.
+	 *
+	 * @param RVal  Stored red byte divided by 255.
+	 * @param Bands Edges to compare against.
+	 */
+	static FLinearColor BandColourForRedValue(float RVal, const FHeatmapLOSBands& Bands);
 
 #if !UE_BUILD_SHIPPING
 	/**

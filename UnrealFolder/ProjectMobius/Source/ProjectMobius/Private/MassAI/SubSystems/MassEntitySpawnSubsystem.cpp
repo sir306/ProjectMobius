@@ -58,6 +58,7 @@
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "Subsystems/HeatmapSubsystem.h" // RequestTrajectoryTrackingReset on file switch
 #include "HAL/IConsoleManager.h"
 
 class UTimeDilationSubSystem;
@@ -414,6 +415,12 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
 		{
 			StatSub->ResetForFileSwitch();
+		}
+		if (UHeatmapSubsystem* HeatmapSub = World->GetSubsystem<UHeatmapSubsystem>())
+		{
+			// The new dataset reuses entity IDs. Without this the heatmap processor joins each recycled
+			// ID to the position its predecessor last held and draws a streak across the floor.
+			HeatmapSub->RequestTrajectoryTrackingReset();
 		}
 	}
 

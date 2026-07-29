@@ -148,6 +148,24 @@ public:
 	/** Clears the trajectory render targets after a rewind, seek, or new playback session. */
 	void ClearTrajectoryHeatmaps();
 
+	/**
+	 * Ask the heatmap processor to forget every agent's last sampled trajectory position.
+	 *
+	 * The processor deliberately KEEPS those positions across a rewind or seek, so the scrubbed-to state
+	 * is joined to where the agent was and the jump renders as a visible transition rather than a hole.
+	 * That is wrong when the agent set itself is replaced — loading a different dataset reuses entity
+	 * IDs, so each recycled ID would be joined to a position belonging to the previous simulation and
+	 * draw one long straight streak across the floor on the first flush.
+	 *
+	 * Call this whenever the entities are rebuilt rather than merely re-timed. The processor consumes
+	 * the request on its next update; it is a request rather than a direct reset because the map lives
+	 * on the MASS processor, which callers on the game thread have no handle to.
+	 */
+	void RequestTrajectoryTrackingReset();
+
+	/** Processor-side half of RequestTrajectoryTrackingReset. Returns true once per request. */
+	bool ConsumeTrajectoryTrackingReset();
+
 	/** Enables or disables trajectory-path mode for every registered heatmap actor. */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
 	void SetTrajectoryHeatmapsEnabled(bool bEnabled);
@@ -251,6 +269,9 @@ protected:
 
 
 private:
+	/** Set by RequestTrajectoryTrackingReset, cleared by ConsumeTrajectoryTrackingReset. Game thread only. */
+	bool bTrajectoryTrackingResetPending = false;
+
 	/** The XY spawn point for the heatmaps */
 	UPROPERTY()
 	FVector2D XYSpawnLocation;

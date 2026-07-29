@@ -404,8 +404,19 @@ namespace TrajectoryInGame
 			switch (Scenario)
 			{
 			case EScenario::SingleRoute:
-				// One pass over an interior texel: seed 25 plus two truncated increments.
-				Test.TestEqual(TEXT("a single traversal's typical texel is 27"), Stats.ModalByte, 27);
+				// A range, not a constant. This fixture happens to land on 27 — seed 25 plus the two
+				// increments the Tier A straight-line model predicts — but that agreement is a property
+				// of THIS fixture's speed against THIS texel size, not a law.
+				//
+				// What a texel actually accumulates is dwell time: the pipeline emits one segment per
+				// agent per flush and Bresenham-walks each with a 3x3 brush, so a slower agent, a finer
+				// texture, or a shorter flush interval all re-stamp the same texel more often. Replaying
+				// a real crowd capture measured a median of 13 hits per crossing against this fixture's
+				// 3. Pinning an exact byte here would make an unrelated fixture tweak look like a
+				// regression, so bound it instead.
+				Test.TestTrue(*FString::Printf(
+						TEXT("a single traversal is above the seed but still low (was %d)"), Stats.ModalByte),
+					Stats.ModalByte > 25 && Stats.ModalByte <= 40);
 				Test.TestTrue(TEXT("a single traversal stays overwhelmingly in the lowest band"),
 					Stats.LowestBandFraction() > 0.9f);
 				break;
@@ -413,8 +424,17 @@ namespace TrajectoryInGame
 			case EScenario::SustainedRoute:
 				// Dwell puts many samples through the same few texels, so it must climb well past a
 				// single pass while touching far fewer texels than a full traverse.
+				//
+				// The spatial half of this is a regression guard, not a tuning threshold. An agent that
+				// travels 0.5 m can only light up a few dozen texels (this fixture: 26); anything
+				// approaching a full route's worth means stale per-agent positions leaked in from the
+				// previous scenario and got drawn as a bridging streak. That is exactly what this caught
+				// on its first ever run — 826 texels, 796 of them at the single-pass byte, i.e. one long
+				// line — and it is why the file-switch path now calls RequestTrajectoryTrackingReset.
 				Test.TestTrue(TEXT("dwell accumulates above a single traversal"), Stats.PeakByte > 27);
-				Test.TestTrue(TEXT("dwell stays spatially concentrated"), Stats.TouchedTexels < 400);
+				Test.TestTrue(*FString::Printf(
+						TEXT("dwell stays spatially concentrated (touched %d)"), Stats.TouchedTexels),
+					Stats.TouchedTexels < 400);
 				break;
 
 			case EScenario::OverlappingRoutes:

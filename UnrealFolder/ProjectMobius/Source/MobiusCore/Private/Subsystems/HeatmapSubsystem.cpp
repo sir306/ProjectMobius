@@ -374,6 +374,18 @@ void UHeatmapSubsystem::ClearTrajectoryHeatmaps()
 	}
 }
 
+void UHeatmapSubsystem::RequestTrajectoryTrackingReset()
+{
+	bTrajectoryTrackingResetPending = true;
+}
+
+bool UHeatmapSubsystem::ConsumeTrajectoryTrackingReset()
+{
+	const bool bPending = bTrajectoryTrackingResetPending;
+	bTrajectoryTrackingResetPending = false;
+	return bPending;
+}
+
 void UHeatmapSubsystem::SetTrajectoryHeatmapsEnabled(bool bEnabled)
 {
 	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)

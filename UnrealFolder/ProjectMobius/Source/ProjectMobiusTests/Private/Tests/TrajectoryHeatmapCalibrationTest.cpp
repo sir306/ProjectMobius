@@ -34,9 +34,35 @@ namespace TrajectoryCalibration
 	static constexpr float MinimumVisible = 0.10f;          // TrajectoryMinimumVisibleValue
 	static constexpr int32 BrushRadius = 1;                 // TrajectoryLineBrushRadius (3x3)
 
-	// --- LOS band edges, mirrored from the material custom node and the C++ macros -------------------
-	static constexpr float LOS_A = 0.1419f;
-	static constexpr float LOS_D = 0.4946f;
+	// --- LOS band edges ------------------------------------------------------------------------------
+	// Two sets, because the two heatmap surfaces measure different quantities on the same uint8 channel.
+	//
+	// Density edges are Fruin's, normalised against 2.1739 persons/m^2. They are what M_HeatmapRT_V2 and
+	// FHeatmapLOSBands::Density() use, and they are WRONG for trajectory: DensityLOS_A (byte 36.2) sits
+	// above the first-visit seed (byte 25), so bare floor and the first four passes all render LOS_A.
+	// A measured 30 s ground-floor capture had 23.8 % of its touched texels land there, indistinguishable
+	// from untouched floor. That is the bug these tests now pin against, not a property to preserve.
+	static constexpr float DensityLOS_A = 0.1419f;
+	static constexpr float DensityLOS_D = 0.4946f;
+
+	// Trajectory edges, mirrored from FHeatmapLOSBands::Trajectory() and from the scalar parameters on
+	// M_HeatmapRT_Trajectory. TrajectoryLOS_A is placed below the seed so LOS_A means "no data".
+	//
+	// IMPORTANT: these edges are NOT derived from the straight-line model this file uses elsewhere. That
+	// model gives an interior texel 3 hits per "pass" (byte 27), but it draws one line call per pass,
+	// whereas the running pipeline emits one segment per agent per flush and stamps a 3x3 brush along
+	// each -- so several consecutive flushes hit the same texel as one agent walks across it. Replaying
+	// a real 30 s capture measured a lone crossing at a median 13 hits, byte 37. Calibrating the edges
+	// off the 3-hit figure is what previously made a single quick crossing render three bands up.
+	static constexpr float TrajectoryLOS_A = 24.5f / 255.0f;
+	static constexpr float TrajectoryLOS_B = 46.5f / 255.0f;
+	static constexpr float TrajectoryLOS_D = 110.5f / 255.0f;
+	static constexpr float TrajectoryLOS_E = 175.5f / 255.0f;
+
+	/** Median byte a single agent crossing leaves, measured from the 20260728_165413 capture replay. */
+	static constexpr uint8 MeasuredLoneCrossingByte = 37;
+	/** p90 of that same distribution — a slow single crossing. */
+	static constexpr uint8 MeasuredSlowCrossingByte = 49;
 
 	// --- Derived byte expectations -------------------------------------------------------------------
 	/** The seed written to a previously untouched texel: (uint8)(0.10 * 255) == (uint8)25.5 == 25. */
@@ -94,22 +120,36 @@ namespace TrajectoryCalibration
 		return FirstPass + (PassCount - 1) * HitsPerPassInterior * ExpectedIncrementByte;
 	}
 
-	/** The band a stored byte lands in, using the material's own `RVal < BAND` comparison order. */
-	static bool IsInLowestBand(uint8 StoredByte)
+	/** True if the stored byte renders in the lowest band under the DENSITY edges. */
+	static bool IsInLowestDensityBand(uint8 StoredByte)
 	{
-		return (static_cast<float>(StoredByte) / 255.0f) < LOS_A;
+		return (static_cast<float>(StoredByte) / 255.0f) < DensityLOS_A;
+	}
+
+	/**
+	 * True if the stored byte renders in the lowest band under the TRAJECTORY edges — which, by
+	 * construction, means the texel was never visited.
+	 */
+	static bool ReadsAsNoData(uint8 StoredByte)
+	{
+		return (static_cast<float>(StoredByte) / 255.0f) < TrajectoryLOS_A;
 	}
 }
 
 // -------------------------------------------------------------------------------------------------
-// 1. A single traversal must stay in the lowest (light blue) band.
+// 1. A single traversal must be distinguishable from bare floor.
+//
+//    This test used to assert the opposite framing — "a single traversal stays inside LOS_A" — which
+//    was arithmetically true and visually useless, because under the density edges LOS_A is also the
+//    colour of an untouched texel. Passing meant "renders invisible". The assertion below is the one
+//    that has to hold for the surface to be readable at all.
 // -------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FTrajectorySinglePassStaysInLowestBandTest,
-	"ProjectMobius.Heatmap.Trajectory.SinglePassStaysInLowestBand",
+	FTrajectorySinglePassIsDistinguishableTest,
+	"ProjectMobius.Heatmap.Trajectory.SinglePassIsDistinguishable",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FTrajectorySinglePassStaysInLowestBandTest::RunTest(const FString& Parameters)
+bool FTrajectorySinglePassIsDistinguishableTest::RunTest(const FString& Parameters)
 {
 	using namespace TrajectoryCalibration;
 
@@ -124,12 +164,90 @@ bool FTrajectorySinglePassStaysInLowestBandTest::RunTest(const FString& Paramete
 	TestEqual(TEXT("One pass leaves an interior texel at the truncated byte value"),
 		Interior, static_cast<uint8>(ExpectedInteriorByte(1)));
 	TestEqual(TEXT("That byte is 27"), Interior, static_cast<uint8>(27));
-	TestTrue(TEXT("A single traversal stays inside LOS_A (light blue)"), IsInLowestBand(Interior));
+
+	// The headline property: one pass must not read as empty floor.
+	TestFalse(TEXT("A single traversal does not render as no-data"), ReadsAsNoData(Interior));
+	TestTrue(TEXT("An untouched texel does render as no-data"), ReadsAsNoData(static_cast<uint8>(0)));
+
+	// And the regression that motivated the retune: under the density edges it did.
+	TestTrue(TEXT("Under the density edges the same byte was indistinguishable from bare floor"),
+		IsInLowestDensityBand(Interior));
 
 	// The 3x3 brush means the two neighbouring rows accumulate identically, not as a falloff.
 	TestEqual(TEXT("Brush row above matches the centreline"), Texture->GetRawPixelRed(InteriorX, RouteY - 1), Interior);
 	TestEqual(TEXT("Brush row below matches the centreline"), Texture->GetRawPixelRed(InteriorX, RouteY + 1), Interior);
 	TestEqual(TEXT("Outside the brush stays untouched"), Texture->GetRawPixelRed(InteriorX, RouteY + 2), static_cast<uint8>(0));
+
+	return true;
+}
+
+// -------------------------------------------------------------------------------------------------
+// 1b. The band edges themselves: nothing a draw can produce may collide with the no-data colour, and
+//     the colouriser must agree with the edges it was handed.
+// -------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajectoryNoDataBandIsReservedTest,
+	"ProjectMobius.Heatmap.Trajectory.NoDataBandIsReserved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajectoryNoDataBandIsReservedTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryCalibration;
+
+	const FHeatmapLOSBands Bands = FHeatmapLOSBands::Trajectory();
+
+	TestEqual(TEXT("BandA matches the constant this suite mirrors"), Bands.BandA, TrajectoryLOS_A);
+	TestTrue(TEXT("BandA sits below the first-visit seed, so no drawn texel can fall in it"),
+		(static_cast<float>(ExpectedSeedByte) / 255.0f) >= Bands.BandA);
+	TestTrue(TEXT("Edges ascend"), Bands.BandA < Bands.BandB && Bands.BandB < Bands.BandC
+		&& Bands.BandC < Bands.BandD && Bands.BandD < Bands.BandE);
+	TestTrue(TEXT("The top edge leaves room for a sixth band below saturation"), Bands.BandE < 1.0f);
+
+	// Every byte a draw can leave behind must colourise to something other than the no-data colour.
+	const FLinearColor NoDataColour = UDynamicPixelRenderingTexture::BandColourForRedValue(0.0f, Bands);
+	for (int32 Byte = ExpectedSeedByte; Byte <= 255; ++Byte)
+	{
+		const FLinearColor Colour = UDynamicPixelRenderingTexture::BandColourForRedValue(
+			static_cast<float>(Byte) / 255.0f, Bands);
+		if (Colour.Equals(NoDataColour))
+		{
+			AddError(FString::Printf(TEXT("Byte %d colourises to the no-data colour"), Byte));
+			break;
+		}
+	}
+
+	// Half-byte edges mean no reachable stored value can sit exactly on a comparison boundary.
+	const float Edges[] = { Bands.BandA, Bands.BandB, Bands.BandC, Bands.BandD, Bands.BandE };
+	for (const float Edge : Edges)
+	{
+		const float ScaledEdge = Edge * 255.0f;
+		TestTrue(*FString::Printf(TEXT("Edge %.6f does not land on a whole byte"), Edge),
+			!FMath::IsNearlyEqual(ScaledEdge, FMath::RoundToFloat(ScaledEdge), 0.01f));
+	}
+
+	// The property a viewer actually judges the map by: one person walking through once must read as the
+	// lowest DATA band, not as a busy route. Both figures are measured from a real capture replay, not
+	// derived from this file's straight-line model — see the note on the constants.
+	const FLinearColor LowestDataColour = UDynamicPixelRenderingTexture::BandColourForRedValue(
+		static_cast<float>(ExpectedSeedByte) / 255.0f, Bands);
+
+	const FLinearColor LoneColour = UDynamicPixelRenderingTexture::BandColourForRedValue(
+		static_cast<float>(MeasuredLoneCrossingByte) / 255.0f, Bands);
+	TestTrue(*FString::Printf(TEXT("A typical single crossing (byte %d) renders in the lowest data band"),
+			MeasuredLoneCrossingByte),
+		LoneColour.Equals(LowestDataColour));
+	TestFalse(TEXT("...and is not mistaken for no data"), LoneColour.Equals(NoDataColour));
+
+	// A SLOW single crossing deposits as much as a couple of fast ones and may sit one band higher. That
+	// is the surface behaving correctly — it measures occupancy — so the bound here is "at most one band
+	// up", not "same band". Two bands up would mean the edges have drifted low again.
+	const FLinearColor SlowColour = UDynamicPixelRenderingTexture::BandColourForRedValue(
+		static_cast<float>(MeasuredSlowCrossingByte) / 255.0f, Bands);
+	const FLinearColor SecondDataColour = UDynamicPixelRenderingTexture::BandColourForRedValue(
+		(Bands.BandB + Bands.BandC) * 0.5f, Bands);
+	TestTrue(*FString::Printf(TEXT("A slow single crossing (byte %d) is at most one band above the lowest"),
+			MeasuredSlowCrossingByte),
+		SlowColour.Equals(LowestDataColour) || SlowColour.Equals(SecondDataColour));
 
 	return true;
 }
@@ -149,9 +267,10 @@ bool FTrajectoryRepeatPassesClimbMonotonicallyTest::RunTest(const FString& Param
 	UDynamicPixelRenderingTexture* Texture = MakeTexture();
 
 	int32 PreviousByte = -1;
-	int32 FirstPassOutsideLowestBand = INDEX_NONE;
+	int32 FirstPassOutsideLowestDensityBand = INDEX_NONE;
+	int32 FirstVisiblePassUnderTrajectoryBands = INDEX_NONE;
 
-	// 40 passes comfortably spans LOS_A through LOS_D without approaching the 255 ceiling.
+	// 40 passes comfortably spans the band set without approaching the 255 ceiling.
 	for (int32 Pass = 1; Pass <= 40; ++Pass)
 	{
 		DrawOnePass(Texture);
@@ -162,15 +281,23 @@ bool FTrajectoryRepeatPassesClimbMonotonicallyTest::RunTest(const FString& Param
 		TestTrue(*FString::Printf(TEXT("Pass %d is strictly greater than pass %d"), Pass, Pass - 1),
 			Stored > PreviousByte);
 
-		if (FirstPassOutsideLowestBand == INDEX_NONE && !IsInLowestBand(static_cast<uint8>(Stored)))
+		if (FirstPassOutsideLowestDensityBand == INDEX_NONE && !IsInLowestDensityBand(static_cast<uint8>(Stored)))
 		{
-			FirstPassOutsideLowestBand = Pass;
+			FirstPassOutsideLowestDensityBand = Pass;
+		}
+		if (FirstVisiblePassUnderTrajectoryBands == INDEX_NONE && !ReadsAsNoData(static_cast<uint8>(Stored)))
+		{
+			FirstVisiblePassUnderTrajectoryBands = Pass;
 		}
 		PreviousByte = Stored;
 	}
 
-	// byte 36 == 0.14118 is still below LOS_A (0.1419); byte 39 == 0.15294 is not.
-	TestEqual(TEXT("LOS_A is left on the fifth traversal"), FirstPassOutsideLowestBand, 5);
+	// byte 36 == 0.14118 is still below DensityLOS_A (0.1419); byte 39 == 0.15294 is not. Four passes of
+	// real movement rendering as bare floor is the defect the trajectory edges exist to remove.
+	TestEqual(TEXT("Under the density edges the lowest band is not left until the fifth traversal"),
+		FirstPassOutsideLowestDensityBand, 5);
+	TestEqual(TEXT("Under the trajectory edges the very first traversal is already visible"),
+		FirstVisiblePassUnderTrajectoryBands, 1);
 
 	return true;
 }
@@ -317,17 +444,23 @@ bool FTrajectoryDynamicRangeTest::RunTest(const FString& Parameters)
 
 	UDynamicPixelRenderingTexture* Texture = MakeTexture();
 
-	int32 FirstPassAtOrAboveLosD = INDEX_NONE;
+	int32 FirstPassAtOrAboveDensityLosD = INDEX_NONE;
+	int32 FirstPassInTrajectoryTopBand = INDEX_NONE;
 	int32 FirstSaturatedPass = INDEX_NONE;
 
 	for (int32 Pass = 1; Pass <= 120; ++Pass)
 	{
 		DrawOnePass(Texture);
 		const uint8 Stored = Texture->GetRawPixelRed(InteriorX, RouteY);
+		const float Normalised = static_cast<float>(Stored) / 255.0f;
 
-		if (FirstPassAtOrAboveLosD == INDEX_NONE && (static_cast<float>(Stored) / 255.0f) >= LOS_D)
+		if (FirstPassAtOrAboveDensityLosD == INDEX_NONE && Normalised >= DensityLOS_D)
 		{
-			FirstPassAtOrAboveLosD = Pass;
+			FirstPassAtOrAboveDensityLosD = Pass;
+		}
+		if (FirstPassInTrajectoryTopBand == INDEX_NONE && Normalised >= TrajectoryLOS_E)
+		{
+			FirstPassInTrajectoryTopBand = Pass;
 		}
 		if (FirstSaturatedPass == INDEX_NONE && Stored == 255)
 		{
@@ -337,9 +470,17 @@ bool FTrajectoryDynamicRangeTest::RunTest(const FString& Parameters)
 	}
 
 	// 27 + (n-1)*3 >= 127  =>  n == 35.
-	TestEqual(TEXT("The top band is reached after 35 traversals"), FirstPassAtOrAboveLosD, 35);
-	// 27 + (n-1)*3 >= 255  =>  n == 77.
-	TestEqual(TEXT("The channel saturates after 77 traversals"), FirstSaturatedPass, 77);
+	TestEqual(TEXT("Under the density edges the top band is reached after 35 traversals"),
+		FirstPassAtOrAboveDensityLosD, 35);
+	// 27 + (n-1)*3 >= 175.5  =>  n == 51, in this file's straight-line units. Note those units are NOT
+	// agent crossings: replaying a real capture put a lone crossing at ~13 hits against this model's 3,
+	// so the top band is reached after roughly 6 real crossings, not 51.
+	TestEqual(TEXT("Under the trajectory edges the top band is reached after 51 straight-line passes"),
+		FirstPassInTrajectoryTopBand, 51);
+	// 27 + (n-1)*3 >= 255  =>  n == 77. Retuning edges cannot move this: the ceiling is the increment's,
+	// not the palette's. In real terms that is only ~9-10 agent crossings — the measured capture had
+	// 18 % of its 5-crossing texels and 61 % of its 10-crossing texels already pinned at 255.
+	TestEqual(TEXT("The channel saturates after 77 straight-line passes"), FirstSaturatedPass, 77);
 
 	// Saturation must clamp, never wrap — AddSaturated is what guarantees this.
 	for (int32 Pass = 0; Pass < 5; ++Pass)

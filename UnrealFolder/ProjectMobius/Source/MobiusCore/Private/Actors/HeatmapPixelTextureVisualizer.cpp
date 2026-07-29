@@ -153,7 +153,13 @@ void AHeatmapPixelTextureVisualizer::AssignMaterialInstanceToMesh() const
 	{
 		return;
 	}
+	// Trajectory mode only replaces the banded surface. The voronoi material has no band chain at all —
+	// it saturates the raw channel — so it needs no trajectory variant and stays as-is.
 	UMaterialInstanceDynamic* Target = HeatmapType ? HeatmapMaterialInstance.Get() : VoronoiMaterialInstance.Get();
+	if (bTrajectoryHeatmap && HeatmapType && TrajectoryMaterialInstance)
+	{
+		Target = TrajectoryMaterialInstance.Get();
+	}
 	if (!Target)
 	{
 		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
@@ -271,8 +277,15 @@ void AHeatmapPixelTextureVisualizer::CreateMaterialInstances()
 	UMaterialInterface* HeatmapMaterial = LoadObject<UMaterial>(
 		nullptr, TEXT(
 			"Material'/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_V2.M_HeatmapRT_V2'"));
-	
-	
+
+	// Same graph as the standard heatmap, but with the five band edges lifted out of the custom node's
+	// HLSL into scalar parameters. The trajectory surface measures passage count, not Fruin density, so
+	// it cannot use the density edges baked into M_HeatmapRT_V2 — see FHeatmapLOSBands.
+	UMaterialInterface* TrajectoryMaterial = LoadObject<UMaterial>(
+		nullptr, TEXT(
+			"Material'/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_Trajectory.M_HeatmapRT_Trajectory'"));
+
+
 	// Assign the materials to the instance
 	// Heatmap Instance Material - by checking name we avoid renaming existing instances which is not allowed
 	const FString HeatmapInstanceName = ActorName + "HeatmapMaterialInstance";
@@ -308,6 +321,43 @@ void AHeatmapPixelTextureVisualizer::CreateMaterialInstances()
 			return;
 		}
 		VoronoiMaterialInstance = UMaterialInstanceDynamic::Create(VoronoiMaterial, this, FName(*(ActorName + "VoronoiMaterialInstance")));
+	}
+	const FString TrajectoryInstanceName = ActorName + "TrajectoryMaterialInstance";
+	if(!TrajectoryMaterialInstance || TrajectoryMaterialInstance->GetName() != TrajectoryInstanceName)
+	{
+		if (!TrajectoryMaterial)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString("Heatmap Setup Error"),
+					FText::FromString("Trajectory material missing"),
+					FText::FromString("Failed to load the trajectory heatmap material asset."),
+					FText::FromString("HeatmapPixelTextureVisualizer"));
+			}
+			return;
+		}
+		TrajectoryMaterialInstance = UMaterialInstanceDynamic::Create(TrajectoryMaterial, this, FName(*(ActorName + "TrajectoryMaterialInstance")));
+	}
+	ApplyTrajectoryLOSBands();
+}
+
+void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands()
+{
+	if (TrajectoryMaterialInstance)
+	{
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_A_Band"), TrajectoryLOSBands.BandA);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_B_Band"), TrajectoryLOSBands.BandB);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_C_Band"), TrajectoryLOSBands.BandC);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_D_Band"), TrajectoryLOSBands.BandD);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_E_Band"), TrajectoryLOSBands.BandE);
+	}
+
+	// The PNG export colourises on the CPU. Give it the same edges or the saved image and the in-world
+	// render disagree — which is exactly the discrepancy that hid this bug in the first place.
+	if (TrajectoryAccumulationTexture)
+	{
+		TrajectoryAccumulationTexture->SetLOSBands(TrajectoryLOSBands);
 	}
 }
 
@@ -360,6 +410,7 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 		TrajectoryAccumulationTexture = NewObject<UDynamicPixelRenderingTexture>(this, TEXT("TrajectoryAccumulationTexture"));
 	}
 	TrajectoryAccumulationTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue);
+	ApplyTrajectoryLOSBands();
 
 	// Only update and clear if we are in game mode
 	if(GetWorld()->IsGameWorld())
@@ -376,6 +427,12 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 
 	// Set the heatmap height displacement
 	HeatmapMaterialInstance->SetScalarParameterValue(FName("HeightScale"), HeightDisplacement);
+	if (TrajectoryMaterialInstance)
+	{
+		// Point the trajectory instance at its own accumulation buffer, not the density one.
+		TrajectoryMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("HeightScale"), HeightDisplacement);
+	}
 }
 
 bool AHeatmapPixelTextureVisualizer::CheckHeatmapAndLocationValid(const FVector& AgentLocation) const
@@ -840,6 +897,11 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapType(bool bIsStandardHeatmap, 
 	{
 		// Set the heatmap height displacement
 		HeatmapMaterialInstance->SetScalarParameterValue(FName("HeightScale"), HeightDisplacement);
+		if (TrajectoryMaterialInstance)
+		{
+			// The trajectory instance is the standard graph too, so it needs the same displacement.
+			TrajectoryMaterialInstance->SetScalarParameterValue(FName("HeightScale"), HeightDisplacement);
+		}
 	}
 
 	// Visual type changes do not discard accumulated data. A live map is refreshed immediately
@@ -875,8 +937,19 @@ void AHeatmapPixelTextureVisualizer::SetTrajectoryHeatmapEnabled(bool bEnabled)
 		{
 			HeatmapMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
 			VoronoiMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
+			if (TrajectoryMaterialInstance)
+			{
+				TrajectoryMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
+				// HeightScale is only pushed to the standard instance when a standard heatmap is selected,
+				// so the trajectory instance has to be given it here or a 3D trajectory surface renders flat.
+				TrajectoryMaterialInstance->SetScalarParameterValue(FName("HeightScale"), HeightDisplacement);
+			}
+			ApplyTrajectoryLOSBands();
 			TrajectoryAccumulationTexture->UpdateTextureRender();
 		}
+
+		// Swap the banded surface over to the trajectory band edges.
+		AssignMaterialInstanceToMesh();
 		return;
 	}
 
@@ -887,6 +960,8 @@ void AHeatmapPixelTextureVisualizer::SetTrajectoryHeatmapEnabled(bool bEnabled)
 	ClearTexture();
 	HeatmapMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), DynamicTexture->GetDynamicTexture());
 	VoronoiMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), DynamicTexture->GetDynamicTexture());
+	// Put the density-banded surface back on the mesh before repainting it with density data.
+	AssignMaterialInstanceToMesh();
 	UpdateHeatmapTextureRender();
 
 	if (UWorld* CurrentWorld = GetWorld())

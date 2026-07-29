@@ -1020,8 +1020,37 @@ void UDynamicPixelRenderingTexture::ConvertColourToCVDSimColour(FLinearColor& Ne
 }
 
 
+FLinearColor UDynamicPixelRenderingTexture::BandColourForRedValue(float RVal, const FHeatmapLOSBands& Bands)
+{
+	// Mirrors the `RVal < BAND` comparison chain in the heatmap material's custom node, in the same
+	// order. The two must agree or the exported PNG stops representing what is drawn in the world.
+	if (RVal < Bands.BandA)
+	{
+		return LOS_A_COLOR;
+	}
+	if (RVal < Bands.BandB)
+	{
+		return LOS_B_COLOR;
+	}
+	if (RVal < Bands.BandC)
+	{
+		return LOS_C_COLOR;
+	}
+	if (RVal < Bands.BandD)
+	{
+		return LOS_D_COLOR;
+	}
+	if (RVal < Bands.BandE)
+	{
+		return LOS_E_COLOR;
+	}
+	return LOS_F_COLOR; // Clamp to the highest band color
+}
+
 void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour()
 {
+	const FHeatmapLOSBands Bands = LOSBands;
+
 	// loop over the texture and apply the LOS colour
 	// loop over all pixels
 	ParallelFor(TextureDimensionY, [&](int32 y)
@@ -1037,47 +1066,9 @@ void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour()
 
 			// convert the byte value to a float
 			float RVal = ByteRVal / 255.0f;
-			
-			// Determine the band and interpolate the color
-			FLinearColor NewColor = LOS_A_COLOR;
-			
-			if (RVal < LOS_A_BAND)
-			{
-				NewColor = LOS_A_COLOR;
-			}
-			else if (RVal < LOS_B_BAND)
-			{
-				//float T = (RVal - LOS_A_BAND) / (LOS_B_BAND - LOS_A_BAND);
-				//NewColor = FMath::Lerp(LOS_A_COLOR, LOS_B_COLOR, T);
-				NewColor = LOS_B_COLOR;
-			}
-			else if (RVal < LOS_C_BAND)
-			{
-				//float T = (RVal - LOS_B_BAND) / (LOS_C_BAND - LOS_B_BAND);
-				//NewColor = FMath::Lerp(LOS_B_COLOR, LOS_C_COLOR, T);
-				NewColor = LOS_C_COLOR;
-			}
-			else if (RVal < LOS_D_BAND)
-			{
-				//float T = (RVal - LOS_C_BAND) / (LOS_D_BAND - LOS_C_BAND);
-				//NewColor = FMath::Lerp(LOS_C_COLOR, LOS_D_COLOR, T);
-				NewColor = LOS_D_COLOR;
-			}
-			else if (RVal < LOS_E_BAND)
-			{
-				//float T = (RVal - LOS_D_BAND) / (LOS_E_BAND - LOS_D_BAND);
-				//NewColor = FMath::Lerp(LOS_D_COLOR, LOS_E_COLOR, T);
-				NewColor = LOS_E_COLOR;
-			}
-			// else if (RVal <= LOS_F_BAND)
-			// {
-			// 	float T = (RVal - LOS_E_BAND) / (LOS_F_BAND - LOS_E_BAND);
-			// 	NewColor = FMath::Lerp(LOS_E_COLOR, LOS_F_COLOR, T);
-			// }
-			else
-			{
-				NewColor = LOS_F_COLOR; // Clamp to the highest band color
-			}
+
+			// Determine the band colour
+			FLinearColor NewColor = BandColourForRedValue(RVal, Bands);
 
 			// To Keep the height displacement for 3D visualization, the old R value is used for the new Alpha value - as alpha isn't used
 			NewColor.A = RVal;
@@ -1087,11 +1078,13 @@ void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour()
 			bIsBlurRequired = true;
 		}
 	}, EParallelForFlags::PumpRenderingThread);
-	
+
 }
 
 void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour(TUniquePtr<uint8[]>& BufferToColourPtr)
 {
+	const FHeatmapLOSBands Bands = LOSBands;
+
 	// loop over the texture and apply the LOS colour
 	// loop over all pixels
 	ParallelFor(TextureDimensionY, [&](int32 y)
@@ -1107,52 +1100,14 @@ void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour(TUniquePtr<uint8[]>
 
 			// convert the byte value to a float
 			float RVal = ByteRVal / 255.0f;
-			
-			// Determine the band and interpolate the color
-			FLinearColor NewColor = LOS_A_COLOR;
-			
-			if (RVal < LOS_A_BAND)
-			{
-				NewColor = LOS_A_COLOR;
-			}
-			else if (RVal < LOS_B_BAND)
-			{
-				//float T = (RVal - LOS_A_BAND) / (LOS_B_BAND - LOS_A_BAND);
-				//NewColor = FMath::Lerp(LOS_A_COLOR, LOS_B_COLOR, T);
-				NewColor = LOS_B_COLOR;
-			}
-			else if (RVal < LOS_C_BAND)
-			{
-				//float T = (RVal - LOS_B_BAND) / (LOS_C_BAND - LOS_B_BAND);
-				//NewColor = FMath::Lerp(LOS_B_COLOR, LOS_C_COLOR, T);
-				NewColor = LOS_C_COLOR;
-			}
-			else if (RVal < LOS_D_BAND)
-			{
-				//float T = (RVal - LOS_C_BAND) / (LOS_D_BAND - LOS_C_BAND);
-				//NewColor = FMath::Lerp(LOS_C_COLOR, LOS_D_COLOR, T);
-				NewColor = LOS_D_COLOR;
-			}
-			else if (RVal < LOS_E_BAND)
-			{
-				//float T = (RVal - LOS_D_BAND) / (LOS_E_BAND - LOS_D_BAND);
-				//NewColor = FMath::Lerp(LOS_D_COLOR, LOS_E_COLOR, T);
-				NewColor = LOS_E_COLOR;
-			}
-			// else if (RVal <= LOS_F_BAND)
-			// {
-			// 	float T = (RVal - LOS_E_BAND) / (LOS_F_BAND - LOS_E_BAND);
-			// 	NewColor = FMath::Lerp(LOS_E_COLOR, LOS_F_COLOR, T);
-			// }
-			else
-			{
-				NewColor = LOS_F_COLOR; // Clamp to the highest band color
-			}
+
+			// Determine the band colour
+			const FLinearColor NewColor = BandColourForRedValue(RVal, Bands);
 
 			// SetPixelColor expects a FLinearColor in linear space
 			SetPixelColor(PixelColor, NewColor, false);
 			bIsBlurRequired = true;
 		}
 	}, EParallelForFlags::PumpRenderingThread);
-	
+
 }

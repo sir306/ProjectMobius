@@ -189,8 +189,19 @@ void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 {
 	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_UpdateHeatmapInterval);
 	if (!TimeDilationSubSystem) return;
+
+	// A new dataset recycles entity IDs, so a position remembered from the previous simulation would be
+	// joined to whichever agent inherited that ID and drawn as one long streak across the floor. Drop
+	// them before anything else this frame. Distinct from the rewind path below, which keeps them on
+	// purpose.
+	if (HeatmapSubsystem && HeatmapSubsystem->ConsumeTrajectoryTrackingReset())
+	{
+		LastTrajectoryLocations.Reset();
+		TrajectorySegments.Reset();
+	}
+
 	const float CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
-	
+
 	if (CurrentSimTime < LastUpdatedCurrentTime)
 	{
 		if (HeatmapSubsystem && HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
