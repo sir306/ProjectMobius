@@ -192,19 +192,28 @@ int32 SAgentEgressTenability::OnPaint(
 		// FailureLocation for the two windows where a genuinely failed agent has no pose yet.
 		if (bWantFailMarkers && Agent.bTenabilityFailed && !Agent.FailureLocation.IsNearlyZero())
 		{
+			// Resolve the slot before projecting. The per-type gate keys off the icon that would be
+			// drawn — FirstFailureCriterion via its slot — and NOT off FailureMask, which holds every
+			// simultaneously failed criterion and would let "hide thermal" remove a marker visibly
+			// showing the gas icon. Testing it first also means a hidden type costs no projection.
+			const float AtlasSlot = TenabilityFailMarkerAtlasSlot(Agent.FirstFailureCriterion);
+
 			FVector MarkerWorldLocation = Agent.FailureLocation;
 			MarkerWorldLocation.Z += Widget->FailMarkerHeightOffset;
 
 			FVector2D MarkerViewportPosition;
 			const double MarkerDistance = FVector::Dist(CameraLocation, MarkerWorldLocation);
-			if (MarkerDistance > UE_DOUBLE_SMALL_NUMBER
+			if (Widget->IsFailMarkerSlotVisible(static_cast<int32>(AtlasSlot))
+				&& MarkerDistance > UE_DOUBLE_SMALL_NUMBER
 				&& UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
 					PlayerController, MarkerWorldLocation, MarkerViewportPosition,
 					/*bPlayerViewportRelative*/ false))
 			{
+				// FailMarkerMinimumScale, not the bar's MinimumScale: markers need a much higher floor
+				// to stay legible, and the bar's default of 0.05 would render one at 1.6 px.
 				const float MarkerScale = FMath::Clamp(
 					Widget->ReferenceDistance / static_cast<float>(MarkerDistance),
-					Widget->MinimumScale,
+					Widget->FailMarkerMinimumScale,
 					Widget->MaximumScale);
 
 				const FVector2D MarkerAbsolutePosition(
@@ -216,8 +225,7 @@ int32 SAgentEgressTenability::OnPaint(
 				FSlateVectorArtInstanceData MarkerInstanceData;
 				MarkerInstanceData.SetPosition(MarkerAbsolutePosition);
 				MarkerInstanceData.SetScale(MarkerScale);
-				MarkerInstanceData.SetBaseAddress(
-					TenabilityFailMarkerAtlasSlot(Agent.FirstFailureCriterion));
+				MarkerInstanceData.SetBaseAddress(AtlasSlot);
 
 				FPendingFailMarker& Pending = MutableThis->PendingFailMarkers.AddDefaulted_GetRef();
 				Pending.InstanceData = FVector4f(MarkerInstanceData.GetData());

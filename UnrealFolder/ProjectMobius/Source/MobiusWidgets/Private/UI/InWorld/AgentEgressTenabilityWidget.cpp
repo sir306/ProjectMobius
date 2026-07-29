@@ -60,6 +60,17 @@ TConstArrayView<FAgentEgressTenabilityViewer> UAgentEgressTenabilityWidget::GetA
 		: TConstArrayView<FAgentEgressTenabilityViewer>();
 }
 
+bool UAgentEgressTenabilityWidget::IsFailMarkerSlotVisible(const int32 AtlasSlot) const
+{
+	switch (AtlasSlot)
+	{
+	case 0: return bShowThermalFailMarkers;
+	case 1: return bShowGasFailMarkers;
+	case 2: return bShowVisibilityFailMarkers;
+	default: return bShowUnattributedFailMarkers;
+	}
+}
+
 void UAgentEgressTenabilityWidget::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
@@ -70,6 +81,9 @@ void UAgentEgressTenabilityWidget::SynchronizeProperties()
 	InitialInstanceCapacity = FMath::Max(InitialInstanceCapacity, 1);
 
 	FailMarkerHeightOffset = FMath::Max(FailMarkerHeightOffset, 0.0f);
+	// Clamped against MaximumScale, not MinimumScale: the marker floor is deliberately allowed to sit
+	// above the bar's, but it can never exceed the shared ceiling or the clamp would invert.
+	FailMarkerMinimumScale = FMath::Clamp(FailMarkerMinimumScale, 0.001f, MaximumScale);
 
 	if (SlateWidget.IsValid())
 	{
