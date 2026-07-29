@@ -117,6 +117,7 @@ int32 SAgentEgressTenability::OnPaint(
 	// Reset() keeps the allocation, so the marker scratch costs nothing per frame after the first.
 	const bool bWantFailMarkers = Widget->bShowFailMarkers && FailMarkerMeshId != MAX_uint32;
 	MutableThis->PendingFailMarkers.Reset();
+	MutableThis->FailMarkerStats = FFailMarkerDebugStats();
 
 	const FVector2D WidgetTopLeft = AllottedGeometry.LocalToAbsolute(FVector2D::ZeroVector);
 	const FVector CameraLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
@@ -126,6 +127,74 @@ int32 SAgentEgressTenability::OnPaint(
 		if (Agent.AgentID < 0)
 		{
 			continue;
+		}
+
+		// Fail markers are resolved BEFORE the bar's own guards below, deliberately. A marker is
+		// pinned where the failure happened, so it must not depend on the agent still being visible:
+		// the agent walks on, can leave every modelled room (clearing bHasTenabilityData), or can pass
+		// behind the camera, and its failure point may still be on screen. Emitting after those
+		// continues made the marker vanish along with the agent, which defeats a forensic pin.
+		// Tallied before the emission gate, and independent of it, so the summary still reports what
+		// the data contains when markers are toggled off or the mesh never registered.
+		if (Agent.bTenabilityFailed)
+		{
+			++MutableThis->FailMarkerStats.FailedAgents;
+			if (!Agent.FailureLocation.IsNearlyZero())
+			{
+				++MutableThis->FailMarkerStats.WithPose;
+			}
+		}
+
+		// Fail marker. Anchored at FailureLocation, NOT at the agent, so it needs its own projection —
+		// the agent walks on after failing while the marker stays where conditions went untenable.
+		// That extra projection is paid only for agents that have actually failed, not per agent.
+		//
+		// FailureMask is NOT a has-failed test: an agent that has not failed retains the instantaneous
+		// current-frame mask, which is routinely non-zero. bTenabilityFailed is the only such test.
+		// The zero-location guard is not paranoia either — see FAgentEgressTenabilityViewer::
+		// FailureLocation for the two windows where a genuinely failed agent has no pose yet.
+		if (bWantFailMarkers && Agent.bTenabilityFailed && !Agent.FailureLocation.IsNearlyZero())
+		{
+			// Resolve the slot before projecting. The per-type gate keys off the icon that would be
+			// drawn — FirstFailureCriterion via its slot — and NOT off FailureMask, which holds every
+			// simultaneously failed criterion and would let "hide thermal" remove a marker visibly
+			// showing the gas icon. Testing it first also means a hidden type costs no projection.
+			const float AtlasSlot = TenabilityFailMarkerAtlasSlot(Agent.FirstFailureCriterion);
+
+			FVector MarkerWorldLocation = Agent.FailureLocation;
+			MarkerWorldLocation.Z += Widget->FailMarkerHeightOffset;
+
+			FVector2D MarkerViewportPosition;
+			const double MarkerDistance = FVector::Dist(CameraLocation, MarkerWorldLocation);
+			if (Widget->IsFailMarkerSlotVisible(static_cast<int32>(AtlasSlot))
+				&& MarkerDistance > UE_DOUBLE_SMALL_NUMBER
+				&& UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+					PlayerController, MarkerWorldLocation, MarkerViewportPosition,
+					/*bPlayerViewportRelative*/ false))
+			{
+				// FailMarkerMinimumScale, not the bar's MinimumScale: markers need a much higher floor
+				// to stay legible, and the bar's default of 0.05 would render one at 1.6 px.
+				const float MarkerScale = FMath::Clamp(
+					Widget->ReferenceDistance / static_cast<float>(MarkerDistance),
+					Widget->FailMarkerMinimumScale,
+					Widget->MaximumScale);
+
+				const FVector2D MarkerAbsolutePosition(
+					WidgetTopLeft.X + MarkerViewportPosition.X * AllottedGeometry.Scale,
+					WidgetTopLeft.Y + MarkerViewportPosition.Y * AllottedGeometry.Scale);
+
+				// FirstFailureCriterion, never CurrentDominantCriterion: risks keep evolving after the
+				// failure, so an icon driven by the live dominant criterion flickers between types.
+				FSlateVectorArtInstanceData MarkerInstanceData;
+				MarkerInstanceData.SetPosition(MarkerAbsolutePosition);
+				MarkerInstanceData.SetScale(MarkerScale);
+				MarkerInstanceData.SetBaseAddress(AtlasSlot);
+
+				FPendingFailMarker& Pending = MutableThis->PendingFailMarkers.AddDefaulted_GetRef();
+				Pending.InstanceData = FVector4f(MarkerInstanceData.GetData());
+				Pending.CameraDistance = static_cast<float>(MarkerDistance);
+				++MutableThis->FailMarkerStats.Emitted;
+			}
 		}
 
 		// No measurement for this agent -> draw nothing. The instance encoding below packs criterion
@@ -182,56 +251,6 @@ int32 SAgentEgressTenability::OnPaint(
 		InstanceData.SetBaseAddress(EncodedTenability);
 		PerInstanceUpdate.Add(FVector4f(InstanceData.GetData()));
 
-		// Fail marker. Anchored at FailureLocation, NOT at the agent, so it needs its own projection —
-		// the agent walks on after failing while the marker stays where conditions went untenable.
-		// That extra projection is paid only for agents that have actually failed, not per agent.
-		//
-		// FailureMask is NOT a has-failed test: an agent that has not failed retains the instantaneous
-		// current-frame mask, which is routinely non-zero. bTenabilityFailed is the only such test.
-		// The zero-location guard is not paranoia either — see FAgentEgressTenabilityViewer::
-		// FailureLocation for the two windows where a genuinely failed agent has no pose yet.
-		if (bWantFailMarkers && Agent.bTenabilityFailed && !Agent.FailureLocation.IsNearlyZero())
-		{
-			// Resolve the slot before projecting. The per-type gate keys off the icon that would be
-			// drawn — FirstFailureCriterion via its slot — and NOT off FailureMask, which holds every
-			// simultaneously failed criterion and would let "hide thermal" remove a marker visibly
-			// showing the gas icon. Testing it first also means a hidden type costs no projection.
-			const float AtlasSlot = TenabilityFailMarkerAtlasSlot(Agent.FirstFailureCriterion);
-
-			FVector MarkerWorldLocation = Agent.FailureLocation;
-			MarkerWorldLocation.Z += Widget->FailMarkerHeightOffset;
-
-			FVector2D MarkerViewportPosition;
-			const double MarkerDistance = FVector::Dist(CameraLocation, MarkerWorldLocation);
-			if (Widget->IsFailMarkerSlotVisible(static_cast<int32>(AtlasSlot))
-				&& MarkerDistance > UE_DOUBLE_SMALL_NUMBER
-				&& UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-					PlayerController, MarkerWorldLocation, MarkerViewportPosition,
-					/*bPlayerViewportRelative*/ false))
-			{
-				// FailMarkerMinimumScale, not the bar's MinimumScale: markers need a much higher floor
-				// to stay legible, and the bar's default of 0.05 would render one at 1.6 px.
-				const float MarkerScale = FMath::Clamp(
-					Widget->ReferenceDistance / static_cast<float>(MarkerDistance),
-					Widget->FailMarkerMinimumScale,
-					Widget->MaximumScale);
-
-				const FVector2D MarkerAbsolutePosition(
-					WidgetTopLeft.X + MarkerViewportPosition.X * AllottedGeometry.Scale,
-					WidgetTopLeft.Y + MarkerViewportPosition.Y * AllottedGeometry.Scale);
-
-				// FirstFailureCriterion, never CurrentDominantCriterion: risks keep evolving after the
-				// failure, so an icon driven by the live dominant criterion flickers between types.
-				FSlateVectorArtInstanceData MarkerInstanceData;
-				MarkerInstanceData.SetPosition(MarkerAbsolutePosition);
-				MarkerInstanceData.SetScale(MarkerScale);
-				MarkerInstanceData.SetBaseAddress(AtlasSlot);
-
-				FPendingFailMarker& Pending = MutableThis->PendingFailMarkers.AddDefaulted_GetRef();
-				Pending.InstanceData = FVector4f(MarkerInstanceData.GetData());
-				Pending.CameraDistance = static_cast<float>(MarkerDistance);
-			}
-		}
 
 		if (bWantDebug)
 		{
@@ -244,6 +263,10 @@ int32 SAgentEgressTenability::OnPaint(
 			Marker.AccumulatedToxicFED = Agent.AccumulatedToxicFED;
 			Marker.AccumulatedThermalFED = Agent.AccumulatedThermalFED;
 			Marker.CurrentTemperatureC = Agent.CurrentTemperatureC;
+			Marker.bTenabilityFailed = Agent.bTenabilityFailed;
+			Marker.bHasFailurePose = !Agent.FailureLocation.IsNearlyZero();
+			Marker.FirstFailureCriterion = Agent.FirstFailureCriterion;
+			Marker.FirstFailureTimeSeconds = Agent.FirstFailureTimeSeconds;
 		}
 	}
 
@@ -281,33 +304,68 @@ int32 SAgentEgressTenability::OnPaint(
 		InWidgetStyle,
 		bParentEnabled);
 
-	if (DebugMarkers.Num() == 0)
+	if (!bWantDebug)
 	{
 		return MaxLayerId;
 	}
 
-	// Per-agent debug text: "<CRIT> R<DisplayRisk> v<vis> fT<toxic> fR<thermal> T<temp>".
 	const int32 TextLayer = MaxLayerId + 1;
 	const FSlateFontInfo DebugFont = FCoreStyle::GetDefaultFontStyle("Bold", 7);
 	const FLinearColor TextColour(0.0f, 0.0f, 0.0f, 0.95f);
 
+	// One fail marker summary, drawn even when no agent qualifies. Separates the three reasons a
+	// marker can be absent, which are otherwise indistinguishable on screen: nothing has failed, the
+	// failures have no captured pose yet, or the marker mesh never registered at all.
+	{
+		const FString Summary = FString::Printf(
+			TEXT("FailMarkers: mesh=%s agents=%d failed=%d posed=%d emitted=%d"),
+			FailMarkerMeshId == MAX_uint32 ? TEXT("UNREGISTERED") : TEXT("ok"),
+			AgentData.Num(),
+			FailMarkerStats.FailedAgents,
+			FailMarkerStats.WithPose,
+			FailMarkerStats.Emitted);
+
+		FSlateDrawElement::MakeText(
+			OutDrawElements,
+			TextLayer,
+			AllottedGeometry.ToPaintGeometry(
+				FVector2D(560.0f, 14.0f), FSlateLayoutTransform(FVector2D(8.0f, 8.0f))),
+			Summary,
+			DebugFont,
+			ESlateDrawEffect::None,
+			TextColour);
+	}
+
+	if (DebugMarkers.Num() == 0)
+	{
+		return TextLayer;
+	}
+
 	for (const FDebugMarker& Marker : DebugMarkers)
 	{
+		// "<live CRIT> R<risk> v<vis> fT<toxic> fR<thermal> T<temp> F<failed> P<has pose>
+		//  <first-failure CRIT> t<first failure time>". The trailing group is what tells a missing
+		// marker apart: F0 means the timeline never recorded a failure, so risk saturating at R1.00
+		// is irrelevant; F1 P0 means it failed but its pose has not been captured yet.
 		const FString Line = FString::Printf(
-			TEXT("%s R%.2f v%.0f fT%.2f fR%.2f T%.0f"),
+			TEXT("%s R%.2f v%.0f fT%.2f fR%.2f T%.0f F%d P%d %s t%.1f"),
 			TenabilityCriterionLabel(Marker.ShownCriterion),
 			Marker.DisplayRisk,
 			Marker.CurrentVisibilityM,
 			Marker.AccumulatedToxicFED,
 			Marker.AccumulatedThermalFED,
-			Marker.CurrentTemperatureC);
+			Marker.CurrentTemperatureC,
+			Marker.bTenabilityFailed ? 1 : 0,
+			Marker.bHasFailurePose ? 1 : 0,
+			TenabilityCriterionLabel(Marker.FirstFailureCriterion),
+			Marker.FirstFailureTimeSeconds);
 
 		// Place the label just above the bar (bar sits at the projected point).
 		const FVector2D TextPos = Marker.LocalPosition - FVector2D(40.0f * Marker.Scale, 14.0f * Marker.Scale);
 		FSlateDrawElement::MakeText(
 			OutDrawElements,
 			TextLayer,
-			AllottedGeometry.ToPaintGeometry(FVector2D(160.0f, 12.0f), FSlateLayoutTransform(TextPos)),
+			AllottedGeometry.ToPaintGeometry(FVector2D(300.0f, 12.0f), FSlateLayoutTransform(TextPos)),
 			Line,
 			DebugFont,
 			ESlateDrawEffect::None,

@@ -51,6 +51,25 @@ private:
 		float AccumulatedToxicFED = 0.0f;
 		float AccumulatedThermalFED = 0.0f;
 		float CurrentTemperatureC = 0.0f;
+
+		// Fail marker diagnostics. DisplayRisk saturating at 1.0 says nothing about whether the agent
+		// has failed - risk is sampled live, failure is precomputed - so these are the only on-screen
+		// way to tell a missing marker caused by "never failed" from one caused by "no pose captured".
+		bool bTenabilityFailed = false;
+		bool bHasFailurePose = false;
+		uint8 FirstFailureCriterion = 0;
+		float FirstFailureTimeSeconds = -1.0f;
+	};
+
+	/**
+	 * Per-frame fail marker tallies, drawn as one summary line while debug text is on. Distinguishes
+	 * the three reasons no marker appears: none failed, none has a pose, or the mesh never registered.
+	 */
+	struct FFailMarkerDebugStats
+	{
+		int32 FailedAgents = 0;
+		int32 WithPose = 0;
+		int32 Emitted = 0;
 	};
 
 	/**
@@ -76,4 +95,7 @@ private:
 	 * a handful rather than the whole crowd.
 	 */
 	TArray<FPendingFailMarker> PendingFailMarkers;
+
+	/** Tallies for the fail marker debug summary, refreshed every paint. */
+	FFailMarkerDebugStats FailMarkerStats;
 };
