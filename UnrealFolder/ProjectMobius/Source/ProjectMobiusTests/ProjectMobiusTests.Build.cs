@@ -25,6 +25,7 @@ public class ProjectMobiusTests : ModuleRules
 			"JsonUtilities",
 			"MobiusCore",
 			"Visualization", // TrajectoryHeatmapCalibrationTest drives UDynamicPixelRenderingTexture directly
+			"UMG", // SlateVectorArtQuadTest inspects USlateVectorArtData (extent/verts/material)
 		});
 	}
 }
