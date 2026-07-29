@@ -112,7 +112,16 @@ namespace
 		{
 			// De-latch: covers scrubbing back before the failure time AND the timeline-rebuild window,
 			// which resets DeathTimeSeconds to -1 on every entity.
-			RenderFrag.bHiddenByTenabilityFailure = false;
+			//
+			// Guarded so this writes only on the hidden->shown TRANSITION. An unconditional store would
+			// be correct but would dirty the rendering fragment's cache line for EVERY tenable agent on
+			// EVERY frame, inside a ParallelFor over the whole crowd — write-invalidating lines other
+			// cores are reading, to store a value that is already there. The false path used to touch
+			// this fragment not at all; keep it read-only in the common case.
+			if (RenderFrag.bHiddenByTenabilityFailure)
+			{
+				RenderFrag.bHiddenByTenabilityFailure = false;
+			}
 			return false;
 		}
 
