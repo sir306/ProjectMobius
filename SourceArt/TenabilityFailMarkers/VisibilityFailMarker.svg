@@ -5,7 +5,7 @@
        Transparent background, strokes only: the strokes ARE the mask. Colour comes from
        the runtime material; #333333 is an authoring colour only.
 
-       The eye corners are MITERED points, not rounded -- rounding them softens the whole
+       The eye corners are MITERED points, not rounded: rounding them softens the whole
        icon and is what made an earlier draft read as cartoonish. The slash runs through
        the pupil and overhangs the eye at both ends. The three haze bars are deliberately
        uneven (short, longest, medium) with the top bar sitting left of centre; even,

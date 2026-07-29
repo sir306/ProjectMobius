@@ -3,7 +3,7 @@
        Warning triangle with a question mark.
 
        Drawn when an agent has bTenabilityFailed set but FirstFailureCriterion is not one
-       of the three criteria that have their own icon -- i.e. Temperature or LayerHeight
+       of the three criteria that have their own icon, i.e. Temperature or LayerHeight
        (both default OFF in FTenabilityAnalysisSettings, but the codebase explicitly
        advises enabling Temperature for scenarios where FEDRadSum saturates), or
        ETenabilityCriterion::None, which alongside a failure flag means a genuine bug.

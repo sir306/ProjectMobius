@@ -6,7 +6,7 @@
        the runtime material; #333333 is an authoring colour only.
 
        The cloud is nine small circular arcs, one per lobe. That lobe scale is what reads
-       as a cloud -- a few broad curves at this size read as a speech bubble instead. Each
+       as a cloud: a few broad curves at this size read as a speech bubble instead. Each
        lobe being its own arc also means one lobe can be resized by hand without
        disturbing its neighbours. The outline is left OPEN at the bottom where the wisps
        rise.

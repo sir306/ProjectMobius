@@ -4,7 +4,7 @@
 
        Transparent background, strokes only: the strokes ARE the mask. The runtime atlas
        stores one greyscale coverage channel and the material supplies the colour, so the
-       #333333 below is an authoring colour that makes the file viewable in a browser --
+       #333333 below is an authoring colour that makes the file viewable in a browser;
        it is not the in-world colour.
 
        Line weight 7 (~3% of the triangle width); the hot-surface bar is the single
