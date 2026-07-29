@@ -106,6 +106,7 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 					Health.DeathTimeSeconds = -1.0f;
 					Health.DeathLocation = FVector::ZeroVector;
 					Health.DeathRotation = FRotator::ZeroRotator;
+					Health.TimelineIntervalCount = 0;
 				}
 			});
 		return;
@@ -227,6 +228,9 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 
 				Health.bTenabilityFailed = bFailedByNow;
 				Health.bIsDead = bFailedByNow;
+				// Diagnostic (see the field's docs): 0 here is the reading that explains an agent which
+				// never fails despite bad-looking conditions. Free — the timeline is already in hand.
+				Health.TimelineIntervalCount = Timeline ? Timeline->Intervals.Num() : 0;
 				Health.FirstFailureTimeSeconds = Timeline ? Timeline->FirstFailureTimeSeconds : -1.0f;
 				Health.FirstFailureCriterion = Timeline ? Timeline->FirstFailureCriterion : ETenabilityCriterion::None;
 				Health.FailureMask = bFailedByNow ? Timeline->FirstFailureMask : Health.FailureMask;

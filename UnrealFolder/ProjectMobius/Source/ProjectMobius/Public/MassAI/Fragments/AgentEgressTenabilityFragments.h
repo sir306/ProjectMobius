@@ -257,6 +257,18 @@ struct PROJECTMOBIUS_API FAgentEgressTenabilityFragment : public FMassFragment
 	/** Bit flags (UE::Mobius::TenabilityFailureFlags) of all criteria failed simultaneously. */
 	uint8 FailureMask = 0;
 
+	/**
+	 * DIAGNOSTIC ONLY — never gate behaviour on this. Number of room-occupancy intervals in this
+	 * agent's precomputed timeline (FAgentTenabilityTimeline::Intervals), or 0 when it has no timeline.
+	 *
+	 * Exists because 0 is the one reading that explains "this agent never fails no matter how bad the
+	 * conditions look". ComputeFailureData solves crossings by walking Intervals, so no intervals means
+	 * no crossing can be recorded whatever the room curves say, and point-in-polygon room attribution
+	 * deliberately has no bounding-box fallback — an agent that walks only through unmodelled space
+	 * accrues nothing. Distinguishes that from "intervals exist, criteria genuinely not exceeded".
+	 */
+	int32 TimelineIntervalCount = 0;
+
 	// --- Backwards-compatibility fields retained for the existing rewind history
 	//     and death-marker consumers. DisplayRisk/criteria above are authoritative. ---
 	float CombinedHazardDose = 0.0f;

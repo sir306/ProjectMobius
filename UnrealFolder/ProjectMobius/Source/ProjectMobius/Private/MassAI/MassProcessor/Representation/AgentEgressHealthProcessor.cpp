@@ -102,6 +102,8 @@ void UAgentEgressHealthProcessor::Execute(
 				Viewer.FailureMask = Tenability.FailureMask;
 				Viewer.FirstFailureTimeSeconds = Tenability.FirstFailureTimeSeconds;
 				Viewer.bTenabilityFailed = Tenability.bTenabilityFailed;
+				// Diagnostic only — the widget module cannot reach the timeline to read this itself.
+				Viewer.TimelineIntervalCount = Tenability.TimelineIntervalCount;
 
 				// DeathLocation is the fragment's older name for the timeline's FailureLocation, and
 				// is already guarded to ZeroVector when the timeline has no failure or its pose has

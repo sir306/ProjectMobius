@@ -267,6 +267,7 @@ int32 SAgentEgressTenability::OnPaint(
 			Marker.bHasFailurePose = !Agent.FailureLocation.IsNearlyZero();
 			Marker.FirstFailureCriterion = Agent.FirstFailureCriterion;
 			Marker.FirstFailureTimeSeconds = Agent.FirstFailureTimeSeconds;
+			Marker.TimelineIntervalCount = Agent.TimelineIntervalCount;
 		}
 	}
 
@@ -344,11 +345,13 @@ int32 SAgentEgressTenability::OnPaint(
 	for (const FDebugMarker& Marker : DebugMarkers)
 	{
 		// "<live CRIT> R<risk> v<vis> fT<toxic> fR<thermal> T<temp> F<failed> P<has pose>
-		//  <first-failure CRIT> t<first failure time>". The trailing group is what tells a missing
-		// marker apart: F0 means the timeline never recorded a failure, so risk saturating at R1.00
-		// is irrelevant; F1 P0 means it failed but its pose has not been captured yet.
+		//  <first-failure CRIT> t<first failure time> i<interval count>". The trailing group is what
+		// tells a missing marker apart: F0 means the timeline never recorded a failure, so risk
+		// saturating at R1.00 is irrelevant; F1 P0 means it failed but its pose has not been captured
+		// yet; and on an F0 agent, i0 says why — no room-occupancy span for the offline solver to
+		// search, so it is a room-attribution gap, not a criteria-threshold question.
 		const FString Line = FString::Printf(
-			TEXT("%s R%.2f v%.0f fT%.2f fR%.2f T%.0f F%d P%d %s t%.1f"),
+			TEXT("%s R%.2f v%.0f fT%.2f fR%.2f T%.0f F%d P%d %s t%.1f i%d"),
 			TenabilityCriterionLabel(Marker.ShownCriterion),
 			Marker.DisplayRisk,
 			Marker.CurrentVisibilityM,
@@ -358,14 +361,15 @@ int32 SAgentEgressTenability::OnPaint(
 			Marker.bTenabilityFailed ? 1 : 0,
 			Marker.bHasFailurePose ? 1 : 0,
 			TenabilityCriterionLabel(Marker.FirstFailureCriterion),
-			Marker.FirstFailureTimeSeconds);
+			Marker.FirstFailureTimeSeconds,
+			Marker.TimelineIntervalCount);
 
 		// Place the label just above the bar (bar sits at the projected point).
 		const FVector2D TextPos = Marker.LocalPosition - FVector2D(40.0f * Marker.Scale, 14.0f * Marker.Scale);
 		FSlateDrawElement::MakeText(
 			OutDrawElements,
 			TextLayer,
-			AllottedGeometry.ToPaintGeometry(FVector2D(300.0f, 12.0f), FSlateLayoutTransform(TextPos)),
+			AllottedGeometry.ToPaintGeometry(FVector2D(340.0f, 12.0f), FSlateLayoutTransform(TextPos)),
 			Line,
 			DebugFont,
 			ESlateDrawEffect::None,

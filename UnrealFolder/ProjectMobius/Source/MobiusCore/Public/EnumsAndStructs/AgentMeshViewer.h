@@ -116,4 +116,12 @@ struct FAgentEgressTenabilityViewer
 	 * briefly missing marker beats a pile of them stacked on the world origin.
 	 */
 	FVector FailureLocation = FVector::ZeroVector;
+
+	/**
+	 * DIAGNOSTIC ONLY — never gate a marker on this. Room-occupancy interval count from this agent's
+	 * precomputed timeline; mirrors FAgentEgressTenabilityFragment::TimelineIntervalCount. Surfaced on
+	 * the snapshot purely so the in-world debug label can print it, because the timeline itself is not
+	 * reachable from the widget module.
+	 */
+	int32 TimelineIntervalCount = 0;
 };

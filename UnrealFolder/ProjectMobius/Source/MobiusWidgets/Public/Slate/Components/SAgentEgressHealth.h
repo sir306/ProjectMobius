@@ -59,6 +59,10 @@ private:
 		bool bHasFailurePose = false;
 		uint8 FirstFailureCriterion = 0;
 		float FirstFailureTimeSeconds = -1.0f;
+		// Room-occupancy interval count. i0 is the reading that explains an agent which never fails
+		// however bad its live readings look: no intervals means the offline solver had no span to
+		// search, so no crossing could ever be recorded.
+		int32 TimelineIntervalCount = 0;
 	};
 
 	/**
