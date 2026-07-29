@@ -320,6 +320,18 @@ private:
 	/** Retint the shared SWS tab style + the "Mobius.Button" style-set entry in place. */
 	void ApplySharedStyles(bool bLight);
 
+	/**
+	 * A6b-2 (2026-07-29): run ApplySharedStyles now, and again the moment the asset registry finishes
+	 * scanning if it has not yet.
+	 *
+	 * This exists because ApplySharedStyles has ONE real dependency — a scanned asset registry, since it
+	 * sweeps /Game/01_Dev/Widgets for SWS assets — and at subsystem Initialize that scan is usually still
+	 * running, so the startup call themes ZERO assets. The old fix was to re-run it on every startup ticker
+	 * pass and hope one of them landed after the scan. This waits for the actual event instead, which is
+	 * what lets the ticker be deleted wholesale in A6b-6 rather than kept alive for this one duty.
+	 */
+	void ApplySharedStylesWhenRegistryReady();
+
 	EMobiusUITheme CurrentTheme = EMobiusUITheme::Dark;
 
 	/**
@@ -327,6 +339,33 @@ private:
 	 * can remove it: the core ticker is GLOBAL and outlives the PIE world, so if left registered it
 	 * fires during world teardown and walks half-destroyed widgets → the combo SMenuAnchor delegate
 	 * -access ensure (the "crash on PIE close"). Also reset when the ticker self-unregisters.
+	 *
+	 * A6b-2: everything this ticker still does is WALKER-family, so the whole thing goes in A6b-6 —
+	 * ApplyToLiveWidgets is the walk; ThemeInWorldWidgetComponents reaches its cards through
+	 * ReapplyToUserWidget, which calls ApplyToWidget; the InvalidateAllWidgets exists because the walk
+	 * changes colours behind an already-cached paint; and the ">200 leaf widgets" loop control uses the
+	 * walk's own return value as its "the HUD exists now" signal. None of that has meaning once widgets
+	 * theme themselves on construct. Do not preserve any of it — only ApplySharedStyles needed a new home.
 	 */
 	FTSTicker::FDelegateHandle StartupThemeTickerHandle;
+
+	/**
+	 * Registry-ready hook for ApplySharedStyles. Held so Deinitialize can unbind: IAssetRegistry is
+	 * MODULE-level and outlives the GameInstance exactly the way the core ticker does, and PIE builds a
+	 * fresh subsystem per session — so leaving this bound would both stack a binding per run and fire into
+	 * a dead subsystem, which is the same shape as the documented PIE-close crash above.
+	 */
+	FDelegateHandle AssetRegistryFilesLoadedHandle;
+
+	/**
+	 * True once ApplySharedStyles has run at a moment when the registry was NOT still scanning — i.e. once
+	 * it has actually been able to see the SWS assets.
+	 *
+	 * Deliberately not "has ApplySharedStyles ever run": it is also called from ApplyTheme, so a theme
+	 * toggle during load would otherwise set this while the scan was still in flight and suppress the
+	 * fix-up. The ticker checks this flag unconditionally, which is what closes the race where the scan
+	 * completes between the IsLoadingAssets() test and the OnFilesLoaded bind — that bind is a one-shot
+	 * broadcast, so a missed one never fires at all.
+	 */
+	bool bSharedStylesAppliedAfterRegistryScan = false;
 };

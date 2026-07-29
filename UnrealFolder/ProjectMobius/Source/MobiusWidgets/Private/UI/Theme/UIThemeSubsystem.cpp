@@ -394,7 +394,11 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// Retint the SHARED styles before any widget constructs: several Slate widgets (ButtonWithText
 	// labels) copy their style at construction, so the first paint must already be themed.
-	ApplySharedStyles(CurrentTheme == EMobiusUITheme::Light);
+	//
+	// A6b-2: this call usually themes ZERO assets, because the registry scan it depends on is still
+	// running here. It is kept anyway (it is the one that works in a cooked build, where the registry is
+	// already loaded) and is now backed by an explicit registry-ready hook instead of ticker repetition.
+	ApplySharedStylesWhenRegistryReady();
 
 	// D172: reliably re-theme the LIVE widgets once the UI is up. Widgets (ribbon tabs, lazily-built
 	// panels) construct AFTER this subsystem initialises, and the only other startup re-theme
@@ -430,7 +434,18 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			// handful of widgets used to eat all three passes, the ticker unregistered before the ribbon
 			// ever constructed, and the tab labels kept their construct-time white (invisible on light).
 			// The full Mobius HUD walks ~600 leaf widgets; 200 cleanly separates it from load screens.
-			ApplySharedStyles(CurrentTheme == EMobiusUITheme::Light);
+			//
+			// A6b-2: ApplySharedStyles is no longer re-run unconditionally here — it now has a registry-ready
+			// hook. What is left is an ORDERING guard for the walk, and only for the walk: the walk re-copies
+			// these shared assets into every snapshot-at-construct button, so if it ran first the buttons
+			// would take the disk-authored (light, magenta-foreground) styles on a dark start. Checked
+			// unconditionally rather than only when the bind failed, because OnFilesLoaded is a one-shot
+			// broadcast and a scan that completes between the IsLoadingAssets() test and the bind is missed
+			// outright. Dies with the walk in A6b-6, when nothing re-copies these assets any more.
+			if (!bSharedStylesAppliedAfterRegistryScan)
+			{
+				ApplySharedStylesWhenRegistryReady();
+			}
 			ThemeInWorldWidgetComponents();
 			if (ApplyToLiveWidgets(CurrentTheme == EMobiusUITheme::Light) > 200)
 			{
@@ -452,6 +467,42 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 }
 
+void UUIThemeSubsystem::ApplySharedStylesWhenRegistryReady()
+{
+	IAssetRegistry& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+
+	// Run it now regardless. In a cooked build the registry is already loaded by this point, so this IS the
+	// call that does the work and no hook is needed at all.
+	ApplySharedStyles(CurrentTheme == EMobiusUITheme::Light);
+
+	if (!Registry.IsLoadingAssets())
+	{
+		// The scan was done, so that call actually saw the SWS assets. Nothing further to wait for, and any
+		// hook left over from an earlier attempt is now redundant.
+		bSharedStylesAppliedAfterRegistryScan = true;
+		if (AssetRegistryFilesLoadedHandle.IsValid())
+		{
+			Registry.OnFilesLoaded().Remove(AssetRegistryFilesLoadedHandle);
+			AssetRegistryFilesLoadedHandle.Reset();
+		}
+		return;
+	}
+
+	// Still scanning: that call themed nothing, so re-run once the registry says it is done. AddUnique is
+	// not available on a TS multicast delegate, so guard on the handle — PIE creates a fresh subsystem per
+	// session against the same module-level registry, and a stacked binding would fire into a dead one.
+	if (AssetRegistryFilesLoadedHandle.IsValid())
+	{
+		return;
+	}
+	AssetRegistryFilesLoadedHandle = Registry.OnFilesLoaded().AddLambda([this]()
+	{
+		// Weak-safe by construction: the handle is removed in Deinitialize, so this cannot outlive the
+		// subsystem. Re-entering the same function settles the flag and clears the hook.
+		ApplySharedStylesWhenRegistryReady();
+	});
+}
+
 void UUIThemeSubsystem::Deinitialize()
 {
 	// Remove the startup re-theme ticker so it cannot fire after the world/subsystem tears down —
@@ -461,6 +512,19 @@ void UUIThemeSubsystem::Deinitialize()
 		FTSTicker::GetCoreTicker().RemoveTicker(StartupThemeTickerHandle);
 		StartupThemeTickerHandle.Reset();
 	}
+
+	// A6b-2: same hazard, same fix. IAssetRegistry is module-level and outlives this subsystem, so a hook
+	// left bound would fire into freed memory on the next scan and would also accumulate one binding per
+	// PIE session. The module may already be gone during shutdown, so ask for it without forcing a load.
+	if (AssetRegistryFilesLoadedHandle.IsValid())
+	{
+		if (const FAssetRegistryModule* Module = FModuleManager::GetModulePtr<FAssetRegistryModule>("AssetRegistry"))
+		{
+			Module->Get().OnFilesLoaded().Remove(AssetRegistryFilesLoadedHandle);
+		}
+		AssetRegistryFilesLoadedHandle.Reset();
+	}
+
 	Super::Deinitialize();
 }
 
