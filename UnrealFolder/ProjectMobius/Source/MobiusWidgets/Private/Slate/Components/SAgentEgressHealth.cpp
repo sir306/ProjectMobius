@@ -78,6 +78,11 @@ void SAgentEgressTenability::SetFailMarkerMeshAsset(
 	if (FailMarkerMeshId == MAX_uint32 && InMeshAsset)
 	{
 		FailMarkerMeshId = AddMeshWithInstancing(*InMeshAsset, FMath::Max(InitialInstanceCapacity, 1));
+
+		// Captured once here, not per paint. See the members' docs: a quad authored upright collapses to
+		// zero area once Slate drops Z, and this is the only place that shows it.
+		FailMarkerMeshExtent = InMeshAsset->GetDesiredSize();
+		FailMarkerMeshVertexCount = InMeshAsset->GetVertexData().Num();
 	}
 }
 
@@ -311,26 +316,81 @@ int32 SAgentEgressTenability::OnPaint(
 	}
 
 	const int32 TextLayer = MaxLayerId + 1;
+	// Summary sits ABOVE the per-agent labels. Agents at similar screen height produce labels that all
+	// land in one narrow band, and the summary used to share their layer at the widget's own top-left —
+	// so the one line that explains a missing marker was the line buried under every other label.
+	const int32 SummaryLayer = MaxLayerId + 2;
 	const FSlateFontInfo DebugFont = FCoreStyle::GetDefaultFontStyle("Bold", 7);
 	const FLinearColor TextColour(0.0f, 0.0f, 0.0f, 0.95f);
 
-	// One fail marker summary, drawn even when no agent qualifies. Separates the three reasons a
-	// marker can be absent, which are otherwise indistinguishable on screen: nothing has failed, the
-	// failures have no captured pose yet, or the marker mesh never registered at all.
+	// Where a marker WOULD be drawn, boxed on the debug layer. This is the test that splits the last
+	// two rows of the diagnostic table apart, which no counter can: the box is drawn from the same
+	// absolute position and the same emitted instance list the mesh uses, so
+	//   box visible, no icon -> position and emission are correct; the mesh, material or quad is at
+	//                           fault (winding / UV orientation is then the prime suspect)
+	//   no box at all        -> emission or the marker's own projection is at fault, not the art
+	// Positions come straight back out of the packed instance data (XY = absolute position, W = atlas
+	// slot), so this needs no extra per-frame storage.
+	for (const FPendingFailMarker& Pending : PendingFailMarkers)
 	{
-		const FString Summary = FString::Printf(
-			TEXT("FailMarkers: mesh=%s agents=%d failed=%d posed=%d emitted=%d"),
-			FailMarkerMeshId == MAX_uint32 ? TEXT("UNREGISTERED") : TEXT("ok"),
-			AgentData.Num(),
-			FailMarkerStats.FailedAgents,
-			FailMarkerStats.WithPose,
-			FailMarkerStats.Emitted);
+		const FVector2D MarkerAbsolute(Pending.InstanceData.X, Pending.InstanceData.Y);
+		const FVector2D MarkerLocal = AllottedGeometry.AbsoluteToLocal(MarkerAbsolute);
+		const FVector2D BoxSize(24.0f, 24.0f);
+
+		FSlateDrawElement::MakeBox(
+			OutDrawElements,
+			TextLayer,
+			AllottedGeometry.ToPaintGeometry(
+				BoxSize, FSlateLayoutTransform(MarkerLocal - BoxSize * 0.5f)),
+			FCoreStyle::Get().GetBrush("Debug.Border"),
+			ESlateDrawEffect::None,
+			FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
 
 		FSlateDrawElement::MakeText(
 			OutDrawElements,
 			TextLayer,
 			AllottedGeometry.ToPaintGeometry(
-				FVector2D(560.0f, 14.0f), FSlateLayoutTransform(FVector2D(8.0f, 8.0f))),
+				FVector2D(40.0f, 12.0f),
+				FSlateLayoutTransform(MarkerLocal + FVector2D(14.0f, -6.0f))),
+			FString::Printf(TEXT("s%d"), static_cast<int32>(Pending.InstanceData.W)),
+			DebugFont,
+			ESlateDrawEffect::None,
+			FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+	}
+
+	// One fail marker summary, drawn even when no agent qualifies. Separates the reasons a marker can
+	// be absent, which are otherwise indistinguishable on screen: nothing has failed, the failures have
+	// no captured pose yet, the marker mesh never registered, or a toggle rejected them. Given an
+	// opaque plate and its own layer so an overlapping agent label can never hide it.
+	{
+		const FString Summary = FString::Printf(
+			TEXT("FailMarkers: mesh=%s show=%s quad=%.1fx%.1f v%d | agents=%d failed=%d posed=%d emitted=%d"),
+			FailMarkerMeshId == MAX_uint32 ? TEXT("UNREGISTERED") : TEXT("ok"),
+			Widget->bShowFailMarkers ? TEXT("yes") : TEXT("NO"),
+			FailMarkerMeshExtent.X,
+			FailMarkerMeshExtent.Y,
+			FailMarkerMeshVertexCount,
+			AgentData.Num(),
+			FailMarkerStats.FailedAgents,
+			FailMarkerStats.WithPose,
+			FailMarkerStats.Emitted);
+
+		const FVector2D SummarySize(780.0f, 16.0f);
+		const FVector2D SummaryPos(8.0f, 8.0f);
+
+		FSlateDrawElement::MakeBox(
+			OutDrawElements,
+			SummaryLayer,
+			AllottedGeometry.ToPaintGeometry(SummarySize, FSlateLayoutTransform(SummaryPos)),
+			FCoreStyle::Get().GetBrush("WhiteBrush"),
+			ESlateDrawEffect::None,
+			FLinearColor(1.0f, 1.0f, 0.0f, 1.0f));
+
+		FSlateDrawElement::MakeText(
+			OutDrawElements,
+			SummaryLayer,
+			AllottedGeometry.ToPaintGeometry(
+				SummarySize, FSlateLayoutTransform(SummaryPos + FVector2D(2.0f, 1.0f))),
 			Summary,
 			DebugFont,
 			ESlateDrawEffect::None,
@@ -339,7 +399,7 @@ int32 SAgentEgressTenability::OnPaint(
 
 	if (DebugMarkers.Num() == 0)
 	{
-		return TextLayer;
+		return SummaryLayer;
 	}
 
 	for (const FDebugMarker& Marker : DebugMarkers)
@@ -376,7 +436,7 @@ int32 SAgentEgressTenability::OnPaint(
 			TextColour);
 	}
 
-	return TextLayer;
+	return SummaryLayer;
 }
 
 void SAgentEgressTenability::ClearInstances()

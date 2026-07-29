@@ -102,4 +102,16 @@ private:
 
 	/** Tallies for the fail marker debug summary, refreshed every paint. */
 	FFailMarkerDebugStats FailMarkerStats;
+
+	/**
+	 * Marker mesh 2D extent and vertex count, captured once at registration for the debug summary.
+	 *
+	 * Diagnoses a failure mode nothing else catches. StaticMeshToSlateRenderData builds each Slate vert
+	 * from FVector2f(Position.X, Position.Y) and DISCARDS Z, so a quad authored as an upright billboard
+	 * (in the XZ or YZ plane) collapses to a zero-area line. It still passes every validity check the
+	 * engine makes - valid material, 4 verts, 6 indices, no warning logged - and draws absolutely
+	 * nothing. A zero in either component here is that bug; the fix is re-authoring the quad in XY.
+	 */
+	FVector2D FailMarkerMeshExtent = FVector2D::ZeroVector;
+	int32 FailMarkerMeshVertexCount = 0;
 };
