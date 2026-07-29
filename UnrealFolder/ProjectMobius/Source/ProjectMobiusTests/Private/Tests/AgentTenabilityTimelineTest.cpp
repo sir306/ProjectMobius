@@ -18,12 +18,18 @@ namespace
 	// boundary the smaller-volume tie resolves to the first room (index 0 == A) unless
 	// preferred-room stickiness keeps the agent in its current room.
 	//  A: x in [0,1000],  B: x in [1000,2000];  both y in [0,1000], z in [0,300].
-	TArray<FBox> MakeRoomBounds()
+	//
+	// Neither carries a footprint polygon, so these are rooms known only as B-Risk's equivalent
+	// rectangle — the case that must keep resolving EXACTLY as it did before footprint containment
+	// existed. Every assertion in the legacy block below is therefore a regression gate.
+	TArray<FRoomVolume> MakeRoomVolumes()
 	{
-		TArray<FBox> Bounds;
-		Bounds.Add(FBox(FVector(0.0, 0.0, 0.0), FVector(1000.0, 1000.0, 300.0)));      // A (index 0)
-		Bounds.Add(FBox(FVector(1000.0, 0.0, 0.0), FVector(2000.0, 1000.0, 300.0)));   // B (index 1)
-		return Bounds;
+		TArray<FRoomVolume> Volumes;
+		Volumes.Add(MakeRoomVolume(                                                   // A (index 0)
+			FBox(FVector(0.0, 0.0, 0.0), FVector(1000.0, 1000.0, 300.0)), {}));
+		Volumes.Add(MakeRoomVolume(                                                   // B (index 1)
+			FBox(FVector(1000.0, 0.0, 0.0), FVector(2000.0, 1000.0, 300.0)), {}));
+		return Volumes;
 	}
 
 	TArray<int32> MakeRoomIds()
@@ -62,42 +68,148 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FAgentTenabilityTimelineCoreTest::RunTest(const FString&)
 {
-	const TArray<FBox> Bounds = MakeRoomBounds();
+	const TArray<FRoomVolume> Volumes = MakeRoomVolumes();
 
 	// --- ResolveRoomIndexAtLocation: the shared room-resolution rule ---------
 	{
 		// Inside A -> A.
 		TestEqual(TEXT("inside A -> 0"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(500, 500, 150), INDEX_NONE), 0);
+			ResolveRoomIndexAtLocation(Volumes, FVector(500, 500, 150), INDEX_NONE), 0);
 		// Inside B -> B.
 		TestEqual(TEXT("inside B -> 1"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(1500, 500, 150), INDEX_NONE), 1);
+			ResolveRoomIndexAtLocation(Volumes, FVector(1500, 500, 150), INDEX_NONE), 1);
 		// Outside all rooms -> INDEX_NONE.
 		TestEqual(TEXT("outside -> INDEX_NONE"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(5000, 500, 150), INDEX_NONE), INDEX_NONE);
+			ResolveRoomIndexAtLocation(Volumes, FVector(5000, 500, 150), INDEX_NONE), INDEX_NONE);
 		// Shared boundary x=1000 with NO preferred room: both boxes contain it and have
 		// equal volume, so the first (index 0 == A) wins the smallest-volume tie. This is
 		// exactly the extracted live rule (FindRoomStateAtLocation: strict `<` on volume,
 		// iteration order breaks ties toward the earlier room).
 		TestEqual(TEXT("boundary x=1000, no preferred -> A (tie to first)"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(1000, 500, 150), INDEX_NONE), 0);
+			ResolveRoomIndexAtLocation(Volumes, FVector(1000, 500, 150), INDEX_NONE), 0);
 		// Preferred-room stickiness: on the shared boundary the current room is kept.
 		TestEqual(TEXT("boundary x=1000, preferred B -> stays B"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(1000, 500, 150), 1), 1);
+			ResolveRoomIndexAtLocation(Volumes, FVector(1000, 500, 150), 1), 1);
 		TestEqual(TEXT("boundary x=1000, preferred A -> stays A"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(1000, 500, 150), 0), 0);
+			ResolveRoomIndexAtLocation(Volumes, FVector(1000, 500, 150), 0), 0);
 		// Preferred index that no longer contains the location falls back to the search.
 		TestEqual(TEXT("preferred stale (A) but inside B -> B"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(1500, 500, 150), 0), 1);
+			ResolveRoomIndexAtLocation(Volumes, FVector(1500, 500, 150), 0), 1);
 		// An out-of-range preferred index is ignored (treated as no preference).
 		TestEqual(TEXT("preferred out-of-range -> normal search"),
-			ResolveRoomIndexAtLocation(Bounds, FVector(500, 500, 150), 99), 0);
+			ResolveRoomIndexAtLocation(Volumes, FVector(500, 500, 150), 99), 0);
+		// A rectangle-only room's tie-break metric must equal the FBox::GetVolume() it replaced,
+		// exactly — this is what makes every assertion above a like-for-like regression gate.
+		// Compared EXACTLY, not within a tolerance: the claim is that the multiplication is the same
+		// sequence of operations, so any difference at all would mean the tie-break could diverge.
+		TestTrue(TEXT("rectangle specificity == FBox::GetVolume() exactly"),
+			Volumes[0].SpecificityVolumeCm3 == Volumes[0].Bounds.GetVolume());
+	}
+
+	// --- Footprint containment: the polygon fix -------------------------------
+	// An L-shaped corridor and a small room sitting in the L's notch. This is the 12 RoomTest
+	// shape in miniature: the corridor's BOUNDING BOX covers the whole 1000x1000 square while
+	// the corridor itself occupies only the bottom and left arms, so before footprint containment
+	// the notch resolved into the corridor and picked up the corridor's FED.
+	//
+	//   y=1000  +-----------+          Corridor ring (counter-clockwise), 200-wide arms:
+	//           |C|  notch  |            (0,0) (1000,0) (1000,200) (200,200) (200,1000) (0,1000)
+	//           |C|  room   |          Notch room: x in [200,1000], y in [200,1000].
+	//   y=200   |C+---------|          Corridor plan area = 1000*200 + 200*800 = 360000
+	//           |CCCCCCCCCCC|          Notch plan area                        = 640000
+	//   y=0     +-----------+          -> the corridor is the SMALLER room; it would win the
+	//          x=0        x=1000          tie-break anywhere both claimed a point.
+	{
+		const TArray<FVector2D> CorridorRing = {
+			FVector2D(0.0, 0.0), FVector2D(1000.0, 0.0), FVector2D(1000.0, 200.0),
+			FVector2D(200.0, 200.0), FVector2D(200.0, 1000.0), FVector2D(0.0, 1000.0)
+		};
+		const FBox Slab(FVector(0.0, 0.0, 0.0), FVector(1000.0, 1000.0, 300.0));
+
+		TArray<FRoomVolume> LShape;
+		LShape.Add(MakeRoomVolume(Slab, CorridorRing));                              // corridor (0)
+		LShape.Add(MakeRoomVolume(                                                   // notch room (1)
+			FBox(FVector(200.0, 200.0, 0.0), FVector(1000.0, 1000.0, 300.0)), {}));
+
+		// The corridor's bbox is the full square, so bbox-only resolution claimed everything.
+		TestTrue(TEXT("corridor bbox still covers the notch (the bug's precondition)"),
+			LShape[0].Bounds.IsInsideOrOn(FVector(600, 600, 150)));
+		// And it is the smaller of the two by plan area, so it would also win the tie-break.
+		TestTrue(TEXT("corridor is the smaller room by specificity"),
+			LShape[0].SpecificityVolumeCm3 < LShape[1].SpecificityVolumeCm3);
+
+		// THE FIX: a point in the notch resolves to the notch room, not the enclosing corridor.
+		TestEqual(TEXT("notch -> notch room, not the corridor"),
+			ResolveRoomIndexAtLocation(LShape, FVector(600, 600, 150), INDEX_NONE), 1);
+		// Both corridor arms still resolve to the corridor.
+		TestEqual(TEXT("bottom arm -> corridor"),
+			ResolveRoomIndexAtLocation(LShape, FVector(600, 100, 150), INDEX_NONE), 0);
+		TestEqual(TEXT("left arm -> corridor"),
+			ResolveRoomIndexAtLocation(LShape, FVector(100, 600, 150), INDEX_NONE), 0);
+		// Stickiness must not smuggle the old behaviour back in: an agent whose preferred room is
+		// the corridor, standing in the notch, is NOT kept in the corridor — the polygon rejects
+		// it and the search re-resolves. This is the case the live MASS path actually hits, since
+		// an agent walks out of the corridor into the notch carrying its previous room index.
+		TestEqual(TEXT("preferred corridor but standing in the notch -> notch room"),
+			ResolveRoomIndexAtLocation(LShape, FVector(600, 600, 150), 0), 1);
+
+		// Unmodelled space inside a footprint's bbox resolves to NO room, deliberately: B-Risk
+		// modelled no zone there, so there is no reading to attribute. Same corridor with nothing
+		// in the notch.
+		TArray<FRoomVolume> CorridorOnly;
+		CorridorOnly.Add(MakeRoomVolume(Slab, CorridorRing));
+		TestEqual(TEXT("notch with no room modelled there -> INDEX_NONE (no fabricated dose)"),
+			ResolveRoomIndexAtLocation(CorridorOnly, FVector(600, 600, 150), INDEX_NONE), INDEX_NONE);
+		// Including for an agent that just walked out of the corridor.
+		TestEqual(TEXT("preferred corridor, walked into unmodelled notch -> INDEX_NONE"),
+			ResolveRoomIndexAtLocation(CorridorOnly, FVector(600, 600, 150), 0), INDEX_NONE);
+		// The Z slab still gates: above the ceiling is outside even inside the ring.
+		TestEqual(TEXT("above the ceiling over a corridor arm -> INDEX_NONE"),
+			ResolveRoomIndexAtLocation(CorridorOnly, FVector(600, 100, 400), INDEX_NONE), INDEX_NONE);
+
+		// A wall shared by two abutting polygon rooms belongs to exactly one of them — never both
+		// (as FBox::IsInsideOrOn would) and never neither, so an agent in a doorway always lands
+		// in a room. Two unit squares meeting at x=1000.
+		const TArray<FVector2D> LeftSquare = {
+			FVector2D(0.0, 0.0), FVector2D(1000.0, 0.0), FVector2D(1000.0, 1000.0), FVector2D(0.0, 1000.0)
+		};
+		const TArray<FVector2D> RightSquare = {
+			FVector2D(1000.0, 0.0), FVector2D(2000.0, 0.0), FVector2D(2000.0, 1000.0), FVector2D(1000.0, 1000.0)
+		};
+		TArray<FRoomVolume> Abutting;
+		Abutting.Add(MakeRoomVolume(FBox(FVector(0.0, 0.0, 0.0), FVector(1000.0, 1000.0, 300.0)), LeftSquare));
+		Abutting.Add(MakeRoomVolume(FBox(FVector(1000.0, 0.0, 0.0), FVector(2000.0, 1000.0, 300.0)), RightSquare));
+		TestEqual(TEXT("point on a shared polygon wall resolves to exactly one room"),
+			ResolveRoomIndexAtLocation(Abutting, FVector(1000, 500, 150), INDEX_NONE), 1);
+	}
+
+	// --- BRiskCoord::IsPointInRing is the predicate BOTH paths use -----------
+	// Asserted directly so the smoke mask and agent->room attribution can never drift apart on
+	// where a wall is: RasteriseFootprintMask calls this same function per texel.
+	{
+		const TArray<FVector2D> Square = {
+			FVector2D(0.0, 0.0), FVector2D(100.0, 0.0), FVector2D(100.0, 100.0), FVector2D(0.0, 100.0)
+		};
+		TestTrue(TEXT("IsPointInRing: interior"),
+			BRiskCoord::IsPointInRing(Square, FVector2D(50.0, 50.0)));
+		TestFalse(TEXT("IsPointInRing: exterior"),
+			BRiskCoord::IsPointInRing(Square, FVector2D(150.0, 50.0)));
+		// Winding-independent: the ring may arrive either way round.
+		TArray<FVector2D> Reversed = Square;
+		Algo::Reverse(Reversed);
+		TestTrue(TEXT("IsPointInRing: winding does not matter"),
+			BRiskCoord::IsPointInRing(Reversed, FVector2D(50.0, 50.0)));
+		// Degenerate input is not a ring — callers reading "no polygon" as "no constraint" must
+		// check the vertex count themselves rather than rely on this returning true.
+		TestFalse(TEXT("IsPointInRing: fewer than 3 vertices is not a ring"),
+			BRiskCoord::IsPointInRing(TArray<FVector2D>({FVector2D(0.0, 0.0), FVector2D(100.0, 0.0)}),
+				FVector2D(50.0, 0.0)));
 	}
 
 	// --- Build the interval list for agent 1 ---------------------------------
 	// A for t in [0,50], B for t in [50,100], outside for t in (100,120],
 	// re-enters A for t in [120,150]. Samples every 1 s. Agent 2 present t in [0,30] only.
-	FAgentTimelineSetBuilder Builder(MakeRoomBounds(), MakeRoomIds(), MakeFEDSampler());
+	FAgentTimelineSetBuilder Builder(MakeRoomVolumes(), MakeRoomIds(), MakeFEDSampler());
 	for (int32 T = 0; T <= 150; ++T)
 	{
 		TArray<FSimMovementSample> Samples;

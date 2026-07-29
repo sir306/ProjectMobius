@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Algo/Reverse.h"
+#include "Containers/ArrayView.h"
 
 /**
  * B-Risk / Smokeview store geometry in a RIGHT-handed metric frame: X and Y are
@@ -203,6 +204,53 @@ namespace BRiskCoord
 		return 0.5 * TwiceArea;
 	}
 
+	/**
+	 * Even-odd point-in-ring test, in the ring's own 2D plane.
+	 *
+	 * THE containment predicate for a room footprint. Both the smoke mask
+	 * (RasteriseFootprintMask) and agent -> room attribution
+	 * (UE::Mobius::Tenability::ResolveRoomIndexAtLocation) resolve through this one function, so
+	 * which voxels render and which room doses an agent can never disagree about where a room's
+	 * walls are.
+	 *
+	 * Counts the ring edges crossing the ray travelling in +X from Point. A point lying exactly on
+	 * an edge is NOT boundary-inclusive, and resolves to one side deterministically: where two
+	 * rooms abut, the shared wall belongs to exactly one of them - never to both (as
+	 * FBox::IsInsideOrOn would) and never to neither, so an agent in a doorway always lands in a
+	 * room. Fewer than three vertices is not a ring and returns false; a caller that reads "no
+	 * polygon" as "no constraint" must test the vertex count itself rather than rely on this.
+	 */
+	FORCEINLINE bool IsPointInRing(const TConstArrayView<FVector2D> Ring, const FVector2D& Point)
+	{
+		const int32 VertexCount = Ring.Num();
+		if (VertexCount < 3)
+		{
+			return false;
+		}
+
+		bool bInside = false;
+		for (int32 Index = 0, Previous = VertexCount - 1; Index < VertexCount; Previous = Index++)
+		{
+			const FVector2D& Current = Ring[Index];
+			const FVector2D& Prior = Ring[Previous];
+
+			const bool bStraddlesY = (Current.Y > Point.Y) != (Prior.Y > Point.Y);
+			if (!bStraddlesY)
+			{
+				continue;
+			}
+
+			const double CrossingX = Current.X
+				+ (Point.Y - Current.Y) * (Prior.X - Current.X) / (Prior.Y - Current.Y);
+			if (Point.X < CrossingX)
+			{
+				bInside = !bInside;
+			}
+		}
+
+		return bInside;
+	}
+
 	/** Where a B-Risk room is, in Unreal space (cm). See MakeRoomFootprint. */
 	struct FRoomFootprintCm
 	{
@@ -323,8 +371,10 @@ namespace BRiskCoord
 	 * the same normalised UV needs no world transform at all — the grid and the mask share the
 	 * bounding box by construction. Row j = 0 is the bbox minimum Y.
 	 *
-	 * 255 inside, 0 outside, by an even-odd crossing test per texel. A room with no polygon
-	 * produces an all-255 mask, so consumers never need a "has footprint" branch.
+	 * 255 inside, 0 outside, by IsPointInRing per texel - the same predicate that decides which
+	 * room doses an agent, so the smoke a voxel renders and the dose an agent standing there
+	 * receives agree on the wall line by construction. A room with no polygon produces an all-255
+	 * mask, so consumers never need a "has footprint" branch.
 	 *
 	 * This is the smoke mask: the Niagara volume stays a box over the bbox, and the mask decides
 	 * which voxels render. A loop-based point-in-polygon in the shader was rejected because
@@ -364,28 +414,7 @@ namespace BRiskCoord
 			{
 				const double SampleX = MinX + ((Column + 0.5) / Resolution) * SizeX;
 
-				// Even-odd crossing count: walk each edge and count those crossing the ray
-				// travelling in +X from the sample point.
-				bool bInside = false;
-				for (int32 Index = 0, Previous = VertexCount - 1; Index < VertexCount; Previous = Index++)
-				{
-					const FVector2D& Current = Footprint.Polygon[Index];
-					const FVector2D& Prior = Footprint.Polygon[Previous];
-
-					const bool bStraddlesY = (Current.Y > SampleY) != (Prior.Y > SampleY);
-					if (!bStraddlesY)
-					{
-						continue;
-					}
-
-					const double CrossingX = Current.X
-						+ (SampleY - Current.Y) * (Prior.X - Current.X) / (Prior.Y - Current.Y);
-					if (SampleX < CrossingX)
-					{
-						bInside = !bInside;
-					}
-				}
-
+				const bool bInside = IsPointInRing(Footprint.Polygon, FVector2D(SampleX, SampleY));
 				OutMask[Row * Resolution + Column] = bInside ? 0xFF : 0x00;
 			}
 		}

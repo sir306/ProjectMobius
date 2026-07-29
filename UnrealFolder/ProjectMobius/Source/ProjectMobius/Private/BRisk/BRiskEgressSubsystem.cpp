@@ -149,17 +149,10 @@ const FBRiskEgressRoomState* UBRiskEgressSubsystem::FindRoomStateAtLocation(
 {
 	// Room containment is single-sourced through ResolveRoomIndexAtLocation so the
 	// offline timeline builder and this live sampler always agree on which room a
-	// location falls in (scientific-integrity invariant 4). RoomWorldBounds is built
+	// location falls in (scientific-integrity invariant 4). RoomVolumes is built
 	// parallel to RoomStates, so the returned index maps straight back.
-	TArray<FBox, TInlineAllocator<16>> RoomWorldBounds;
-	RoomWorldBounds.Reserve(RoomStates.Num());
-	for (const FBRiskEgressRoomState& RoomState : RoomStates)
-	{
-		RoomWorldBounds.Add(RoomState.WorldBounds);
-	}
-
 	const int32 RoomIndex = UE::Mobius::Tenability::ResolveRoomIndexAtLocation(
-		RoomWorldBounds, WorldLocation, PreferredRoomIndex);
+		RoomVolumes, WorldLocation, PreferredRoomIndex);
 
 	return RoomStates.IsValidIndex(RoomIndex) ? &RoomStates[RoomIndex] : nullptr;
 }
@@ -212,6 +205,7 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 	const float Scale = BRiskDataSubsystem->GetRoomGeometryScale();
 
 	RoomStates.SetNum(Rooms.Num());
+	RoomVolumes.SetNum(Rooms.Num());
 	RoomSeriesCaches.SetNum(Rooms.Num());
 
 	for (int32 RoomIndex = 0; RoomIndex < Rooms.Num(); ++RoomIndex)
@@ -223,13 +217,17 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 		// Must use the exact same conversion as the smoke visualizer (BRiskCoord::MakeRoomFootprint)
 		// so agent world positions map to the correct room (tenability lookup).
 		//
-		// This is the polygon's BOUNDING BOX when Zones-data.json supplied one. For a non-convex
-		// room that over-claims: an agent standing in the notch of the L-shaped corridor resolves
-		// into it. Correcting that needs a 2D point-in-polygon test in ResolveRoomIndexAtLocation,
-		// which is a separate change on a per-frame MASS path. The bbox is still strictly better
-		// than what it replaced, which had the room in the wrong place entirely.
-		RoomState.WorldBounds =
-			BRiskCoord::MakeRoomFootprint(Room, Scale, BRiskDataSubsystem->GetRoomFrame()).Bounds;
+		// The footprint is consumed WHOLE: WorldBounds takes its bounding box (the Z slab and the
+		// cheap XY reject), and RoomVolumes keeps its polygon so containment can exclude the parts
+		// of that box the room does not occupy. Both are filled here, in one loop, from one
+		// MakeRoomFootprint call — RoomVolumes is indexed to subscript RoomStates, so building them
+		// together is what makes the two arrays impossible to desync.
+		const BRiskCoord::FRoomFootprintCm Footprint =
+			BRiskCoord::MakeRoomFootprint(Room, Scale, BRiskDataSubsystem->GetRoomFrame());
+		RoomState.WorldBounds = Footprint.Bounds;
+
+		RoomVolumes[RoomIndex] =
+			UE::Mobius::Tenability::MakeRoomVolume(Footprint.Bounds, Footprint.Polygon);
 		// Default the smoke layer to the ceiling until zone data overrides it in ResolveTypedRoomState.
 		RoomState.LayerHeightWorldCm = RoomState.WorldBounds.Max.Z;
 
@@ -323,6 +321,7 @@ void UBRiskEgressSubsystem::RefreshAtTime(const float NewSimulationTime)
 void UBRiskEgressSubsystem::ClearCachedData()
 {
 	RoomStates.Reset();
+	RoomVolumes.Reset();
 	RoomSeriesCaches.Reset();
 	SampleTimeSeconds = 0.0f;
 	++Revision;
@@ -722,20 +721,22 @@ void UBRiskEgressSubsystem::RequestAgentTimelineRebuild(const UE::Mobius::Tenabi
 	// swap on the game thread (which builds a NEW fragment/provider, never mutates this one).
 	TSharedPtr<ISimSampleProvider> Provider = SimFragment->Provider;
 
-	// Room bounds + ids parallel to RoomStates (same order the live sampler resolves against), copied.
-	TArray<FBox> RoomBounds;
+	// Room geometry + ids parallel to RoomStates (same order the live sampler resolves against),
+	// copied so the worker reads an immutable snapshot. Copying RoomVolumes rather than just the
+	// bounding boxes is what keeps the offline builder resolving rooms identically to the live
+	// sampler once footprints are involved (invariant 4) — bounds alone would silently give the
+	// precomputed timelines the old over-claiming bbox rule.
+	TArray<UE::Mobius::Tenability::FRoomVolume> RoomGeometry = RoomVolumes;
 	TArray<int32> RoomIds;
-	RoomBounds.Reserve(RoomStates.Num());
 	RoomIds.Reserve(RoomStates.Num());
 	for (const FBRiskEgressRoomState& RoomState : RoomStates)
 	{
-		RoomBounds.Add(RoomState.WorldBounds);
 		RoomIds.Add(RoomState.RoomId);
 	}
 
 	// Value copy of the tenability tables (rooms x samples — small), so the FED sampler reads a
-	// private, immutable snapshot instead of live subsystem data. Indexed parallel to RoomBounds/Ids
-	// via RoomId so the builder's RoomIndex (into RoomBounds) maps to the right table. Non-const so it
+	// private, immutable snapshot instead of live subsystem data. Indexed parallel to RoomGeometry/Ids
+	// via RoomId so the builder's RoomIndex (into RoomGeometry) maps to the right table. Non-const so it
 	// can be MoveTemp'd into the async capture below (MoveTemp static-asserts against a const source).
 	TArray<FBRiskTenabilityRoomTable> Tables = BRiskDataSubsystem->GetTenabilityTables();
 
@@ -762,7 +763,7 @@ void UBRiskEgressSubsystem::RequestAgentTimelineRebuild(const UE::Mobius::Tenabi
 	TWeakObjectPtr<UBRiskEgressSubsystem> WeakThis(this);
 
 	Async(EAsyncExecution::ThreadPool,
-		[WeakThis, Serial, Cancel, Provider, RoomBounds = MoveTemp(RoomBounds), RoomIds = MoveTemp(RoomIds),
+		[WeakThis, Serial, Cancel, Provider, RoomGeometry = MoveTemp(RoomGeometry), RoomIds = MoveTemp(RoomIds),
 		 Tables = MoveTemp(Tables), Key, TimeBetweenSteps, SettingsSnapshot]() mutable
 	{
 		FAgentTimelineSet BuiltSet;
@@ -774,7 +775,7 @@ void UBRiskEgressSubsystem::RequestAgentTimelineRebuild(const UE::Mobius::Tenabi
 		{
 			// The FED sampler backs the builder with the SAME curve evaluation the live room state uses
 			// (SampleTenabilityTableAtTime) so offline dose and live display agree (integrity invariant 4).
-			// RoomIndex indexes RoomBounds/RoomIds; map it to the matching table via RoomId. Captures
+			// RoomIndex indexes RoomGeometry/RoomIds; map it to the matching table via RoomId. Captures
 			// Tables + a private copy of the RoomIndex->RoomId map BY VALUE: RoomIds is MoveTemp'd into
 			// the builder below, so a by-reference capture would dangle. Tables is captured by value into
 			// the sampler's own copy (owned by the enclosing async body) so it outlives every AddTimestep.
@@ -800,7 +801,7 @@ void UBRiskEgressSubsystem::RequestAgentTimelineRebuild(const UE::Mobius::Tenabi
 				OutThermal = Sample.FEDRadSum;
 			};
 
-			// RoomIndex -> table-index map, parallel to RoomBounds/RoomIds, resolved via RoomId. Layer 2
+			// RoomIndex -> table-index map, parallel to RoomGeometry/RoomIds, resolved via RoomId. Layer 2
 			// walks each interval's RoomIndex through this to reach the room's tenability curve. Built from
 			// a private RoomIds copy because RoomIds is MoveTemp'd into the builder just below.
 			TArray<int32> RoomIndexToTableIndex;
@@ -818,7 +819,7 @@ void UBRiskEgressSubsystem::RequestAgentTimelineRebuild(const UE::Mobius::Tenabi
 			struct FPoseKey { float TimeSeconds; FVector Location; FRotator Rotation; };
 			TMap<int32, TArray<FPoseKey>> PoseTracks;
 
-			FAgentTimelineSetBuilder Builder(MoveTemp(RoomBounds), MoveTemp(RoomIds), MoveTemp(FEDSampler));
+			FAgentTimelineSetBuilder Builder(MoveTemp(RoomGeometry), MoveTemp(RoomIds), MoveTemp(FEDSampler));
 
 			// Guaranteed-complete ascending pass (Invariant 5). Both providers implement ForEachTimestep
 			// with their own storage/reader and touch no UObject state, so this is safe off the game

@@ -3,6 +3,7 @@
 #if !UE_BUILD_SHIPPING
 
 #include "BRiskDataImporter.h"
+#include "BRisk/AgentTenabilityTimeline.h" // FRoomVolume / ResolveRoomIndexAtLocation (attribution measurement)
 #include "BRisk/BRiskDataSubsystem.h"
 #include "BRisk/BRiskEgressSubsystem.h"
 #include "BRisk/BRiskHazardVisualizer.h"
@@ -1401,6 +1402,195 @@ bool FBRiskRoomIdSuffixTest::RunTest(const FString& Parameters)
 		UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("ULOD")), INDEX_NONE);
 	TestEqual(TEXT("non-numeric suffix -> INDEX_NONE"),
 		UBRiskEgressSubsystem::ExtractRoomIdSuffix(TEXT("FED_GAS")), INDEX_NONE);
+	return true;
+}
+
+namespace
+{
+	/**
+	 * The pre-footprint resolution rule, kept verbatim as the measurement baseline: smallest
+	 * bounding-box volume among the boxes containing the point, no polygon test. This is what
+	 * ResolveRoomIndexAtLocation did before footprint containment, and comparing against it is what
+	 * turns "the fix works" into a number.
+	 */
+	int32 ResolveByBoundingBoxOnly(
+		const TArray<UE::Mobius::Tenability::FRoomVolume>& Volumes,
+		const FVector& Location)
+	{
+		int32 BestIndex = INDEX_NONE;
+		double BestVolume = TNumericLimits<double>::Max();
+		for (int32 Index = 0; Index < Volumes.Num(); ++Index)
+		{
+			const FBox& Bounds = Volumes[Index].Bounds;
+			if (!Bounds.IsInsideOrOn(Location) || Bounds.GetVolume() >= BestVolume)
+			{
+				continue;
+			}
+			BestVolume = Bounds.GetVolume();
+			BestIndex = Index;
+		}
+		return BestIndex;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskFootprintAttributionTest,
+	"ProjectMobius.BRisk.Geometry.FootprintAttribution",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+/**
+ * How much agent -> room attribution actually changes when containment honours the footprint,
+ * measured on the REAL 12 RoomTest geometry rather than a synthetic shape.
+ *
+ * Lobby 14 is a true rectangle, so its attribution must not move at all - that is the regression
+ * gate for every scenario without a Zones-data.json, which is all of them until now. Corridor 15 is
+ * the L-shaped corridor whose bounding box is 17.8 x 6.186 m (110.11 m2) around a room of just
+ * 22.986 m2, so a bbox-only rule claimed roughly five times the floor it should. This test pins
+ * that ratio, and pins the failure mode that would matter most if the two frames ever disagreed:
+ * a polygon in the wrong frame would reject every point inside its own bounding box and silently
+ * strip every agent of its room.
+ */
+bool FBRiskFootprintAttributionTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::Mobius::Tenability;
+
+	constexpr float Scale = 100.0f; // cm per metre
+	// Room 1 (rectangle) and room 2 (L-shaped corridor) exactly as Zones-data.json declares them.
+	const TArray<FBRiskRoomGeometry> Rooms = { MakeLobby14Room(), MakeCorridor15Room() };
+	constexpr int32 LobbyIndex = 0;
+	constexpr int32 CorridorIndex = 1;
+
+	TArray<FRoomVolume> Volumes;
+	FBox SweepBounds(ForceInit);
+	for (const FBRiskRoomGeometry& Room : Rooms)
+	{
+		const BRiskCoord::FRoomFootprintCm Footprint =
+			BRiskCoord::MakeRoomFootprint(Room, Scale, BRiskCoord::ERoomFrame::Revit);
+		Volumes.Add(MakeRoomVolume(Footprint.Bounds, Footprint.Polygon));
+		SweepBounds += Footprint.Bounds;
+	}
+
+	TestEqual(TEXT("both rooms produced a footprint polygon"), Volumes.Num(), 2);
+
+	// --- Frame agreement: the guard against the catastrophic failure mode ------------------
+	// Bounds and polygon come out of one MakeRoomFootprint call, so the ring must span exactly its
+	// own bounding box in XY. If a future change converted one through ToUnreal and the other
+	// through FootprintToUnreal (they differ by 90 degrees), containment would reject every point
+	// and every agent would resolve to INDEX_NONE with no other symptom.
+	for (int32 Index = 0; Index < Volumes.Num(); ++Index)
+	{
+		const FRoomVolume& Volume = Volumes[Index];
+		double RingMinX = TNumericLimits<double>::Max(), RingMaxX = -TNumericLimits<double>::Max();
+		double RingMinY = TNumericLimits<double>::Max(), RingMaxY = -TNumericLimits<double>::Max();
+		for (const FVector2D& Vertex : Volume.FootprintPolygonCm)
+		{
+			RingMinX = FMath::Min(RingMinX, Vertex.X);
+			RingMaxX = FMath::Max(RingMaxX, Vertex.X);
+			RingMinY = FMath::Min(RingMinY, Vertex.Y);
+			RingMaxY = FMath::Max(RingMaxY, Vertex.Y);
+		}
+		TestTrue(*FString::Printf(TEXT("room %d: ring spans its own bounding box in XY"), Index),
+			FMath::IsNearlyEqual(RingMinX, Volume.Bounds.Min.X, 0.01)
+			&& FMath::IsNearlyEqual(RingMinY, Volume.Bounds.Min.Y, 0.01)
+			&& FMath::IsNearlyEqual(RingMaxX, Volume.Bounds.Max.X, 0.01)
+			&& FMath::IsNearlyEqual(RingMaxY, Volume.Bounds.Max.Y, 0.01));
+	}
+
+	// --- Sweep both rules over the whole scenario at breathing height ---------------------
+	constexpr int32 SweepResolution = 400;
+	const double BreathingZ = SweepBounds.Min.Z + 160.0; // ~1.6 m, inside the 4 m rooms
+	const FVector2D SweepSize(
+		SweepBounds.Max.X - SweepBounds.Min.X, SweepBounds.Max.Y - SweepBounds.Min.Y);
+
+	TArray<int32> BoxRuleHits, FootprintRuleHits;
+	BoxRuleHits.SetNumZeroed(Volumes.Num());
+	FootprintRuleHits.SetNumZeroed(Volumes.Num());
+	int32 MovedToAnotherRoom = 0;
+	int32 LostToUnmodelledSpace = 0;
+	int32 InsideARingButUnattributed = 0;
+
+	for (int32 Row = 0; Row < SweepResolution; ++Row)
+	{
+		const double Y = SweepBounds.Min.Y + ((Row + 0.5) / SweepResolution) * SweepSize.Y;
+		for (int32 Column = 0; Column < SweepResolution; ++Column)
+		{
+			const double X = SweepBounds.Min.X + ((Column + 0.5) / SweepResolution) * SweepSize.X;
+			const FVector Point(X, Y, BreathingZ);
+
+			const int32 BoxRoom = ResolveByBoundingBoxOnly(Volumes, Point);
+			const int32 FootprintRoom = ResolveRoomIndexAtLocation(Volumes, Point, INDEX_NONE);
+
+			if (Volumes.IsValidIndex(BoxRoom))
+			{
+				++BoxRuleHits[BoxRoom];
+			}
+			if (Volumes.IsValidIndex(FootprintRoom))
+			{
+				++FootprintRuleHits[FootprintRoom];
+			}
+			else if (Volumes.IsValidIndex(BoxRoom))
+			{
+				++LostToUnmodelledSpace;
+			}
+			if (Volumes.IsValidIndex(BoxRoom) && Volumes.IsValidIndex(FootprintRoom)
+				&& BoxRoom != FootprintRoom)
+			{
+				++MovedToAnotherRoom;
+			}
+
+			// Self-consistency: a point inside a room's own ring must resolve to SOME room. If this
+			// ever fires, containment is rejecting space the footprint says is interior.
+			for (const FRoomVolume& Volume : Volumes)
+			{
+				if (Volume.Bounds.IsInsideOrOn(Point)
+					&& BRiskCoord::IsPointInRing(Volume.FootprintPolygonCm, FVector2D(X, Y))
+					&& !Volumes.IsValidIndex(FootprintRoom))
+				{
+					++InsideARingButUnattributed;
+				}
+			}
+		}
+	}
+
+	TestEqual(TEXT("no point inside a footprint ring is left unattributed"),
+		InsideARingButUnattributed, 0);
+
+	// Lobby 14 IS its bounding box, so honouring the footprint changes nothing for it. This is the
+	// number that says rectangle-only scenarios are untouched.
+	TestEqual(TEXT("Lobby 14 (a true rectangle) keeps every point it had"),
+		FootprintRuleHits[LobbyIndex], BoxRuleHits[LobbyIndex]);
+
+	// Corridor 15's real floor is 22.986 m2 inside a 110.11 m2 bounding box. The sweep should
+	// recover that ratio to within grid discretisation.
+	const double ExpectedCorridorShare = 22.986 / (17.8 * 6.186);
+	const double MeasuredCorridorShare = BoxRuleHits[CorridorIndex] > 0
+		? static_cast<double>(FootprintRuleHits[CorridorIndex]) / BoxRuleHits[CorridorIndex]
+		: 0.0;
+	AddInfo(FString::Printf(
+		TEXT("Corridor 15: bbox rule claimed %d sweep points, footprint rule claims %d ")
+		TEXT("(%.4f of them; geometry predicts %.4f). Scenario-wide: %d points moved to a ")
+		TEXT("different room, %d fell into space B-Risk modelled no zone for."),
+		BoxRuleHits[CorridorIndex], FootprintRuleHits[CorridorIndex],
+		MeasuredCorridorShare, ExpectedCorridorShare,
+		MovedToAnotherRoom, LostToUnmodelledSpace));
+	TestTrue(*FString::Printf(
+			TEXT("Corridor 15 footprint share %.4f matches its area ratio %.4f"),
+			MeasuredCorridorShare, ExpectedCorridorShare),
+		FMath::IsNearlyEqual(MeasuredCorridorShare, ExpectedCorridorShare, 0.01));
+
+	// The corridor's bounding box over-claims by ~5x, which is the whole reason for this change.
+	TestTrue(TEXT("the bbox rule over-claimed Corridor 15 by more than 4x"),
+		FootprintRuleHits[CorridorIndex] * 4 < BoxRuleHits[CorridorIndex]);
+
+	// In THIS two-room fixture nothing is modelled in the corridor's notch, so every over-claimed
+	// point becomes INDEX_NONE rather than moving to another room. In the full 12-room scenario most
+	// of that space belongs to rooms 3-12 and those points move instead; the semantics are the same
+	// either way - a point is attributed to the room whose footprint contains it, or to none.
+	TestEqual(TEXT("no point silently moves between these two non-overlapping rooms"),
+		MovedToAnotherRoom, 0);
+	TestEqual(TEXT("every over-claimed corridor point becomes unattributed, not reassigned"),
+		LostToUnmodelledSpace, BoxRuleHits[CorridorIndex] - FootprintRuleHits[CorridorIndex]);
+
 	return true;
 }
 

@@ -246,6 +246,12 @@ private:
 	TObjectPtr<UTimeDilationSubSystem> TimeDilationSubsystem;
 
 	TArray<FBRiskEgressRoomState> RoomStates;
+	// Room geometry for containment, built PARALLEL to RoomStates in the same RebuildRoomCache loop
+	// (an index resolved against this array is used to subscript RoomStates, so the two must never
+	// diverge in length or order) and reset alongside it in ClearCachedData. Held rather than built
+	// per call because FindRoomStateAtLocation runs once per agent per frame and the polygons would
+	// otherwise be reallocated every time. Geometry does not vary with playback time.
+	TArray<UE::Mobius::Tenability::FRoomVolume> RoomVolumes;
 	TArray<FRoomSeriesCache> RoomSeriesCaches;
 	float SampleTimeSeconds = 0.0f;
 	// Revision increments on every state change (time scrub, reload, clear).

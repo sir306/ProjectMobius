@@ -8,8 +8,53 @@
 
 namespace UE::Mobius::Tenability
 {
+	FRoomVolume MakeRoomVolume(const FBox& Bounds, TArray<FVector2D> FootprintPolygonCm)
+	{
+		FRoomVolume Volume;
+		Volume.Bounds = Bounds;
+		Volume.FootprintPolygonCm = MoveTemp(FootprintPolygonCm);
+
+		// A polygon room measures its TRUE plan area (shoelace, made sign-independent since the ring
+		// may arrive either winding) so a non-convex corridor cannot out-claim a small room sitting
+		// inside its bounding box. A room with no polygon multiplies the box extents in X, Y, Z
+		// order — the same sequence and associativity as the FBox::GetVolume() this metric replaced,
+		// so rectangle-only scenarios break ties bit-identically to before.
+		const FVector Extent = Bounds.IsValid ? (Bounds.Max - Bounds.Min) : FVector::ZeroVector;
+		const double PlanAreaCm2 = Volume.FootprintPolygonCm.Num() >= 3
+			? FMath::Abs(BRiskCoord::SignedRingArea(Volume.FootprintPolygonCm))
+			: Extent.X * Extent.Y;
+		Volume.SpecificityVolumeCm3 = PlanAreaCm2 * Extent.Z;
+
+		return Volume;
+	}
+
+	namespace
+	{
+		/**
+		 * Is WorldLocation inside this room?
+		 *
+		 * The bounding box answers the Z slab and rejects the great majority of rooms in a couple
+		 * of compares; only a box hit pays for the ring walk. That ordering matters because this
+		 * runs once per agent per frame on the MASS path.
+		 *
+		 * A room with no polygon is its bounding box, so the box result stands alone - which is
+		 * what keeps rectangle-only (.smv-without-JSON) scenarios resolving exactly as before.
+		 */
+		FORCEINLINE bool RoomContains(const FRoomVolume& Room, const FVector& WorldLocation)
+		{
+			if (!Room.Bounds.IsInsideOrOn(WorldLocation))
+			{
+				return false;
+			}
+
+			return Room.FootprintPolygonCm.Num() < 3
+				|| BRiskCoord::IsPointInRing(
+					Room.FootprintPolygonCm, FVector2D(WorldLocation.X, WorldLocation.Y));
+		}
+	}
+
 	int32 ResolveRoomIndexAtLocation(
-		const TConstArrayView<FBox> RoomWorldBounds,
+		const TConstArrayView<FRoomVolume> RoomVolumes,
 		const FVector& WorldLocation,
 		const int32 PreferredRoomIndex)
 	{
@@ -18,8 +63,8 @@ namespace UE::Mobius::Tenability
 		//
 		// 1. Preferred-room stickiness: if the preferred room is valid and still
 		//    contains the location, keep it.
-		if (RoomWorldBounds.IsValidIndex(PreferredRoomIndex)
-			&& RoomWorldBounds[PreferredRoomIndex].IsInsideOrOn(WorldLocation))
+		if (RoomVolumes.IsValidIndex(PreferredRoomIndex)
+			&& RoomContains(RoomVolumes[PreferredRoomIndex], WorldLocation))
 		{
 			return PreferredRoomIndex;
 		}
@@ -29,28 +74,28 @@ namespace UE::Mobius::Tenability
 		int32 BestIndex = INDEX_NONE;
 		double BestVolume = TNumericLimits<double>::Max();
 
-		for (int32 RoomIndex = 0; RoomIndex < RoomWorldBounds.Num(); ++RoomIndex)
+		for (int32 RoomIndex = 0; RoomIndex < RoomVolumes.Num(); ++RoomIndex)
 		{
 			if (RoomIndex == PreferredRoomIndex)
 			{
 				continue;
 			}
 
-			const FBox& Bounds = RoomWorldBounds[RoomIndex];
-			if (!Bounds.IsInsideOrOn(WorldLocation))
+			const FRoomVolume& Room = RoomVolumes[RoomIndex];
+			if (!RoomContains(Room, WorldLocation))
 			{
 				continue;
 			}
 
-			const double Volume = Bounds.GetVolume();
-			if (Volume < BestVolume)
+			if (Room.SpecificityVolumeCm3 < BestVolume)
 			{
-				BestVolume = Volume;
+				BestVolume = Room.SpecificityVolumeCm3;
 				BestIndex = RoomIndex;
 			}
 		}
 
-		// 3. Outside every room.
+		// 3. Outside every room. For a polygon room that now includes the parts of its bounding
+		//    box the room does not actually occupy — deliberately, see the header.
 		return BestIndex;
 	}
 
@@ -82,10 +127,10 @@ namespace UE::Mobius::Tenability
 	}
 
 	FAgentTimelineSetBuilder::FAgentTimelineSetBuilder(
-		TArray<FBox> InRoomWorldBounds,
+		TArray<FRoomVolume> InRoomVolumes,
 		TArray<int32> InRoomIds,
 		TFunction<void(int32, double, double&, double&)> InFEDSampler)
-		: RoomWorldBounds(MoveTemp(InRoomWorldBounds))
+		: RoomVolumes(MoveTemp(InRoomVolumes))
 		, RoomIds(MoveTemp(InRoomIds))
 		, FEDSampler(MoveTemp(InFEDSampler))
 	{
@@ -103,7 +148,7 @@ namespace UE::Mobius::Tenability
 
 			FOpenInterval* Existing = Open.Find(EntityID);
 			const int32 PreferredRoomIndex = Existing ? Existing->RoomIndex : INDEX_NONE;
-			const int32 Room = ResolveRoomIndexAtLocation(RoomWorldBounds, Sample.Position, PreferredRoomIndex);
+			const int32 Room = ResolveRoomIndexAtLocation(RoomVolumes, Sample.Position, PreferredRoomIndex);
 
 			if (Existing)
 			{

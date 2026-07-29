@@ -35,22 +35,70 @@ namespace UE::Mobius::Tenability
 	using FRoomFEDSampler = TFunctionRef<void(int32 RoomIndex, double TimeSeconds, double& OutFEDSum, double& OutFEDRadSum)>;
 
 	/**
+	 * Where one B-Risk room is, for the purpose of deciding whether a point is inside it.
+	 *
+	 * Bounds is the axis-aligned slab including floor-to-ceiling Z. FootprintPolygonCm is the true
+	 * plan ring in the UE XY plane (cm) when Zones-data.json supplied one, and EMPTY when the room
+	 * is only known as B-Risk's equivalent rectangle - in which case Bounds *is* the room and
+	 * containment is the box test alone.
+	 *
+	 * Built by UBRiskEgressSubsystem::RebuildRoomCache from BRiskCoord::MakeRoomFootprint, in the
+	 * same loop that fills the parallel room-state array, and copied wholesale as a thread-safe
+	 * snapshot for the offline builder. Self-contained (FBox + FVector2D are both CoreMinimal) so
+	 * this header stays free of the importer plugin include.
+	 */
+	struct FRoomVolume
+	{
+		FBox Bounds = FBox(ForceInit);
+		TArray<FVector2D> FootprintPolygonCm;
+
+		/**
+		 * Precomputed specificity metric for the smallest-enclosing tie-break: plan area x Z
+		 * extent. For a polygon room that is the ring's true area, NOT its bounding box - a
+		 * non-convex corridor must not out-claim a small room sitting inside its bbox.
+		 *
+		 * For a room with no polygon this is exactly (X extent * Y extent) * Z extent, evaluated
+		 * in that order, so it is bit-identical to the FBox::GetVolume() this replaced and
+		 * rectangle-only scenarios break ties exactly as before.
+		 */
+		double SpecificityVolumeCm3 = 0.0;
+	};
+
+	/**
+	 * THE only way to build an FRoomVolume — it is what derives SpecificityVolumeCm3, so callers
+	 * cannot disagree about the tie-break metric. Pass an empty polygon for a room known only as
+	 * B-Risk's equivalent rectangle. Defined in the .cpp because the shoelace area lives in the
+	 * importer header, which this one stays free of.
+	 */
+	PROJECTMOBIUS_API FRoomVolume MakeRoomVolume(const FBox& Bounds, TArray<FVector2D> FootprintPolygonCm);
+
+	/**
 	 * Shared room resolution — THE single rule for "which B-Risk room contains
 	 * this location". Extracted verbatim from
 	 * UBRiskEgressSubsystem::FindRoomStateAtLocation so the offline builder and the
 	 * live sampler resolve the room identically (scientific-integrity invariant 4).
 	 *
 	 * Rule:
-	 *   1. If PreferredRoomIndex is a valid index AND that room's bounds contain
-	 *      WorldLocation -> return PreferredRoomIndex (preferred-room stickiness).
-	 *   2. Otherwise, among all OTHER rooms whose bounds contain WorldLocation,
-	 *      return the one with the smallest enclosing volume (most specific match).
+	 *   1. If PreferredRoomIndex is a valid index AND that room contains WorldLocation
+	 *      -> return PreferredRoomIndex (preferred-room stickiness).
+	 *   2. Otherwise, among all OTHER rooms containing WorldLocation, return the one with the
+	 *      smallest SpecificityVolumeCm3 (most specific match). Ties go to the lower index.
 	 *   3. Otherwise -> INDEX_NONE (outside every room).
 	 *
-	 * Containment uses FBox::IsInsideOrOn (boundary-inclusive), matching the live rule.
+	 * CONTAINMENT is the Z slab and XY bounding box (FBox::IsInsideOrOn, boundary-inclusive) AND,
+	 * when the room has a footprint polygon, BRiskCoord::IsPointInRing on the XY position. The box
+	 * is kept as the cheap reject ahead of the ring walk because this runs per agent per frame.
+	 *
+	 * There is deliberately NO fall back to the bounding box when no polygon claims the point. A
+	 * non-convex room's bbox covers space B-Risk never modelled - the notch of an L-shaped corridor
+	 * is up to several times the room's real area - and attributing an agent there to the enclosing
+	 * room is what this rule exists to stop. An agent in unmodelled space resolves to INDEX_NONE
+	 * and accrues no dose, exactly as one standing outside the building already does; fabricating a
+	 * room's readings for a location that room does not occupy would violate
+	 * scientific-integrity invariant 3.
 	 */
 	PROJECTMOBIUS_API int32 ResolveRoomIndexAtLocation(
-		TConstArrayView<FBox> RoomWorldBounds,
+		TConstArrayView<FRoomVolume> RoomVolumes,
 		const FVector& WorldLocation,
 		int32 PreferredRoomIndex);
 
@@ -168,8 +216,8 @@ namespace UE::Mobius::Tenability
 	{
 	public:
 		FAgentTimelineSetBuilder(
-			TArray<FBox> InRoomWorldBounds,       // copied — thread-safe snapshot
-			TArray<int32> InRoomIds,              // parallel to bounds
+			TArray<FRoomVolume> InRoomVolumes,    // copied — thread-safe snapshot
+			TArray<int32> InRoomIds,              // parallel to volumes
 			TFunction<void(int32, double, double&, double&)> InFEDSampler);
 
 		void AddTimestep(float TimeSeconds, TConstArrayView<FSimMovementSample> Samples);
@@ -186,7 +234,7 @@ namespace UE::Mobius::Tenability
 		};
 		void CloseInterval(int32 EntityID, FOpenInterval& OpenInterval, float CloseTimeSeconds);
 
-		TArray<FBox> RoomWorldBounds;
+		TArray<FRoomVolume> RoomVolumes;
 		TArray<int32> RoomIds;
 		TFunction<void(int32, double, double&, double&)> FEDSampler;
 		FAgentTimelineSet Result;
