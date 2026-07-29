@@ -264,9 +264,27 @@ bool UNiagaraAgentRepProcessor::SetAgentData(
 	TArray<FQuat>& Rotations,
 	TArray<int32>& AnimationStates)
 {
-	const FVector4 NewLocationAndScale = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, EntityRenderingFragment.bRenderAgent ? 1.0f : 0.0f);
+	// W term:
+	//   bRenderAgent               - analysis gate (sample presence + tenability); also drives
+	//                                bReadyToDestroy below, so it must NEVER be cleared just to hide
+	//   bHiddenByTenabilityFailure - failed agent replaced in-world by its tenability fail marker
+	// A hidden agent still reaches every analysis query and the published tenability snapshot, which is
+	// what lets the fail marker draw at the spot the mesh just vanished from.
+	//
+	// bVisibleToCamera is deliberately NOT ANDed in yet, even though its doc comment names this term as
+	// its one consumer: nothing writes it (the B7 cull never landed), so it would be a no-op that fails
+	// UNSAFE. It defaults true, so anything that hands this fragment zeroed memory instead of running
+	// its constructor would blank the whole crowd. bHiddenByTenabilityFailure is the other way round —
+	// it defaults false, so a zeroed fragment draws. Add bVisibleToCamera here when B7 lands and there
+	// is a writer to test against.
+	const bool bDrawAgent = EntityRenderingFragment.bRenderAgent
+		&& !EntityRenderingFragment.bHiddenByTenabilityFailure;
+
+	const FVector4 NewLocationAndScale = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, bDrawAgent ? 1.0f : 0.0f);
 	const FQuat NewRotation = EntityMovementFragment.CurrentRotation.Quaternion();
-	// TODO: Replace the stopped death animation with hiding the mesh and placing a death marker at the agent location.
+	// Half of the former TODO here is now done: a failed agent's mesh is hidden (bHiddenByTenabilityFailure
+	// above) and an in-world fail marker is drawn at its failure location by SAgentEgressHealth. The
+	// NotMoving animation state below is kept only as the fallback for Mobius.Tenability.HideFailedAgents 0.
 	const int32 NewAnimationState = bIsDead
 		? GetIntAnimState(EPedestrianMovementBracket::Emb_NotMoving)
 		: GetIntAnimState(EntityMovementFragment.CurrentMovementBracket);

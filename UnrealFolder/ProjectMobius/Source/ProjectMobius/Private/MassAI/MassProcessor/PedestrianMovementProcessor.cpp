@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 /**
  * MIT License
  * Copyright (c) 2025 ProjectMobius contributors
@@ -43,6 +43,7 @@
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Async/ParallelFor.h"
 #include "HAL/CriticalSection.h"
+#include "HAL/IConsoleManager.h" // TAutoConsoleVariable (Mobius.Tenability.HideFailedAgents)
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 
 class UStatisticSubsystem;
@@ -50,26 +51,57 @@ class UStatisticSubsystem;
 namespace
 {
 	/**
+	 * Runtime escape hatch for the hide-at-failure behaviour. Default on (1): a failed agent's mesh
+	 * stops drawing and the in-world fail marker stands in for it. Set to 0 to keep the frozen mesh
+	 * visible, which is the pre-2026-07-30 behaviour and the state to fall back to while the marker
+	 * render path is still being verified — otherwise a failed agent can vanish with nothing shown in
+	 * its place. Read ONCE per Execute into a local, never per entity.
+	 */
+	TAutoConsoleVariable<int32> CVarHideFailedAgents(
+		TEXT("Mobius.Tenability.HideFailedAgents"),
+		1,
+		TEXT("1 = hide an agent's mesh once it passes its tenability-failure time (the in-world fail\n")
+		TEXT("marker stands in for it). 0 = keep the frozen mesh drawn. Render-only either way: the\n")
+		TEXT("agent stays in every analysis query and in the published tenability snapshot."),
+		ECVF_Default);
+
+	/**
 	 * If an agent has reached its tenability-failure time at or before the current sim time, snap it to
 	 * its recorded failure pose and keep it visible (a tenability-failure marker). Centralises the snap
 	 * that was previously copy-pasted across the no-data, static, and interpolation paths of Execute()
 	 * so the three can never drift apart.
 	 *
-	 * Behaviour is byte-for-byte identical to the former inline blocks:
-	 *   - failed  -> snap to recorded failure pose, speed 0, NotMoving bracket, kept visible; returns true.
-	 *   - tenable -> leaves both fragments untouched; returns false (caller owns the tenable path).
+	 * Behaviour:
+	 *   - failed  -> snap to recorded failure pose, speed 0, NotMoving bracket, bRenderAgent kept TRUE
+	 *                (analysis gate), bHiddenByTenabilityFailure set from bHideFailedAgents; returns true.
+	 *   - tenable -> CLEARS bHiddenByTenabilityFailure and otherwise leaves both fragments untouched;
+	 *                returns false (caller owns the tenable path).
+	 *
+	 * Only that one clear departs from the former inline blocks, and it is deliberate: the hide is
+	 * DERIVED state, not a latch. Setting it solely on the failed path would leave an agent invisible
+	 * forever once the playhead had ever passed its failure time, so scrubbing back before that time
+	 * would show an empty scene — the same "no append-only history" argument the marker design used to
+	 * stay navigation-independent. Cheap: one bool store on a fragment already being written.
+	 *
+	 * bRenderAgent deliberately stays TRUE for a failed agent even when hidden. It is the analysis gate
+	 * (AgentEgressHealthCalculationProcessor, AgentEgressHealthProcessor, AgentHeatmapProcessor) and it
+	 * drives bReadyToDestroy in NiagaraAgentRepProcessor — clearing it would stop the tenability
+	 * projection, drop the agent from the published snapshot (deleting the very fail marker meant to
+	 * replace the mesh) and mark the entity for destruction. See FEntityRenderingFragment's docs.
 	 *
 	 * File-local + FORCEINLINE so it inlines into the per-entity ParallelFor loops (hot path).
 	 * Reads the fragment's existing DeathTimeSeconds/DeathLocation/DeathRotation fields — these are the
 	 * current names for the tenability-failure time/pose; a codebase-wide rename is a separate task.
 	 *
+	 * @param bHideFailedAgents Policy from Mobius.Tenability.HideFailedAgents, hoisted out of the loop.
 	 * @return true if the agent has failed tenability at CurrentSimTime (failure pose applied), else false.
 	 */
 	FORCEINLINE bool ApplyTenabilityFailurePoseIfReached(
 		FEntityMovementFragment& MoveFrag,
 		FEntityRenderingFragment& RenderFrag,
 		const FAgentEgressTenabilityFragment& Tenability,
-		const float CurrentSimTime)
+		const float CurrentSimTime,
+		const bool bHideFailedAgents)
 	{
 		// Identical guard to the original: a valid (>=0) failure time that the playhead has reached.
 		const bool bTenabilityFailedAtCurrentTime =
@@ -78,10 +110,14 @@ namespace
 
 		if (!bTenabilityFailedAtCurrentTime)
 		{
+			// De-latch: covers scrubbing back before the failure time AND the timeline-rebuild window,
+			// which resets DeathTimeSeconds to -1 on every entity.
+			RenderFrag.bHiddenByTenabilityFailure = false;
 			return false;
 		}
 
-		// Freeze the agent at its recorded tenability-failure pose and keep it rendered (failure marker).
+		// Freeze the agent at its recorded tenability-failure pose. Still "rendered" as far as every
+		// analysis query is concerned; only the Niagara W term honours the hide flag.
 		MoveFrag.CurrentLocation = Tenability.DeathLocation;
 		MoveFrag.CurrentRotation = Tenability.DeathRotation;
 		MoveFrag.CurrentSpeed = 0.0f;
@@ -89,6 +125,7 @@ namespace
 		RenderFrag.bRenderAgent = true;
 		RenderFrag.bReadyToDestroy = false;
 		RenderFrag.bAnimationChanged = true;
+		RenderFrag.bHiddenByTenabilityFailure = bHideFailedAgents;
 		return true;
 	}
 }
@@ -142,9 +179,10 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 		UpdateCurrentTimeStepAndStepPercentage();
 	}
 
-	
-	
-	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this](FMassExecutionContext& Context) {
+	// Hoisted out of the per-entity ParallelFor loops below: one CVar read per Execute, not per agent.
+	const bool bHideFailedAgents = CVarHideFailedAgents.GetValueOnAnyThread() != 0;
+
+	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, ([this, bHideFailedAgents](FMassExecutionContext& Context) {
 		{
 			//TODO: Move data to subsystem and get it from there so not constantly getting large data sets
 	
@@ -164,7 +202,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 				{
 					// No sample data this step: agents that have failed tenability still freeze at their
 					// failure pose, everyone else is hidden. Matches the former inline failed/else block.
-					if (!ApplyTenabilityFailurePoseIfReached(EntityMovementFragment[i], EntityRenderingFragment[i], AgentTenabilityFragments[i], CurrentSimTime))
+					if (!ApplyTenabilityFailurePoseIfReached(EntityMovementFragment[i], EntityRenderingFragment[i], AgentTenabilityFragments[i], CurrentSimTime, bHideFailedAgents))
 					{
 						EntityRenderingFragment[i].bRenderAgent = false;
 					}
@@ -286,7 +324,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					const FAgentEgressTenabilityFragment& Tenability = AgentTenabilityFragments[i];
 
 					// Agents that have failed tenability freeze at their failure pose and skip the lookup.
-					if (ApplyTenabilityFailurePoseIfReached(MoveFrag, RenderFrag, Tenability, CurrentSimTime))
+					if (ApplyTenabilityFailurePoseIfReached(MoveFrag, RenderFrag, Tenability, CurrentSimTime, bHideFailedAgents))
 					{
 						return;
 					}
@@ -326,7 +364,7 @@ void UPedestrianMovementProcessor::Execute(FMassEntityManager& EntityManager, FM
 					const FAgentEgressTenabilityFragment& Tenability = AgentTenabilityFragments[i];
 
 					// Agents that have failed tenability freeze at their failure pose and skip the lookup.
-					if (ApplyTenabilityFailurePoseIfReached(MoveFrag, RenderFrag, Tenability, CurrentSimTime))
+					if (ApplyTenabilityFailurePoseIfReached(MoveFrag, RenderFrag, Tenability, CurrentSimTime, bHideFailedAgents))
 					{
 						return;
 					}

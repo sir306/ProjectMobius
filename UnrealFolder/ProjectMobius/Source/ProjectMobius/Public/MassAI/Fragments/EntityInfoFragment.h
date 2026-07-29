@@ -215,6 +215,29 @@ struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
 	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
 	bool bVisibleToCamera = true;
 
+	/**
+	 * Render-only tenability hide (default false = drawn). Set true while an agent has passed its
+	 * tenability-failure time so its mesh stops drawing and the in-world fail marker stands in for it.
+	 *
+	 * Deliberately a SECOND flag rather than clearing bRenderAgent, which is overloaded as the
+	 * analysis gate and would break four unrelated readers at once:
+	 *   - AgentEgressHealthCalculationProcessor: stops computing dose and the failure projection
+	 *   - AgentEgressHealthProcessor: drops the agent from the published snapshot -> NO fail marker,
+	 *     i.e. hiding the agent would delete the very thing meant to replace it
+	 *   - AgentHeatmapProcessor: stops accumulating
+	 *   - NiagaraAgentRepProcessor: bReadyToDestroy = !bRenderAgent, so the entity is marked for
+	 *     destruction rather than merely hidden
+	 * Same render-only contract as bVisibleToCamera above, but a separate flag because that one is
+	 * reserved for the camera cull (B7) — one flag with two writers in different processors would be
+	 * a last-write-wins race.
+	 *
+	 * Read by EXACTLY ONE consumer: the Niagara W term, ANDed with bRenderAgent and bVisibleToCamera.
+	 * NEVER an analysis gate. Derived state, not a latch — PedestrianMovementProcessor clears it on
+	 * the not-failed path so scrubbing back before the failure time re-shows the agent.
+	 */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	bool bHiddenByTenabilityFailure = false;
+
 	/** Demographic dispatch slot for the Niagara arrays, set once at spawn alongside InstanceID
 	 *  (see MobiusNiagaraDemographics::ComputeSlot) */
 	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
