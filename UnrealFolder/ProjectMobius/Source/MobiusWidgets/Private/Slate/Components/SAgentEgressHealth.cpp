@@ -89,6 +89,17 @@ int32 SAgentEgressTenability::OnPaint(
 			continue;
 		}
 
+		// No measurement for this agent -> draw nothing. The instance encoding below packs criterion
+		// and risk into a single scalar, so "no data" has no representable value in it: criterion
+		// None with risk 0 is exactly what a measured-and-clear agent produces. Skipping the instance
+		// is therefore the only way to keep the absence of data from reading as a clean bill of
+		// health. Agents outside every modelled room, and every agent during a timeline rebuild, land
+		// here; an agent carrying dose or one that has failed does not.
+		if (!Agent.bHasTenabilityData)
+		{
+			continue;
+		}
+
 		// Anchor at the agent's head, then project with the DPI-aware UMG projection. It returns false
 		// when the point is behind the camera (replacing the old off-screen pixel-bounds cull).
 		FVector WorldLocation = Agent.AgentWorldPosition;

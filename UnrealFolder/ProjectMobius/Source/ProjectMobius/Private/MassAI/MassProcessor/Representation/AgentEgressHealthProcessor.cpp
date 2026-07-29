@@ -84,6 +84,7 @@ void UAgentEgressHealthProcessor::Execute(
 					Tenability.Health);
 
 				// Publish the full per-criterion tenability state, not just one float.
+				Viewer.bHasTenabilityData = Tenability.bHasTenabilityData;
 				Viewer.DisplayRisk = Tenability.DisplayRisk;
 				Viewer.VisibilityRisk = Tenability.VisibilityRisk;
 				Viewer.ToxicFEDRisk = Tenability.ToxicFEDRisk;

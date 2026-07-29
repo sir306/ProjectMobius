@@ -63,6 +63,14 @@ struct FAgentEgressTenabilityViewer
 	float AgentEgressHealth = 1.0f;
 
 	// --- Tenability publishing (one consistent bar = DisplayRisk; icon = criterion) ---
+	/**
+	 * Is there a measurement to draw at all? False means the ABSENCE of data, which every other
+	 * field here reports identically to a measurement of "clear" (DisplayRisk 0, criterion None).
+	 * The in-world bar HIDES when this is false — an empty bar reads as "this agent is fine", which
+	 * is a different and possibly untrue claim. See FAgentEgressTenabilityFragment::bHasTenabilityData.
+	 */
+	bool bHasTenabilityData = false;
+
 	// Display-only aggregate risk: MAX of enabled category risks (never the sum), 0..1.
 	float DisplayRisk = 0.0f;
 

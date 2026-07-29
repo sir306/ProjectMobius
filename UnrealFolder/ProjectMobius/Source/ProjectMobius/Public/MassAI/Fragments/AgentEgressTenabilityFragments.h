@@ -238,6 +238,22 @@ struct PROJECTMOBIUS_API FAgentEgressTenabilityFragment : public FMassFragment
 	ETenabilityCriterion CurrentDominantCriterion = ETenabilityCriterion::None;
 	ETenabilityCriterion FirstFailureCriterion = ETenabilityCriterion::None;
 
+	/**
+	 * Is there anything to show for this agent at all?
+	 *
+	 * False means the ABSENCE of a measurement, which is NOT the same claim as a measurement of
+	 * "clear" — and every other field on this fragment reads identically for both (DisplayRisk 0,
+	 * every risk 0, criterion None, Health 1). Consumers must gate on this: the in-world bar hides
+	 * when it is false rather than drawing an empty bar a reviewer would read as "this agent is
+	 * fine". Zero risk with this true means measured and clear; zero risk with this false means we
+	 * have no data for where this agent is standing.
+	 *
+	 * True when the agent occupies a B-Risk room this frame, OR carries accumulated dose from rooms
+	 * it occupied earlier, OR has failed by now. False during the stale-timeline rebuild window and
+	 * for an agent that has never been inside a modelled room.
+	 */
+	bool bHasTenabilityData = false;
+
 	/** Bit flags (UE::Mobius::TenabilityFailureFlags) of all criteria failed simultaneously. */
 	uint8 FailureMask = 0;
 
@@ -376,6 +392,101 @@ namespace UE::Mobius::Tenability
 	 * @param InToxicDose       Toxic FED dose at CurrentSimTime, from FAgentTenabilityTimeline::DoseAt.
 	 * @param InThermalDose     Thermal FED dose at CurrentSimTime, from FAgentTenabilityTimeline::DoseAt.
 	 */
+	/**
+	 * Tenability for an agent that is NOT in a B-Risk room this frame but carries dose from rooms it
+	 * occupied earlier.
+	 *
+	 * Dose survives leaving a room — it is a cumulative property of the agent, not of the room it is
+	 * standing in — so an agent that walked out of smoke must keep showing what it accrued. Zeroing
+	 * the bar there (the previous behaviour) under-reported a dose that had already been computed,
+	 * and made it jump back on re-entry.
+	 *
+	 * Because DoseAt returns `Prior + max(curve - EntryFED, 0)` over completed intervals, dose is
+	 * non-decreasing in sim time. The FED risks derived here are therefore already "worst so far"
+	 * with no latch and no running maximum, which keeps the display a pure function of sim time
+	 * (scientific-integrity invariant 1: the same t reads the same however playback reached it).
+	 *
+	 * The INSTANTANEOUS criteria are deliberately not carried over. Visibility, temperature and layer
+	 * height describe a room the agent is no longer in; holding the last values would assert
+	 * something about its current position that is not true. They report zero risk here, so an agent
+	 * whose bar was dominated by visibility at the moment it left will visibly drop to its dose
+	 * level. Covering that honestly needs a precomputed worst-instantaneous-up-to-t curve in the
+	 * timeline's Layer 2, which is a separate change.
+	 *
+	 * Mirrors ComputeInstantaneousTenability's dose half exactly — same ComputeFEDRisk, same
+	 * endpoints, same `>= endpoint` failure test — but gates on the settings alone. The room sample's
+	 * bHasCalcFEDSum / bHasCalcFEDRadSum flags describe whether THIS ROOM publishes a FED column and
+	 * are meaningless with no room; dose availability is a property of the agent's timeline.
+	 */
+	inline void ComputeDoseOnlyTenability(
+		FAgentEgressTenabilityFragment& Tenability,
+		const FTenabilityAnalysisSettings& Settings,
+		const float InToxicDose,
+		const float InThermalDose)
+	{
+		Tenability.AccumulatedToxicFED = InToxicDose;
+		Tenability.AccumulatedThermalFED = InThermalDose;
+
+		// No room -> no Track-A instantaneous values. Reset to the same defaults
+		// ClearCurrentHazardSample uses so the debug readout does not show a stale room's numbers.
+		Tenability.CurrentFEDSum = 0.0f;
+		Tenability.CurrentFEDRadSum = 0.0f;
+		Tenability.CurrentVisibilityM = 20.0f;
+		Tenability.CurrentTemperatureC = 24.0f;
+		Tenability.CurrentLayerHeightM = 0.0f;
+		Tenability.CurrentHeatReleaseKW = 0.0f;
+
+		Tenability.VisibilityRisk = 0.0f;
+		Tenability.ToxicFEDRisk = 0.0f;
+		Tenability.ThermalFEDRisk = 0.0f;
+		Tenability.TemperatureRisk = 0.0f;
+		Tenability.LayerHeightRisk = 0.0f;
+
+		// Instantaneous criteria cannot be evaluated without a room, so their failure indicators are
+		// cleared rather than left standing — a zero bar beside a non-empty mask reads as a bug.
+		Tenability.bVisibilityFailed = false;
+		Tenability.bTemperatureFailed = false;
+		Tenability.bLayerHeightFailed = false;
+
+		if (Settings.bUseToxicFEDCriterion)
+		{
+			Tenability.ToxicFEDRisk = ComputeFEDRisk(Tenability.AccumulatedToxicFED, Settings.EndpointToxicFED);
+			Tenability.bToxicFEDFailed = Tenability.AccumulatedToxicFED >= Settings.EndpointToxicFED;
+		}
+		else
+		{
+			Tenability.bToxicFEDFailed = false;
+		}
+		if (Settings.bUseThermalFEDCriterion)
+		{
+			Tenability.ThermalFEDRisk = ComputeFEDRisk(Tenability.AccumulatedThermalFED, Settings.EndpointThermalFED);
+			Tenability.bThermalFEDFailed = Tenability.AccumulatedThermalFED >= Settings.EndpointThermalFED;
+		}
+		else
+		{
+			Tenability.bThermalFEDFailed = false;
+		}
+
+		Tenability.DisplayRisk = FMath::Max(Tenability.ToxicFEDRisk, Tenability.ThermalFEDRisk);
+		Tenability.CurrentDominantCriterion = Tenability.DisplayRisk > 0.0f
+			? (Tenability.ThermalFEDRisk > Tenability.ToxicFEDRisk
+				? ETenabilityCriterion::ThermalFED
+				: ETenabilityCriterion::ToxicFED)
+			: ETenabilityCriterion::None;
+
+		Tenability.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
+		if (Tenability.bToxicFEDFailed)
+		{
+			Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::ToxicFED;
+		}
+		if (Tenability.bThermalFEDFailed)
+		{
+			Tenability.FailureMask |= UE::Mobius::TenabilityFailureFlags::ThermalFED;
+		}
+
+		Tenability.Health = 1.0f - FMath::Clamp(Tenability.DisplayRisk, 0.0f, 1.0f);
+	}
+
 	inline void ComputeInstantaneousTenability(
 		FAgentEgressTenabilityFragment& Tenability,
 		const FAgentBRiskHazardSample& Sample,

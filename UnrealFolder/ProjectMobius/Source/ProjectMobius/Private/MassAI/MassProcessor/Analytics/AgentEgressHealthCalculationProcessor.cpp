@@ -81,6 +81,10 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
 				{
 					FAgentEgressTenabilityFragment& Health = HealthFragments[EntityIndex];
+					// This is the no-data state the comment above names, and now it can say so: without
+					// clearing this, an agent keeps a stale true through the whole rebuild window and its
+					// bar keeps drawing from values computed against a mismatched triple.
+					Health.bHasTenabilityData = false;
 					Health.DisplayRisk = 0.0f;
 					Health.VisibilityRisk = 0.0f;
 					Health.ToxicFEDRisk = 0.0f;
@@ -154,6 +158,26 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 					// FED dose comes from the timeline's closed-form DoseAt query (Prior + curve delta
 					// since room entry), so scrubbing the timeline forward OR backward yields the exact
 					// same value with no separate rewind/restore path.
+					// Dose is resolved BEFORE the room test because it does not depend on one: DoseAt is
+					// keyed on sim time and the agent's precomputed occupancy intervals, so it is just
+					// as valid for an agent standing in unmodelled space as for one inside a room. It
+					// stays inside the bSampleApproximate guard, though — on a stand-in frame the whole
+					// display is held at its last-good value, dose included (see above).
+					float ToxicDose = 0.0f;
+					float ThermalDose = 0.0f;
+					if (Timeline)
+					{
+						auto RoomSampler = [EgressSubsystem](
+							int32 RoomIndex, double TimeSeconds, double& OutToxic, double& OutThermal)
+						{
+							EgressSubsystem->SampleTenabilityDoseAtRoomIndex(
+								RoomIndex, TimeSeconds, OutToxic, OutThermal);
+						};
+						UE::Mobius::Tenability::FRoomFEDSampler SamplerRef(RoomSampler);
+						Timeline->DoseAt(CurrentSimulationTime, SamplerRef, ToxicDose, ThermalDose);
+					}
+					// No timeline for this agent (never occupied a B-Risk room) -> zero dose.
+
 					FAgentBRiskHazardSample HazardSample;
 					if (!EgressSubsystem->SampleAgentEnvironment(
 						MovementFragments[EntityIndex].CurrentLocation,
@@ -161,50 +185,18 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 						HazardSample,
 						Exposure.CurrentRoomIndex))
 					{
-						// Agent is outside every B-Risk zone: no instantaneous (Track-A) data here.
-						// Dose/failure projection below still runs unconditionally from the timeline
-						// (occupancy gaps are already baked into the precomputed intervals), so a
-						// corridor-transiting agent's dose and failure state stay correct without a
-						// separate "banked exposure" path.
+						// Agent is outside every B-Risk zone: no instantaneous (Track-A) data here, but
+						// its DOSE survives — dose belongs to the agent, not to the room it happens to
+						// be standing in. Zeroing the bar here (what this branch used to do) discarded a
+						// dose already computed and made it jump back on re-entry.
 						UE::Mobius::EgressHealth::ClearCurrentHazardSample(Exposure);
-						Health.InstantaneousHazard = 0.0f;
-						Health.DisplayRisk = 0.0f;
-						Health.VisibilityRisk = 0.0f;
-						Health.ToxicFEDRisk = 0.0f;
-						Health.ThermalFEDRisk = 0.0f;
-						Health.TemperatureRisk = 0.0f;
-						Health.LayerHeightRisk = 0.0f;
-						Health.CurrentDominantCriterion = ETenabilityCriterion::None;
-						Health.Health = 1.0f;
-						// Current-frame criterion flags/mask are only written by
-						// ComputeInstantaneousTenability, which does not run outside a zone — clear
-						// them here or the viewer shows a zero bar with a non-empty failure mask.
-						Health.bVisibilityFailed = false;
-						Health.bToxicFEDFailed = false;
-						Health.bThermalFEDFailed = false;
-						Health.bTemperatureFailed = false;
-						Health.bLayerHeightFailed = false;
-						Health.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
+						UE::Mobius::Tenability::ComputeDoseOnlyTenability(
+							Health, TenabilitySettings, ToxicDose, ThermalDose);
+						Health.InstantaneousHazard = Health.DisplayRisk;
 					}
 					else
 					{
 						UE::Mobius::EgressHealth::ApplyCurrentHazardSample(Exposure, HazardSample);
-
-						float ToxicDose = 0.0f;
-						float ThermalDose = 0.0f;
-						if (Timeline)
-						{
-							auto RoomSampler = [EgressSubsystem](
-								int32 RoomIndex, double TimeSeconds, double& OutToxic, double& OutThermal)
-							{
-								EgressSubsystem->SampleTenabilityDoseAtRoomIndex(
-									RoomIndex, TimeSeconds, OutToxic, OutThermal);
-							};
-							UE::Mobius::Tenability::FRoomFEDSampler SamplerRef(RoomSampler);
-							Timeline->DoseAt(CurrentSimulationTime, SamplerRef, ToxicDose, ThermalDose);
-						}
-						// No timeline for this agent (never occupied a B-Risk room) -> zero dose; still
-						// sample instantaneous Track-A values below (visibility/temperature/layer).
 
 						UE::Mobius::Tenability::ComputeInstantaneousTenability(
 							Health,
@@ -214,6 +206,15 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 							ToxicDose,
 							ThermalDose);
 					}
+
+					// Is there anything to show? Evaluated AFTER the dose call, because dose is what
+					// distinguishes "walked out of smoke carrying a real exposure" from "has never been
+					// anywhere B-Risk modelled" — reading it beforehand would hide the bar for one
+					// frame on the way out of every room. The failed case is added below, where the
+					// timeline projection runs.
+					Health.bHasTenabilityData = Exposure.bHasRoomSample
+						|| Health.AccumulatedToxicFED > 0.0f
+						|| Health.AccumulatedThermalFED > 0.0f;
 				}
 
 				// --- Failure state: PROJECTED from the timeline's precomputed Layer-2 fields, not
@@ -250,6 +251,11 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 					Health.DisplayRisk = 1.0f;
 					Health.CurrentDominantCriterion = Health.FirstFailureCriterion;
 					Health.Health = 0.0f;
+					// A failed agent always has something to show, wherever it is standing — the bar is
+					// locked to the cause of failure and that is precisely what a reviewer needs at the
+					// end of a scenario. Hiding it because the failure happened to occur outside a
+					// modelled room would be worse than the ambiguity this flag exists to remove.
+					Health.bHasTenabilityData = true;
 				}
 
 				Health.InstantaneousHazard = Health.DisplayRisk;

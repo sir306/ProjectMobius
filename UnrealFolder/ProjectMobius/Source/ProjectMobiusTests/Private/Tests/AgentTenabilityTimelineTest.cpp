@@ -746,4 +746,148 @@ bool FAgentTenabilityFailurePrecomputeTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FAgentTenabilityDoseOnlyTest,
+	"ProjectMobius.BRisk.Tenability.DoseOutsideRoom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+/**
+ * An agent that walked out of smoke keeps the dose it accrued.
+ *
+ * Dose is a property of the AGENT, not of the room it is standing in, so leaving a modelled room
+ * must not discard it. The previous behaviour zeroed every risk in the no-room branch, which
+ * under-reported a dose the timeline had already computed and made the bar jump back up on re-entry.
+ *
+ * Also pins the display-gate semantics: zero risk WITH data (measured and clear) has to be
+ * distinguishable from zero risk WITHOUT data (nothing measured here), because every other field
+ * reads the same for both.
+ */
+bool FAgentTenabilityDoseOnlyTest::RunTest(const FString&)
+{
+	using namespace UE::Mobius::Tenability;
+
+	FTenabilityAnalysisSettings Settings; // endpoints: toxic 0.3, thermal 1.0
+
+	// --- Dose survives leaving the room ---------------------------------------
+	{
+		FAgentEgressTenabilityFragment Health;
+		// Half the toxic endpoint, no thermal dose.
+		ComputeDoseOnlyTenability(Health, Settings, 0.15f, 0.0f);
+
+		TestEqual(TEXT("accumulated toxic dose is carried, not discarded"),
+			Health.AccumulatedToxicFED, 0.15f);
+		// ComputeFEDRisk = dose / endpoint = 0.15 / 0.3.
+		TestEqual(TEXT("toxic risk is dose/endpoint"), Health.ToxicFEDRisk, 0.5f);
+		TestEqual(TEXT("DisplayRisk is the surviving dose risk, NOT zero"), Health.DisplayRisk, 0.5f);
+		TestEqual(TEXT("dominant criterion names the dose that survived"),
+			static_cast<int32>(Health.CurrentDominantCriterion),
+			static_cast<int32>(ETenabilityCriterion::ToxicFED));
+		TestEqual(TEXT("Health mirrors DisplayRisk"), Health.Health, 0.5f);
+
+		// Instantaneous criteria describe a room the agent is no longer in: they must report no risk
+		// rather than hold the last room's values, which would assert something untrue about where
+		// the agent is now standing.
+		TestEqual(TEXT("visibility risk is not carried out of the room"), Health.VisibilityRisk, 0.0f);
+		TestEqual(TEXT("temperature risk is not carried out of the room"), Health.TemperatureRisk, 0.0f);
+		TestEqual(TEXT("layer-height risk is not carried out of the room"), Health.LayerHeightRisk, 0.0f);
+		TestFalse(TEXT("no instantaneous failure is claimed without a room"), Health.bVisibilityFailed);
+		// A zero bar beside a non-empty mask reads as a bug, so the mask carries only what is real.
+		TestEqual(TEXT("failure mask carries no instantaneous criteria"),
+			static_cast<int32>(Health.FailureMask & UE::Mobius::TenabilityFailureFlags::Visibility), 0);
+	}
+
+	// --- Stale instantaneous values are cleared, not left standing -----------
+	{
+		FAgentEgressTenabilityFragment Health;
+		// Simulate the fragment still holding the smoke-filled room it just left.
+		Health.CurrentVisibilityM = 1.5f;
+		Health.CurrentTemperatureC = 180.0f;
+		Health.VisibilityRisk = 0.9f;
+		Health.TemperatureRisk = 0.8f;
+		Health.bVisibilityFailed = true;
+		Health.FailureMask = UE::Mobius::TenabilityFailureFlags::Visibility;
+
+		ComputeDoseOnlyTenability(Health, Settings, 0.0f, 0.0f);
+
+		TestEqual(TEXT("stale visibility is reset to the clear-air default"), Health.CurrentVisibilityM, 20.0f);
+		TestEqual(TEXT("stale temperature is reset to ambient"), Health.CurrentTemperatureC, 24.0f);
+		TestEqual(TEXT("stale visibility risk is cleared"), Health.VisibilityRisk, 0.0f);
+		TestFalse(TEXT("stale visibility failure is cleared"), Health.bVisibilityFailed);
+		TestEqual(TEXT("stale failure mask is cleared"), static_cast<int32>(Health.FailureMask), 0);
+		// No dose and no room -> genuinely nothing to show.
+		TestEqual(TEXT("no dose, no room -> zero risk"), Health.DisplayRisk, 0.0f);
+		TestEqual(TEXT("no dose, no room -> no dominant criterion"),
+			static_cast<int32>(Health.CurrentDominantCriterion),
+			static_cast<int32>(ETenabilityCriterion::None));
+	}
+
+	// --- Dose failure is still detected outside a room -----------------------
+	{
+		FAgentEgressTenabilityFragment Health;
+		ComputeDoseOnlyTenability(Health, Settings, 0.30f, 0.0f); // exactly at the endpoint
+
+		TestTrue(TEXT("toxic FED failure is flagged at the endpoint, outside a room"),
+			Health.bToxicFEDFailed);
+		TestEqual(TEXT("risk saturates at 1 when the endpoint is reached"), Health.DisplayRisk, 1.0f);
+		TestEqual(TEXT("failure mask carries the toxic FED bit"),
+			static_cast<int32>(Health.FailureMask & UE::Mobius::TenabilityFailureFlags::ToxicFED),
+			static_cast<int32>(UE::Mobius::TenabilityFailureFlags::ToxicFED));
+	}
+
+	// --- Thermal dominates when it is the larger risk ------------------------
+	{
+		FAgentEgressTenabilityFragment Health;
+		// toxic 0.03/0.3 = 0.1 risk; thermal 0.5/1.0 = 0.5 risk.
+		ComputeDoseOnlyTenability(Health, Settings, 0.03f, 0.5f);
+
+		TestEqual(TEXT("DisplayRisk is the MAX of the two dose risks, never the sum"),
+			Health.DisplayRisk, 0.5f);
+		TestEqual(TEXT("dominant criterion is the larger dose risk"),
+			static_cast<int32>(Health.CurrentDominantCriterion),
+			static_cast<int32>(ETenabilityCriterion::ThermalFED));
+	}
+
+	// --- Disabled criteria contribute nothing -------------------------------
+	{
+		FTenabilityAnalysisSettings Off;
+		Off.bUseToxicFEDCriterion = false;
+		Off.bUseThermalFEDCriterion = false;
+
+		FAgentEgressTenabilityFragment Health;
+		ComputeDoseOnlyTenability(Health, Off, 0.9f, 0.9f);
+
+		TestEqual(TEXT("disabled toxic criterion reports no risk"), Health.ToxicFEDRisk, 0.0f);
+		TestEqual(TEXT("disabled thermal criterion reports no risk"), Health.ThermalFEDRisk, 0.0f);
+		TestFalse(TEXT("disabled criterion never claims failure"), Health.bToxicFEDFailed);
+		TestEqual(TEXT("no enabled criteria -> no risk to display"), Health.DisplayRisk, 0.0f);
+	}
+
+	// --- Navigation independence: pure in dose, monotone, and no latch -------
+	// The display must be a function of sim time alone (invariant 1). DoseAt is non-decreasing in
+	// time by construction (Prior + max(curve - EntryFED, 0)), so the dose risks are already
+	// "worst so far" WITHOUT a running maximum. This asserts the property that makes that safe:
+	// the function keeps no state, so replaying the same dose gives the same answer, and a dose
+	// that went DOWN (only reachable by scrubbing backwards) reports the lower value rather than
+	// sticking at the high-water mark.
+	{
+		FAgentEgressTenabilityFragment Forward;
+		ComputeDoseOnlyTenability(Forward, Settings, 0.06f, 0.0f);
+		ComputeDoseOnlyTenability(Forward, Settings, 0.24f, 0.0f); // played forward to t
+
+		FAgentEgressTenabilityFragment Jumped;
+		ComputeDoseOnlyTenability(Jumped, Settings, 0.24f, 0.0f);  // jumped straight to t
+
+		TestEqual(TEXT("same dose reads the same however playback reached it"),
+			Forward.DisplayRisk, Jumped.DisplayRisk);
+
+		FAgentEgressTenabilityFragment Rewound;
+		ComputeDoseOnlyTenability(Rewound, Settings, 0.24f, 0.0f);
+		ComputeDoseOnlyTenability(Rewound, Settings, 0.06f, 0.0f); // scrubbed back before the dose
+		TestEqual(TEXT("scrubbing back reports the earlier dose, not a latched maximum"),
+			Rewound.DisplayRisk, 0.2f);
+	}
+
+	return true;
+}
+
 #endif // !UE_BUILD_SHIPPING
