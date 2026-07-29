@@ -59,6 +59,9 @@
 #include "UI/Components/MobiusThemedBorder.h"   // A6b: walk guard — self-theming borders
 #include "UI/Components/VerticalTextBlock.h"
 #include "UI/Components/FieldAndTextWidget.h"
+// A6b-5: owner-scoped role write for the play bar's background. MobiusWidgets already depends on
+// ProjectMobius (see MobiusWidgets.Build.cs), so this direction is fine — the reverse is the cycle.
+#include "Widgets/Simulation/SimulationPlayBar.h"
 #include "Widgets/SCompoundWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMobiusTheme, Log, All);
@@ -1048,6 +1051,32 @@ void UUIThemeSubsystem::StyleImageForTheme(UImage* Image, const bool bLight)
 	if (!Image)
 	{
 		return;
+	}
+
+	// A6b-5 CASUALTY FIX (owner ruling, 2026-07-29 — RibbonBg; a final design consult is still owed on
+	// whether the authored colour was the intended one). The play bar's background must NOT go through the
+	// value remap. Its authored 0.9730 is SurfaceMap's `field bg` LIGHT value, and `field bg` is one of NINE
+	// rows that do not survive a light->dark->light round trip: field-bg DARK 0.0243 sits 0.0041 away from
+	// tab-strip DARK 0.0284, inside the 0.012 epsilon, and tab strip is scanned first — so two toggles turned
+	// a near-white surface into mid-grey 0.7913. A declared role cannot collide, which is the entire argument
+	// for the rebuild; the 73 migrated borders escaped this the same way.
+	//
+	// Scoped by OWNER rather than by name on purpose: three other widgets are also called BackgroundImage
+	// (WBP_ErrorPopup, WBP_ErrorPopup1, WBP_MoveableWidgetTest) and a bare name test would recolour them too.
+	//
+	// The fix lives HERE, not in the play bar, because USimulationPlayBar is in ProjectMobius and cannot see
+	// this subsystem at all — MobiusWidgets depends on ProjectMobius, so the reverse is a module cycle. That
+	// is the same constraint that keeps the play bar off UMobiusThemedUserWidget.
+	if (Image->GetName() == TEXT("BackgroundImage") && Image->GetTypedOuter<USimulationPlayBar>())
+	{
+		FSlateBrush RoleBrush = Image->GetBrush();
+		const FLinearColor Surface = PaletteColor(EMobiusPaletteRole::RibbonBg, bLight);
+		if (!RoleBrush.TintColor.GetSpecifiedColor().Equals(Surface, 0.001f))
+		{
+			RoleBrush.TintColor = FSlateColor(Surface);
+			Image->SetBrush(RoleBrush);
+		}
+		return;   // and NOT through the remap below, which is what broke it
 	}
 
 	// GetBrush() rather than the deprecated Brush member the walk read behind a pragma — same value, and it
