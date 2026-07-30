@@ -128,6 +128,24 @@ void UBaseButton::RefreshThemedButtonStyle()
 	const FSlateColor  Label  = FSlateColor(Theme->GetPaletteColor(
 		bIsToolPanelRow ? EMobiusPaletteRole::LabelText : EMobiusPaletteRole::ButtonText));
 
+	// BackgroundColor is a MULTIPLIER, not a fill: it reaches Slate as SButton's BorderBackgroundColor and
+	// scales every brush tint written below. A non-neutral authored value therefore silently re-tints the
+	// palette colour this function just resolved — ButtonHoverBg through a dark multiplier reads as black,
+	// and only on hover, because a row's Normal is transparent so the same factor is invisible at rest.
+	// Same discipline the themed UBorders follow: colour in the brush, multiplier left white.
+	//
+	// Deliberately BEFORE the accent-ring early-out: neutralising a multiplier is right whether or not this
+	// button's outline opts it out of recolouring. Guarded by the inequality so a second pass writes nothing.
+	//
+	// Rows ONLY. A plain UBaseButton's BackgroundColor is still remapped by the legacy value-walker
+	// (UIThemeSubsystem.cpp:1700-1706 is the only path that reaches it — StyleButtonForTheme early-outs on
+	// UBaseButton before its own copy), so neutralising it here would drop that colour on the floor until
+	// A6b-6 rehomes it.
+	if (bIsToolPanelRow && GetBackgroundColor() != FLinearColor::White)
+	{
+		SetBackgroundColor(FLinearColor::White);
+	}
+
 	FButtonStyle Style = GetStyle();
 
 	// A wide outline carries state MEANING (the scalability "current tier" chip is a 2px accent ring), so
