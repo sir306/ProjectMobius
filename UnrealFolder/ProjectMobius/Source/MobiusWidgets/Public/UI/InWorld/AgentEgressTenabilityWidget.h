@@ -52,12 +52,34 @@ public:
 
 	/**
 	 * World-space vertical offset, in centimetres, of a fail marker above the point where that agent's
-	 * tenability failed. Above WorldHeightOffset so the marker clears the live bar. Note the anchor
-	 * differs from the bar's: the bar tracks the agent, the marker stays at the failure point, which is
-	 * what makes it a forensic record rather than a second health readout.
+	 * tenability failed.
+	 *
+	 * Deliberately EQUAL to WorldHeightOffset, not above it. The marker REPLACES that agent's bar rather
+	 * than stacking over it (see bHideBarWhenFailMarkerShown), so it has to land exactly where the bar
+	 * was — same height above the anchor point, so the swap reads as one readout changing rather than a
+	 * second one appearing higher up. It was 260 while the two were expected to coexist.
+	 *
+	 * The ANCHOR still differs from the bar's, and that is the whole point: the bar tracks the agent, the
+	 * marker stays at the failure point. Same offset, different anchor.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "0.0"))
-	float FailMarkerHeightOffset = 260.0f;
+	float FailMarkerHeightOffset = 200.0f;
+
+	/**
+	 * Drop an agent's tenability bar once its fail marker is actually drawn, so the marker replaces the
+	 * bar instead of both showing at the same point.
+	 *
+	 * Conditional on the marker having been EMITTED for that same agent this frame, never merely on the
+	 * agent having failed. That is what keeps this safe while the marker render path is unproven: if a
+	 * marker cannot be drawn for any reason - master toggle off, per-type toggle off, no captured pose,
+	 * mesh unregistered, marker off screen - the bar stays, so a failed agent can never end up with
+	 * nothing shown at all. The suppression switches itself on the moment markers genuinely draw.
+	 *
+	 * Suppresses only the bar's INSTANCE. The agent keeps its debug label, which is where the failure
+	 * diagnostics are read from.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability")
+	bool bHideBarWhenFailMarkerShown = true;
 
 	/**
 	 * Master gate for the in-world fail markers. Off submits an empty instance buffer rather than

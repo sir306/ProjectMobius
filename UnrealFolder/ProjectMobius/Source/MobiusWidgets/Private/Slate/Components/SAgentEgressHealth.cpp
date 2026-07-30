@@ -150,6 +150,11 @@ int32 SAgentEgressTenability::OnPaint(
 			}
 		}
 
+		// Set when this agent's marker actually made it into the instance buffer, so the bar below can
+		// stand down for it. Tracked per agent inside the loop rather than looked up afterwards, because
+		// PendingFailMarkers holds no agent identity — it is a depth-sorted instance list.
+		bool bEmittedMarkerForThisAgent = false;
+
 		// Fail marker. Anchored at FailureLocation, NOT at the agent, so it needs its own projection —
 		// the agent walks on after failing while the marker stays where conditions went untenable.
 		// That extra projection is paid only for agents that have actually failed, not per agent.
@@ -199,6 +204,7 @@ int32 SAgentEgressTenability::OnPaint(
 				Pending.InstanceData = FVector4f(MarkerInstanceData.GetData());
 				Pending.CameraDistance = static_cast<float>(MarkerDistance);
 				++MutableThis->FailMarkerStats.Emitted;
+				bEmittedMarkerForThisAgent = true;
 			}
 		}
 
@@ -250,11 +256,19 @@ int32 SAgentEgressTenability::OnPaint(
 		const float EncodedTenability =
 			static_cast<float>(ShownCriterion) + FMath::Clamp(Agent.DisplayRisk, 0.0f, 0.999f);
 
-		FSlateVectorArtInstanceData InstanceData;
-		InstanceData.SetPosition(AbsolutePosition);
-		InstanceData.SetScale(InstanceScale);
-		InstanceData.SetBaseAddress(EncodedTenability);
-		PerInstanceUpdate.Add(FVector4f(InstanceData.GetData()));
+		// The marker REPLACES the bar rather than stacking over it, but only once the marker is genuinely
+		// on screen for this agent — never merely because the agent failed. Anything that can stop a
+		// marker being drawn (either toggle, no captured pose, unregistered mesh, off screen) leaves the
+		// bar in place, so a failed agent can never show nothing at all. Only the INSTANCE is skipped;
+		// the debug label below still runs, because that is where the failure diagnostics are read.
+		if (!(bEmittedMarkerForThisAgent && Widget->bHideBarWhenFailMarkerShown))
+		{
+			FSlateVectorArtInstanceData InstanceData;
+			InstanceData.SetPosition(AbsolutePosition);
+			InstanceData.SetScale(InstanceScale);
+			InstanceData.SetBaseAddress(EncodedTenability);
+			PerInstanceUpdate.Add(FVector4f(InstanceData.GetData()));
+		}
 
 
 		if (bWantDebug)
