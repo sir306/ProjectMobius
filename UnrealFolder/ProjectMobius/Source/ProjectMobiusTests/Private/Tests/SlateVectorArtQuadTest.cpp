@@ -134,6 +134,26 @@ bool FSlateVectorArtQuadDrawableTest::RunTest(const FString& Parameters)
 					static_cast<int32>(MD_UI));
 			}
 
+			// THE one that matters for an INSTANCED Slate mesh, and the least obvious of the lot.
+			// SlateVertexShader.usf does NOT apply the per-instance position or scale itself. It hands the
+			// instance FVector4 to the material as UV channels only - InstanceParam.xy as UV2 (position),
+			// InstanceParam.zw as UV3 (scale, base address) - and then at line 119 does
+			//
+			//     WorldPosition.xyz = GetMaterialWorldPositionOffsetRaw(VertexParameters);
+			//
+			// REPLACING the vertex position outright. So the material's World Position Offset is the only
+			// thing that can place an instance. A material without one draws every instance at the raw
+			// mesh position: one quad at the widget's coordinate origin, half of it off-screen, while the
+			// instance buffer reports the correct count and every C++-side check passes. Indistinguishable
+			// from "nothing was emitted" unless you know to look here.
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s material must have World Position Offset connected - Slate applies the "
+						"per-instance position/scale ONLY through WPO (UV2 = position, UV3 = scale), so "
+						"without it every instance collapses onto the widget origin"),
+					Case.Label),
+				BaseMaterial != nullptr && BaseMaterial->HasVertexPositionOffsetConnected());
+
 			// Masked is legal here but wrong for mask-only art, and it fails in a way that looks like a
 			// material bug rather than a blend bug. SlateRHIRenderingPolicy::GetMaterialBlendState maps
 			// BLEND_Masked to TStaticBlendState<> - fully opaque, no alpha blending - so a marker whose
@@ -152,7 +172,7 @@ bool FSlateVectorArtQuadDrawableTest::RunTest(const FString& Parameters)
 			}
 
 			AddInfo(FString::Printf(
-				TEXT("%s: extent %.3f x %.3f, %d verts, %d indices, material '%s', domain %d, blend %d"),
+				TEXT("%s: extent %.3f x %.3f, %d verts, %d indices, material '%s', domain %d, blend %d, WPO %s"),
 				Case.Label,
 				DesiredSize.X,
 				DesiredSize.Y,
@@ -160,7 +180,8 @@ bool FSlateVectorArtQuadDrawableTest::RunTest(const FString& Parameters)
 				NumIndices,
 				*MaterialInterface->GetName(),
 				BaseMaterial ? static_cast<int32>(BaseMaterial->MaterialDomain.GetValue()) : -1,
-				static_cast<int32>(MaterialInterface->GetBlendMode())));
+				static_cast<int32>(MaterialInterface->GetBlendMode()),
+				(BaseMaterial && BaseMaterial->HasVertexPositionOffsetConnected()) ? TEXT("yes") : TEXT("NO")));
 		}
 	}
 
