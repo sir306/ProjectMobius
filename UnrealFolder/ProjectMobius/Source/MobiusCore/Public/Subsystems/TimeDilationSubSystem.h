@@ -140,6 +140,11 @@ public:
 
 	/**
 	 * As movement data can be changed by the user at any time, the simulation needs to be paused and reset to 0 time
+	 *
+	 * Bound to BOTH file-change delegates - the agent trajectory file and the B-RISK scenario file - so
+	 * either load leaves the app in the same visible state. The B-RISK case additionally NEEDS the reset:
+	 * see the binding comment in Initialize for the projection/rendering cycle a late playhead can
+	 * otherwise get stuck in while the agent timelines rebuild.
 	 */
 	UFUNCTION()
 	void FileChanging();

@@ -846,8 +846,40 @@ bool FInGameTenabilityScrubReplayTest::RunTest(const FString& Parameters)
 	// Swap to the "fast" B-RISK scenario (visibility crosses at ~25 s, not ~65 s). Bumps
 	// ScenarioGeneration -> rebuild. Assert the failure time follows the NEW curve.
 	ADD_LATENT_AUTOMATION_COMMAND(FSetBRiskFileCommand(*this, BRiskFast));
+
+	// A B-RISK load resets the playhead to 0 and pauses, exactly as an agent-file load does. The playhead
+	// is at T1=90 when the swap happens, which is the case that needs it: the stale-timeline window clears
+	// DeathTimeSeconds on every entity, that de-latches the failure-pose freeze, and any agent whose
+	// trajectory has already ended by T1 then stops being rendered - after which the health processor
+	// skips it and nothing re-arms the projection when the rebuild lands. Fail markers stayed missing
+	// until a scrub happened to put those agents back on-dataset. Asserting the reset pins the property
+	// that makes the cycle unreachable: the rebuild always lands with the playhead somewhere every agent
+	// exists.
+	ADD_LATENT_AUTOMATION_COMMAND(FRunAssertionCommand([this]()
+	{
+		const UTimeDilationSubSystem* TimeSub = GetTimeSubsystem(GetActiveGameWorld());
+		TestNotNull(TEXT("S3: time subsystem present after the B-RISK swap"), TimeSub);
+		if (TimeSub)
+		{
+			TestEqual(TEXT("S3: B-RISK load reset the playhead to 0 (it was at T1)"),
+				TimeSub->GetCurrentSimTime(), 0.0f, 1e-3f);
+		}
+	}));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForBRiskLoadedCommand(*this, /*MaxTicks*/ 6000));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForTimelinesCurrentCommand(*this, MaxTimelineBuildTicks, TEXT("S3 rebuild")));
+	// Still 0 after the load + the whole rebuild window: the reset also PAUSED, so the timelines became
+	// current at t=0 rather than at whatever time the clock had drifted to. A reset that did not pause
+	// would let the playhead run back out past the agents' dataset end before the rebuild landed, which
+	// is the state the reset exists to avoid.
+	ADD_LATENT_AUTOMATION_COMMAND(FRunAssertionCommand([this]()
+	{
+		const UTimeDilationSubSystem* TimeSub = GetTimeSubsystem(GetActiveGameWorld());
+		if (TimeSub)
+		{
+			TestEqual(TEXT("S3: playhead held at 0 through the load + rebuild (reset also paused)"),
+				TimeSub->GetCurrentSimTime(), 0.0f, 1e-3f);
+		}
+	}));
 	ADD_LATENT_AUTOMATION_COMMAND(FScrubAndSettleCommand(*this, T1, SettleTicks));
 	ADD_LATENT_AUTOMATION_COMMAND(FRunAssertionCommand([this]()
 	{

@@ -79,7 +79,21 @@ void UTimeDilationSubSystem::Initialize(FSubsystemCollectionBase& Collection)
 
 		// When a file is changed we want to pause the simulation and reset
 		GameInst->OnPedestrianVectorFileUpdated.AddDynamic(this, &UTimeDilationSubSystem::FileChanging);
-		
+
+		// A new B-RISK scenario gets the SAME reset, for the same reason plus one specific to tenability.
+		//
+		// Loading one bumps ScenarioGeneration, which makes the precomputed agent timelines stale; while
+		// they rebuild, the health processor writes the no-data state to EVERY entity, including
+		// DeathTimeSeconds = -1. That de-latches the failure-pose freeze in PedestrianMovementProcessor,
+		// so any agent whose trajectory has already ended at the current playhead stops being rendered -
+		// and the health processor skips unrendered entities, so when the rebuild lands there is nothing
+		// left to re-arm DeathTimeSeconds. Projection needs rendering, rendering needs the projection: the
+		// agent stays invisible with no fail marker until a scrub happens to put it back on-dataset.
+		// Resetting to t=0 breaks that cycle by construction - at 0 every agent is present, so the
+		// rebuild's first projected frame re-arms everything - and it matches what the agent-file path
+		// already does, so both loads leave the app in the same visible state.
+		GameInst->OnBRiskFileChanged.AddDynamic(this, &UTimeDilationSubSystem::FileChanging);
+
 		// log that it has binded
 		UE_LOG(LogTemp, Warning, TEXT("Time Dilation Scale Factor Changed Delegate Binded"));
 	}
@@ -99,6 +113,7 @@ void UTimeDilationSubSystem::Deinitialize()
 		// UnBind the required Game Instance Delegates
 		GameInst->OnTimeDilationScaleFactorChanged.RemoveDynamic(this, &UTimeDilationSubSystem::GetUpdatedTimeDilation);
 		GameInst->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &UTimeDilationSubSystem::FileChanging);
+		GameInst->OnBRiskFileChanged.RemoveDynamic(this, &UTimeDilationSubSystem::FileChanging);
 	}
 
 	// If we have other subsystems that we depend on we can deinitialize them here after super
