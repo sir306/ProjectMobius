@@ -154,23 +154,12 @@ bool FSlateVectorArtQuadDrawableTest::RunTest(const FString& Parameters)
 					Case.Label),
 				BaseMaterial != nullptr && BaseMaterial->HasVertexPositionOffsetConnected());
 
-			// Masked is legal here but wrong for mask-only art, and it fails in a way that looks like a
-			// material bug rather than a blend bug. SlateRHIRenderingPolicy::GetMaterialBlendState maps
-			// BLEND_Masked to TStaticBlendState<> - fully opaque, no alpha blending - so a marker whose
-			// art is a coverage mask over transparency paints its whole quad as a solid block instead of
-			// compositing over the scene. The tenability bar alongside it uses Translucent. Warned rather
-			// than failed: it needs a material asset edit in the editor, and it cannot make a marker
-			// invisible, only visibly wrong.
-			if (MaterialInterface->GetBlendMode() == BLEND_Masked)
-			{
-				AddWarning(FString::Printf(
-					TEXT("%s material '%s' is BLEND_Masked. Slate maps that to an opaque blend state, so "
-						"mask-only art will paint as a solid block. Prefer BLEND_Translucent with the "
-						"coverage driving Opacity instead of Opacity Mask."),
-					Case.Label,
-					*MaterialInterface->GetName()));
-			}
-
+			// Blend mode is deliberately NOT asserted. BLEND_Masked works fine here and is verified
+			// working in-world on the fail marker: SlateRHIRenderingPolicy::GetMaterialBlendState maps it
+			// to TStaticBlendState<> (opaque, no alpha blend), but the shader still clips pixels below the
+			// opacity-mask threshold, so they are never written and the transparency holds. The only cost
+			// is edge antialiasing versus Translucent - a quality trade, not a correctness one. An earlier
+			// revision of this test warned about it; that warning was wrong and has been removed.
 			AddInfo(FString::Printf(
 				TEXT("%s: extent %.3f x %.3f, %d verts, %d indices, material '%s', domain %d, blend %d, WPO %s"),
 				Case.Label,
