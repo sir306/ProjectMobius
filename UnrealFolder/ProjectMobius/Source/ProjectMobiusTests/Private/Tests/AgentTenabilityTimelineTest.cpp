@@ -869,6 +869,70 @@ bool FAgentTenabilityFailurePrecomputeTest::RunTest(const FString&)
 			DoseSnapshot.VisibilityRisk, 0.0f);
 	}
 
+	// --- Room change EXACTLY at the failure instant: channels come from the FAILING room ---------------
+	// The crossing is solved on the room the agent is LEAVING, but t* lands on the room change, where
+	// that interval's Exit equals the next interval's Entry. "The interval containing t*" then resolves
+	// to the room the agent walked INTO - whose conditions did not cause the failure and, here, are
+	// clear. The snapshot has to describe the room that produced the crossing.
+	//
+	// Dose is deliberately NOT asserted to come from the same room: it is cumulative, so at a boundary
+	// the entering interval's Prior already equals the completed dose through the leaving one. Only the
+	// instantaneous channels have a "which room" question at all.
+	{
+		// Bespoke tables, not the golden one: every number here is exactly representable in binary
+		// (4.0 / 2.0 / 3.0 / 40 / 80) so the crossing lands on the boundary EXACTLY rather than a
+		// rounding hair either side of it. A crossing "at a sample" solved from a decimal threshold is
+		// not deterministic - MonitorHeightM 1.905f is 1.90499997 as a double, so 1.905 <= it is false,
+		// which is why the sample-aligned case above finds its crossing via the following pair.
+		//
+		// SMOKE room (table 0): layer 4.0 m -> 2.0 m over [0, 80], visibility 8 m, upper layer 100 C.
+		//   Monitor 3.0 m: layer(t) == 3.0 at alpha 0.5, i.e. t* = 40 s.
+		// CLEAR room (table 1): layer pinned at 4.0 m (never crosses), visibility 20 m, both layers 24 C.
+		FBRiskTenabilityRoomTable SmokeTable;
+		SmokeTable.RoomId = 1;
+		SmokeTable.Samples.Add(MakeGoldenSample(0,  500.0, 4.000, 100.0, 30.0, 0.0, 8.0, 0.0));
+		SmokeTable.Samples.Add(MakeGoldenSample(80, 500.0, 2.000, 100.0, 30.0, 0.0, 8.0, 0.0));
+		FBRiskTenabilityRoomTable ClearTable;
+		ClearTable.RoomId = 2;
+		ClearTable.Samples.Add(MakeGoldenSample(0,   0.0, 4.000, 24.0, 24.0, 0.0, 20.0, 0.0));
+		ClearTable.Samples.Add(MakeGoldenSample(200, 0.0, 4.000, 24.0, 24.0, 0.0, 20.0, 0.0));
+		const TArray<FBRiskTenabilityRoomTable> TwoRoomTables({ SmokeTable, ClearTable });
+		const TArray<int32> TwoRoomMapping({ 0, 1 });
+
+		FTenabilityAnalysisSettings LayerSettings;
+		LayerSettings.bUseVisibilityCriterion = false;
+		LayerSettings.bUseToxicFEDCriterion = false;
+		LayerSettings.bUseThermalFEDCriterion = false;
+		LayerSettings.bUseTemperatureCriterion = false;
+		LayerSettings.bUseLayerHeightCriterion = true;
+		LayerSettings.MonitorHeightM = 3.0f;
+
+		// Agent leaves the smoke room for the clear one at exactly t* = 40.
+		FAgentTenabilityTimeline Timeline = MakeSingleRoomTimeline(0.0f, 40.0f, /*toxic*/0.0, /*thermal*/0.0);
+		FAgentRoomOccupancyInterval Second;
+		Second.RoomIndex = 1;
+		Second.RoomId = 2;
+		Second.EntryTimeSeconds = 40.0f;   // == the first interval's Exit: the boundary case
+		Second.ExitTimeSeconds = 200.0f;
+		Timeline.Intervals.Add(Second);
+
+		ComputeFailureData(Timeline, TwoRoomTables, TwoRoomMapping, LayerSettings, /*PoseSampler*/{});
+
+		TestEqual(TEXT("room change at t*: crossing solved on the leaving room (t=40)"),
+			Timeline.FirstFailureTimeSeconds, 40.0f, 1e-3f);
+		const FTenabilityFailureSnapshot& Boundary = Timeline.FailureSnapshot;
+		TestEqual(TEXT("room change at t*: snapshot layer height is the FAILING room's 3.0 m, not the entered room's 4.0 m"),
+			Boundary.LayerHeightM, 3.0f, 1e-4f);
+		TestEqual(TEXT("room change at t*: snapshot visibility is the FAILING room's 8 m, not the entered room's 20 m"),
+			Boundary.VisibilityM, 8.0f, 1e-4f);
+		// Monitor 3.0 m is AT the failing room's interface -> UPPER layer, 100 C. In the entered room the
+		// interface is 4.0 m, so a misattributed snapshot selects that room's 24 C lower layer instead.
+		TestEqual(TEXT("room change at t*: snapshot temperature is the FAILING room's upper layer 100 C"),
+			Boundary.TemperatureC, 100.0f, 1e-3f);
+		TestEqual(TEXT("room change at t*: snapshot heat release is the FAILING room's 500 kW"),
+			Boundary.HeatReleaseKW, 500.0f, 1e-3f);
+	}
+
 	// --- No failure -> no snapshot, and the projection is inert ---------------------------------------
 	// A settings rebuild that removes the failure must not leave the previous run's snapshot standing,
 	// and the projection must refuse to invent a failure readout when asked out of sequence.

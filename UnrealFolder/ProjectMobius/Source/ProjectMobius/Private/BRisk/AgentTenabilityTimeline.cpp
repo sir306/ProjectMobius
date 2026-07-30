@@ -102,12 +102,14 @@ namespace UE::Mobius::Tenability
 	namespace
 	{
 		/**
-		 * THE rule for "which occupancy interval is this agent's tenability read from at time t":
-		 * the last interval whose entry time is <= t, or INDEX_NONE before the first entry / with no
-		 * intervals at all. Shared by the dose query and the at-failure snapshot so the two can never
-		 * disagree about the room at a shared timestamp - which matters exactly at an interval
-		 * boundary, where two adjacent intervals both touch t and the choice changes which room's
-		 * curves are read.
+		 * THE rule for "which occupancy interval is this agent's DOSE read from at time t": the last
+		 * interval whose entry time is <= t, or INDEX_NONE before the first entry / with no intervals at
+		 * all. On a room change (Exit_k == Entry_k+1) this picks the entering interval, which is right for
+		 * dose - its Prior already banks everything completed through the leaving interval.
+		 *
+		 * Deliberately NOT used for the at-failure snapshot's instantaneous channels: those belong to the
+		 * room that produced the crossing, which at a boundary is the interval being LEFT. See
+		 * ComputeFailureData's SlotInterval.
 		 */
 		int32 FindIntervalIndexAtTime(
 			const TConstArrayView<FAgentRoomOccupancyInterval> Intervals, const float TimeSeconds)
@@ -498,6 +500,19 @@ namespace UE::Mobius::Tenability
 		{
 			T = -1.0;
 		}
+		// Which occupancy interval produced each slot's earliest crossing. Recorded rather than
+		// re-derived from the time, because a crossing can land exactly ON a room change, where the
+		// leaving interval's Exit equals the entering interval's Entry: "the interval containing t*" then
+		// resolves to the room the agent walked INTO, whose conditions did not cause the failure. The
+		// at-failure snapshot has to read the room that produced the crossing.
+		int32 SlotInterval[static_cast<int32>(ECriterionSlot::Count)];
+		for (int32& I : SlotInterval)
+		{
+			I = INDEX_NONE;
+		}
+		// Set by the interval loop below so RecordCrossing can attribute a crossing without threading the
+		// index through EvaluatePair's signature.
+		int32 CurrentIntervalIndex = INDEX_NONE;
 
 		const double MonitorHeightM = static_cast<double>(Settings.MonitorHeightM);
 		const double EndpointVisibilityM = static_cast<double>(Settings.EndpointVisibilityM);
@@ -505,18 +520,22 @@ namespace UE::Mobius::Tenability
 		const double EndpointThermalFED = static_cast<double>(Settings.EndpointThermalFED);
 		const double EndpointTemperatureC = static_cast<double>(Settings.EndpointTemperatureC);
 
-		// Record a crossing for a slot, keeping the earliest.
-		auto RecordCrossing = [&SlotTime](const ECriterionSlot Slot, const double Time)
+		// Record a crossing for a slot, keeping the earliest - and the interval that produced it.
+		auto RecordCrossing = [&SlotTime, &SlotInterval, &CurrentIntervalIndex](
+			const ECriterionSlot Slot, const double Time)
 		{
 			const int32 Idx = static_cast<int32>(Slot);
 			if (SlotTime[Idx] < 0.0 || Time < SlotTime[Idx])
 			{
 				SlotTime[Idx] = Time;
+				SlotInterval[Idx] = CurrentIntervalIndex;
 			}
 		};
 
-		for (const FAgentRoomOccupancyInterval& Interval : Timeline.Intervals)
+		for (int32 IntervalIdx = 0; IntervalIdx < Timeline.Intervals.Num(); ++IntervalIdx)
 		{
+			const FAgentRoomOccupancyInterval& Interval = Timeline.Intervals[IntervalIdx];
+			CurrentIntervalIndex = IntervalIdx;
 			if (!RoomIndexToTableIndex.IsValidIndex(Interval.RoomIndex))
 			{
 				continue;
@@ -795,10 +814,16 @@ namespace UE::Mobius::Tenability
 			Timeline.DoseAt(
 				FailureTime, DoseSamplerRef, Snapshot.AccumulatedToxicFED, Snapshot.AccumulatedThermalFED);
 
-			// Instantaneous channels come from the room the agent occupies at the failure time. The
-			// interval is picked by the SAME rule DoseAt uses (FindIntervalIndexAtTime), so the channels
-			// and the dose can never be read from different rooms at an interval boundary.
-			const int32 IntervalIndex = FindIntervalIndexAtTime(Timeline.Intervals, FailureTime);
+			// Instantaneous channels come from the room that PRODUCED the crossing - the interval recorded
+			// alongside the winning slot's time, not "the interval containing FailureTime". The two differ
+			// when the failure lands exactly on a room change, and there the recorded one is the honest
+			// answer: the agent was stopped by the room it was leaving, so reporting the room it stepped
+			// into (routinely a clear one) would describe conditions that did not cause the failure.
+			//
+			// Dose deliberately does NOT follow this room: it is cumulative, and at a boundary the
+			// entering interval's Prior already equals the completed dose through the leaving one, so
+			// DoseAt's own interval rule is correct there. Channels are per-room; dose is per-agent.
+			const int32 IntervalIndex = SlotInterval[static_cast<int32>(FirstSlot)];
 			const FBRiskTenabilitySample* Lo = nullptr;
 			const FBRiskTenabilitySample* Hi = nullptr;
 			if (Timeline.Intervals.IsValidIndex(IntervalIndex))

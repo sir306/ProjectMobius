@@ -137,6 +137,10 @@ namespace UE::Mobius::Tenability
 	 * Compute*Risk functions. Dose is Timeline::DoseAt at the crossing time, i.e. literally the same
 	 * closed-form query the live path makes, so the two cannot disagree by construction.
 	 *
+	 * The channels are read from the room that PRODUCED the crossing, which is not always the room the
+	 * agent is in at that timestamp: a failure landing exactly on a room change belongs to the room being
+	 * LEFT. Dose does not follow that room, because it is cumulative rather than per-room.
+	 *
 	 * A channel absent at the bracketing samples keeps its default here and contributes ZERO risk
 	 * (never fabricated - scientific-integrity invariant 3). Temperature additionally needs the layer
 	 * height present to pick a layer: the offline pass has no live raw-sample fallback, exactly as
