@@ -37,6 +37,10 @@ public:
 	 * Color Tint" / "Border Color Tint" params, so the theme colour has to be written through a MID —
 	 * SetBrushColor on its own only multiplies the baked value and can never reach a light surface.
 	 * Static so the notify popup can theme its outer frame with the same rule.
+	 *
+	 * A Border whose brush is a FLAT COLOUR has no MID to write, so it takes Fill on BrushColor (and Outline
+	 * on OutlineSettings.Color when the brush draws one) with the tint pinned white — the same D169
+	 * single-multiplier convention as UMobiusThemedBorder. Only the material path whitens BrushColor.
 	 */
 	static void ThemeMaterialCard(class UBorder* Border, const FLinearColor& Fill, const FLinearColor& Outline);
 
