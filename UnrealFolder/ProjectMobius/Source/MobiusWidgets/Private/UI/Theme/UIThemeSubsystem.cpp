@@ -314,6 +314,23 @@ namespace MobiusTheme
 		{
 			return false;
 		}
+		// OWNERSHIP CARVE-OUT 2026-07-30 — the loading card has MIGRATED to owner-pull, so this walk is no
+		// longer providing coverage for it, it is DESTROYING coverage. Measured in PIE against the live MID:
+		// UImprovedLoadingNotifyWidget / UBaseLoadingWidget write their role colours at construct, then the
+		// STARTUP TICKER (Initialize :418-469) re-runs ApplyToLiveWidgets every 0.3s WITHOUT broadcasting
+		// OnThemeChanged — so unlike ApplyTheme (:785 walk, :799 broadcast, owner wins) the walk gets the last
+		// word and this function overwrites it: dark hit ClearParameterValues() below and reverted the card to
+		// MI_LoadingOuterBackground's baked near-black (0.006995 -> #141517), light forced the hard-coded
+		// 0.9131 (#f5f5f5). That IS the owner's "black in dark, white in light" report — one bug, both halves.
+		// Substring is "Loading" not "Load": it matches MI_LoadingOuter/InnerBackground and deliberately NOT
+		// MI_LoadDataFilesBackground, which has no owner-pull driver yet. The other cards in this folder
+		// (FlowCounter/PlayBar/Egress/WidgetBackground) are still walker-owned until A6b-6 migrates them, so
+		// they must keep falling through. Same rationale already recorded for UMobiusThemedBorder in
+		// BaseLoadingWidget.cpp:96-98 — a declared role must beat an untargeted sweep.
+		if (SourcePath.Contains(TEXT("Loading")))
+		{
+			return false;
+		}
 		if (!Mid)
 		{
 			Mid = UMaterialInstanceDynamic::Create(Material, MidOuter);

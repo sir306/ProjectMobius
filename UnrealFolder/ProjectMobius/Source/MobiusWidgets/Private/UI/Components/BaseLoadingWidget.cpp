@@ -106,7 +106,18 @@ void UBaseLoadingWidget::ApplyMobiusTheme_Implementation()
 				{
 					return;
 				}
-				ThemeMaterialCard(Card, GetThemeColor(EMobiusPaletteRole::WellBg),
+				// FILL ROLE CORRECTED 2026-07-30 (WellBg -> InputBg). WellBg dark is 0.05286 — BYTE-IDENTICAL
+				// to PanelHeaderBg, which the notify card now uses for the frame these Borders sit inside
+				// (ImprovedLoadingNotifyWidget.cpp). While the legacy walk was clobbering both MIDs the
+				// collision was invisible; with that carve-out in place (UIThemeSubsystem ThemeBackgroundBrush)
+				// owner-pull actually lands and an inset at the same value as its own card vanishes.
+				// InputBg is the recessed-field surface and is correct in kind for a progress readout well —
+				// dark 0.02416 (#2a2a2a) under the #414141 frame, light pure white inside #eaeaea, so it reads
+				// as an inset in BOTH themes. It also matches the baked 0.0091 (#181919) that PIE was rendering
+				// while the walk won, which the owner never complained about. Outline stays PanelDivider: it is
+				// the authoritative hairline, and InputBorder light (0.19462 ~ #7a7a7a) is far too heavy for two
+				// nested rims on a small popup.
+				ThemeMaterialCard(Card, GetThemeColor(EMobiusPaletteRole::InputBg),
 					GetThemeColor(EMobiusPaletteRole::PanelDivider));
 			}
 		});

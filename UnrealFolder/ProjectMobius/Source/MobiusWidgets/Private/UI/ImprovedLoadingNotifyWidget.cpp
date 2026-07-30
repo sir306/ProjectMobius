@@ -43,8 +43,25 @@ void UImprovedLoadingNotifyWidget::ApplyMobiusTheme_Implementation()
 	// The popup frame's brush is MI_LoadingOuterBackground (M_WidgetBackground, rounded 4px + 2px border)
 	// with its colours BAKED DARK, so the old SetBrushColor(RibbonBg) only multiplied that near-black fill
 	// and the card stayed dark in the light theme. Colour now goes through the MID params instead.
+	//
+	// ROOT CAUSE 2026-07-30, MEASURED IN PIE — NOT a role-collapse and NOT a failed write. The write LANDS
+	// and is then DESTROYED. UIThemeSubsystem's legacy ThemeBackgroundBrush claims every brush instanced
+	// from /WidgetMaterials/BackgroundMaterials/, which includes both loading MIs, and the startup ticker
+	// re-runs that walk after construct without broadcasting OnThemeChanged — so it overwrote whatever this
+	// function had just written: dark reverted to the MI's baked 0.006995 (#141517), light was forced to a
+	// hard-coded 0.9131 (#f5f5f5). Hence the owner's "black in dark, white in light" — ONE defect, both
+	// halves. Fixed by the ownership carve-out in ThemeBackgroundBrush; a theme TOGGLE always looked right
+	// because ApplyTheme walks first (:785) and broadcasts second (:799), so there the owner wins.
+	//
+	// The card floats over the 3D VIEWPORT (CanvasPanel_0 of WBP_CompleteMobiusUI, centre-anchored), not
+	// over a panel — so an earlier note here about colliding with the panel body was simply wrong.
+	// PanelHeaderBg (spec-4 "header") + PanelHeaderBorder (spec-4 "hairline") are verified by capture:
+	// fill #414141, rim #4a4a4a, and the card reads as a raised card against the sky. Both authoritative
+	// tokens — no invented pair (see the CR item C scolding in UIThemeSubsystem.cpp:156). WellBg would be
+	// wrong in kind (a well is RECESSED, this frame is raised) AND collides: WellBg dark == PanelHeaderBg
+	// dark == 0.05286, which is why the inner Borders moved to InputBg (BaseLoadingWidget.cpp).
 	UBaseLoadingWidget::ThemeMaterialCard(LoadingBackground,
-		GetThemeColor(EMobiusPaletteRole::RibbonBg), GetThemeColor(EMobiusPaletteRole::WindowBorder));
+		GetThemeColor(EMobiusPaletteRole::PanelHeaderBg), GetThemeColor(EMobiusPaletteRole::PanelHeaderBorder));
 }
 
 void UImprovedLoadingNotifyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
