@@ -251,6 +251,10 @@ struct PROJECTMOBIUS_API FAgentEgressTenabilityFragment : public FMassFragment
 	 * True when the agent occupies a B-Risk room this frame, OR carries accumulated dose from rooms
 	 * it occupied earlier, OR has failed by now. False during the stale-timeline rebuild window and
 	 * for an agent that has never been inside a modelled room.
+	 *
+	 * Never assign this directly: the decision belongs to UE::Mobius::Tenability::ShouldDisplayTenability
+	 * (or ResetTenabilityToNoData for the rebuild window), which is where all four of those paths are
+	 * pinned by ProjectMobius.BRisk.Tenability.DoseOutsideRoom.
 	 */
 	bool bHasTenabilityData = false;
 
@@ -382,6 +386,21 @@ namespace UE::Mobius::Tenability
 	{
 		return EndpointTemperatureC > UE_SMALL_NUMBER
 			? FMath::Clamp(FMath::Max(CurrentTemperatureC, 0.0f) / EndpointTemperatureC, 0.0f, 1.0f)
+			: 0.0f;
+	}
+
+	/**
+	 * Layer-height risk: smoke descends toward the monitor height, so risk ramps 0 -> 1 as the layer
+	 * interface falls from the ceiling to the monitor height and saturates when it reaches it.
+	 *
+	 * Named (rather than inlined at its one call site, as it used to be) because the offline at-failure
+	 * snapshot must derive the SAME risk at the crossing time that the live frame would; two copies of
+	 * the formula could drift apart and the drift would be invisible - both paths read plausible.
+	 */
+	inline float ComputeLayerHeightRisk(const float CurrentLayerHeightM, const float MonitorHeightM)
+	{
+		return MonitorHeightM > UE_SMALL_NUMBER
+			? FMath::Clamp((MonitorHeightM - CurrentLayerHeightM) / MonitorHeightM, 0.0f, 1.0f)
 			: 0.0f;
 	}
 
@@ -559,9 +578,8 @@ namespace UE::Mobius::Tenability
 		if (Settings.bUseLayerHeightCriterion && Sample.bHasCalcLayerHeight)
 		{
 			// Smoke descends toward the monitor height; fail when the interface reaches it.
-			Tenability.LayerHeightRisk = Settings.MonitorHeightM > UE_SMALL_NUMBER
-				? FMath::Clamp((Settings.MonitorHeightM - Tenability.CurrentLayerHeightM) / Settings.MonitorHeightM, 0.0f, 1.0f)
-				: 0.0f;
+			Tenability.LayerHeightRisk = ComputeLayerHeightRisk(
+				Tenability.CurrentLayerHeightM, Settings.MonitorHeightM);
 			Tenability.bLayerHeightFailed = Tenability.CurrentLayerHeightM <= Settings.MonitorHeightM;
 		}
 
@@ -605,5 +623,84 @@ namespace UE::Mobius::Tenability
 
 		// --- Backwards-compatible display-only Health (NOT analytical) ---
 		Tenability.Health = 1.0f - FMath::Clamp(Tenability.DisplayRisk, 0.0f, 1.0f);
+	}
+
+	/**
+	 * Is there anything to show for this agent at this time? Sole authority for
+	 * FAgentEgressTenabilityFragment::bHasTenabilityData outside the stale-timeline rebuild window
+	 * (ResetTenabilityToNoData covers that path).
+	 *
+	 * The bar encodes `value = ShownCriterion + Clamp(DisplayRisk, 0, 0.999)`, which has no spare
+	 * value meaning "no data" — criterion None with risk 0 is exactly what a measured-and-clear agent
+	 * produces. This flag is therefore the ONLY thing separating "measured here, and clear" from
+	 * "nothing was measured here", and a false positive draws a confident clear bar for an agent
+	 * standing in space B-Risk never simulated. That is a scientific-integrity failure, not a
+	 * cosmetic one, which is why the decision lives in one pure function the tests can pin.
+	 *
+	 * @param bHasRoomSampleThisFrame  FAgentBRiskExposureFragment::bHasRoomSample — the agent is inside
+	 *                                 a B-Risk room right now, so Track A really was measured here.
+	 * @param AccumulatedToxicFED      Timeline toxic dose at the current time. Greater than zero means
+	 *                                 it was measured in a room the agent has since left; dose is a
+	 *                                 property of the agent, not of the room it is standing in.
+	 * @param AccumulatedThermalFED    As above, thermal.
+	 * @param bFailedByNow             Timeline failure projected at the current time. A failed agent
+	 *                                 always has something to show, wherever it is standing — the bar
+	 *                                 is locked to the cause of failure, which is precisely what a
+	 *                                 reviewer needs at the end of a scenario.
+	 */
+	inline bool ShouldDisplayTenability(
+		const bool bHasRoomSampleThisFrame,
+		const float AccumulatedToxicFED,
+		const float AccumulatedThermalFED,
+		const bool bFailedByNow)
+	{
+		return bFailedByNow
+			|| bHasRoomSampleThisFrame
+			|| AccumulatedToxicFED > 0.0f
+			|| AccumulatedThermalFED > 0.0f;
+	}
+
+	/**
+	 * The no-data state for the stale-timeline rebuild window: while the built agent-timeline set
+	 * does not match the current (agent file, B-Risk file, settings) triple, no displayed value may
+	 * be computed from that mismatched triple (scientific-integrity invariant 2) and there is no
+	 * partial or interpolated fallback.
+	 *
+	 * Deliberately a SUBSET of the fragment, not a pristine reset. Left untouched on purpose:
+	 *  - AccumulatedToxicFED / AccumulatedThermalFED and the per-criterion *FailureTimeSeconds are
+	 *    re-derived wholesale from the rebuilt timeline on the first good frame, so clearing them
+	 *    here would buy nothing and hide what the previous triple reported.
+	 *  - The Current* sample values and CombinedHazardDose / InstantaneousHazard are debug readouts,
+	 *    gated for display by bHasTenabilityData, which this does clear.
+	 *
+	 * DeathTimeSeconds MUST be cleared for EVERY entity, rendered or not: the movement processor's
+	 * failure-pose freeze keys off DeathTimeSeconds alone (and re-shows hidden agents), so a stale
+	 * death pose left on any entity would snap it frozen during the rebuild window.
+	 */
+	inline void ResetTenabilityToNoData(FAgentEgressTenabilityFragment& Tenability)
+	{
+		Tenability.bHasTenabilityData = false;
+		Tenability.DisplayRisk = 0.0f;
+		Tenability.VisibilityRisk = 0.0f;
+		Tenability.ToxicFEDRisk = 0.0f;
+		Tenability.ThermalFEDRisk = 0.0f;
+		Tenability.TemperatureRisk = 0.0f;
+		Tenability.LayerHeightRisk = 0.0f;
+		Tenability.CurrentDominantCriterion = ETenabilityCriterion::None;
+		Tenability.Health = 1.0f;
+		Tenability.bVisibilityFailed = false;
+		Tenability.bToxicFEDFailed = false;
+		Tenability.bThermalFEDFailed = false;
+		Tenability.bTemperatureFailed = false;
+		Tenability.bLayerHeightFailed = false;
+		Tenability.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
+		Tenability.bTenabilityFailed = false;
+		Tenability.bIsDead = false;
+		Tenability.FirstFailureTimeSeconds = -1.0f;
+		Tenability.FirstFailureCriterion = ETenabilityCriterion::None;
+		Tenability.DeathTimeSeconds = -1.0f;
+		Tenability.DeathLocation = FVector::ZeroVector;
+		Tenability.DeathRotation = FRotator::ZeroRotator;
+		Tenability.TimelineIntervalCount = 0;
 	}
 }

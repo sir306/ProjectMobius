@@ -119,6 +119,55 @@ namespace UE::Mobius::Tenability
 		float PriorThermalFED = 0.0f;
 	};
 
+	/**
+	 * The criterion values AT the first-failure time - the at-failure snapshot.
+	 *
+	 * Layer-2 data like every other failure field, and for the same reason: the post-failure readout
+	 * must show what stopped the agent, and it must show the SAME thing however playback reached a
+	 * post-failure time. Holding the last-written live values instead (the cheap guard this replaced)
+	 * only agrees when playback actually ticked through the failure; a direct scrub from t=0 to well
+	 * past it holds the last PRE-failure frame, which is a different answer for the same time and so
+	 * breaks navigation-independence (scientific-integrity invariant 1).
+	 *
+	 * Every field is evaluated at FirstFailureTimeSeconds by ComputeFailureData and is a pure function
+	 * of (intervals, room curves, settings). The values MIRROR what ComputeInstantaneousTenability
+	 * would write for a live frame at that instant: raw channels are the room curve interpolated at
+	 * the crossing time - the same linear interpolation, end-clamping and both-endpoints bHas* rule
+	 * UBRiskEgressSubsystem::SampleTenabilityTableAtTime uses - and the risks come from the same
+	 * Compute*Risk functions. Dose is Timeline::DoseAt at the crossing time, i.e. literally the same
+	 * closed-form query the live path makes, so the two cannot disagree by construction.
+	 *
+	 * A channel absent at the bracketing samples keeps its default here and contributes ZERO risk
+	 * (never fabricated - scientific-integrity invariant 3). Temperature additionally needs the layer
+	 * height present to pick a layer: the offline pass has no live raw-sample fallback, exactly as
+	 * documented for the temperature crossing itself.
+	 */
+	struct FTenabilityFailureSnapshot
+	{
+		/** False on a timeline with no failure - nothing to project, and every field below is a default. */
+		bool bValid = false;
+
+		// Raw criterion values at the failure time. Defaults match FBRiskTenabilitySample /
+		// FAgentEgressTenabilityFragment so an absent channel reads identically on both paths.
+		float VisibilityM = 20.0f;
+		float TemperatureC = 24.0f;   // monitor-layer temperature (layer chosen at the failure time)
+		float LayerHeightM = 0.0f;
+		float HeatReleaseKW = 0.0f;
+		float RoomFEDSum = 0.0f;      // the ROOM's cumulative curve value (debug readout), not the dose
+		float RoomFEDRadSum = 0.0f;
+
+		// The AGENT's accumulated dose at the failure time (DoseAt, not the room curve).
+		float AccumulatedToxicFED = 0.0f;
+		float AccumulatedThermalFED = 0.0f;
+
+		// Per-criterion normalized risks at the failure time (0 for a disabled or absent criterion).
+		float VisibilityRisk = 0.0f;
+		float ToxicFEDRisk = 0.0f;
+		float ThermalFEDRisk = 0.0f;
+		float TemperatureRisk = 0.0f;
+		float LayerHeightRisk = 0.0f;
+	};
+
 	/** Precomputed tenability for one agent: Layer-1 intervals + Layer-2 failure fields. */
 	struct FAgentTenabilityTimeline
 	{
@@ -134,6 +183,8 @@ namespace UE::Mobius::Tenability
 		float LayerHeightFailureTimeSeconds = -1.0f;
 		FVector FailureLocation = FVector::ZeroVector;
 		FRotator FailureRotation = FRotator::ZeroRotator;
+		/** Criterion values at FirstFailureTimeSeconds - what the post-failure readout shows. */
+		FTenabilityFailureSnapshot FailureSnapshot;
 
 		/** Closed-form dose at any time — THE navigation-independent query.
 		 *  Exported (the struct is plain data, but this one out-of-line method is
@@ -206,6 +257,33 @@ namespace UE::Mobius::Tenability
 		TConstArrayView<int32> RoomIndexToTableIndex,
 		const FTenabilityAnalysisSettings& Settings,
 		const TFunction<bool(float TimeSeconds, FVector& OutLoc, FRotator& OutRot)>& PoseSampler);
+
+	/**
+	 * Project a failed agent's readout from the timeline's at-failure snapshot. THE post-failure state:
+	 * every field a reviewer can see is written from precomputed Layer-2 data, so nothing is held over
+	 * from whichever frame happened to be processed last and the readout at any post-failure time is
+	 * identical under play, skip, rewind and replay.
+	 *
+	 * Callers must have established that the agent HAS failed by the current time (the projected
+	 * `CurrentSimTime >= FirstFailureTimeSeconds` test); this function does not re-derive that and does
+	 * not look at the current time at all - the snapshot is time-invariant once failed.
+	 *
+	 * Writes, in full: the five per-criterion risks, both accumulated doses, every Current* sampled
+	 * value, the five per-criterion failed flags and FailureMask (derived from FirstFailureMask, which
+	 * IS the set of criteria failing at the failure instant), plus the locked display state
+	 * (DisplayRisk 1, Health 0, CurrentDominantCriterion = FirstFailureCriterion). That totality is
+	 * the point: any field left out would keep leaking a last-written value.
+	 *
+	 * Deliberately NOT written: bHasTenabilityData (ShouldDisplayTenability is its sole authority), the
+	 * FirstFailure and Death fields (projected unconditionally by the caller, failed or not) and the
+	 * legacy CombinedHazardDose / InstantaneousHazard fields.
+	 *
+	 * A timeline whose snapshot is invalid (no recorded failure) is a no-op, so a mis-sequenced call
+	 * cannot fabricate a failure readout.
+	 */
+	PROJECTMOBIUS_API void ApplyFailureSnapshot(
+		FAgentEgressTenabilityFragment& Tenability,
+		const FAgentTenabilityTimeline& Timeline);
 
 	/**
 	 * Incremental Layer-1 builder. Feed timesteps in ascending order; Finish()

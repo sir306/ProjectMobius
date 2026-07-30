@@ -593,6 +593,55 @@ bool FAgentTenabilityFailurePrecomputeTest::RunTest(const FString&)
 	const TArray<int32> RoomIndexToTableIndex({ 0 }); // RoomIndex 0 -> table 0
 	const FTenabilityAnalysisSettings Settings = MakeVisToxicSettings();
 
+	// The LIVE dose path, verbatim: UBRiskEgressSubsystem::SampleTenabilityDoseAtRoomIndex is
+	// SampleTenabilityTableAtTime plus a field copy. Used to cross-check the snapshot's dose against the
+	// interpolator the running game uses, so an offline/live divergence in clamping or interpolation
+	// fails here rather than showing up as a wrong number on screen.
+	auto LiveRoomSampler = [&RoomTable](
+		const int32 /*RoomIndex*/, const double TimeSeconds, double& OutToxic, double& OutThermal)
+	{
+		const FBRiskTenabilitySample Live = UBRiskEgressSubsystem::SampleTenabilityTableAtTime(RoomTable, TimeSeconds);
+		OutToxic = Live.FEDSum;
+		OutThermal = Live.FEDRadSum;
+	};
+
+	// Every field ApplyFailureSnapshot claims to own, compared in ONE place: a field added to the
+	// snapshot but forgotten in the projection has to fail something, and this is what fails.
+	const auto TestProjectionsEqual = [this](
+		const TCHAR* What,
+		const FAgentEgressTenabilityFragment& A,
+		const FAgentEgressTenabilityFragment& B)
+	{
+		const auto Same = [this, What](const TCHAR* Field, const float X, const float Y)
+		{
+			TestEqual(FString::Printf(TEXT("%s: %s"), What, Field), X, Y, 0.0f); // EXACT: same source data
+		};
+		Same(TEXT("AccumulatedToxicFED"), A.AccumulatedToxicFED, B.AccumulatedToxicFED);
+		Same(TEXT("AccumulatedThermalFED"), A.AccumulatedThermalFED, B.AccumulatedThermalFED);
+		Same(TEXT("CurrentVisibilityM"), A.CurrentVisibilityM, B.CurrentVisibilityM);
+		Same(TEXT("CurrentTemperatureC"), A.CurrentTemperatureC, B.CurrentTemperatureC);
+		Same(TEXT("CurrentLayerHeightM"), A.CurrentLayerHeightM, B.CurrentLayerHeightM);
+		Same(TEXT("CurrentHeatReleaseKW"), A.CurrentHeatReleaseKW, B.CurrentHeatReleaseKW);
+		Same(TEXT("CurrentFEDSum"), A.CurrentFEDSum, B.CurrentFEDSum);
+		Same(TEXT("CurrentFEDRadSum"), A.CurrentFEDRadSum, B.CurrentFEDRadSum);
+		Same(TEXT("VisibilityRisk"), A.VisibilityRisk, B.VisibilityRisk);
+		Same(TEXT("ToxicFEDRisk"), A.ToxicFEDRisk, B.ToxicFEDRisk);
+		Same(TEXT("ThermalFEDRisk"), A.ThermalFEDRisk, B.ThermalFEDRisk);
+		Same(TEXT("TemperatureRisk"), A.TemperatureRisk, B.TemperatureRisk);
+		Same(TEXT("LayerHeightRisk"), A.LayerHeightRisk, B.LayerHeightRisk);
+		Same(TEXT("DisplayRisk"), A.DisplayRisk, B.DisplayRisk);
+		Same(TEXT("Health"), A.Health, B.Health);
+		TestEqual(FString::Printf(TEXT("%s: FailureMask"), What),
+			static_cast<int32>(A.FailureMask), static_cast<int32>(B.FailureMask));
+		TestEqual(FString::Printf(TEXT("%s: CurrentDominantCriterion"), What),
+			static_cast<int32>(A.CurrentDominantCriterion), static_cast<int32>(B.CurrentDominantCriterion));
+		TestTrue(FString::Printf(TEXT("%s: bVisibilityFailed"), What), A.bVisibilityFailed == B.bVisibilityFailed);
+		TestTrue(FString::Printf(TEXT("%s: bToxicFEDFailed"), What), A.bToxicFEDFailed == B.bToxicFEDFailed);
+		TestTrue(FString::Printf(TEXT("%s: bThermalFEDFailed"), What), A.bThermalFEDFailed == B.bThermalFEDFailed);
+		TestTrue(FString::Printf(TEXT("%s: bTemperatureFailed"), What), A.bTemperatureFailed == B.bTemperatureFailed);
+		TestTrue(FString::Printf(TEXT("%s: bLayerHeightFailed"), What), A.bLayerHeightFailed == B.bLayerHeightFailed);
+	};
+
 	// A pose sampler that returns a fixed marker pose, to prove pose capture runs at the crossing time.
 	const FVector MarkerLoc(11.0, 22.0, 33.0);
 	const FRotator MarkerRot(5.0, 6.0, 7.0);
@@ -636,6 +685,131 @@ bool FAgentTenabilityFailurePrecomputeTest::RunTest(const FString&)
 		TestEqual(TEXT("pose sampled at first-failure time"), CapturedTime, 46.586f, 1e-2f);
 		TestEqual(TEXT("failure location captured"), Timeline.FailureLocation, MarkerLoc);
 		TestTrue(TEXT("failure rotation captured"), Timeline.FailureRotation.Equals(MarkerRot, 1e-3f));
+
+		// --- The AT-FAILURE SNAPSHOT: every criterion value evaluated at the crossing ----------------
+		// Golden arithmetic at t* = 46.586 s, alpha = (46.586 - 30)/30 = 0.55287 across the t=30..60 pair:
+		//   visibility  20.000 -> 1.917 : the crossing time is DEFINED by visibility == 10, so 10.000
+		//   layer       2.399  -> 1.905 : 2.399 + 0.55287*(-0.494)     = 2.1259 m
+		//   lower temp  24.25  -> 26.20 : 24.25 + 0.55287*(1.95)       = 25.328 C  (monitor 2.0 m is
+		//                                 BELOW the 2.1259 m interface -> LOWER layer selected)
+		//   HRR         169.2  -> 676.8 : 169.2 + 0.55287*(507.6)      = 449.85 kW
+		//   FEDSum      0.000  -> 0.001 : 0.55287*0.001                = 5.529e-4  (entry FED 0 -> dose)
+		const FTenabilityFailureSnapshot& Snapshot = Timeline.FailureSnapshot;
+		TestTrue(TEXT("snapshot valid when a failure was recorded"), Snapshot.bValid);
+		// Not merely "10-ish": the visibility crossing is the solution of visibility == endpoint, so a
+		// snapshot taken at the right instant reads the endpoint back. Off-by-one-sample or
+		// evaluated-at-the-interval-bound would read 20.0 or 1.917 instead.
+		TestEqual(TEXT("snapshot visibility == the endpoint it crossed (10 m)"),
+			Snapshot.VisibilityM, Settings.EndpointVisibilityM, 1e-2f);
+		TestEqual(TEXT("snapshot layer height at the crossing ~2.126 m"), Snapshot.LayerHeightM, 2.1259f, 1e-3f);
+		TestEqual(TEXT("snapshot monitor-layer temperature is the LOWER layer ~25.33 C"),
+			Snapshot.TemperatureC, 25.328f, 1e-2f);
+		TestEqual(TEXT("snapshot heat release at the crossing ~449.85 kW"),
+			Snapshot.HeatReleaseKW, 449.85f, 1e-1f);
+		TestEqual(TEXT("snapshot room FEDSum at the crossing ~5.529e-4"),
+			Snapshot.RoomFEDSum, 5.529e-4f, 1e-6f);
+
+		// Dose: the snapshot must equal what the LIVE closed-form query returns at the failure time,
+		// through the interpolator the running game uses. This is the offline/live agreement check.
+		{
+			float LiveToxic = 0.0f;
+			float LiveThermal = 0.0f;
+			FRoomFEDSampler LiveSamplerRef(LiveRoomSampler);
+			Timeline.DoseAt(Timeline.FirstFailureTimeSeconds, LiveSamplerRef, LiveToxic, LiveThermal);
+			TestEqual(TEXT("snapshot toxic dose == live DoseAt(first-failure time)"),
+				Snapshot.AccumulatedToxicFED, LiveToxic, 1e-6f);
+			TestEqual(TEXT("snapshot thermal dose == live DoseAt(first-failure time)"),
+				Snapshot.AccumulatedThermalFED, LiveThermal, 1e-6f);
+		}
+
+		// Risks come from the same Compute*Risk functions the live frame calls, so they are derivable
+		// from the snapshot's own values - which is the property that lets the bar read identically.
+		TestEqual(TEXT("snapshot visibility risk saturates at the endpoint (1.0)"),
+			Snapshot.VisibilityRisk, 1.0f, 1e-3f);
+		TestEqual(TEXT("snapshot toxic risk == ComputeFEDRisk(snapshot dose)"),
+			Snapshot.ToxicFEDRisk, ComputeFEDRisk(Snapshot.AccumulatedToxicFED, Settings.EndpointToxicFED), 1e-6f);
+		// Thermal / temperature / layer-height criteria are OFF in this suite: zero risk, but the raw
+		// values above are still captured, exactly as ComputeInstantaneousTenability writes them
+		// regardless of which criteria are enabled.
+		TestEqual(TEXT("disabled thermal criterion contributes no snapshot risk"), Snapshot.ThermalFEDRisk, 0.0f);
+		TestEqual(TEXT("disabled temperature criterion contributes no snapshot risk"), Snapshot.TemperatureRisk, 0.0f);
+		TestEqual(TEXT("disabled layer-height criterion contributes no snapshot risk"), Snapshot.LayerHeightRisk, 0.0f);
+
+		// --- NAVIGATION INDEPENDENCE: scrubbed straight past the failure == played through it --------
+		// The whole point of precomputing the snapshot. "Played through" is modelled by a fragment that
+		// already carries live values from earlier frames (any pre- or post-failure frame leaves SOME
+		// values behind); "scrubbed" is a fragment that has never been written. If the projection is
+		// total, the two are bit-identical afterwards - and if it is not, whatever it fails to overwrite
+		// is exactly the field that would differ on screen between the two navigations. The earlier
+		// skip-and-hold guard fails this by construction: it wrote nothing at all, so the two fragments
+		// kept their different histories.
+		//
+		// SCOPE: this pins the PROJECTION, not the processor wiring. The health processor needs a MASS
+		// execution context and two subsystems, so a call site that stopped calling ApplyFailureSnapshot
+		// would still read green here. Mobius.InGame.TenabilityScrubReplay covers the wiring, in a live
+		// world, by asserting the at-failure dose after a direct scrub past the failure.
+		{
+			FAgentEgressTenabilityFragment PlayedThrough;
+			// Deliberately wrong in every field the projection owns, and wrong in a DIRECTION a reader
+			// would believe (a clear room, a nearly-lethal dose) rather than obviously-garbage values.
+			PlayedThrough.CurrentVisibilityM = 19.5f;
+			PlayedThrough.CurrentTemperatureC = 210.0f;
+			PlayedThrough.CurrentLayerHeightM = 1.35f;
+			PlayedThrough.CurrentHeatReleaseKW = 1391.2f;
+			PlayedThrough.CurrentFEDSum = 0.347f;
+			PlayedThrough.CurrentFEDRadSum = 1.0f;
+			PlayedThrough.AccumulatedToxicFED = 0.99f;
+			PlayedThrough.AccumulatedThermalFED = 0.42f;
+			PlayedThrough.VisibilityRisk = 0.7f;
+			PlayedThrough.ToxicFEDRisk = 0.7f;
+			PlayedThrough.ThermalFEDRisk = 0.7f;
+			PlayedThrough.TemperatureRisk = 0.7f;
+			PlayedThrough.LayerHeightRisk = 0.7f;
+			PlayedThrough.DisplayRisk = 0.7f;
+			PlayedThrough.Health = 0.3f;
+			PlayedThrough.CurrentDominantCriterion = ETenabilityCriterion::ThermalFED;
+			PlayedThrough.bThermalFEDFailed = true;
+			PlayedThrough.bLayerHeightFailed = true;
+			PlayedThrough.FailureMask = UE::Mobius::TenabilityFailureFlags::ThermalFED
+				| UE::Mobius::TenabilityFailureFlags::LayerHeight;
+
+			FAgentEgressTenabilityFragment Scrubbed; // straight from t=0 to a post-failure time
+			ApplyFailureSnapshot(PlayedThrough, Timeline);
+			ApplyFailureSnapshot(Scrubbed, Timeline);
+
+			TestProjectionsEqual(TEXT("scrubbed past failure == played through"), Scrubbed, PlayedThrough);
+
+			// And the shared answer is the AT-FAILURE state, not either history: pin it against the
+			// snapshot so "equal" cannot be satisfied by both being wrong in the same way.
+			TestEqual(TEXT("projected visibility is the at-failure value"),
+				Scrubbed.CurrentVisibilityM, Snapshot.VisibilityM);
+			TestEqual(TEXT("projected toxic dose is the at-failure dose"),
+				Scrubbed.AccumulatedToxicFED, Snapshot.AccumulatedToxicFED);
+			TestEqual(TEXT("projected temperature is the at-failure value"),
+				Scrubbed.CurrentTemperatureC, Snapshot.TemperatureC);
+			TestEqual(TEXT("projected layer height is the at-failure value"),
+				Scrubbed.CurrentLayerHeightM, Snapshot.LayerHeightM);
+			TestEqual(TEXT("projected visibility risk is the at-failure risk"),
+				Scrubbed.VisibilityRisk, Snapshot.VisibilityRisk);
+			// Sanity: the poisoned "played through" values really were different, so the equality above
+			// is a claim about the overwrite and not a tautology.
+			TestTrue(TEXT("the seeded pre-projection values differed from the snapshot"),
+				!FMath::IsNearlyEqual(0.99f, Snapshot.AccumulatedToxicFED, 1e-3f)
+				&& !FMath::IsNearlyEqual(19.5f, Snapshot.VisibilityM, 1e-3f));
+			// Failed flags + mask come from the precomputed first-failure mask (visibility only here), so
+			// the ThermalFED/LayerHeight flags seeded above must be GONE, not merely equal on both sides.
+			TestTrue(TEXT("projected visibility-failed flag set from the mask"), Scrubbed.bVisibilityFailed);
+			TestFalse(TEXT("seeded thermal-failed flag cleared by the projection"), PlayedThrough.bThermalFEDFailed);
+			TestFalse(TEXT("seeded layer-height-failed flag cleared by the projection"), PlayedThrough.bLayerHeightFailed);
+			TestEqual(TEXT("projected mask == precomputed first-failure mask"),
+				static_cast<int32>(PlayedThrough.FailureMask), static_cast<int32>(Timeline.FirstFailureMask));
+			// Locked display state (the pre-existing contract, now owned by the projection).
+			TestEqual(TEXT("projected display risk locked to 1.0"), PlayedThrough.DisplayRisk, 1.0f);
+			TestEqual(TEXT("projected Health locked to 0.0"), PlayedThrough.Health, 0.0f);
+			TestEqual(TEXT("projected dominant criterion == first-failure criterion"),
+				static_cast<int32>(PlayedThrough.CurrentDominantCriterion),
+				static_cast<int32>(Timeline.FirstFailureCriterion));
+		}
 	}
 
 	// --- Late entrant: enters at t=520, entry FED = FEDSum(520) = 0.292 ------------------------------
@@ -678,6 +852,49 @@ bool FAgentTenabilityFailurePrecomputeTest::RunTest(const FString&)
 			static_cast<int32>(ETenabilityCriterion::ToxicFED));
 		TestEqual(TEXT("vis-off: first failure time == toxic crossing"),
 			Timeline.FirstFailureTimeSeconds, 531.43f, 1e-2f);
+
+		// Snapshot on a DOSE failure. Same argument as the visibility case: the toxic crossing is the
+		// solution of dose == endpoint, so the at-failure dose reads the endpoint (0.3) back, and its
+		// risk saturates. A snapshot taken anywhere else on the curve cannot produce this number.
+		const FTenabilityFailureSnapshot& DoseSnapshot = Timeline.FailureSnapshot;
+		TestEqual(TEXT("vis-off: snapshot toxic dose == the endpoint it crossed (0.3)"),
+			DoseSnapshot.AccumulatedToxicFED, VisOff.EndpointToxicFED, 1e-4f);
+		TestEqual(TEXT("vis-off: snapshot toxic risk saturates at 1.0"), DoseSnapshot.ToxicFEDRisk, 1.0f, 1e-4f);
+		// Visibility is captured as a raw value but contributes no risk, because the criterion is
+		// disabled - the same split the live frame produces. Across the t=510..540 pair at t* = 531.4286
+		// (alpha 0.71429): 0.808 + 0.71429*(0.811 - 0.808) = 0.8101 m.
+		TestEqual(TEXT("vis-off: snapshot still captures the raw visibility ~0.810 m"),
+			DoseSnapshot.VisibilityM, 0.8101f, 1e-3f);
+		TestEqual(TEXT("vis-off: disabled visibility criterion contributes no snapshot risk"),
+			DoseSnapshot.VisibilityRisk, 0.0f);
+	}
+
+	// --- No failure -> no snapshot, and the projection is inert ---------------------------------------
+	// A settings rebuild that removes the failure must not leave the previous run's snapshot standing,
+	// and the projection must refuse to invent a failure readout when asked out of sequence.
+	{
+		FTenabilityAnalysisSettings NothingOn = Settings;
+		NothingOn.bUseVisibilityCriterion = false;
+		NothingOn.bUseToxicFEDCriterion = false;
+
+		FAgentTenabilityTimeline Timeline = MakeSingleRoomTimeline(0.0f, 600.0f, /*toxic*/0.0, /*thermal*/0.0);
+		ComputeFailureData(Timeline, Tables, RoomIndexToTableIndex, Settings, /*PoseSampler*/{});
+		TestTrue(TEXT("snapshot filled on the first (failing) pass"), Timeline.FailureSnapshot.bValid);
+
+		// Rebuild the SAME timeline with every criterion off: no failure, so no snapshot.
+		ComputeFailureData(Timeline, Tables, RoomIndexToTableIndex, NothingOn, /*PoseSampler*/{});
+		TestEqual(TEXT("no-failure rebuild: first failure cleared"), Timeline.FirstFailureTimeSeconds, -1.0f, 1e-4f);
+		TestFalse(TEXT("no-failure rebuild: stale snapshot cleared"), Timeline.FailureSnapshot.bValid);
+		TestEqual(TEXT("no-failure rebuild: snapshot dose reset"),
+			Timeline.FailureSnapshot.AccumulatedToxicFED, 0.0f);
+
+		// Out-of-sequence projection against a no-failure timeline: a no-op, not a fabricated failure.
+		FAgentEgressTenabilityFragment Untouched;
+		ApplyFailureSnapshot(Untouched, Timeline);
+		TestEqual(TEXT("no-failure projection leaves DisplayRisk alone"), Untouched.DisplayRisk, 0.0f);
+		TestEqual(TEXT("no-failure projection leaves Health alone"), Untouched.Health, 1.0f);
+		TestEqual(TEXT("no-failure projection claims no failed criterion"),
+			static_cast<int32>(Untouched.FailureMask), 0);
 	}
 
 	// --- Empty table / missing room mapping: no failure, no crash (never fabricate) ------------------
@@ -760,7 +977,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
  *
  * Also pins the display-gate semantics: zero risk WITH data (measured and clear) has to be
  * distinguishable from zero risk WITHOUT data (nothing measured here), because every other field
- * reads the same for both.
+ * reads the same for both. That gate is FAgentEgressTenabilityFragment::bHasTenabilityData, and the
+ * final blocks assert all four of its paths through UE::Mobius::Tenability::ShouldDisplayTenability
+ * and ResetTenabilityToNoData - the two pure functions the owning MASS processor routes through.
  */
 bool FAgentTenabilityDoseOnlyTest::RunTest(const FString&)
 {
@@ -885,6 +1104,180 @@ bool FAgentTenabilityDoseOnlyTest::RunTest(const FString&)
 		ComputeDoseOnlyTenability(Rewound, Settings, 0.06f, 0.0f); // scrubbed back before the dose
 		TestEqual(TEXT("scrubbing back reports the earlier dose, not a latched maximum"),
 			Rewound.DisplayRisk, 0.2f);
+	}
+
+	// --- The display gate: bHasTenabilityData ---------------------------------
+	// The bar encodes  value = ShownCriterion + Clamp(DisplayRisk, 0, 0.999)  and has no spare value
+	// meaning "no data": criterion None with risk 0 is EXACTLY what a measured-and-clear agent
+	// produces. This flag is therefore the only thing separating "measured here, and clear" from
+	// "nothing was measured here". If it regresses, an agent standing in space B-Risk never simulated
+	// draws a confident CLEAR bar - a false safe reading, and a scientific-integrity failure rather
+	// than a cosmetic one. The four blocks below pin the four paths the field's docs promise.
+	//
+	// The decision lives in ShouldDisplayTenability precisely so it can be asserted: the processor
+	// that owns the flag needs a MASS execution context and two subsystems, and both of its call
+	// sites route through that function.
+	//
+	// SCOPE: what is pinned here is the DECISION, not the wiring. These blocks call the helpers
+	// directly, so a call site passing the wrong argument - or removed outright - would still read
+	// green. Covering that needs the processor running in a live world.
+
+	// --- Path 1: in a modelled room this frame -> measured, so show it even at zero risk ------
+	{
+		TestTrue(TEXT("in-room sample with no dose has data (measured AND clear)"),
+			ShouldDisplayTenability(
+				/*bHasRoomSampleThisFrame*/ true, 0.0f, 0.0f, /*bFailedByNow*/ false));
+
+		// The case this flag exists to separate from the one above: identical in every other field.
+		TestFalse(TEXT("no room, no dose, not failed -> NO data (bar hides, never reads clear)"),
+			ShouldDisplayTenability(
+				/*bHasRoomSampleThisFrame*/ false, 0.0f, 0.0f, /*bFailedByNow*/ false));
+	}
+
+	// --- Path 2: outside every room, but carrying dose accrued in rooms it has left -----------
+	// Dose belongs to the AGENT, not to the room it happens to be standing in, so an agent that
+	// walked out of smoke was measured and must keep showing what it accrued.
+	{
+		TestTrue(TEXT("outside every room, carried toxic dose is still data"),
+			ShouldDisplayTenability(false, 0.15f, 0.0f, false));
+		TestTrue(TEXT("outside every room, carried thermal dose is still data"),
+			ShouldDisplayTenability(false, 0.0f, 0.15f, false));
+
+		// Both sides of the `> 0.0f` dose test. Exactly zero is the no-data case (an agent that has
+		// never been anywhere modelled reads exactly this); the smallest positive dose is data.
+		TestFalse(TEXT("dose of exactly zero is not data"),
+			ShouldDisplayTenability(false, 0.0f, 0.0f, false));
+		TestTrue(TEXT("smallest positive toxic dose is data"),
+			ShouldDisplayTenability(false, UE_SMALL_NUMBER, 0.0f, false));
+		TestTrue(TEXT("smallest positive thermal dose is data"),
+			ShouldDisplayTenability(false, 0.0f, UE_SMALL_NUMBER, false));
+		// Defensive: DoseAt cannot return a negative dose, but the gate must not invert if it ever does.
+		TestFalse(TEXT("negative dose is not a measurement"),
+			ShouldDisplayTenability(false, -0.5f, -0.5f, false));
+	}
+
+	// --- Path 3: failed by now -> ALWAYS data, wherever the agent is standing -----------------
+	// The bar is locked to the cause of failure, which is what a reviewer needs at the end of a
+	// scenario. Hiding it because the failure happened outside a modelled room would be worse than
+	// the ambiguity this flag removes.
+	{
+		TestTrue(TEXT("failed, outside every room, with no dose, still has data"),
+			ShouldDisplayTenability(
+				/*bHasRoomSampleThisFrame*/ false, 0.0f, 0.0f, /*bFailedByNow*/ true));
+		TestTrue(TEXT("failed inside a room has data"),
+			ShouldDisplayTenability(true, 0.4f, 0.0f, true));
+	}
+
+	// --- Path 4: the stale-timeline rebuild window -> no data for EVERY entity ----------------
+	// While the built timeline set does not match the current (agent file, B-Risk file, settings)
+	// triple, nothing computed from the mismatched triple may be displayed (scientific-integrity
+	// invariant 2) and there is no partial or interpolated fallback.
+	{
+		FAgentEgressTenabilityFragment Health;
+
+		// Poison every field the reset owns with a value computed against the PREVIOUS triple.
+		Health.bHasTenabilityData = true;
+		Health.DisplayRisk = 0.8f;
+		Health.VisibilityRisk = 0.8f;
+		Health.ToxicFEDRisk = 0.7f;
+		Health.ThermalFEDRisk = 0.6f;
+		Health.TemperatureRisk = 0.5f;
+		Health.LayerHeightRisk = 0.4f;
+		Health.CurrentDominantCriterion = ETenabilityCriterion::Visibility;
+		Health.Health = 0.2f;
+		Health.bVisibilityFailed = true;
+		Health.bToxicFEDFailed = true;
+		Health.bThermalFEDFailed = true;
+		Health.bTemperatureFailed = true;
+		Health.bLayerHeightFailed = true;
+		Health.FailureMask = static_cast<uint8>(
+			UE::Mobius::TenabilityFailureFlags::Visibility | UE::Mobius::TenabilityFailureFlags::ToxicFED);
+		Health.bTenabilityFailed = true;
+		Health.bIsDead = true;
+		Health.FirstFailureTimeSeconds = 90.0f;
+		Health.FirstFailureCriterion = ETenabilityCriterion::Visibility;
+		Health.DeathTimeSeconds = 90.0f;
+		Health.DeathLocation = FVector(100.0, 200.0, 300.0);
+		Health.DeathRotation = FRotator(0.0, 45.0, 0.0);
+		Health.TimelineIntervalCount = 3;
+
+		// Fields the reset deliberately does NOT own - it is a subset, not a pristine wipe.
+		Health.AccumulatedToxicFED = 0.2f;
+		Health.AccumulatedThermalFED = 0.1f;
+		Health.CurrentVisibilityM = 1.5f;
+		Health.CurrentTemperatureC = 180.0f;
+		Health.ToxicFEDFailureTimeSeconds = 120.0f;
+		Health.CombinedHazardDose = 0.3f;
+		Health.InstantaneousHazard = 0.8f;
+
+		ResetTenabilityToNoData(Health);
+
+		TestFalse(TEXT("rebuild window: the display gate is cleared, not left stale true"),
+			Health.bHasTenabilityData);
+		TestEqual(TEXT("rebuild window: display risk cleared"), Health.DisplayRisk, 0.0f);
+		TestEqual(TEXT("rebuild window: visibility risk cleared"), Health.VisibilityRisk, 0.0f);
+		TestEqual(TEXT("rebuild window: toxic risk cleared"), Health.ToxicFEDRisk, 0.0f);
+		TestEqual(TEXT("rebuild window: thermal risk cleared"), Health.ThermalFEDRisk, 0.0f);
+		TestEqual(TEXT("rebuild window: temperature risk cleared"), Health.TemperatureRisk, 0.0f);
+		TestEqual(TEXT("rebuild window: layer-height risk cleared"), Health.LayerHeightRisk, 0.0f);
+		TestEqual(TEXT("rebuild window: no dominant criterion"),
+			static_cast<int32>(Health.CurrentDominantCriterion),
+			static_cast<int32>(ETenabilityCriterion::None));
+		TestEqual(TEXT("rebuild window: Health mirrors zero risk"), Health.Health, 1.0f);
+		TestFalse(TEXT("rebuild window: no visibility failure claimed"), Health.bVisibilityFailed);
+		TestFalse(TEXT("rebuild window: no toxic failure claimed"), Health.bToxicFEDFailed);
+		TestFalse(TEXT("rebuild window: no thermal failure claimed"), Health.bThermalFEDFailed);
+		TestFalse(TEXT("rebuild window: no temperature failure claimed"), Health.bTemperatureFailed);
+		TestFalse(TEXT("rebuild window: no layer-height failure claimed"), Health.bLayerHeightFailed);
+		TestEqual(TEXT("rebuild window: failure mask cleared"), static_cast<int32>(Health.FailureMask), 0);
+		TestFalse(TEXT("rebuild window: not reported as failed"), Health.bTenabilityFailed);
+		TestFalse(TEXT("rebuild window: not reported as dead"), Health.bIsDead);
+		TestEqual(TEXT("rebuild window: first failure time cleared"),
+			Health.FirstFailureTimeSeconds, -1.0f);
+		TestEqual(TEXT("rebuild window: first failure criterion cleared"),
+			static_cast<int32>(Health.FirstFailureCriterion),
+			static_cast<int32>(ETenabilityCriterion::None));
+		// The movement processor's failure-pose freeze keys off DeathTimeSeconds ALONE, so a stale
+		// death pose surviving the rebuild window would snap a live agent frozen.
+		TestEqual(TEXT("rebuild window: death time cleared so no agent is frozen mid-rebuild"),
+			Health.DeathTimeSeconds, -1.0f);
+		TestTrue(TEXT("rebuild window: death location cleared"),
+			Health.DeathLocation == FVector::ZeroVector);
+		TestTrue(TEXT("rebuild window: death rotation cleared"),
+			Health.DeathRotation == FRotator::ZeroRotator);
+		TestEqual(TEXT("rebuild window: interval-count diagnostic cleared"),
+			Health.TimelineIntervalCount, 0);
+
+		// The reset is a SUBSET on purpose. Dose and the per-criterion crossing times are re-derived
+		// wholesale from the rebuilt timeline on the first good frame, and the Current* readouts are
+		// debug-only and already gated for display by bHasTenabilityData, which IS cleared above.
+		// Asserting they survive is what stops the extraction quietly widening into a full wipe.
+		TestEqual(TEXT("rebuild window: toxic dose is NOT part of the reset"),
+			Health.AccumulatedToxicFED, 0.2f);
+		TestEqual(TEXT("rebuild window: thermal dose is NOT part of the reset"),
+			Health.AccumulatedThermalFED, 0.1f);
+		TestEqual(TEXT("rebuild window: per-criterion crossing times are NOT part of the reset"),
+			Health.ToxicFEDFailureTimeSeconds, 120.0f);
+		TestEqual(TEXT("rebuild window: Current* debug readouts are NOT part of the reset"),
+			Health.CurrentVisibilityM, 1.5f);
+		TestEqual(TEXT("rebuild window: legacy hazard fields are NOT part of the reset"),
+			Health.InstantaneousHazard, 0.8f);
+	}
+
+	// --- Ownership: setting the gate is the PROCESSOR's job, not this function's --------------
+	// ComputeDoseOnlyTenability must leave the flag exactly as it found it. Deciding it in here would
+	// leave the in-room path (which never calls this) unaccounted for, and reading it before the dose
+	// call would hide the bar for one frame on the way out of every room.
+	{
+		FAgentEgressTenabilityFragment Held;
+		Held.bHasTenabilityData = true;
+		ComputeDoseOnlyTenability(Held, Settings, 0.15f, 0.0f);
+		TestTrue(TEXT("dose-only leaves an already-true gate alone"), Held.bHasTenabilityData);
+
+		FAgentEgressTenabilityFragment Untouched;
+		ComputeDoseOnlyTenability(Untouched, Settings, 0.15f, 0.0f);
+		TestFalse(TEXT("dose-only does not raise the gate itself, even with a surviving dose"),
+			Untouched.bHasTenabilityData);
 	}
 
 	return true;

@@ -267,6 +267,19 @@ namespace
 	constexpr float FailTimeTolerance = 2.0f;      // ~= a few agent trajectory steps
 	constexpr float DoseExactTolerance = 1e-6f;    // navigation-independent dose is a closed-form lookup
 
+	// AT-FAILURE golden values on fixture A, i.e. at the visibility crossing (65 s). Agents are in room 1
+	// from t=0, so the entry FED baseline is 0 and the agent dose IS the room curve:
+	//   toxic dose = FEDSum(65) = 0.10 + 0.30*(65-40)/40 = 0.2875
+	//   visibility = the endpoint the crossing is defined by = 10.0 m
+	// (For contrast, the room at T1=90 reads visibility 3.5 m and FEDSum 0.475, and a never-sampled
+	// fragment reads the 20 m clear-air default with dose 0 - all three are distinguishable below.)
+	constexpr float FixtureA_FailToxicDose = 0.2875f;
+	constexpr float FixtureA_FailVisibilityM = 10.0f;
+	// Tolerances follow FailTimeTolerance through each curve's slope: FED 0.30/40 s = 7.5e-3 /s -> 0.015;
+	// visibility (20-4)/40 s = 0.4 m/s -> 0.8 m.
+	constexpr float FailDoseTolerance = 0.015f;
+	constexpr float FailVisibilityTolerance = 0.8f;
+
 	// Write both B-RISK companion files for a given output1.xml into a unique dir; return the .smv path.
 	FString WriteBRiskScenario(const FString& SubDirName, const FString& OutputXml)
 	{
@@ -294,6 +307,9 @@ namespace
 		float DeathTime = -1.0f;
 		float AccumulatedToxicFED = 0.0f;
 		float AccumulatedThermalFED = 0.0f;
+		// Instantaneous readout: post-failure this must be the AT-FAILURE value projected from the
+		// timeline snapshot, which is what distinguishes a real projection from a held last value.
+		float CurrentVisibilityM = 20.0f;
 		float DisplayRisk = 0.0f;
 		ETenabilityCriterion DominantCriterion = ETenabilityCriterion::None;
 		ETenabilityCriterion FirstFailureCriterion = ETenabilityCriterion::None;
@@ -336,6 +352,7 @@ namespace
 				S.DeathTime = Ten[i].DeathTimeSeconds;
 				S.AccumulatedToxicFED = Ten[i].AccumulatedToxicFED;
 				S.AccumulatedThermalFED = Ten[i].AccumulatedThermalFED;
+				S.CurrentVisibilityM = Ten[i].CurrentVisibilityM;
 				S.DisplayRisk = Ten[i].DisplayRisk;
 				S.DominantCriterion = Ten[i].CurrentDominantCriterion;
 				S.FirstFailureCriterion = Ten[i].FirstFailureCriterion;
@@ -652,6 +669,18 @@ bool FInGameTenabilityScrubReplayTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("S1: failure criterion is Visibility"),
 					static_cast<uint8>(S.FirstFailureCriterion), static_cast<uint8>(ETenabilityCriterion::Visibility));
 				TestEqual(TEXT("S1: DisplayRisk locked to 1.0 after failure"), S.DisplayRisk, 1.0f, 1e-3f);
+
+				// THE at-failure projection, in the wiring the unit test cannot reach. The playhead
+				// JUMPED from t=0 to T1, so every frame this agent has ever been processed on was already
+				// post-failure: nothing live was ever written for it. A readout that holds the last
+				// written values therefore reads dose 0.0 and the 20 m clear-air default here, and a
+				// readout that shows the CURRENT room reads 0.475 / 3.5 m. Only a projection from the
+				// timeline's precomputed at-failure snapshot reads the failure instant, which is the
+				// navigation-independence invariant applied to the post-failure readout.
+				TestEqual(TEXT("S1@T1: toxic dose is the AT-FAILURE dose after a direct scrub past failure"),
+					S.AccumulatedToxicFED, FixtureA_FailToxicDose, FailDoseTolerance);
+				TestEqual(TEXT("S1@T1: visibility is the AT-FAILURE value (the endpoint crossed), not the room's later value"),
+					S.CurrentVisibilityM, FixtureA_FailVisibilityM, FailVisibilityTolerance);
 			}
 		}
 		// Otherwise the test proves nothing (v1 fixture-sanity requirement).
@@ -749,6 +778,10 @@ bool FInGameTenabilityScrubReplayTest::RunTest(const FString& Parameters)
 				B.AccumulatedToxicFED, A->AccumulatedToxicFED, DoseExactTolerance);
 			TestEqual(TEXT("S1: thermal dose EXACTLY equal across replay"),
 				B.AccumulatedThermalFED, A->AccumulatedThermalFED, DoseExactTolerance);
+			// Instantaneous readout too: post-failure it comes from the precomputed snapshot, so both
+			// passes read the same value rather than whatever each last happened to sample.
+			TestEqual(TEXT("S1: post-failure visibility EXACTLY equal across replay"),
+				B.CurrentVisibilityM, A->CurrentVisibilityM, DoseExactTolerance);
 			// Failure state identical (times from precomputed Layer-2, no runtime re-derivation).
 			TestEqual(TEXT("S1: bTenabilityFailed identical across replay"), B.bTenabilityFailed, A->bTenabilityFailed);
 			TestEqual(TEXT("S1: FirstFailureTime EXACTLY equal across replay"),

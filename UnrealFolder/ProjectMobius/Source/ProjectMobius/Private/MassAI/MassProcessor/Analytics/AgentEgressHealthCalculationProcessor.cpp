@@ -80,33 +80,12 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				// left on ANY entity would snap it frozen during the rebuild window.
 				for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
 				{
-					FAgentEgressTenabilityFragment& Health = HealthFragments[EntityIndex];
 					// This is the no-data state the comment above names, and now it can say so: without
-					// clearing this, an agent keeps a stale true through the whole rebuild window and its
-					// bar keeps drawing from values computed against a mismatched triple.
-					Health.bHasTenabilityData = false;
-					Health.DisplayRisk = 0.0f;
-					Health.VisibilityRisk = 0.0f;
-					Health.ToxicFEDRisk = 0.0f;
-					Health.ThermalFEDRisk = 0.0f;
-					Health.TemperatureRisk = 0.0f;
-					Health.LayerHeightRisk = 0.0f;
-					Health.CurrentDominantCriterion = ETenabilityCriterion::None;
-					Health.Health = 1.0f;
-					Health.bVisibilityFailed = false;
-					Health.bToxicFEDFailed = false;
-					Health.bThermalFEDFailed = false;
-					Health.bTemperatureFailed = false;
-					Health.bLayerHeightFailed = false;
-					Health.FailureMask = UE::Mobius::TenabilityFailureFlags::None;
-					Health.bTenabilityFailed = false;
-					Health.bIsDead = false;
-					Health.FirstFailureTimeSeconds = -1.0f;
-					Health.FirstFailureCriterion = ETenabilityCriterion::None;
-					Health.DeathTimeSeconds = -1.0f;
-					Health.DeathLocation = FVector::ZeroVector;
-					Health.DeathRotation = FRotator::ZeroRotator;
-					Health.TimelineIntervalCount = 0;
+					// clearing bHasTenabilityData, an agent keeps a stale true through the whole rebuild
+					// window and its bar keeps drawing from values computed against a mismatched triple.
+					// The exact field set - and what it deliberately leaves alone - lives with the helper,
+					// where ProjectMobius.BRisk.Tenability.DoseOutsideRoom pins it.
+					UE::Mobius::Tenability::ResetTenabilityToNoData(HealthFragments[EntityIndex]);
 				}
 			});
 		return;
@@ -143,6 +122,18 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				const UE::Mobius::Tenability::FAgentTenabilityTimeline* Timeline =
 					EgressSubsystem->FindCurrentAgentTimeline(Rendering.EntityID);
 
+				// --- Failure state: PROJECTED from the timeline's precomputed Layer-2 fields, not
+				// derived from a runtime latch. Navigation-independent by construction: the same
+				// TL->FirstFailureTimeSeconds compared against the same CurrentSimulationTime always
+				// yields the same bFailedByNow, regardless of how playback reached this time.
+				//
+				// Resolved HERE, ahead of the instantaneous block, so the stand-in-frame comment below can
+				// state what a failed agent does. The projection itself is applied below, where it always
+				// was. ---
+				const bool bTimelineHasFailure = Timeline && Timeline->FirstFailureTimeSeconds >= 0.0f;
+				const bool bFailedByNow = bTimelineHasFailure
+					&& CurrentSimulationTime + UE_SMALL_NUMBER >= Timeline->FirstFailureTimeSeconds;
+
 				// Stand-in frame (streaming cold miss): CurrentLocation belongs to a different
 				// timestep. Hold the INSTANTANEOUS sample/display at its last-good value — sampling
 				// now would fabricate a room change from a wrong-timestep position. The dose and
@@ -153,6 +144,16 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				// inside ComputeInstantaneousTenability is also held for this one frame (it lives
 				// inside this same skipped block) — self-heals the next frame the exact block lands,
 				// same as the instantaneous display.
+				//
+				// A FAILED agent is deliberately NOT skipped here, even though its tenability readout is
+				// about to be overwritten wholesale by the at-failure projection below. Skipping was the
+				// earlier cheap guard, and it held the LAST-WRITTEN values: the failure-time values only
+				// if playback happened to tick through the failure, and the last PRE-failure frame's
+				// after a direct scrub past it — two different answers for the same time, which is the
+				// navigation-independence invariant broken. The projection replaces it. Letting the block
+				// run keeps FAgentBRiskExposureFragment (the room sample, room stickiness) a pure
+				// function of where the agent is NOW rather than a frozen leftover, and costs a failed
+				// agent exactly what every unfailed agent already pays.
 				if (!MovementFragments[EntityIndex].bSampleApproximate)
 				{
 					// Stateless per-frame recompute: evaluate tenability at the CURRENT time only.
@@ -213,19 +214,14 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 					// anywhere B-Risk modelled" — reading it beforehand would hide the bar for one
 					// frame on the way out of every room. The failed case is added below, where the
 					// timeline projection runs.
-					Health.bHasTenabilityData = Exposure.bHasRoomSample
-						|| Health.AccumulatedToxicFED > 0.0f
-						|| Health.AccumulatedThermalFED > 0.0f;
+					Health.bHasTenabilityData = UE::Mobius::Tenability::ShouldDisplayTenability(
+						Exposure.bHasRoomSample,
+						Health.AccumulatedToxicFED,
+						Health.AccumulatedThermalFED,
+						/*bFailedByNow*/ false);
 				}
 
-				// --- Failure state: PROJECTED from the timeline's precomputed Layer-2 fields, not
-				// derived from a runtime latch. Navigation-independent by construction: the same
-				// TL->FirstFailureTimeSeconds compared against the same CurrentSimulationTime always
-				// yields the same bFailedByNow, regardless of how playback reached this time. ---
-				const bool bTimelineHasFailure = Timeline && Timeline->FirstFailureTimeSeconds >= 0.0f;
-				const bool bFailedByNow = bTimelineHasFailure
-					&& CurrentSimulationTime + UE_SMALL_NUMBER >= Timeline->FirstFailureTimeSeconds;
-
+				// Apply the projection resolved above.
 				Health.bTenabilityFailed = bFailedByNow;
 				Health.bIsDead = bFailedByNow;
 				// Diagnostic (see the field's docs): 0 here is the reading that explains an agent which
@@ -233,7 +229,8 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 				Health.TimelineIntervalCount = Timeline ? Timeline->Intervals.Num() : 0;
 				Health.FirstFailureTimeSeconds = Timeline ? Timeline->FirstFailureTimeSeconds : -1.0f;
 				Health.FirstFailureCriterion = Timeline ? Timeline->FirstFailureCriterion : ETenabilityCriterion::None;
-				Health.FailureMask = bFailedByNow ? Timeline->FirstFailureMask : Health.FailureMask;
+				// FailureMask is NOT projected here: ApplyFailureSnapshot below owns the whole failed-agent
+				// readout, mask included, so there is one authority for it rather than two.
 				Health.VisibilityFailureTimeSeconds = Timeline ? Timeline->VisibilityFailureTimeSeconds : -1.0f;
 				Health.ToxicFEDFailureTimeSeconds = Timeline ? Timeline->ToxicFEDFailureTimeSeconds : -1.0f;
 				Health.ThermalFEDFailureTimeSeconds = Timeline ? Timeline->ThermalFEDFailureTimeSeconds : -1.0f;
@@ -247,19 +244,29 @@ void UAgentEgressHealthCalculationProcessor::Execute(
 
 				if (bFailedByNow)
 				{
-					// Freeze the bar on the failure cause: full bar, criterion locked to the
-					// first-failure criterion. This is what a reviewer needs at the end of a
-					// scenario ("what made this agent stop"), not the conditions afterward.
-					// Scrubbing to a time BEFORE the (fixed) failure time falls through to the
-					// live pre-failure state computed above instead.
-					Health.DisplayRisk = 1.0f;
-					Health.CurrentDominantCriterion = Health.FirstFailureCriterion;
-					Health.Health = 0.0f;
+					// The readout for a failed agent is the AT-FAILURE snapshot: the conditions that
+					// stopped it, not the room's later weather, which is what a reviewer needs at the end
+					// of a scenario ("what made this agent stop"). Projected from the timeline's Layer-2
+					// snapshot exactly like every other precomputed field, so it reads the same at any
+					// post-failure time however playback got there — the invariant a runtime latch or a
+					// hold-the-last-value guard cannot satisfy. It overwrites, in full, everything the
+					// instantaneous block above just wrote (values, risks, per-criterion flags, mask and
+					// the locked display state); see ApplyFailureSnapshot for the exact field set.
+					// Scrubbing to a time BEFORE the (fixed) failure time falls through to the live
+					// pre-failure state computed above instead.
+					UE::Mobius::Tenability::ApplyFailureSnapshot(Health, *Timeline);
 					// A failed agent always has something to show, wherever it is standing — the bar is
 					// locked to the cause of failure and that is precisely what a reviewer needs at the
 					// end of a scenario. Hiding it because the failure happened to occur outside a
 					// modelled room would be worse than the ambiguity this flag exists to remove.
-					Health.bHasTenabilityData = true;
+					// Routed through the same helper rather than a bare `= true` so the helper stays the
+					// single authority for this flag. Note the TESTS cover the helper's decision, not this
+					// wiring: they call it directly, so wrong arguments here would still read green.
+					Health.bHasTenabilityData = UE::Mobius::Tenability::ShouldDisplayTenability(
+						Exposure.bHasRoomSample,
+						Health.AccumulatedToxicFED,
+						Health.AccumulatedThermalFED,
+						/*bFailedByNow*/ true);
 				}
 
 				Health.InstantaneousHazard = Health.DisplayRisk;

@@ -99,18 +99,38 @@ namespace UE::Mobius::Tenability
 		return BestIndex;
 	}
 
+	namespace
+	{
+		/**
+		 * THE rule for "which occupancy interval is this agent's tenability read from at time t":
+		 * the last interval whose entry time is <= t, or INDEX_NONE before the first entry / with no
+		 * intervals at all. Shared by the dose query and the at-failure snapshot so the two can never
+		 * disagree about the room at a shared timestamp - which matters exactly at an interval
+		 * boundary, where two adjacent intervals both touch t and the choice changes which room's
+		 * curves are read.
+		 */
+		int32 FindIntervalIndexAtTime(
+			const TConstArrayView<FAgentRoomOccupancyInterval> Intervals, const float TimeSeconds)
+		{
+			if (Intervals.Num() == 0 || TimeSeconds < Intervals[0].EntryTimeSeconds)
+			{
+				return INDEX_NONE;
+			}
+			return Algo::UpperBoundBy(Intervals, TimeSeconds,
+				&FAgentRoomOccupancyInterval::EntryTimeSeconds) - 1;
+		}
+	}
+
 	void FAgentTenabilityTimeline::DoseAt(const float TimeSeconds, const FRoomFEDSampler& Sampler,
 		float& OutToxicFED, float& OutThermalFED) const
 	{
 		OutToxicFED = 0.0f;
 		OutThermalFED = 0.0f;
-		if (Intervals.Num() == 0 || TimeSeconds < Intervals[0].EntryTimeSeconds)
+		const int32 Index = FindIntervalIndexAtTime(Intervals, TimeSeconds);
+		if (Index == INDEX_NONE)
 		{
 			return;
 		}
-		// Last interval whose entry time is <= TimeSeconds.
-		int32 Index = Algo::UpperBoundBy(Intervals, TimeSeconds,
-			&FAgentRoomOccupancyInterval::EntryTimeSeconds) - 1;
 		const FAgentRoomOccupancyInterval& Iv = Intervals[Index];
 		if (TimeSeconds >= Iv.ExitTimeSeconds)
 		{
@@ -381,6 +401,58 @@ namespace UE::Mobius::Tenability
 			return true;
 		}
 
+		/**
+		 * The bracketing sample pair for time T, with the SAME semantics
+		 * UBRiskEgressSubsystem::SampleTenabilityTableAtTime uses: a single-sample table, or a time at
+		 * or before the first sample, clamps to the first sample; a time at or after the last clamps to
+		 * the last; otherwise binary-search the pair. Lo == Hi in the clamp regions, which LerpField
+		 * reads as a constant (zero-width span -> FieldA), so the same call site covers all three.
+		 *
+		 * Returns false only for an empty table. Exists so the at-failure snapshot interpolates channels
+		 * exactly as the live sampler does - the values are compared against each other by
+		 * ProjectMobius.BRisk.Tenability.FailurePrecompute, which drives the LIVE sampler.
+		 */
+		bool FindSamplePairAtTime(
+			const FBRiskTenabilityRoomTable& Table, const double T,
+			const FBRiskTenabilitySample*& OutLo, const FBRiskTenabilitySample*& OutHi)
+		{
+			const int32 NumSamples = Table.Samples.Num();
+			if (NumSamples == 0)
+			{
+				return false;
+			}
+			if (NumSamples == 1 || T <= Table.Samples[0].SampleTimeSeconds)
+			{
+				OutLo = &Table.Samples[0];
+				OutHi = OutLo;
+				return true;
+			}
+			if (T >= Table.Samples.Last().SampleTimeSeconds)
+			{
+				OutLo = &Table.Samples.Last();
+				OutHi = OutLo;
+				return true;
+			}
+
+			int32 LowerIndex = 0;
+			int32 UpperIndex = NumSamples - 1;
+			while (UpperIndex - LowerIndex > 1)
+			{
+				const int32 MidIndex = (LowerIndex + UpperIndex) / 2;
+				if (Table.Samples[MidIndex].SampleTimeSeconds <= T)
+				{
+					LowerIndex = MidIndex;
+				}
+				else
+				{
+					UpperIndex = MidIndex;
+				}
+			}
+			OutLo = &Table.Samples[LowerIndex];
+			OutHi = &Table.Samples[UpperIndex];
+			return true;
+		}
+
 		// Interpolate a raw sample field linearly at time T between two bracketing samples.
 		double LerpField(
 			const double Ta, const double FieldA,
@@ -415,6 +487,9 @@ namespace UE::Mobius::Tenability
 		Timeline.LayerHeightFailureTimeSeconds = -1.0f;
 		Timeline.FailureLocation = FVector::ZeroVector;
 		Timeline.FailureRotation = FRotator::ZeroRotator;
+		// Reset here with the rest of Layer 2, not only on the failure path below: a rebuild whose new
+		// settings remove the failure entirely must not leave the previous run's snapshot standing.
+		Timeline.FailureSnapshot = FTenabilityFailureSnapshot();
 
 		// Earliest crossing time per criterion slot (-1 = never). Filled by walking every interval;
 		// intervals are ascending and non-overlapping, so the running minimum is the global first.
@@ -680,6 +755,140 @@ namespace UE::Mobius::Tenability
 		}
 		Timeline.FirstFailureMask = Mask;
 
+		// ---------------------------------------------------------------------------------------------
+		// At-failure snapshot: the criterion values a post-failure readout shows, evaluated at the
+		// crossing time. This is what makes the post-failure display navigation-independent - see
+		// FTenabilityFailureSnapshot and ApplyFailureSnapshot.
+		// ---------------------------------------------------------------------------------------------
+		{
+			FTenabilityFailureSnapshot& Snapshot = Timeline.FailureSnapshot;
+			const float FailureTime = Timeline.FirstFailureTimeSeconds;
+
+			// Dose: the SAME closed-form query the live frame makes (DoseAt itself, not a re-derivation),
+			// asked at the failure time instead of the current time. The sampler mirrors
+			// UBRiskEgressSubsystem::SampleTenabilityDoseAtRoomIndex, which copies the interpolated curve
+			// value with NO bHas* gate - presence gates the risk below, not the raw dose lookup.
+			auto DoseSampler = [&Tables, &RoomIndexToTableIndex](
+				const int32 RoomIndex, const double TimeSeconds, double& OutToxic, double& OutThermal)
+			{
+				if (!RoomIndexToTableIndex.IsValidIndex(RoomIndex))
+				{
+					return;
+				}
+				const int32 SamplerTableIndex = RoomIndexToTableIndex[RoomIndex];
+				if (!Tables.IsValidIndex(SamplerTableIndex))
+				{
+					return;
+				}
+				const FBRiskTenabilitySample* Lo = nullptr;
+				const FBRiskTenabilitySample* Hi = nullptr;
+				if (!FindSamplePairAtTime(Tables[SamplerTableIndex], TimeSeconds, Lo, Hi))
+				{
+					return;
+				}
+				OutToxic = LerpField(
+					Lo->SampleTimeSeconds, Lo->FEDSum, Hi->SampleTimeSeconds, Hi->FEDSum, TimeSeconds);
+				OutThermal = LerpField(
+					Lo->SampleTimeSeconds, Lo->FEDRadSum, Hi->SampleTimeSeconds, Hi->FEDRadSum, TimeSeconds);
+			};
+			const FRoomFEDSampler DoseSamplerRef(DoseSampler);
+			Timeline.DoseAt(
+				FailureTime, DoseSamplerRef, Snapshot.AccumulatedToxicFED, Snapshot.AccumulatedThermalFED);
+
+			// Instantaneous channels come from the room the agent occupies at the failure time. The
+			// interval is picked by the SAME rule DoseAt uses (FindIntervalIndexAtTime), so the channels
+			// and the dose can never be read from different rooms at an interval boundary.
+			const int32 IntervalIndex = FindIntervalIndexAtTime(Timeline.Intervals, FailureTime);
+			const FBRiskTenabilitySample* Lo = nullptr;
+			const FBRiskTenabilitySample* Hi = nullptr;
+			if (Timeline.Intervals.IsValidIndex(IntervalIndex))
+			{
+				const int32 FailureRoomIndex = Timeline.Intervals[IntervalIndex].RoomIndex;
+				if (RoomIndexToTableIndex.IsValidIndex(FailureRoomIndex))
+				{
+					const int32 FailureTableIndex = RoomIndexToTableIndex[FailureRoomIndex];
+					if (Tables.IsValidIndex(FailureTableIndex))
+					{
+						FindSamplePairAtTime(Tables[FailureTableIndex], FailureTime, Lo, Hi);
+					}
+				}
+			}
+
+			// No curve for the failure instant (the failing span's room has no table): every channel
+			// keeps its default and every risk stays zero. That is what a LIVE frame there reads too -
+			// the room state's Calc* fields are never filled - so the two still agree, and nothing is
+			// fabricated for a room B-Risk did not publish.
+			if (Lo && Hi)
+			{
+				const double LoT = Lo->SampleTimeSeconds;
+				const double HiT = Hi->SampleTimeSeconds;
+				const double T = static_cast<double>(FailureTime);
+
+				// Raw channels are copied unconditionally, exactly as ResolveTypedRoomState copies them
+				// into the room state before ComputeInstantaneousTenability reads them: an absent channel
+				// leaves the parsed sample at its struct default, so the interpolation of an absent
+				// channel IS the default. Presence gates the RISK, below.
+				const double LayerHeightAtFailure = LerpField(LoT, Lo->LayerHeightM, HiT, Hi->LayerHeightM, T);
+				Snapshot.VisibilityM = static_cast<float>(LerpField(LoT, Lo->VisibilityM, HiT, Hi->VisibilityM, T));
+				Snapshot.LayerHeightM = static_cast<float>(LayerHeightAtFailure);
+				Snapshot.HeatReleaseKW = static_cast<float>(LerpField(LoT, Lo->HeatReleaseKW, HiT, Hi->HeatReleaseKW, T));
+				Snapshot.RoomFEDSum = static_cast<float>(LerpField(LoT, Lo->FEDSum, HiT, Hi->FEDSum, T));
+				Snapshot.RoomFEDRadSum = static_cast<float>(LerpField(LoT, Lo->FEDRadSum, HiT, Hi->FEDRadSum, T));
+
+				// Monitor-layer temperature, same selection as the temperature crossing above: the layer
+				// is chosen by the interface height at the failure time, and the chosen layer's
+				// temperature must be present at BOTH bracketing samples. There is no live raw-sample
+				// fallback offline, so a missing channel leaves the ambient default and zero risk.
+				const bool bHasLayerHeight = Lo->bHasLayerHeight && Hi->bHasLayerHeight;
+				bool bTemperatureAvailable = false;
+				if (bHasLayerHeight)
+				{
+					const bool bMonitorInUpperLayer = MonitorHeightM >= LayerHeightAtFailure;
+					bTemperatureAvailable = bMonitorInUpperLayer
+						? (Lo->bHasUpperTemperature && Hi->bHasUpperTemperature)
+						: (Lo->bHasLowerTemperature && Hi->bHasLowerTemperature);
+					if (bTemperatureAvailable)
+					{
+						Snapshot.TemperatureC = static_cast<float>(bMonitorInUpperLayer
+							? LerpField(LoT, Lo->UpperTemperatureC, HiT, Hi->UpperTemperatureC, T)
+							: LerpField(LoT, Lo->LowerTemperatureC, HiT, Hi->LowerTemperatureC, T));
+					}
+				}
+
+				// Risks: the same Compute*Risk functions ComputeInstantaneousTenability calls, under the
+				// same enable + presence gates. A disabled or absent criterion contributes zero, so a
+				// zero risk here means the same thing it means on a live frame.
+				if (Settings.bUseVisibilityCriterion && Lo->bHasVisibility && Hi->bHasVisibility)
+				{
+					Snapshot.VisibilityRisk = ComputeVisibilityRisk(
+						Snapshot.VisibilityM, Settings.EndpointVisibilityM, Settings.ReferenceVisibilityM);
+				}
+				if (Settings.bUseToxicFEDCriterion && Lo->bHasFEDSum && Hi->bHasFEDSum)
+				{
+					Snapshot.ToxicFEDRisk = ComputeFEDRisk(
+						Snapshot.AccumulatedToxicFED, Settings.EndpointToxicFED);
+				}
+				if (Settings.bUseThermalFEDCriterion && Lo->bHasFEDRadSum && Hi->bHasFEDRadSum)
+				{
+					Snapshot.ThermalFEDRisk = ComputeFEDRisk(
+						Snapshot.AccumulatedThermalFED, Settings.EndpointThermalFED);
+				}
+				if (Settings.bUseTemperatureCriterion && bTemperatureAvailable)
+				{
+					Snapshot.TemperatureRisk = ComputeTemperatureRisk(
+						Snapshot.TemperatureC, Settings.EndpointTemperatureC);
+				}
+				if (Settings.bUseLayerHeightCriterion && bHasLayerHeight)
+				{
+					Snapshot.LayerHeightRisk = ComputeLayerHeightRisk(
+						Snapshot.LayerHeightM, Settings.MonitorHeightM);
+				}
+			}
+
+			// Valid because a failure was recorded, whether or not a curve backed every channel.
+			Snapshot.bValid = true;
+		}
+
 		// Failure pose: sample the agent trajectory at the first-failure time when a sampler is provided.
 		// A settings-only rebuild may pass an unset TFunction to skip pose capture (fetched lazily later).
 		if (PoseSampler)
@@ -692,5 +901,54 @@ namespace UE::Mobius::Tenability
 				Timeline.FailureRotation = Rot;
 			}
 		}
+	}
+
+	void ApplyFailureSnapshot(
+		FAgentEgressTenabilityFragment& Tenability,
+		const FAgentTenabilityTimeline& Timeline)
+	{
+		const FTenabilityFailureSnapshot& Snapshot = Timeline.FailureSnapshot;
+		if (!Snapshot.bValid)
+		{
+			return; // no recorded failure -> nothing to project (never fabricate a failure readout)
+		}
+
+		// Accumulated dose and the raw sampled values, AT the failure time.
+		Tenability.AccumulatedToxicFED = Snapshot.AccumulatedToxicFED;
+		Tenability.AccumulatedThermalFED = Snapshot.AccumulatedThermalFED;
+		Tenability.CurrentVisibilityM = Snapshot.VisibilityM;
+		Tenability.CurrentTemperatureC = Snapshot.TemperatureC;
+		Tenability.CurrentLayerHeightM = Snapshot.LayerHeightM;
+		Tenability.CurrentHeatReleaseKW = Snapshot.HeatReleaseKW;
+		Tenability.CurrentFEDSum = Snapshot.RoomFEDSum;
+		Tenability.CurrentFEDRadSum = Snapshot.RoomFEDRadSum;
+
+		// Per-criterion risks at the failure time.
+		Tenability.VisibilityRisk = Snapshot.VisibilityRisk;
+		Tenability.ToxicFEDRisk = Snapshot.ToxicFEDRisk;
+		Tenability.ThermalFEDRisk = Snapshot.ThermalFEDRisk;
+		Tenability.TemperatureRisk = Snapshot.TemperatureRisk;
+		Tenability.LayerHeightRisk = Snapshot.LayerHeightRisk;
+
+		// Per-criterion failed flags from the precomputed mask. FirstFailureMask IS the set of criteria
+		// failing at the failure instant: it collects every criterion whose crossing coincides with the
+		// (minimum) first-failure time, and none can cross earlier. Assigned unconditionally, both true
+		// and false: ComputeInstantaneousTenability has no else-branch clearing these, so a flag left
+		// alone here would stay stuck from whatever the last live frame wrote.
+		const uint8 Mask = Timeline.FirstFailureMask;
+		Tenability.FailureMask = Mask;
+		Tenability.bVisibilityFailed = (Mask & UE::Mobius::TenabilityFailureFlags::Visibility) != 0;
+		Tenability.bToxicFEDFailed = (Mask & UE::Mobius::TenabilityFailureFlags::ToxicFED) != 0;
+		Tenability.bThermalFEDFailed = (Mask & UE::Mobius::TenabilityFailureFlags::ThermalFED) != 0;
+		Tenability.bTemperatureFailed = (Mask & UE::Mobius::TenabilityFailureFlags::Temperature) != 0;
+		Tenability.bLayerHeightFailed = (Mask & UE::Mobius::TenabilityFailureFlags::LayerHeight) != 0;
+
+		// Locked display state: full bar on the cause of failure. Deliberately NOT the max of the risks
+		// above - a criterion sitting exactly at its endpoint does not always normalise to 1 (layer
+		// height reads 0 at its own crossing, by that risk's definition), and "what stopped this agent"
+		// is the claim the bar makes after failure.
+		Tenability.DisplayRisk = 1.0f;
+		Tenability.CurrentDominantCriterion = Timeline.FirstFailureCriterion;
+		Tenability.Health = 0.0f;
 	}
 }
