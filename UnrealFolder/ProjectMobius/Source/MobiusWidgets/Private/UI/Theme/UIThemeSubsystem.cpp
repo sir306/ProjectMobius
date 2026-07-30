@@ -1714,13 +1714,18 @@ void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
 		{
 			Button->SetStyle(Style);
 		}
-		// Some buttons (floor-stat bars et al) get their colour from UButton::BackgroundColor,
-		// which MULTIPLIES the (white) style brushes — remap it too or they stay dark.
-		FLinearColor ButtonBackground = Button->GetBackgroundColor();
-		if (Remap(ButtonBackground, bLight, SurfaceMap))
-		{
-			Button->SetBackgroundColor(ButtonBackground);
-		}
+		// A6b-6a (2026-07-31): the UButton::BackgroundColor remap that used to live here is DELETED — it was
+		// the LAST write this walk uniquely owned, and A6b-6 was scoped on the false claim that the walk had
+		// no unique job left. It is now UBaseButton::RefreshThemedButtonStyle's, which writes the neutral
+		// White multiplier for every themed button on construct and on OnThemeChanged, so the brush tint that
+		// function resolves is the colour Slate paints. Re-homed rather than duplicated: this copy remapped
+		// through SurfaceMap, which carries the epsilon collision (9/13 rows fail a light->dark->light round
+		// trip), and running both would put a value-matched colour and a neutral multiplier in a race decided
+		// by launch-vs-toggle ordering (the walk wins at startup, the owner wins on a toggle).
+		//
+		// Deleting it changes no pixel: measured project-wide, exactly two UBaseButtons author a non-white
+		// BackgroundColor (the two tool-panel rows), both are neutralised at construct by the owner, and
+		// Remap() guards pure white — so for all 98 archetypes this call had already become a no-op.
 		// W2 LABEL EXPERIMENT (2026-07-21): the walk's per-label colour handling for UButtonWithText
 		// (RefreshTextStyle + the three ApplyThemedLabelColor cases: ribbon-tab / custom-SWS / shared
 		// Mobius.Text.Label) is DISABLED. The label STextBlock is constructed with

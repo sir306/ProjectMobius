@@ -137,11 +137,28 @@ void UBaseButton::RefreshThemedButtonStyle()
 	// Deliberately BEFORE the accent-ring early-out: neutralising a multiplier is right whether or not this
 	// button's outline opts it out of recolouring. Guarded by the inequality so a second pass writes nothing.
 	//
-	// Rows ONLY. A plain UBaseButton's BackgroundColor is still remapped by the legacy value-walker
-	// (UIThemeSubsystem.cpp:1700-1706 is the only path that reaches it — StyleButtonForTheme early-outs on
-	// UBaseButton before its own copy), so neutralising it here would drop that colour on the floor until
-	// A6b-6 rehomes it.
-	if (bIsToolPanelRow && GetBackgroundColor() != FLinearColor::White)
+	// A6b-6a (2026-07-31): EVERY themed button, not just tool-panel rows. This is the re-homing of the last
+	// write the legacy value-walk uniquely owned (UIThemeSubsystem.cpp's UBaseButton branch remapped
+	// BackgroundColor through SurfaceMap; StyleButtonForTheme early-outs on UBaseButton before its own copy,
+	// so nothing else reached it). White rather than a remap because owner-pull puts the fill in the brush
+	// TINT above — a neutral multiplier is what makes that tint the colour Slate actually paints — and
+	// because SurfaceMap's remap carries the epsilon collision that fails a light->dark->light round trip.
+	//
+	// Measured across the whole project before widening it (71 WBPs = every /Game Widget Blueprint; the other
+	// mounted roots hold only engine/plugin stock, which cannot contain a UBaseButton): 98 UBaseButton
+	// archetypes, of which exactly TWO author a non-white BackgroundColor — WBP_NumberOfAgents.CurrentFloorBtn
+	// and WBP_HeaderText.BaseButton_146, both tool-panel rows, both (0.006995, 0.007499, 0.008568). No
+	// Blueprint or C++ writes the property at runtime (a content-wide scan for the member name and for
+	// SetBackgroundColor finds no setter). So dropping the row condition is behaviour-identical today: 96 of
+	// 98 buttons already hold White, and Remap() guards pure white anyway, which is why the walk's copy could
+	// be deleted without changing a pixel.
+	//
+	// Two families do NOT reach here, by the same gate that excludes them from every other colour write:
+	// ribbon tabs (UButtonWithText::bIsRibbonButton -> ApplyRibbonTabStyle owns their brushes) and buttons
+	// with bFollowThemePalette cleared ("colours exactly as authored"). Both author White today, so they lost
+	// nothing when the walk's copy went — but they now have NO BackgroundColor writer at all. Author a
+	// non-white multiplier on one of those and it will silently re-tint the theme colour with no fallback.
+	if (GetBackgroundColor() != FLinearColor::White)
 	{
 		SetBackgroundColor(FLinearColor::White);
 	}
