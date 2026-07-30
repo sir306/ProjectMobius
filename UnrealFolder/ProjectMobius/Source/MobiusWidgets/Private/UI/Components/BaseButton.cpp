@@ -158,9 +158,15 @@ void UBaseButton::RefreshThemedButtonStyle()
 	// with bFollowThemePalette cleared ("colours exactly as authored"). Both author White today, so they lost
 	// nothing when the walk's copy went — but they now have NO BackgroundColor writer at all. Author a
 	// non-white multiplier on one of those and it will silently re-tint the theme colour with no fallback.
-	if (GetBackgroundColor() != FLinearColor::White)
+	//
+	// RGB ONLY, alpha carried through — deliberately the same semantics as the walk's guard (Remap's
+	// bGuardNeutralWhite tests R,G,B > 0.99 and never looked at A). An exact compare against
+	// FLinearColor::White would drag an authored translucent multiplier (1,1,1,0.5) up to opaque, which the
+	// walk never did: that is a fade the owner asked for, not a surface colour.
+	const FLinearColor Multiplier = GetBackgroundColor();
+	if (Multiplier.R < 0.99f || Multiplier.G < 0.99f || Multiplier.B < 0.99f)
 	{
-		SetBackgroundColor(FLinearColor::White);
+		SetBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, Multiplier.A));
 	}
 
 	FButtonStyle Style = GetStyle();

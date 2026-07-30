@@ -73,6 +73,12 @@ public:
 	 * hover/press. Re-styling mid-press makes SButton drop mouse capture, which reads to the user as
 	 * "the click did nothing" (see A15 in the pending-task list).
 	 *
+	 * ALSO neutralises UButton::BackgroundColor's RGB to white (alpha untouched) before any of the above.
+	 * That property reaches Slate as SButton's BorderBackgroundColor and MULTIPLIES every brush tint set
+	 * here, so a non-neutral authored value silently re-tints the palette colour this function just
+	 * resolved. A6b-6a moved that write here from the legacy value-walk, which was its only other owner;
+	 * see the implementation comment for the project-wide measurement that made the move safe.
+	 *
 	 * Skips, by design:
 	 *  - brushes carrying a ResourceObject (image/material art: the playbar play/pause MIDs, the VR
 	 *    button MIs) — the asset owns those pixels,
