@@ -211,6 +211,23 @@ private:
 	void ClearCachedData();
 	void ResolveTypedRoomState(int32 RoomIndex);
 
+	/**
+	 * Log, and surface to the user, every tenability endpoint the loaded B-Risk input1.xml did not supply
+	 * and the documented default Mobius substituted for it.
+	 *
+	 * Called from RebuildRoomCache, i.e. ONCE per scenario load, and that placement is load-bearing: the
+	 * endpoints it inspects are read by BuildTenabilitySettingsFromEndpoints, which the timeline-currency
+	 * poll re-derives per agent per frame. Warning from there emits a formatted line per missing endpoint
+	 * per agent per frame. BuildTenabilitySettingsFromEndpoints is therefore silent by contract and this
+	 * is the only diagnostic path for it.
+	 *
+	 * Worth reporting rather than swallowing: a substituted endpoint means the failure times are computed
+	 * against Mobius defaults, not the scenario's own criteria - the first thing to check when Mobius and
+	 * a B-Risk report appear to disagree. Reported at Warning severity with no prompt (legitimate input,
+	 * handled by documented substitution; a modal per load would just get dismissed).
+	 */
+	void ReportTenabilityEndpointFallbacks() const;
+
 	/** Interpolate B-Risk calculated tenability output (Track A) into a room state at SampleTimeSeconds. */
 	void ApplyTenabilityCalcToRoom(int32 RoomIndex);
 

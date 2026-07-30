@@ -6,6 +6,7 @@
 #include "BRisk/AgentTenabilityTimeline.h"
 #include "BRisk/BRiskDataSubsystem.h"
 #include "BRiskDataImporter.h"
+#include "IMobiusErrorReporter.h"                          // user-facing report for defaulted tenability endpoints
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"    // GetSimulationFragment / GetAgentTimeBetweenSteps
 #include "SimData/ISimSampleProvider.h"                    // ISimSampleProvider::ForEachTimestep (build source)
 #include "Subsystems/TimeDilationSubSystem.h"
@@ -263,7 +264,89 @@ void UBRiskEgressSubsystem::RebuildRoomCache()
 		}
 	}
 
+	// ONE place, ONCE per scenario load, is the only safe home for this: the endpoints it inspects are
+	// read by BuildTenabilitySettingsFromEndpoints, which the timeline-currency poll calls per agent per
+	// frame. Reporting from there would emit a formatted warning per missing endpoint per agent per frame
+	// (~1.5M lines/s for a 5k crowd at 60 Hz) - a stall and a disk filler, not a diagnostic. Both callers
+	// of RebuildRoomCache reach here, and it runs after the early-out above, so it only ever describes a
+	// scenario that actually loaded.
+	ReportTenabilityEndpointFallbacks();
+
 	++Revision;
+}
+
+void UBRiskEgressSubsystem::ReportTenabilityEndpointFallbacks() const
+{
+	if (!BRiskDataSubsystem)
+	{
+		return;
+	}
+
+	const FBRiskTenabilityEndpoints& Endpoints = BRiskDataSubsystem->GetTenabilityEndpoints();
+	const FTenabilityAnalysisSettings Defaults; // the documented fallbacks, before any override
+
+	// Each entry: the input1.xml tag the user would have to add, and the default standing in for it.
+	TArray<FString> Substituted;
+	if (!Endpoints.bHasMonitorHeight)
+	{
+		Substituted.Add(FString::Printf(TEXT("monitor_height -> %.2f m"), Defaults.MonitorHeightM));
+	}
+	if (!Endpoints.bHasEndpointVisibility)
+	{
+		Substituted.Add(FString::Printf(TEXT("endpoint_visibility -> %.2f m"), Defaults.EndpointVisibilityM));
+	}
+	if (!Endpoints.bHasEndpointFED)
+	{
+		Substituted.Add(FString::Printf(TEXT("endpoint_FED -> %.2f"), Defaults.EndpointToxicFED));
+	}
+	if (!Endpoints.bHasEndpointRadiation)
+	{
+		Substituted.Add(FString::Printf(TEXT("endpoint_radiation -> %.2f (thermal FED)"), Defaults.EndpointThermalFED));
+	}
+
+	// endpoint_temp is NOT a Celsius layer-temperature threshold (observed O(1000) - it is raw Kelvin in
+	// real B-Risk input). Deliberately not mapped to a Celsius criterion, so its presence is a Verbose
+	// note rather than a substitution: nothing was defaulted.
+	if (Endpoints.bHasEndpointTemp)
+	{
+		UE_LOG(LogBRiskEgressSubsystem, Verbose,
+			TEXT("B-Risk endpoint_temp=%.1f present but not mapped to a Celsius criterion."),
+			Endpoints.EndpointTempRaw);
+	}
+
+	if (Substituted.IsEmpty())
+	{
+		return;
+	}
+
+	const FString Joined = FString::Join(Substituted, TEXT("; "));
+	UE_LOG(LogBRiskEgressSubsystem, Warning,
+		TEXT("B-Risk input supplied no %s. Mobius substituted its documented defaults: %s."),
+		Substituted.Num() == 1 ? TEXT("tenability endpoint") : TEXT("tenability endpoints"), *Joined);
+
+	// Surface it to the user as well as the log. Tenability results computed against a substituted
+	// endpoint are still valid analysis, but they are NOT the scenario's own criteria - and that is
+	// exactly the thing someone comparing Mobius against a B-Risk report needs to know before they
+	// conclude the numbers disagree.
+	//
+	// Severity Warning with NO prompt, deliberately: a missing endpoint is legitimate input that Mobius
+	// handles by documented substitution, so a modal on every load would train the user to dismiss it.
+	// This is the record they read WHEN they hit a discrepancy, not an interruption.
+	if (IMobiusErrorReporter* Reporter = IMobiusErrorReporter::Get(this))
+	{
+		Reporter->ReportError(
+			NSLOCTEXT("MobiusBRisk", "TenabilityEndpointsTitleBar", "B-Risk tenability"),
+			NSLOCTEXT("MobiusBRisk", "TenabilityEndpointsTitle", "Tenability endpoints defaulted"),
+			FText::Format(
+				NSLOCTEXT("MobiusBRisk", "TenabilityEndpointsBody",
+					"This scenario's input1.xml did not supply every tenability endpoint. Mobius used its "
+					"documented defaults instead, so failure times are computed against these rather than "
+					"the scenario's own criteria:\n\n{0}"),
+				FText::FromString(Joined)),
+			NSLOCTEXT("MobiusBRisk", "TenabilityEndpointsLocation", "B-Risk input1.xml <tenability>"),
+			EMobiusErrorSeverity::Warning,
+			/*bShowPrompt*/ false);
+	}
 }
 
 void UBRiskEgressSubsystem::RefreshAtTime(const float NewSimulationTime)
@@ -978,6 +1061,15 @@ void UBRiskEgressSubsystem::ApplyTenabilityCalcToRoom(const int32 RoomIndex)
 
 FTenabilityAnalysisSettings UBRiskEgressSubsystem::BuildTenabilitySettingsFromEndpoints() const
 {
+	// SILENT BY CONTRACT - do not add logging here. This is a hot path, not a load-time step: it feeds
+	// MakeCurrentTimelineKey's SettingsHash, which the health processor's timeline-currency check
+	// re-derives PER AGENT PER FRAME. Every diagnostic about these endpoints belongs in
+	// ReportTenabilityEndpointFallbacks, which runs once per scenario load and also surfaces the
+	// substitution to the user. A warning here reappears at frame rate x crowd size.
+	//
+	// It must also stay a pure function of the endpoints for a second reason: the hash it feeds is what
+	// decides whether the precomputed timelines are stale, so two calls with the same endpoints have to
+	// produce bitwise-identical settings.
 	FTenabilityAnalysisSettings Settings;
 	if (!BRiskDataSubsystem)
 	{
@@ -986,56 +1078,28 @@ FTenabilityAnalysisSettings UBRiskEgressSubsystem::BuildTenabilitySettingsFromEn
 
 	const FBRiskTenabilityEndpoints& Endpoints = BRiskDataSubsystem->GetTenabilityEndpoints();
 
+	// Each endpoint the input supplies overrides the documented default; each one it omits keeps the
+	// default, and ReportTenabilityEndpointFallbacks is what tells anyone that happened.
 	if (Endpoints.bHasMonitorHeight)
 	{
 		Settings.MonitorHeightM = static_cast<float>(Endpoints.MonitorHeightM);
 	}
-	else
-	{
-		UE_LOG(LogBRiskEgressSubsystem, Warning,
-			TEXT("B-Risk input has no monitor_height; using default %.2f m."), Settings.MonitorHeightM);
-	}
-
 	if (Endpoints.bHasEndpointVisibility)
 	{
 		Settings.EndpointVisibilityM = static_cast<float>(Endpoints.EndpointVisibilityM);
 	}
-	else
-	{
-		UE_LOG(LogBRiskEgressSubsystem, Warning,
-			TEXT("B-Risk input has no endpoint_visibility; using default %.2f m."), Settings.EndpointVisibilityM);
-	}
-
 	if (Endpoints.bHasEndpointFED)
 	{
 		Settings.EndpointToxicFED = static_cast<float>(Endpoints.EndpointFED);
 	}
-	else
-	{
-		UE_LOG(LogBRiskEgressSubsystem, Warning,
-			TEXT("B-Risk input has no endpoint_FED; using default %.2f."), Settings.EndpointToxicFED);
-	}
-
 	// endpoint_radiation is B-Risk's radiant/thermal FED endpoint.
 	if (Endpoints.bHasEndpointRadiation)
 	{
 		Settings.EndpointThermalFED = static_cast<float>(Endpoints.EndpointRadiation);
 	}
-	else
-	{
-		UE_LOG(LogBRiskEgressSubsystem, Warning,
-			TEXT("B-Risk input has no endpoint_radiation; using default thermal FED endpoint %.2f."),
-			Settings.EndpointThermalFED);
-	}
-
-	// endpoint_temp is NOT a Celsius layer-temperature threshold (observed O(1000)).
-	// Do not wire it into a Celsius criterion. Leave the temperature criterion disabled.
-	if (Endpoints.bHasEndpointTemp)
-	{
-		UE_LOG(LogBRiskEgressSubsystem, Verbose,
-			TEXT("B-Risk endpoint_temp=%.1f present but not mapped to a Celsius criterion."),
-			Endpoints.EndpointTempRaw);
-	}
+	// endpoint_temp is deliberately NOT read: it is not a Celsius layer-temperature threshold (observed
+	// O(1000) - raw Kelvin in real B-Risk input), so the temperature criterion stays disabled rather
+	// than being wired to a value that would mean something else.
 
 	return Settings;
 }
