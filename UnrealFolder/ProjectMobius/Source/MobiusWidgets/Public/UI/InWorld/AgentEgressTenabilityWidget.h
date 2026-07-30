@@ -54,16 +54,17 @@ public:
 	 * World-space vertical offset, in centimetres, of a fail marker above the point where that agent's
 	 * tenability failed.
 	 *
-	 * Deliberately EQUAL to WorldHeightOffset, not above it. The marker REPLACES that agent's bar rather
-	 * than stacking over it (see bHideBarWhenFailMarkerShown), so it has to land exactly where the bar
-	 * was — same height above the anchor point, so the swap reads as one readout changing rather than a
-	 * second one appearing higher up. It was 260 while the two were expected to coexist.
+	 * Owner-set to 50, well below the bar's WorldHeightOffset of 200. The marker REPLACES that agent's
+	 * bar rather than stacking over it (see bHideBarWhenFailMarkerShown), and the marker quad is much
+	 * taller than the bar, so matching the bar's offset floated it too high above the failure point.
+	 * 50 sits it just clear of the floor at the spot conditions went untenable, which is what a reviewer
+	 * is reading it against. Was 260 while the marker and bar were expected to coexist.
 	 *
 	 * The ANCHOR still differs from the bar's, and that is the whole point: the bar tracks the agent, the
-	 * marker stays at the failure point. Same offset, different anchor.
+	 * marker stays at the failure point.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "0.0"))
-	float FailMarkerHeightOffset = 200.0f;
+	float FailMarkerHeightOffset = 50.0f;
 
 	/**
 	 * Drop an agent's tenability bar once its fail marker is actually drawn, so the marker replaces the
@@ -146,13 +147,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability", meta = (ClampMin = "1"))
 	int32 InitialInstanceCapacity = 4096;
 
-	/**
-	 * Draw a per-agent debug text label above each bar showing the criterion and
-	 * its values (DisplayRisk, visibility, accumulated FED, temperature). Debug aid
-	 * only — per-agent text is not for large crowds; disable for performance runs.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Agent Egress Tenability|Debug")
-	bool bShowDebugText = true;
+	// The debug overlay is no longer a property. It was bShowDebugText, defaulting ON, which meant a text
+	// label over every agent plus a corner summary plate during normal use, and a rebuild to change it.
+	// It now lives entirely on the console CVar Mobius.Tenability.DebugText (default 0 = off):
+	//   1 = per-agent labels + the FailMarkers summary plate
+	//   2 = also boxes at each emitted fail marker's resolved position
+	// Declared in SAgentEgressHealth.cpp next to the code that reads it. Per-agent text is not for large
+	// crowds, so leave it off for performance runs.
 
 protected:
 	virtual void SynchronizeProperties() override;

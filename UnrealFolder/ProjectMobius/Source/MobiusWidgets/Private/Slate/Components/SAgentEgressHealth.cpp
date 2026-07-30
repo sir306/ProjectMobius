@@ -14,6 +14,25 @@
 
 namespace
 {
+	/**
+	 * In-world tenability debug overlay, off by default and toggled from the console at will. It used to
+	 * be a widget property defaulting on, which put a label over every agent and a summary plate in the
+	 * corner during normal use.
+	 *
+	 * Level 2 keeps the marker-position boxes reachable without showing them normally. They exist to tell
+	 * "the marker was emitted at the right place but did not rasterise" apart from "nothing was emitted",
+	 * which is what identified the missing World Position Offset on the marker material. Worth keeping
+	 * for the next instanced-mesh problem, not worth drawing the rest of the time.
+	 */
+	TAutoConsoleVariable<int32> CVarTenabilityDebugText(
+		TEXT("Mobius.Tenability.DebugText"),
+		0,
+		TEXT("In-world tenability debug overlay.\n")
+		TEXT("  0 = off (default)\n")
+		TEXT("  1 = per-agent labels + the FailMarkers summary plate\n")
+		TEXT("  2 = also boxes at each emitted fail marker's resolved position"),
+		ECVF_Cheat);
+
 	const TCHAR* TenabilityCriterionLabel(const uint8 Criterion)
 	{
 		switch (Criterion)
@@ -116,7 +135,11 @@ int32 SAgentEgressTenability::OnPaint(
 	FSlateInstanceBufferData PerInstanceUpdate;
 	PerInstanceUpdate.Reserve(AgentData.Num());
 
-	const bool bWantDebug = Widget->bShowDebugText;
+	// One CVar read per paint, never per agent. Console-driven so it can be turned on mid-scenario
+	// without a rebuild, and so nothing is drawn unless it was asked for.
+	const int32 DebugLevel = CVarTenabilityDebugText.GetValueOnGameThread();
+	const bool bWantDebug = DebugLevel > 0;
+	const bool bWantMarkerBoxes = DebugLevel > 1;
 	MutableThis->DebugMarkers.Reset(bWantDebug ? AgentData.Num() : 0);
 
 	// Reset() keeps the allocation, so the marker scratch costs nothing per frame after the first.
@@ -337,39 +360,42 @@ int32 SAgentEgressTenability::OnPaint(
 	const FSlateFontInfo DebugFont = FCoreStyle::GetDefaultFontStyle("Bold", 7);
 	const FLinearColor TextColour(0.0f, 0.0f, 0.0f, 0.95f);
 
-	// Where a marker WOULD be drawn, boxed on the debug layer. This is the test that splits the last
-	// two rows of the diagnostic table apart, which no counter can: the box is drawn from the same
-	// absolute position and the same emitted instance list the mesh uses, so
-	//   box visible, no icon -> position and emission are correct; the mesh, material or quad is at
-	//                           fault (winding / UV orientation is then the prime suspect)
+	// Where a marker WOULD be drawn, boxed on the debug layer. Level 2 only — see the CVar's docs. This
+	// splits apart the two cases no counter can distinguish:
+	//   box visible, no icon -> position and emission are correct; the mesh or material is at fault
 	//   no box at all        -> emission or the marker's own projection is at fault, not the art
-	// Positions come straight back out of the packed instance data (XY = absolute position, W = atlas
-	// slot), so this needs no extra per-frame storage.
-	for (const FPendingFailMarker& Pending : PendingFailMarkers)
+	// It is what identified the missing World Position Offset: boxes landed correctly (they are plain
+	// Slate elements and need no WPO) while the instanced mesh did not, and only a material WPO can
+	// place a Slate instance. Positions come straight back out of the packed instance data
+	// (XY = absolute position, W = atlas slot), so this needs no extra per-frame storage.
+	if (bWantMarkerBoxes)
 	{
-		const FVector2D MarkerAbsolute(Pending.InstanceData.X, Pending.InstanceData.Y);
-		const FVector2D MarkerLocal = AllottedGeometry.AbsoluteToLocal(MarkerAbsolute);
-		const FVector2D BoxSize(24.0f, 24.0f);
+		for (const FPendingFailMarker& Pending : PendingFailMarkers)
+		{
+			const FVector2D MarkerAbsolute(Pending.InstanceData.X, Pending.InstanceData.Y);
+			const FVector2D MarkerLocal = AllottedGeometry.AbsoluteToLocal(MarkerAbsolute);
+			const FVector2D BoxSize(24.0f, 24.0f);
 
-		FSlateDrawElement::MakeBox(
-			OutDrawElements,
-			TextLayer,
-			AllottedGeometry.ToPaintGeometry(
-				BoxSize, FSlateLayoutTransform(MarkerLocal - BoxSize * 0.5f)),
-			FCoreStyle::Get().GetBrush("Debug.Border"),
-			ESlateDrawEffect::None,
-			FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				TextLayer,
+				AllottedGeometry.ToPaintGeometry(
+					BoxSize, FSlateLayoutTransform(MarkerLocal - BoxSize * 0.5f)),
+				FCoreStyle::Get().GetBrush("Debug.Border"),
+				ESlateDrawEffect::None,
+				FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
 
-		FSlateDrawElement::MakeText(
-			OutDrawElements,
-			TextLayer,
-			AllottedGeometry.ToPaintGeometry(
-				FVector2D(40.0f, 12.0f),
-				FSlateLayoutTransform(MarkerLocal + FVector2D(14.0f, -6.0f))),
-			FString::Printf(TEXT("s%d"), static_cast<int32>(Pending.InstanceData.W)),
-			DebugFont,
-			ESlateDrawEffect::None,
-			FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+			FSlateDrawElement::MakeText(
+				OutDrawElements,
+				TextLayer,
+				AllottedGeometry.ToPaintGeometry(
+					FVector2D(40.0f, 12.0f),
+					FSlateLayoutTransform(MarkerLocal + FVector2D(14.0f, -6.0f))),
+				FString::Printf(TEXT("s%d"), static_cast<int32>(Pending.InstanceData.W)),
+				DebugFont,
+				ESlateDrawEffect::None,
+				FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+		}
 	}
 
 	// One fail marker summary, drawn even when no agent qualifies. Separates the reasons a marker can
