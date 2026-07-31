@@ -9,6 +9,7 @@
 #include "Styling/StyleDefaults.h"
 #include "UI/Theme/UIThemeSubsystem.h"
 #include "Widgets/Colors/SColorBlock.h"
+#include "Widgets/Layout/SBox.h" // title left-padding wrapper
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
@@ -69,6 +70,7 @@ namespace
 				  , _OwnerWindow()
 				  , _TitleBarContent(SNullWidget::NullWidget)
 				  , _TitleAlignment(HAlign_Fill)
+				  , _CloseButtonToolTipText()
 			{
 			}
 			SLATE_STYLE_ARGUMENT(FWindowStyle, Style)
@@ -76,6 +78,8 @@ namespace
 			SLATE_ARGUMENT(TSharedPtr<SMoveableWindow>, OwnerWindow)
 			SLATE_ARGUMENT(TSharedRef<SWidget>, TitleBarContent)
 			SLATE_ARGUMENT(EHorizontalAlignment, TitleAlignment)
+			/** Tooltip for the close button. Empty leaves SWindowTitleBar's own default ("Close"). */
+			SLATE_ATTRIBUTE(FText, CloseButtonToolTipText)
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& InArgs)
@@ -83,10 +87,18 @@ namespace
 			OwnerWindow = InArgs._OwnerWindow;
 			if (TSharedPtr<SMoveableWindow> Window = OwnerWindow.Pin())
 			{
+				// The close-button tooltip cannot be set after construction (SWindow exposes only a getter), and
+				// this class bypasses FSlateApplication::MakeWindowTitleBar, which is the only thing that reads
+				// SWindow's own CloseButtonToolTipText. So it has to be threaded in here. Only forwarded when the
+				// caller actually set one, so existing callers keep SWindowTitleBar's default.
+				SWindowTitleBar::FArguments TitleBarArgs;
+				TitleBarArgs.Style(InArgs._Style).ShowAppIcon(InArgs._ShowAppIcon);
+				if (InArgs._CloseButtonToolTipText.IsSet())
+				{
+					TitleBarArgs.CloseButtonToolTipText(InArgs._CloseButtonToolTipText);
+				}
 				SWindowTitleBar::Construct(
-					SWindowTitleBar::FArguments()
-					.Style(InArgs._Style)
-					.ShowAppIcon(InArgs._ShowAppIcon),
+					TitleBarArgs,
 					Window.ToSharedRef(),
 					InArgs._TitleBarContent,
 					InArgs._TitleAlignment);
@@ -203,12 +215,24 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
 		return;
 	}
 
+	// LEFT PADDING + vertical centring on the title. SMoveableWindow passes TitleAlignment=HAlign_Fill by
+	// default, and with ShowAppIcon(false) there is no icon holding the text off the frame — so an unwrapped
+	// STextBlock renders flush against the window border ("the title sits right on the edge"). 8u matches the
+	// engine's own AppIconPadding-sized gap and applies to every SMoveableWindow, not just one popup.
+	const TSharedRef<SWidget> PaddedTitle = SNew(SBox)
+		.Padding(FMargin(8.0f, 0.0f, 0.0f, 0.0f))
+		.VAlign(VAlign_Center)
+		[
+			TitleTextBlock.ToSharedRef()
+		];
+
 	TitleBarWidget = SNew(SMoveableWindowTitleBar)
 		.OwnerWindow(InArgs._OwnerWindow)
-		.TitleBarContent(TitleTextBlock.ToSharedRef())
+		.TitleBarContent(PaddedTitle)
 		.TitleAlignment(InArgs._TitleAlignment)
 		.Style(&WindowStyle)
-		.ShowAppIcon(InArgs._ShowAppIcon);
+		.ShowAppIcon(InArgs._ShowAppIcon)
+		.CloseButtonToolTipText(InArgs._CloseButtonToolTipText);
 
         ChildSlot
         [

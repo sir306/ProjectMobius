@@ -480,7 +480,8 @@ void SMoveableWindow::Construct(const FArguments& InArgs)
                         .TitleTextStyle(&WindowStyle->TitleTextStyle)
                         .WindowStyle(WindowStyle)
                         .TitleAlignment(TitleBarContentAlignment)
-                        .ShowAppIcon(false);
+                        .ShowAppIcon(false)
+                        .CloseButtonToolTipText(InArgs._CloseButtonToolTipText);
 		}
 
 		// Wrap the user's content with our title bar on top

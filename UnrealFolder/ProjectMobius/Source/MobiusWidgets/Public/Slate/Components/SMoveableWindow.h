@@ -48,6 +48,7 @@ public:
 		  , _UseOSWindowBorder(false)
 #endif
 			  , _HasCloseButton(true)
+			  , _CloseButtonToolTipText()
 			  , _SupportsMaximize(true)
 			  , _SupportsMinimize(true)
 			  , _ShouldPreserveAspectRatio(false)
@@ -57,7 +58,16 @@ public:
 			  , _CreateTitleBar(true)
 #endif
 			  , _SaneWindowPlacement(true)
-			  , _LayoutBorder(FMargin(5, 5, 5, 5))
+			  // 2px, was 5. LayoutBorder insets the content from the window edge, and the band it leaves is
+			  // painted with the style's BorderBrush — so this value IS the visible frame thickness on every
+			  // Mobius popup. At 5 it read as a thick slab (measured 6px total on the legal notice: 5 here plus
+			  // that dialog's own 1u ring, since removed).
+			  //
+			  // 2 rather than 1 on purpose: it is ALSO the edge the user has to hit to start a drag-resize, and
+			  // at 1px that target is too fine to grab. Owner call — the legal notice is fixed-content so it
+			  // does not care, but the resizable popups (ImPlot overlay, log window, error window) do. Do not
+			  // take this back down to 1 for the sake of a thinner line.
+			  , _LayoutBorder(FMargin(2, 2, 2, 2))
 			  , _UserResizeBorder(FMargin(5, 5, 5, 5))
 			  , _TitleBarContent()
 			  , _TitleBarContentAlignment(HAlign_Fill)
@@ -81,6 +91,13 @@ public:
 		SLATE_ARGUMENT(EWindowActivationPolicy, ActivationPolicy)
 		SLATE_ARGUMENT(bool, UseOSWindowBorder)
 		SLATE_ARGUMENT(bool, HasCloseButton)
+		/**
+		 * Tooltip for the title bar's close button. Leave unset to keep the engine default ("Close").
+		 * NOT the same as SWindow's own CloseButtonToolTipText: that field is only read by
+		 * FSlateApplication::MakeWindowTitleBar, which this class bypasses in favour of its own
+		 * SWindowTitleBarWidget — so it has to be forwarded explicitly.
+		 */
+		SLATE_ATTRIBUTE(FText, CloseButtonToolTipText)
 		SLATE_ARGUMENT(bool, SupportsMaximize)
 		SLATE_ARGUMENT(bool, SupportsMinimize)
 		SLATE_ARGUMENT(bool, ShouldPreserveAspectRatio)

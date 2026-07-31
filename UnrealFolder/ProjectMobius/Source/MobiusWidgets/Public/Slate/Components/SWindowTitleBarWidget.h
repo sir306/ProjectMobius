@@ -26,6 +26,7 @@ public:
 		, _WindowStyle(&FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window"))
 		, _TitleAlignment(HAlign_Center)
 		, _ShowAppIcon(false)
+		, _CloseButtonToolTipText()
 	{
 	}
 
@@ -46,6 +47,13 @@ public:
 
 	/** Whether to show the application icon. */
 	SLATE_ARGUMENT(bool, ShowAppIcon)
+
+	/**
+	 * Tooltip for the title bar's close button. Leave unset to keep SWindowTitleBar's default ("Close").
+	 * Must be supplied at construction: SWindow exposes only a getter for its own equivalent, and this widget
+	 * bypasses FSlateApplication::MakeWindowTitleBar, which is the only consumer of that field.
+	 */
+	SLATE_ATTRIBUTE(FText, CloseButtonToolTipText)
 	SLATE_END_ARGS()
 
 	/** Default constructor. */
