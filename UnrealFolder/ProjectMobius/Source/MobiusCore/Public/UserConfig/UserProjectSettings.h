@@ -67,6 +67,12 @@ private:
 	UPROPERTY(Config)
 	bool bHasCompletedFirstRun = false;
 
+	/** Version of the mandatory legal notice accepted by this OS user. Zero means not accepted.
+	 *  This is deliberately independent of bHasCompletedFirstRun: window sizing must never imply
+	 *  acceptance of the notice. Raising the code-side version displays a revised notice once. */
+	UPROPERTY(Config)
+	int32 AcceptedLegalNoticeVersion = 0;
+
 	/** OS "maximized" is a window state, not a resolution — the engine neither tracks nor restores it
 	 *  (stored resolution stays at the last confirmed size). Captured at shutdown, re-applied at start,
 	 *  so closing the app maximized reopens it maximized like a normal desktop application. */
@@ -127,6 +133,12 @@ public:
 	bool HasCompletedFirstRun() const { return bHasCompletedFirstRun; }
 
 	void MarkFirstRunCompleted();
+
+	/** True only when this OS user's saved settings accept the current packaged-app legal notice. */
+	bool HasAcceptedCurrentLegalNotice() const;
+
+	/** Records acceptance of the current notice and flushes it to GameUserSettings.ini immediately. */
+	void AcceptCurrentLegalNotice();
 
 	/** Capture the game window's maximized state (kept current via viewport-resize events; the
 	 *  window is already gone by shutdown). Does not save by itself. */

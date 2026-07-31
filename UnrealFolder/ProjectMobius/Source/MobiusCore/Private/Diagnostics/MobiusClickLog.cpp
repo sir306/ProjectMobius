@@ -25,6 +25,7 @@
 #include "Diagnostics/MobiusClickLog.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/IInputProcessor.h"
 #include "Layout/WidgetPath.h"
 
 DEFINE_LOG_CATEGORY(LogMobiusClick);
@@ -45,7 +46,7 @@ namespace
 	/** Game-thread only: bumped by the Slate listener, read by every other source. */
 	int32 GClickId = 0;
 
-	FDelegateHandle GSlateListenerHandle;
+	TSharedPtr<IInputProcessor> GSlateInputProcessor;
 
 	/** How many widgets of the hit path to name, leaf first. Enough to see button + its container. */
 	constexpr int32 GMaxPathEntries = 5;
@@ -88,6 +89,30 @@ namespace
 			Chain.IsEmpty() ? TEXT("<nothing interactive under cursor>") : *Chain);
 	}
 
+	/**
+	 * Runtime-safe replacement for Slate's editor-only pre-input listener.
+	 * Returning false observes the input without consuming it, so normal Slate
+	 * widget routing and game input still receive the click.
+	 */
+	class FClickLogInputProcessor final : public IInputProcessor
+	{
+	public:
+		virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override
+		{
+		}
+
+		virtual bool HandleMouseButtonDownEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override
+		{
+			HandleSlateMouseButtonDown(MouseEvent);
+			return false;
+		}
+
+		virtual const TCHAR* GetDebugName() const override
+		{
+			return TEXT("MobiusClickLog");
+		}
+	};
+
 	void HandleLogClicksChanged(IConsoleVariable* Variable)
 	{
 		if (Variable && Variable->GetInt() != 0)
@@ -126,25 +151,28 @@ void MobiusClickLog::RegisterSlateListener()
 	// Dormant unless asked for: with `Mobius.LogClicks 0` (the default) nothing is hooked at all, so the
 	// diagnostics cost literally nothing per mouse-down. The cvar's OnChanged sink hooks it the moment
 	// the flag is raised, so re-enabling it is a console command, not a rebuild.
-	if (!IsEnabled() || !FSlateApplication::IsInitialized() || GSlateListenerHandle.IsValid())
+	if (!IsEnabled() || !FSlateApplication::IsInitialized() || GSlateInputProcessor.IsValid())
 	{
 		return;
 	}
 
-	GSlateListenerHandle = FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener()
-		.AddStatic(&HandleSlateMouseButtonDown);
+	GSlateInputProcessor = MakeShared<FClickLogInputProcessor>();
+	if (!FSlateApplication::Get().RegisterInputPreProcessor(GSlateInputProcessor, EInputPreProcessorType::PreGame))
+	{
+		GSlateInputProcessor.Reset();
+	}
 }
 
 void MobiusClickLog::UnregisterSlateListener()
 {
-	if (!GSlateListenerHandle.IsValid())
+	if (!GSlateInputProcessor.IsValid())
 	{
 		return;
 	}
 
 	if (FSlateApplication::IsInitialized())
 	{
-		FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener().Remove(GSlateListenerHandle);
+		FSlateApplication::Get().UnregisterInputPreProcessor(GSlateInputProcessor);
 	}
-	GSlateListenerHandle.Reset();
+	GSlateInputProcessor.Reset();
 }

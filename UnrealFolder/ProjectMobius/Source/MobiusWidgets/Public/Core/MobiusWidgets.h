@@ -30,4 +30,10 @@ class FMobiusWidgetsModule : public IModuleInterface
 public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
+
+private:
+    /** Opens the mandatory notice after the first packaged game world has loaded. */
+    void HandlePostLoadMap(class UWorld* LoadedWorld);
+
+    FDelegateHandle LegalNoticePostLoadMapHandle;
 };

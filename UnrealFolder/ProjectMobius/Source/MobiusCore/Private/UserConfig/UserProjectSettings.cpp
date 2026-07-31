@@ -168,6 +168,20 @@ void UUserProjectSettings::MarkFirstRunCompleted()
 	SaveSettings();
 }
 
+bool UUserProjectSettings::HasAcceptedCurrentLegalNotice() const
+{
+	// Increment this when the shown notice changes materially. Existing users will then be prompted once.
+	constexpr int32 CurrentLegalNoticeVersion = 1;
+	return AcceptedLegalNoticeVersion >= CurrentLegalNoticeVersion;
+}
+
+void UUserProjectSettings::AcceptCurrentLegalNotice()
+{
+	constexpr int32 CurrentLegalNoticeVersion = 1;
+	AcceptedLegalNoticeVersion = CurrentLegalNoticeVersion;
+	SaveSettings();
+}
+
 void UUserProjectSettings::CaptureWindowMaximizedState()
 {
 	if (FSlateApplication::IsInitialized() && GEngine && GEngine->GameViewport)

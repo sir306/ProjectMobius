@@ -185,6 +185,7 @@ void UProjectMobiusGameInstance::OnStart()
 			}), 1.25f, false);
 		}), 0.75f, false);
 	}
+
 }
 
 void UProjectMobiusGameInstance::HandleGameViewportResized(FViewport* Viewport, uint32 /*Unused*/)
