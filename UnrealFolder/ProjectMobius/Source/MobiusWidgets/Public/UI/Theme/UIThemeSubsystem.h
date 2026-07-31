@@ -233,9 +233,17 @@ public:
 
 	/**
 	 * Theme every standard control in one UserWidget's tree for the CURRENT theme, dispatching on widget
-	 * TYPE. Recurses into embedded user widgets so one call from a panel covers its whole subtree (the
-	 * helpers are idempotent, so overlapping calls from nested themed widgets are harmless). Called by
+	 * TYPE. Recurses into embedded user widgets so one call from a panel covers its whole subtree. Called by
 	 * UMobiusThemedUserWidget on NativeConstruct and on every OnThemeChanged.
+	 *
+	 * A6b-7 (2026-07-31): the recursion STOPS at a child that is itself a UMobiusThemedUserWidget, because
+	 * such a child runs this same pass over its own subtree and then its own ApplyMobiusTheme. Descending
+	 * would add no coverage and would land an untargeted write AFTER a declared role write — the parent
+	 * recursion had replaced the deleted walk as the clobberer. Coverage is unchanged: every widget is
+	 * themed by its nearest themed ancestor's pass, so pruning at themed boundaries leaves the union
+	 * identical. Consequence for callers: a new UMobiusThemedUserWidget subclass MUST let the base
+	 * NativeConstruct run (every existing override calls Super — verified by sweep at A6b-7), or its
+	 * subtree loses its only writer.
 	 *
 	 * bConstruct additionally applies the theme-INDEPENDENT one-offs that only make sense once per build
 	 * (the input-box Mono font) — pass false from a theme-change handler.

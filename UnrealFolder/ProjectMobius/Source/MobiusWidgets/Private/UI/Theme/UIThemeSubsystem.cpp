@@ -60,6 +60,7 @@
 #include "UI/Components/MobiusThemedBorder.h"   // A6b: walk guard — self-theming borders
 #include "UI/Components/VerticalTextBlock.h"
 #include "UI/Components/FieldAndTextWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"   // A6b-7: recursion guard — self-theming user widgets
 // A6b-5: owner-scoped role write for the play bar's background. MobiusWidgets already depends on
 // ProjectMobius (see MobiusWidgets.Build.cs), so this direction is fine — the reverse is the cycle.
 #include "Widgets/Simulation/SimulationPlayBar.h"
@@ -333,11 +334,26 @@ namespace MobiusTheme
 		// what the A6b-6 acceptance gate looks at. Removing this line reproduces 31641401.
 		//
 		// This is the same ownership rule as StyleBorderForTheme's UMobiusThemedBorder guard and
-		// StyleButtonForTheme's UBaseButton guard — keyed on MATERIAL PATH instead of type. The structural
-		// fix is to stop the recursion descending into a child that is itself a UMobiusThemedUserWidget (such
-		// a child themes its whole subtree on its own bind, controls-then-owner). Deliberately deferred to
-		// A6b-7: it changes coverage for all 18 themed classes at once, so bundling it here would make a
-		// pixel-gate failure unbisectable.
+		// StyleButtonForTheme's UBaseButton guard — keyed on MATERIAL PATH instead of type.
+		//
+		// A6b-7 (2026-07-31) LANDED the structural fix: ThemeStandardControlsInTree no longer descends into a
+		// child that is itself a UMobiusThemedUserWidget, and WBP_ImprovedLoadingNotify's class
+		// UImprovedLoadingNotifyWidget IS one — so the widget-tree clobber described above can no longer
+		// happen. This carve-out is therefore BELIEVED redundant, and is kept anyway for two reasons, both of
+		// which must clear before it comes out:
+		//   1. It has not been pixel-gated. The A6b-7 change is unbuilt (editor held by another agent), and
+		//      this exact line is the fix for an OWNER-REPORTED defect — the loading card rendered baked
+		//      #141517 in dark and #f5f5f5 in light. Removal needs a fresh-launch capture of the card in BOTH
+		//      themes; recipe in auto-memory reference-mobius-dataload-gate-recipe (400 ms burst, armed
+		//      before the load fires). Expected PASS values: dark #414141 outer / #2B2B2B inner,
+		//      light #EAEAEA outer / #FFFFFF inner.
+		//   2. The widget tree is not the only route here. ApplyTheme's asset-registry sweep calls this
+		//      function directly on every USlateWidgetStyleAsset button brush (:1711) and every
+		//      USlateBrushAsset (:1838) in the project. Those calls never touch a WidgetTree, so the A6b-7
+		//      guard prunes nothing for them. If ANY SWS or USlateBrushAsset resolves to
+		//      MI_LoadingOuterBackground / MI_LoadingInnerBackground, this carve-out is still load-bearing and
+		//      A6b-7 did not retire it at all. Unconfirmed either way — .uasset content needs an ASCII byte
+		//      scan, because the Grep tool silently skips binaries.
 		//
 		// Substring is "Loading" not "Load": it matches MI_LoadingOuter/InnerBackground and deliberately NOT
 		// MI_LoadDataFilesBackground, which has no owner-pull driver. The other live cards in this folder
@@ -621,9 +637,14 @@ void UUIThemeSubsystem::ReapplyToUserWidget(UUserWidget* UserWidget)
 	// hand-rolled ForEachWidget/ApplyToWidget recursion here used to add (a flow-counter card themes its
 	// section-counter children through it). Not a construct pass — bConstruct=false.
 	//
-	// A6b-6: the in-world card's OWNER hook is not called from here and never was; UFlowCounterWidget binds
-	// OnThemeChanged itself, and the startup ticker now broadcasts, so a card placed at launch gets both
-	// halves in the same order a toggle gives it.
+	// The in-world card has no OWNER hook to call and never did — CORRECTED 2026-07-31 (A6b-7). An earlier
+	// version of this comment claimed UFlowCounterWidget binds OnThemeChanged itself; it does not.
+	// UFlowCounterWidget (FlowCounterWidget.h:15) and its child UFlowSectionCounter (FlowSectionCounter.h:16)
+	// are both plain UUserWidget, neither derives from UMobiusThemedUserWidget, and neither .cpp mentions
+	// OnThemeChanged at all. This function is consequently their ONLY theme writer, which is also why the
+	// A6b-7 recursion guard cannot prune anything here (nothing in an in-world tree matches its cast).
+	// Whatever drives a card created mid-session is therefore an external caller of this function, NOT a
+	// self-bind — establish which one before changing anything on this path.
 	ThemeStandardControlsInTree(UserWidget, /*bConstruct*/false);
 }
 
@@ -1053,7 +1074,36 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		}
 		if (UUserWidget* ChildUserWidget = Cast<UUserWidget>(Widget))
 		{
-			ThemeStandardControlsInTree(ChildUserWidget, bConstruct);
+			// A6b-7 (2026-07-31): STOP at a child that is itself a UMobiusThemedUserWidget. Such a child runs
+			// this exact pass over its own subtree from UMobiusThemedUserWidget::NativeConstruct and again from
+			// HandleThemeChanged, controls-first then ApplyMobiusTheme — so descending into it adds no coverage
+			// and instead lands an UNTARGETED write AFTER the child's declared role write. That is the same
+			// ownership rule as StyleBorderForTheme's UMobiusThemedBorder guard and StyleButtonForTheme's
+			// UBaseButton guard, lifted one level up to the widget itself.
+			//
+			// Coverage is unchanged, not merely "probably fine": every widget is themed by its nearest themed
+			// ANCESTOR's pass (or by its own, if themed), and pruning only at themed boundaries leaves that
+			// union identical. The precondition was verified by sweep before this landed — 18 direct + 6
+			// indirect UMobiusThemedUserWidget subclasses, and every one of the overrides of NativeConstruct
+			// calls Super::NativeConstruct, so no themed widget is missing its own pass. Re-verify that if a
+			// new subclass appears.
+			//
+			// Non-themed embedded WBPs are still recursed, which keeps the ONLY route to the two ProjectMobius-
+			// module widgets named below intact.
+			//
+			// The one thing the skip loses: a themed child whose NativeConstruct runs while
+			// GetGameInstance()->GetSubsystem<UUIThemeSubsystem>() is null never binds and never self-passes,
+			// where the parent walk used to reach its standard controls. Deliberate — a widget that cannot see
+			// the subsystem has no palette to pull either, so it was half-themed before regardless.
+			//
+			// The in-world path is NOT affected, which retires the reason this was deferred out of A6b-6:
+			// ReapplyToUserWidget's roots are UFlowCounterWidget (FlowCounterWidget.h:15) and its child
+			// UFlowSectionCounter (FlowSectionCounter.h:16), and BOTH are plain UUserWidget — nothing there
+			// matches this cast, so the guard cannot prune any in-world subtree.
+			if (!ChildUserWidget->IsA<UMobiusThemedUserWidget>())
+			{
+				ThemeStandardControlsInTree(ChildUserWidget, bConstruct);
+			}
 		}
 		else if (USlider* Slider = Cast<USlider>(Widget))
 		{
