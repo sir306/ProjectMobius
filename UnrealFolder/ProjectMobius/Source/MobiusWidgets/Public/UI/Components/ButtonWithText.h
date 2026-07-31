@@ -70,7 +70,9 @@ public:
 	 * Q49/R4: re-land the label colour DIRECTLY on the live STextBlock. RefreshTextStyle()/SetTextStyle
 	 * re-pushes the style struct but does NOT update the STextBlock's resolved ColorAndOpacity, so ribbon
 	 * tab + Browse labels keep their light-mode colour after a theme flip. SetColorAndOpacity bypasses the
-	 * construction-time style copy. Called from UUIThemeSubsystem::ApplyToWidget for theme-managed labels.
+	 * construction-time style copy. Its former caller (the theme walk's per-label handling) was disabled by
+	 * the W2 label experiment and deleted with the walk in A6b-6 — labels follow the button STYLE foreground
+	 * now. Kept because the ribbon tab path still needs a direct writer (UIThemeSubsystem's tab styling).
 	 */
 	void ApplyThemedLabelColor(FLinearColor Color);
 

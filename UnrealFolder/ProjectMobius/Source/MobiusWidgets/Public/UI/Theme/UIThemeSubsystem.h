@@ -45,6 +45,7 @@ class USlider;
 class UTextBlock;   // A6b-5: the relocated text remap
 class UButton;      // A6b-5: the relocated plain-button pass
 class UImage;       // A6b-5: the relocated image-brush pass
+class UBorder;      // A6b-6b: the relocated border pass
 struct FSlateBrush;
 
 UENUM(BlueprintType)
@@ -117,15 +118,15 @@ public:
 	 */
 	FSimpleMulticastDelegate OnThemeChangedNative;
 
-	/** Re-run the palette walk for the CURRENT theme (idempotent; picks up late-spawned widgets). */
+	/** Re-apply the CURRENT theme (idempotent; late-spawned widgets theme themselves on construct). */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
 	void ReapplyTheme();
 
 	/**
-	 * Run the per-widget theme pass over ONE UserWidget's own tree for the current theme. For widgets the
-	 * live-widget walk deliberately SKIPS — the in-world flow-counter cards live on a UWidgetComponent, not in
-	 * the viewport, so ApplyToLiveWidgets excludes them. They call this from their own OnThemeChanged handler
-	 * to self-theme (card material via ThemeBackgroundBrush, FieldAndText rows via the walk branch, etc.).
+	 * Run the standard-control theme pass over ONE UserWidget's own tree (recursing into its embedded
+	 * widgets) for the current theme. Exists for widgets no viewport enumeration reaches: the in-world
+	 * flow-counter cards live on a UWidgetComponent, so GetAllWidgetsOfClass never returns them. Called by
+	 * ThemeInWorldWidgetComponents and by those cards from their own OnThemeChanged handler.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
 	void ReapplyToUserWidget(UUserWidget* UserWidget);
@@ -218,10 +219,10 @@ public:
 	// ---------------------------------------------------------------------------------------------
 	// A5 (2026-07-28) — event-driven theming for the standard engine controls (rebuild Phase 4).
 	//
-	// These five are the walker's per-control-TYPE branches, lifted out so a widget can theme its own
-	// controls on construct + OnThemeChanged instead of waiting for ApplyToLiveWidgets to find it. Type
-	// in, palette role out — no colour value-matching, no name table, no polling, which is what lets A6
-	// delete the walker rather than keep a husk of it. Static: they need the palette and nothing else.
+	// These five were the walker's per-control-TYPE branches, lifted out so a widget themes its own controls
+	// on construct + OnThemeChanged instead of waiting for a sweep to find it. Type in, palette role out —
+	// no colour value-matching, no name table, no polling, which is what let A6b-6 delete the walker
+	// outright rather than keep a husk of it. Static: they need the palette and nothing else.
 	//
 	// Three widget-NAME special cases are carried inside (they are behaviour, not theming, and each one
 	// regresses a specific control if dropped): PlaybackSlider's bar is forced transparent because a
@@ -338,6 +339,33 @@ public:
 	 */
 	static void StyleImageForTheme(UImage* Image, bool bLight);
 
+	/**
+	 * A6b-6b (2026-07-31): plain UBorder — the LAST branch the walk still owned outright, and the reason
+	 * A6b-6 could not simply delete it. ThemeStandardControlsInTree dispatched Slider/CheckBox/ScrollBox/
+	 * ProgressBar/EditableTextBox/Image/Button/TextBlock and had NO border branch at all, so with the walk
+	 * gone a plain UBorder would have had no theme writer of any kind. The walk now delegates here, same as
+	 * it does for images and buttons, so there is only ever one copy.
+	 *
+	 * The load-bearing part is ThemeBackgroundBrush. THREE of the four live /WidgetMaterials/
+	 * BackgroundMaterials/ cards sit on a plain UBorder — MI_FlowCounterBackgroundTop
+	 * (WBP_FlowCounter.Border_1), MI_FlowCounterBackgroundBottom (WBP_FlowSectionCounter.Border_48) and
+	 * MI_EgressBackground (WBP_ASET-RSET_Combined.Border_0) — measured per-widget, not assumed. Without
+	 * this they render their baked colours. (The fourth, MI_PlayBarBackground, is on a UImage and was
+	 * already covered by StyleImageForTheme.)
+	 *
+	 * NO-OPS ON A UMobiusThemedBorder, carrying forward the deleted walk's type guard: a themed border owns its fill
+	 * and outline from a DECLARED role, and letting the value remap below near-match its light value
+	 * against a different SurfaceMap row is the exact epsilon collision the rebuild exists to remove.
+	 * Skipping them costs nothing measurable — no themed border carries a BackgroundMaterials instance
+	 * (all four cards are plain borders or an image), so the material helper has nothing to do on one.
+	 *
+	 * The SurfaceMap remap + material folder swap + D169 collapse are carried for BEHAVIOUR PARITY, not
+	 * because a casualty was measured for them: they are what a plain border gets today, and relocating a
+	 * branch is not the place to change what it does. They remain the lossy value-matching path — every
+	 * border reparented to UMobiusThemedBorder subtracts one more widget from it.
+	 */
+	void StyleBorderForTheme(UBorder* Border, bool bLight);
+
 private:
 	void ApplyTheme(bool bLight);
 	/**
@@ -346,16 +374,25 @@ private:
 	 * No-op until the MPC asset exists. See _ClaudeHandoff/PRD_ThemeSystemRework.md.
 	 */
 	void WriteThemeToMPC(bool bLight);
-	int32 ApplyToLiveWidgets(bool bLight);
-	/** Re-theme every in-world UWidgetComponent-hosted widget (flow-counter cards) — GetAllWidgetsOfClass
-	 *  does not return world-space component widgets, so the walk cannot reach them. */
-	void ThemeInWorldWidgetComponents();
-	void ApplyToWidget(UWidget* Widget, bool bLight);
 	/**
-	 * Explicit per-theme colour for widgets the value-remap walker cannot distinguish (dark-grey
-	 * collapse at Epsilon, white-guard, or alpha roles — D25/D26 + P3/P4 EXPLICIT-REAPPLY queues),
-	 * keyed by widget-name substring. Table-driven (extend for P5: HoverBg, control states). Returns
-	 * true when it fully handled the widget (caller then skips the generic value walk for it).
+	 * A6b-6: count the live on-screen leaf widgets. NOT a theming pass — this is the startup ticker's only
+	 * signal that the HUD has finished constructing, and it is the deleted walk's traversal with the styling
+	 * call removed so the ticker's calibrated ">200" threshold still means what it meant. See the .cpp.
+	 */
+	int32 CountLiveLeafWidgets();
+	/** Re-theme every in-world UWidgetComponent-hosted widget (flow-counter cards) — GetAllWidgetsOfClass
+	 *  does not return world-space component widgets, so no viewport enumeration reaches them. */
+	void ThemeInWorldWidgetComponents();
+	/**
+	 * Explicit per-theme colour for widgets the value remap cannot distinguish (dark-grey collapse at
+	 * Epsilon, white-guard, or alpha roles — D25/D26 + P3/P4 EXPLICIT-REAPPLY queues), keyed by widget-name
+	 * substring. Returns true when it fully handled the widget (caller then skips the generic remap for it).
+	 *
+	 * A6b-6: after the walk's deletion this has exactly ONE caller, StyleBorderForTheme, and is only ever
+	 * passed a UBorder — which was always the only type it handled (it casts and early-outs). Of its 7 name
+	 * rules only HeatmapColourBand is still live; every other name-matched widget has been reparented to
+	 * UMobiusThemedBorder and is excluded by that caller's type guard before reaching here. Signature kept
+	 * as UWidget* so a second caller does not have to pre-cast.
 	 */
 	bool ApplyNameRoleOverride(UWidget* Widget, bool bLight);
 	/** Retint the shared SWS tab style + the "Mobius.Button" style-set entry in place. */
@@ -368,8 +405,12 @@ private:
 	 * This exists because ApplySharedStyles has ONE real dependency — a scanned asset registry, since it
 	 * sweeps /Game/01_Dev/Widgets for SWS assets — and at subsystem Initialize that scan is usually still
 	 * running, so the startup call themes ZERO assets. The old fix was to re-run it on every startup ticker
-	 * pass and hope one of them landed after the scan. This waits for the actual event instead, which is
-	 * what lets the ticker be deleted wholesale in A6b-6 rather than kept alive for this one duty.
+	 * pass and hope one of them landed after the scan. This waits for the actual event instead.
+	 *
+	 * A6b-6: the ticker still calls this, but now only as a BACKSTOP for the one-shot-broadcast race
+	 * (OnFilesLoaded can complete between the IsLoadingAssets test and the bind below, and is then never
+	 * delivered). The former reason — an ordering guard so the walk could not stamp disk-authored styles onto
+	 * snapshot-at-construct buttons — died with the walk.
 	 */
 	void ApplySharedStylesWhenRegistryReady();
 
@@ -381,12 +422,12 @@ private:
 	 * fires during world teardown and walks half-destroyed widgets → the combo SMenuAnchor delegate
 	 * -access ensure (the "crash on PIE close"). Also reset when the ticker self-unregisters.
 	 *
-	 * A6b-2: everything this ticker still does is WALKER-family, so the whole thing goes in A6b-6 —
-	 * ApplyToLiveWidgets is the walk; ThemeInWorldWidgetComponents reaches its cards through
-	 * ReapplyToUserWidget, which calls ApplyToWidget; the InvalidateAllWidgets exists because the walk
-	 * changes colours behind an already-cached paint; and the ">200 leaf widgets" loop control uses the
-	 * walk's own return value as its "the HUD exists now" signal. None of that has meaning once widgets
-	 * theme themselves on construct. Do not preserve any of it — only ApplySharedStyles needed a new home.
+	 * A6b-2 expected this whole ticker to die with the walk in A6b-6. It did NOT, and the reason is the one
+	 * thing the walk was doing that owner-pull cannot do for itself: the theme must be re-applied AFTER the
+	 * HUD constructs, because the shared SWS assets are retinted asynchronously (asset-registry scan) and
+	 * because widgets construct over several seconds behind shader compilation. What changed in A6b-6 is the
+	 * MECHANISM — each pass now BROADCASTS OnThemeChanged instead of walking, which is what removes the
+	 * launch-vs-toggle ordering asymmetry that let a startup walk overwrite an owner-pull write.
 	 */
 	FTSTicker::FDelegateHandle StartupThemeTickerHandle;
 

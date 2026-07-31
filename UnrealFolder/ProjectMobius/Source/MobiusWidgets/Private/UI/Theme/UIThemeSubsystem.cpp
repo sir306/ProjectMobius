@@ -25,6 +25,7 @@
 #include "UI/Theme/UIThemeSubsystem.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Brushes/SlateColorBrush.h" // GetThemedWindowStyle: flat frame brushes (a tint cannot brighten)
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -314,19 +315,35 @@ namespace MobiusTheme
 		{
 			return false;
 		}
-		// OWNERSHIP CARVE-OUT 2026-07-30 — the loading card has MIGRATED to owner-pull, so this walk is no
-		// longer providing coverage for it, it is DESTROYING coverage. Measured in PIE against the live MID:
-		// UImprovedLoadingNotifyWidget / UBaseLoadingWidget write their role colours at construct, then the
-		// STARTUP TICKER (Initialize :418-469) re-runs ApplyToLiveWidgets every 0.3s WITHOUT broadcasting
-		// OnThemeChanged — so unlike ApplyTheme (:785 walk, :799 broadcast, owner wins) the walk gets the last
-		// word and this function overwrites it: dark hit ClearParameterValues() below and reverted the card to
-		// MI_LoadingOuterBackground's baked near-black (0.006995 -> #141517), light forced the hard-coded
-		// 0.9131 (#f5f5f5). That IS the owner's "black in dark, white in light" report — one bug, both halves.
+		// OWNERSHIP CARVE-OUT 2026-07-30, REAFFIRMED 2026-07-31 (A6b-6). The loading card is owner-pull:
+		// UImprovedLoadingNotifyWidget / UBaseLoadingWidget write their role colours through the MID from
+		// ApplyMobiusTheme (via ThemeMaterialCard). This function would overwrite that write — dark hits
+		// ClearParameterValues() below and reverts the card to MI_LoadingOuterBackground's baked near-black
+		// (0.006995 -> #141517), light forces the hard-coded 0.9131 (#f5f5f5). That IS the owner's "black in
+		// dark, white in light" report — one bug, both halves (commit 31641401).
+		//
+		// A6b-6 DELETED the legacy walk, which was the original clobberer, and the plan for this commit was
+		// to delete the carve-out with it. That was WRONG, and the reason is source-provable rather than
+		// empirical: A6b-6b gave ThemeStandardControlsInTree a UBorder branch, and that pass RECURSES into
+		// embedded user widgets (see the ForEachWidget lambda in that function) WITHOUT calling the child's
+		// ApplyMobiusTheme. WBP_ImprovedLoadingNotify is a child of WBP_CompleteMobiusUI.CanvasPanel_0, whose
+		// class UTopMainUiWrapper is itself a UMobiusThemedUserWidget, and in UMG a child constructs during
+		// its parent's RebuildWidget — so the card's own owner-pull runs FIRST and the wrapper's recursive
+		// control pass runs LAST. Same defect, new writer, and it lands on a FRESH LAUNCH, which is exactly
+		// what the A6b-6 acceptance gate looks at. Removing this line reproduces 31641401.
+		//
+		// This is the same ownership rule as StyleBorderForTheme's UMobiusThemedBorder guard and
+		// StyleButtonForTheme's UBaseButton guard — keyed on MATERIAL PATH instead of type. The structural
+		// fix is to stop the recursion descending into a child that is itself a UMobiusThemedUserWidget (such
+		// a child themes its whole subtree on its own bind, controls-then-owner). Deliberately deferred to
+		// A6b-7: it changes coverage for all 18 themed classes at once, so bundling it here would make a
+		// pixel-gate failure unbisectable.
+		//
 		// Substring is "Loading" not "Load": it matches MI_LoadingOuter/InnerBackground and deliberately NOT
-		// MI_LoadDataFilesBackground, which has no owner-pull driver yet. The other cards in this folder
-		// (FlowCounter/PlayBar/Egress/WidgetBackground) are still walker-owned until A6b-6 migrates them, so
-		// they must keep falling through. Same rationale already recorded for UMobiusThemedBorder in
-		// BaseLoadingWidget.cpp:96-98 — a declared role must beat an untargeted sweep.
+		// MI_LoadDataFilesBackground, which has no owner-pull driver. The other live cards in this folder
+		// (FlowCounterTop/Bottom, PlayBar, Egress) have no owner-pull driver either, so they must keep
+		// falling through to the generic branches below. Same rationale already recorded for
+		// UMobiusThemedBorder in BaseLoadingWidget.cpp:96-98 — a declared role must beat an untargeted sweep.
 		if (SourcePath.Contains(TEXT("Loading")))
 		{
 			return false;
@@ -424,11 +441,26 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	// panels) construct AFTER this subsystem initialises, and the only other startup re-theme
 	// (UThemeToggleWidget::NativeConstruct) can fire before them or live in a popup that is closed at
 	// launch — leaving late labels at their white design-time colour until the user clicks. Re-run the
-	// live-widget pass a handful of times over the first few seconds so late widgets pick up the saved
+	// startup re-theme a handful of times over the first few seconds so late widgets pick up the saved
 	// theme. Each pass no-ops until a game world + widgets exist. BOTH themes: "dark is the design-time
 	// default" turned out false for parts of the UI (Browse buttons, checkbox labels, snapshot-at-construct
-	// button styles) — a dark start with no walk left light traces everywhere. The walk is idempotent, so
-	// running it on dark starts is safe. One-shot: the ticker unregisters itself after the last pass.
+	// button styles) — a dark start with no re-theme left light traces everywhere. One-shot: the ticker
+	// unregisters itself after the last pass.
+	//
+	// A6b-6 (2026-07-31): the re-theme is now a BROADCAST, not the walk. This is the fix for the ordering
+	// ASYMMETRY that caused the loading-card two-writer race: this ticker used to call ApplyToLiveWidgets
+	// and never broadcast, so at launch the walk got the last word over every owner-pull widget, whereas
+	// ApplyTheme walks first and broadcasts last so the owner wins there. A theme TOGGLE therefore looked
+	// correct while a FRESH LAUNCH did not — the single hardest class of theming bug to notice. Broadcasting
+	// here makes launch ordering identical to ApplyTheme's by construction, because there is now only one
+	// writer family left. Both delegates fire, matching ApplyTheme: the native one has non-widget listeners
+	// (the ImPlot chart windows re-fetch GetThemedWindowStyle from it).
+	//
+	// NEW HAZARD, accepted: OnThemeChanged goes from ZERO fires at launch to one per pass (up to 100 over
+	// ~30 s, the same cadence the walk ran at). Every handler is idempotent within one theme — owner writes
+	// are absolute (SetVectorParameterValue / SetColorAndOpacity / SetStyle), and the value remaps in
+	// ThemeStandardControlsInTree have no cross-column collision, so a second pass in the same direction is
+	// a no-op. Adding a non-idempotent OnThemeChanged handler would now be a launch-time defect.
 	{
 		const TSharedRef<int32> Passes = MakeShared<int32>(0);
 		const TSharedRef<int32> ThemedPasses = MakeShared<int32>(0);
@@ -443,31 +475,31 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 				StartupThemeTickerHandle.Reset();
 				return false;
 			}
-			// Returns the number of live leaf widgets themed; >0 means the UI has actually constructed
-			// (it can appear seconds after launch, behind shader compilation). Keep re-applying until we
-			// have themed a live UI a few times (settle late stragglers), then stop. Hard cap ~30s.
-			// Re-run the SHARED-ASSET pass each tick too: at Initialize the asset registry scan is often
-			// not finished, so the startup ApplySharedStyles themes ZERO SWS assets — the walk then
-			// stamps disk-authored (light, magenta-foreground) styles onto every snapshot button on a
-			// dark start. By these ticks the registry is ready and the assets carry the theme.
-			// A pass only COUNTS when the walk was HUD-sized: on a cold start the loading screen's
-			// handful of widgets used to eat all three passes, the ticker unregistered before the ribbon
-			// ever constructed, and the tab labels kept their construct-time white (invisible on light).
-			// The full Mobius HUD walks ~600 leaf widgets; 200 cleanly separates it from load screens.
-			//
-			// A6b-2: ApplySharedStyles is no longer re-run unconditionally here — it now has a registry-ready
-			// hook. What is left is an ORDERING guard for the walk, and only for the walk: the walk re-copies
-			// these shared assets into every snapshot-at-construct button, so if it ran first the buttons
-			// would take the disk-authored (light, magenta-foreground) styles on a dark start. Checked
-			// unconditionally rather than only when the bind failed, because OnFilesLoaded is a one-shot
-			// broadcast and a scan that completes between the IsLoadingAssets() test and the bind is missed
-			// outright. Dies with the walk in A6b-6, when nothing re-copies these assets any more.
+			// A6b-6: this block is a REGISTRY-RACE BACKSTOP and nothing else. Its other former purpose — an
+			// ordering guard so the walk could not re-copy disk-authored (light, magenta-foreground) SWS
+			// styles into every snapshot-at-construct button before they were retinted — died with the walk.
+			// The race it still closes is independent of the walk and still real: OnFilesLoaded is a ONE-SHOT
+			// broadcast, so a scan that completes between ApplySharedStylesWhenRegistryReady's
+			// IsLoadingAssets() test and its bind is missed outright, and then nothing ever retints the SWS
+			// assets. Buttons that snapshot at construct would keep the disk-authored styles for the whole
+			// session. Checked unconditionally for exactly that reason — the flag, not the bind, is the proof
+			// the retint actually saw the assets. Ordering within the tick still matters and is unchanged:
+			// retint the shared assets FIRST, then broadcast, so a button re-copying on OnThemeChanged reads
+			// a themed asset.
 			if (!bSharedStylesAppliedAfterRegistryScan)
 			{
 				ApplySharedStylesWhenRegistryReady();
 			}
 			ThemeInWorldWidgetComponents();
-			if (ApplyToLiveWidgets(CurrentTheme == EMobiusUITheme::Light) > 200)
+			// A pass only COUNTS when the live UI was HUD-sized: on a cold start the loading screen's handful
+			// of widgets used to eat all three passes, the ticker unregistered before the ribbon ever
+			// constructed, and the tab labels kept their construct-time white (invisible on light). The full
+			// Mobius HUD holds ~600 leaf widgets; 200 cleanly separates it from a load screen. A6b-6 kept the
+			// counter as the walk's exact traversal minus the styling call (CountLiveLeafWidgets) rather than
+			// inventing a cheaper one, because any other counting shape decalibrates that 200 — too low and
+			// the ticker unregisters on the loading screen again, too high and it never crosses at all.
+			const bool bHudSized = CountLiveLeafWidgets() > 200;
+			if (bHudSized)
 			{
 				++(*ThemedPasses);
 				// Force a repaint — labels re-coloured behind an InvalidationBox (ribbon tabs) keep their
@@ -477,6 +509,12 @@ void UUIThemeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 					FSlateApplication::Get().InvalidateAllWidgets(false);
 				}
 			}
+			// Unconditional, and AFTER the invalidate, mirroring ApplyTheme's own order. Not gated on
+			// bHudSized: the count is a loop-control signal for "has the HUD constructed yet", not a
+			// permission to theme, and a sub-200 UI (the load screen itself, a VR menu) needs the re-pull
+			// just as much.
+			OnThemeChanged.Broadcast();
+			OnThemeChangedNative.Broadcast();
 			const bool bKeepTicking = (*ThemedPasses < 3) && (++(*Passes) < 100);
 			if (!bKeepTicking)
 			{
@@ -577,30 +615,16 @@ void UUIThemeSubsystem::ReapplyToUserWidget(UUserWidget* UserWidget)
 	{
 		return;
 	}
-	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
-	// A5: the standard controls left ApplyToWidget, so re-add them here explicitly — the in-world
-	// flow-counter card owns a UScrollBox (UFlowCounterWidget::OptionalScrollBox) and would otherwise stop
-	// being themed the moment those branches moved out. Not a construct pass: this is the re-theme route.
+	// In-world cards live on a UWidgetComponent and are world-space, so GetAllWidgetsOfClass never returned
+	// them and the deleted walk could not reach them — this function is their re-theme route. It is now a
+	// single call: ThemeStandardControlsInTree already recurses into embedded user widgets, which is what the
+	// hand-rolled ForEachWidget/ApplyToWidget recursion here used to add (a flow-counter card themes its
+	// section-counter children through it). Not a construct pass — bConstruct=false.
+	//
+	// A6b-6: the in-world card's OWNER hook is not called from here and never was; UFlowCounterWidget binds
+	// OnThemeChanged itself, and the startup ticker now broadcasts, so a card placed at launch gets both
+	// halves in the same order a toggle gives it.
 	ThemeStandardControlsInTree(UserWidget, /*bConstruct*/false);
-	// Same per-widget pass ApplyToLiveWidgets runs, scoped to this one tree (used for in-world widget-
-	// component cards, which GetAllWidgetsOfClass never returns). RECURSE into embedded user widgets so a
-	// flow-counter card themes its section-counter children too (the main walk handles embedded widgets as
-	// separate iterations, but those are never reached for a world-space component).
-	UserWidget->WidgetTree->ForEachWidget([this, bLight](UWidget* Widget)
-	{
-		if (!Widget)
-		{
-			return;
-		}
-		if (UUserWidget* ChildUserWidget = Cast<UUserWidget>(Widget))
-		{
-			ReapplyToUserWidget(ChildUserWidget);
-		}
-		else
-		{
-			ApplyToWidget(Widget, bLight);
-		}
-	});
 }
 
 FLinearColor UUIThemeSubsystem::GetPaletteColor(const EMobiusPaletteRole Role) const
@@ -781,12 +805,28 @@ FWindowStyle UUIThemeSubsystem::GetThemedWindowStyle() const
 	const FLinearColor Border = PaletteColor(EMobiusPaletteRole::WindowBorder, bLight);
 	const FLinearColor TitleText = PaletteColor(EMobiusPaletteRole::TitlebarText, bLight);
 
+	// 2026-07-31: these were TINTS. A brush TintColor MULTIPLIES, and FCoreStyle's window brushes are dark
+	// TEXTURES, so tinting toward a light WindowBorder could only darken — every SMoveableWindow popup rendered
+	// a 3px DARK GRADIENT RING outside its grey border. Measured on the legal-notice window at mid-height:
+	// x=0..2 #323334 / #0E0F10 / #494B4E (the ring), then x=3..5 #B0B0B0 (the border that was supposed to be
+	// the outer edge). Owner reported it as "a small border outline between the actual border and the window",
+	// on ALL popups — which is exactly the blast radius of this function.
+	//
+	// REPLACE the frame brushes with flat colour brushes so there is no texture to fight. The windows this
+	// styles are square-cornered, so no corner geometry is lost. See MEMORY
+	// reference-slate-brush-tint-cannot-brighten — third instance of the same trap.
+	Style.BorderBrush = FSlateColorBrush(Border);
+	Style.OutlineBrush = FSlateColorBrush(Border);
+	Style.BackgroundBrush = FSlateColorBrush(TitleBg);
+
+	// The three TITLE brushes are left as tints deliberately: SWindowTitleBarWidget overwrites all three with
+	// NoBrush and paints its own SColorBlock polled live from TitlebarBg, so whatever is set here is discarded
+	// for any SMoveableWindow. Kept (rather than deleted) because a caller that builds a stock SWindow from
+	// this style still gets a title colour out of them — a stock SWindow ignores TitleTextStyle and the title
+	// brushes for its BAR, but not for the FlashTitleBrush path.
 	Style.ActiveTitleBrush.TintColor = FSlateColor(TitleBg);
 	Style.InactiveTitleBrush.TintColor = FSlateColor(TitleBg);
 	Style.FlashTitleBrush.TintColor = FSlateColor(TitleBg);
-	Style.BorderBrush.TintColor = FSlateColor(Border);
-	Style.BackgroundBrush.TintColor = FSlateColor(TitleBg);
-	Style.OutlineBrush.TintColor = FSlateColor(Border);
 	Style.TitleTextStyle.ColorAndOpacity = FSlateColor(TitleText);
 
 	// A18: the title-bar × is a destructive affordance, so its glyph takes DangerText. Callers that
@@ -798,13 +838,15 @@ FWindowStyle UUIThemeSubsystem::GetThemedWindowStyle() const
 
 void UUIThemeSubsystem::ApplyTheme(const bool bLight)
 {
+	// A6b-6 (2026-07-31): the ApplyToLiveWidgets call that used to sit between these two is DELETED. Every
+	// widget family it covered now themes from its own construct + OnThemeChanged (the broadcast at the end
+	// of this function), so what is left here is: retint the shared assets, re-theme the in-world cards the
+	// broadcast cannot reach on its own, push the palette to the MPC, invalidate, broadcast.
 	ApplySharedStyles(bLight);
-	ApplyToLiveWidgets(bLight);
 	ThemeInWorldWidgetComponents();
 
 	// NEW ARCHITECTURE (additive, migration Phase 2+): push the palette into MPC_UITheme so
-	// material-backed chrome repaints GPU-side. No-op until the MPC asset exists. The legacy
-	// value-remap walk above still runs until the migration retires it.
+	// material-backed chrome repaints GPU-side. No-op until the MPC asset exists.
 	WriteThemeToMPC(bLight);
 
 	if (FSlateApplication::IsInitialized())
@@ -1038,6 +1080,14 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		{
 			StyleImageForTheme(Image, bLight);
 		}
+		// A6b-6b: UBorder. No-ops on a UMobiusThemedBorder, which self-themes — so this covers exactly the
+		// residue the walk was still carrying, and it is the only reason three of the four background-material
+		// cards keep theming once the walk goes (they sit on plain borders). Ordering against the branches
+		// above is irrelevant: a widget matches at most one of these casts.
+		else if (UBorder* Border = Cast<UBorder>(Widget))
+		{
+			StyleBorderForTheme(Border, bLight);
+		}
 		// A6b-5: plain UButton. No-ops on a UBaseButton, which self-themes — so this covers exactly the
 		// residue the walk was still carrying. 8 of the 13 belong to USimulationPlayBar, which is reached
 		// only because the recursion above descends into it.
@@ -1106,6 +1156,60 @@ void UUIThemeSubsystem::StyleImageForTheme(UImage* Image, const bool bLight)
 	if (bChanged)
 	{
 		Image->SetBrush(Brush);
+	}
+}
+
+void UUIThemeSubsystem::StyleBorderForTheme(UBorder* Border, const bool bLight)
+{
+	using namespace MobiusTheme;
+
+	// A UMobiusThemedBorder self-themes from its DECLARED role (RefreshThemedBorder, bound to
+	// OnThemeChanged). Guard the TYPE, not the name — see the header for why the value remap below is
+	// actively harmful on one rather than merely redundant.
+	if (!Border || Border->IsA<UMobiusThemedBorder>())
+	{
+		return;
+	}
+
+	// Roles the value remap cannot distinguish are set explicitly per theme by widget-name substring, and a
+	// match fully OWNS the widget — so return instead of falling through, as the deleted walk did. After
+	// the border migration this table is down to six live targets (HeatmapColourBand_1..6, outline only);
+	// every other name-rule target is already a UMobiusThemedBorder and was excluded above.
+	if (ApplyNameRoleOverride(Border, bLight))
+	{
+		return;
+	}
+
+	FLinearColor BrushColor = Border->GetBrushColor();
+	if (Remap(BrushColor, bLight, SurfaceMap))
+	{
+		Border->SetBrushColor(BrushColor);
+	}
+	FSlateBrush Brush = Border->Background;
+	bool bChanged = RemapBrush(Brush, bLight);
+	bChanged |= ThemeBackgroundBrush(Brush, Border, bLight);
+	// D169: kill the UBorder double-tint. SBorder paints Background.TintColor * BrushColor
+	// (SBorder::OnPaint) — a border carrying a non-white colour in BOTH fields multiplies them and
+	// renders far too dark (~0.63x in light, near-black in dark; e.g. RailBg / RailRightBorder are
+	// authored 0.7913 in both). Collapse to a single multiplier: BrushColor keeps the themed colour
+	// (the SurfaceMap-remapped primary), the brush tint goes neutral white. Guarded to plain colour
+	// fills (no texture/material resource) and only when BOTH are non-white — so convention-A
+	// (colour + white tint) and convention-B (white BrushColor + colour tint) borders, and all
+	// material-backed chrome, are left untouched. Runs each theme pass; the asset is not mutated.
+	//
+	// Reads GetBrushColor() back rather than the local, so it sees the POST-remap value — the original
+	// walk branch did the same and the distinction matters: a border remapped to white this pass must not
+	// then have its tint neutralised as well.
+	if (Brush.GetResourceObject() == nullptr
+		&& !Border->GetBrushColor().Equals(FLinearColor::White, 0.02f)
+		&& !Brush.TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+	{
+		Brush.TintColor = FSlateColor(FLinearColor::White);
+		bChanged = true;
+	}
+	if (bChanged)
+	{
+		Border->SetBrush(Brush);
 	}
 }
 
@@ -1440,18 +1544,31 @@ void UUIThemeSubsystem::StyleEditableTextBoxForTheme(UEditableTextBox* EditBox, 
 	}
 }
 
-int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
+/**
+ * A6b-6 (2026-07-31): this WAS ApplyToLiveWidgets, the legacy value-matching walk. Everything it styled is
+ * now owner-pull (each widget's construct + OnThemeChanged), so the styling call is gone and what remains is
+ * the traversal, used ONLY as the startup ticker's "has the HUD constructed yet" signal.
+ *
+ * Kept as the walk's traversal verbatim rather than replaced by something cheaper, deliberately: the ticker
+ * compares the result against a hard-coded 200, and that number was calibrated against THIS shape — the
+ * TopLevelOnly=false enumeration, the 16-deep on-screen ancestor filter, and the non-UUserWidget leaf
+ * predicate. Any other counting shape decalibrates it into one of the two documented failures — count too
+ * low and the ticker unregisters while the load screen is still up (the ribbon never gets a pass and its tab
+ * labels keep construct-time white), count too high and it never crosses at all.
+ */
+int32 UUIThemeSubsystem::CountLiveLeafWidgets()
 {
 	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
-	// Guard PIE-teardown: a tearing-down world can be non-null while its widgets are destroyed;
-	// walking them reads a dying combo's SMenuAnchor delegate and trips the data-race ensure.
+	// Guard PIE-teardown: a tearing-down world can be non-null while its widgets are destroyed. This
+	// function no longer writes to them, but it still READS IsInViewport/GetParent on each, and that was
+	// enough to trip the dying-combo SMenuAnchor data-race ensure.
 	if (!World || World->bIsTearingDown)
 	{
 		return 0;
 	}
 
-	// TopLevelOnly=false returns every live UUserWidget, embedded ones included, so each widget
-	// only needs its OWN tree walked (embedded user widgets are skipped as tree nodes below).
+	// TopLevelOnly=false returns every live UUserWidget, embedded ones included, so each widget contributes
+	// only its OWN tree (embedded user widgets are skipped as tree nodes below, so nothing double-counts).
 	TArray<UUserWidget*> AllUserWidgets;
 	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, AllUserWidgets, UUserWidget::StaticClass(), false);
 	int32 WidgetsVisited = 0;
@@ -1464,8 +1581,9 @@ int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 		// In-world widgets on a UWidgetComponent are world-space and are NOT returned by
 		// GetAllWidgetsOfClass anyway; the ones that ARE returned but live outside the viewport (outer =
 		// game instance, not the component; child user widgets have parents, so climb to the owning
-		// top-level before deciding) get skipped here. Flow-counter cards self-theme via their own
-		// OnThemeChanged bind (UFlowCounterWidget), since this walk cannot reach them.
+		// top-level before deciding) get skipped here — an off-screen widget must not contribute to the
+		// "is the HUD up" count. Flow-counter cards theme via their own OnThemeChanged bind
+		// (UFlowCounterWidget) plus ThemeInWorldWidgetComponents, neither of which needs this count.
 		{
 			bool bOnScreenUI = false;
 			UUserWidget* Current = UserWidget;
@@ -1493,263 +1611,18 @@ int32 UUIThemeSubsystem::ApplyToLiveWidgets(const bool bLight)
 				continue;
 			}
 		}
-		UserWidget->WidgetTree->ForEachWidget([this, bLight, &WidgetsVisited](UWidget* Widget)
+		UserWidget->WidgetTree->ForEachWidget([&WidgetsVisited](UWidget* Widget)
 		{
 			if (Widget && !Widget->IsA<UUserWidget>())
 			{
-				ApplyToWidget(Widget, bLight);
 				++WidgetsVisited;
 			}
 		});
 	}
 	// A11/A6a (2026-07-28): per-pass UE_LOG removed. The startup ticker calls this up to 100 times in the
-	// first 30 s, so it was ~100 Display lines before the user sees anything, and it re-fires on every theme
-	// toggle. The ticker's own pass-count logic uses the RETURN value, not the log, so nothing depended on it.
+	// first 30 s, so it was ~100 Display lines before the user sees anything. The ticker's own pass-count
+	// logic uses the RETURN value, not the log, so nothing depended on it.
 	return WidgetsVisited;
-}
-
-void UUIThemeSubsystem::ApplyToWidget(UWidget* Widget, const bool bLight)
-{
-	using namespace MobiusTheme;
-
-	// CRASH GUARD + refactor step (2026-07-21): skip UComboBoxString entirely. The per-pass churn on
-	// combos (SetWidgetStyle/SetItemStyle/SetForegroundColor rebuilding the live SComboBox + its
-	// SMenuAnchor) is the prime suspect for the SMenuAnchor delegate-access ensure (crash on combo-open
-	// AND on PIE close — ~SMenuAnchor::Unbind racing this walk). Combos will theme via the MPC/event path
-	// instead; until then their dropdown rows fall back to default styling. If this stops the crash, the
-	// combo-churn / lifetime (UAF) theory is confirmed.
-	if (Widget && Widget->IsA<UComboBoxString>())
-	{
-		return;
-	}
-
-	// A6b (2026-07-28): a UMobiusThemedBorder owns its colour from its DECLARED role and repaints on
-	// OnThemeChanged. Without this guard the two writers fight during the migration window, and the walk
-	// wins or loses by ordering: e.g. a reparented HDiv_* takes HelpRowDivider (dark 0.05951), then the
-	// UBorder branch below value-matches its LIGHT value 0.7913 against the "tab strip" SurfaceMap row —
-	// which is byte-identical — and stamps 0.0284 instead. That is the exact collision the rebuild exists
-	// to remove, and it would appear ONLY on already-migrated borders. Guard the TYPE, not the name.
-	if (Widget && Widget->IsA<UMobiusThemedBorder>())
-	{
-		return;
-	}
-
-	// Ribbon tabs SELF-THEME (W2): a UButtonWithText with bIsRibbonButton drives its own look via the
-	// subsystem (flat GetThemedTabStyle + explicit label colour) on construct / OnThemeChanged. Skip it
-	// here so the walk never re-applies the old tab MATERIAL onto it (that material occluded the label).
-	if (const UButtonWithText* RibbonBtn = Cast<UButtonWithText>(Widget))
-	{
-		if (RibbonBtn->bIsRibbonButton)
-		{
-			return;
-		}
-	}
-
-	// Roles the value walker can't reach are set explicitly per theme by widget name FIRST; if a name
-	// matches we fully own that widget and skip the generic walk (which would otherwise mis-remap it,
-	// e.g. a header hairline #4a4a4a colliding with the slider-track SurfaceMap row).
-	if (ApplyNameRoleOverride(Widget, bLight))
-	{
-		return;
-	}
-
-	if (UBorder* Border = Cast<UBorder>(Widget))
-	{
-		FLinearColor BrushColor = Border->GetBrushColor();
-		if (Remap(BrushColor, bLight, SurfaceMap))
-		{
-			Border->SetBrushColor(BrushColor);
-		}
-		FSlateBrush Brush = Border->Background;
-		bool bChanged = RemapBrush(Brush, bLight);
-		bChanged |= ThemeBackgroundBrush(Brush, Border, bLight);
-		// D169: kill the UBorder double-tint. SBorder paints Background.TintColor * BrushColor
-		// (SBorder::OnPaint) — a border carrying a non-white colour in BOTH fields multiplies them and
-		// renders far too dark (~0.63x in light, near-black in dark; e.g. RailBg / RailRightBorder are
-		// authored 0.7913 in both). Collapse to a single multiplier: BrushColor keeps the themed colour
-		// (the SurfaceMap-remapped primary), the brush tint goes neutral white. Guarded to plain colour
-		// fills (no texture/material resource) and only when BOTH are non-white — so convention-A
-		// (colour + white tint) and convention-B (white BrushColor + colour tint) borders, and all
-		// material-backed chrome, are left untouched. Runs each theme pass; the asset is not mutated.
-		if (Brush.GetResourceObject() == nullptr
-			&& !Border->GetBrushColor().Equals(FLinearColor::White, 0.02f)
-			&& !Brush.TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
-		{
-			Brush.TintColor = FSlateColor(FLinearColor::White);
-			bChanged = true;
-		}
-		if (bChanged)
-		{
-			Border->SetBrush(Brush);
-		}
-	}
-	else if (UTextBlock* Text = Cast<UTextBlock>(Widget))
-	{
-		// A6b-5 (2026-07-28): this branch is now a DELIBERATE duplicate of StyleTextBlockForTheme, which is
-		// where text is themed from — driven by each owner's construct + OnThemeChanged. Unlike the A5/A6a
-		// relocations, this one is not deleted yet, and the reason is ownership, not caution: two reachable
-		// WBPs still hold matched text blocks and cannot be reparented while the owner is editing them —
-		// WBP_ChangeAllHeatmaps (6 blocks) and WBP_HeatmapSettingPanel (4). Deleting the branch now would
-		// leave those ten unthemed. Running both paths is safe because the remap has no cross-column
-		// collision, so a second pass in the same direction is a no-op. Delete this WITH the two reparents,
-		// as part of A6b-6.
-		StyleTextBlockForTheme(Text, bLight);
-	}
-	// A6a (2026-07-28): the UVerticalTextBlock and UFieldAndTextWidget branches are DELETED. Both widgets
-	// self-bind OnThemeChanged since A5 (VerticalTextBlock.cpp / FieldAndTextWidget.cpp), so calling
-	// RefreshThemedStyle from here was a second, redundant driver — and for UFieldAndTextWidget an actively
-	// WORSE one: it passed this walk's bLight, whereas the widget's own handler reads the theme off the
-	// subsystem it is bound to, which is the fix for the in-world card resolving the wrong theme via GetWorld().
-	// A5's PIE run verified both in light and dark with these branches already inert.
-	//
-	// A5 (2026-07-28): the USlider / UCheckBox / UScrollBox / UProgressBar / UEditableTextBox branches
-	// USED to live here. They are now StyleSliderForTheme / StyleCheckBoxForTheme / StyleScrollBoxForTheme
-	// / StyleProgressBarForTheme / StyleEditableTextBoxForTheme, driven from each widget's own construct +
-	// OnThemeChanged via ThemeStandardControlsInTree (UMobiusThemedUserWidget). Deliberately NOT also left
-	// here: two live paths would make a PIE dump unable to say which one delivered the value, and A6 wants
-	// to delete this walk outright rather than a husk of it. If a control ever looks unthemed, the fix is
-	// to give its OWNER the themed base / an OnThemeChanged bind — not to add a branch back.
-	else if (UButton* Button = Cast<UButton>(Widget))
-	{
-		// A6b-5: a PLAIN UButton is now themed by StyleButtonForTheme, driven from each owner's construct +
-		// OnThemeChanged. Delegated rather than duplicated: with the ribbon-tab and UBaseButton paths
-		// excluded, everything below reduces EXACTLY to that helper, and a second copy of it here would be
-		// free to drift from the one A6b-6 keeps. The test is a single IsA because a ribbon tab is a
-		// UButtonWithText and therefore a UBaseButton, so both self-theming families fall through together.
-		//
-		// Returning is equivalent to falling out of the chain: the UImage branch is the last one and nothing
-		// follows it in this function. Everything past this point now runs ONLY for a UBaseButton.
-		//
-		// Both paths are live until A6b-6, so a plain button is styled twice per toggle. Safe for the same
-		// reasons text is: the brush remaps have no cross-column collision, the foreground write is guarded
-		// by an inequality, and the MID parameter writes are absolute rather than relative.
-		if (!Button->IsA<UBaseButton>())
-		{
-			StyleButtonForTheme(Button, bLight);
-			return;
-		}
-
-		// Buttons with an SWS style asset SNAPSHOT it at construct (BaseButton::ApplyMobiusButtonStyle),
-		// so a theme flip leaves the live copy's foregrounds/hover tints stale even though
-		// ApplySharedStyles retinted the asset — e.g. the side tool tabs hovered light-on-light in
-		// light mode. Re-copy the freshly themed asset FIRST (no-op when no asset is assigned), then
-		// let the value remaps below handle asset-less buttons as before.
-		// EXCEPT the three ribbon tabs: their Normal brush carries the BP-managed active-tab material
-		// ("TabSelected") that the D173 label block below reads for active/inactive detection — a
-		// re-copy from the base SWS asset wipes that material every pass and degrades the active look.
-		const FString WalkButtonName = Widget->GetName();
-		const bool bRibbonTabButton =
-			WalkButtonName.Contains(TEXT("FilesPanelBtn")) ||
-			WalkButtonName.Contains(TEXT("DisplaylPanelBTN")) ||
-			WalkButtonName.Contains(TEXT("HelpPanelBtn"));
-		if (!bRibbonTabButton)
-		{
-			if (UBaseButton* MobiusButton = Cast<UBaseButton>(Widget))
-			{
-				MobiusButton->ApplyMobiusButtonStyle();
-			}
-		}
-		FButtonStyle Style = Button->GetStyle();
-		bool bChanged = false;
-		if (bRibbonTabButton)
-		{
-			// Round 11: skipping the re-copy (round 10) kept the active-tab material alive but nothing
-			// re-themed it — the ribbon's click BP swaps MI_TabSelected/MI_TabDefault from the folder of
-			// the theme CURRENT AT CLICK TIME, so after a toggle the tabs sat on the previous theme's
-			// materials ("traces of the last theme", active File tab white-in-dark). Re-land the
-			// same-ROLE material from the current theme's folder on every material-carrying state brush.
-			// Name-based, so the D173 active detection below (and the click BP) keep working.
-			const UObject* CurrentRes = Style.Normal.GetResourceObject();
-			const bool bActiveTab = CurrentRes && CurrentRes->GetName().Contains(TEXT("TabSelected"));
-			if (UMaterialInterface* TabMaterial = GetThemedTabMaterial(bActiveTab))
-			{
-				FSlateBrush* TabBrushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
-				for (FSlateBrush* TabBrush : TabBrushes)
-				{
-					// A16/A17: leave a MaterialInstanceDynamic alone. ApplyTabStateFills gives the HOVERED and
-					// PRESSED brushes their own MIDs (of this very material) carrying the hover / pressed
-					// FillColour; this walk would see "MID != TabMaterial" and stamp the flat material back
-					// over them, silently deleting both states on any walk not followed by an OnThemeChanged
-					// re-apply. The MIDs are already theme-correct — their parent came from the current
-					// theme's folder.
-					if (TabBrush->GetResourceObject() && TabBrush->GetResourceObject() != TabMaterial
-						&& !TabBrush->GetResourceObject()->IsA<UMaterialInstanceDynamic>())
-					{
-						TabBrush->SetResourceObject(TabMaterial);
-						bChanged = true;
-					}
-				}
-			}
-		}
-		FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
-		for (FSlateBrush* Brush : Brushes)
-		{
-			bChanged |= RemapBrush(*Brush, bLight);
-			bChanged |= ThemeIconBrush(*Brush, Button, bLight);
-			bChanged |= ThemeBackgroundBrush(*Brush, Button, bLight);
-			bChanged |= ThemePillBrush(*Brush, Button, bLight); // agent-visibility pill toggle (D51)
-		}
-		if (bRibbonTabButton)
-		{
-			// Tab foregrounds stay on the value walk; the label colour is painted explicitly below (D173).
-			bChanged |= RemapSlate(Style.NormalForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-			bChanged |= RemapSlate(Style.HoveredForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-			bChanged |= RemapSlate(Style.PressedForeground, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-		}
-		else
-		{
-			// Round 11: EXPLICIT foregrounds. The authored values are per-widget sentinels (cyan on the
-			// icon buttons) that no TextMap pair matches, so any UseForeground content resolving through
-			// these styles never themed in either direction.
-			const FSlateColor ButtonForeground(PaletteColor(EMobiusPaletteRole::ButtonText, bLight));
-			if (Style.NormalForeground != ButtonForeground)
-			{
-				Style.NormalForeground = ButtonForeground;
-				Style.HoveredForeground = ButtonForeground;
-				Style.PressedForeground = ButtonForeground;
-				bChanged = true;
-			}
-		}
-		if (bChanged)
-		{
-			Button->SetStyle(Style);
-		}
-		// A6b-6a (2026-07-31): the UButton::BackgroundColor remap that used to live here is DELETED — it was
-		// the LAST write this walk uniquely owned, and A6b-6 was scoped on the false claim that the walk had
-		// no unique job left. It is now UBaseButton::RefreshThemedButtonStyle's, which writes the neutral
-		// White multiplier for every themed button on construct and on OnThemeChanged, so the brush tint that
-		// function resolves is the colour Slate paints. Re-homed rather than duplicated: this copy remapped
-		// through SurfaceMap, which carries the epsilon collision (9/13 rows fail a light->dark->light round
-		// trip), and running both would put a value-matched colour and a neutral multiplier in a race decided
-		// by launch-vs-toggle ordering (the walk wins at startup, the owner wins on a toggle).
-		//
-		// Deleting it changes no pixel: measured project-wide, exactly two UBaseButtons author a non-white
-		// BackgroundColor (the two tool-panel rows), both are neutralised at construct by the owner, and
-		// Remap() guards pure white — so for all 98 archetypes this call had already become a no-op.
-		// W2 LABEL EXPERIMENT (2026-07-21): the walk's per-label colour handling for UButtonWithText
-		// (RefreshTextStyle + the three ApplyThemedLabelColor cases: ribbon-tab / custom-SWS / shared
-		// Mobius.Text.Label) is DISABLED. The label STextBlock is constructed with
-		// ColorAndOpacity(FSlateColor::UseForeground()) (ButtonWithText::RebuildWidget), so it should
-		// follow the button STYLE foreground the block ABOVE still sets (ribbon-tab NormalForeground
-		// remap + non-ribbon ButtonText role). Discriminates two theories for the invisible ribbon-tab /
-		// tool-panel labels: if they now appear + track active/inactive, the walk was clobbering
-		// UseForeground with white (candidate B) and this is the clean W2 label endpoint; if still white,
-		// UseForeground isn't reaching the label (candidate A) → explicit per-state label colour needed.
-		// KEEP the foreground remaps above (they feed UseForeground). Restore this block only if candidate A.
-	}
-	// A6a (2026-07-28): the UComboBoxString branch is DELETED as UNREACHABLE dead code, not as a
-	// behaviour change. The crash guard at the top of this function returns for any UComboBoxString
-	// before the type chain is ever reached (added 2026-07-21 for the SMenuAnchor delegate-access ensure),
-	// so none of it has run since. Combo theming lives in StyleComboBoxForBuild, which styles the widget
-	// BEFORE Slate builds it and so never churns a live SComboBox. The guard itself stays: it is what keeps
-	// a combo out of the walk, and it outlives this branch.
-	else if (UImage* Image = Cast<UImage>(Widget))
-	{
-		// A6b-5: relocated to StyleImageForTheme, driven from each owner's construct + OnThemeChanged.
-		// Delegated rather than duplicated, same as the text and button branches — this one was a verbatim
-		// lift, so there is nothing left here to keep. Goes in A6b-6 with the rest of the walk.
-		StyleImageForTheme(Image, bLight);
-	}
 }
 
 bool UUIThemeSubsystem::ApplyNameRoleOverride(UWidget* Widget, const bool bLight)

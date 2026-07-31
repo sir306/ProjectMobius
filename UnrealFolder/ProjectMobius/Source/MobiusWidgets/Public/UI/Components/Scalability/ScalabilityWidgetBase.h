@@ -16,11 +16,12 @@ class UButtonWithText;
  * UResolutionScalabilityWidget (WBP_AdjustResolution) and WBP_ScalabilitySettingGlobal, which parents
  * straight to this class.
  *
- * WHY it is needed before the walker dies: the active-tier "current setting" chip is signalled by a 2px
- * accent RING, and UBaseButton::RefreshThemedButtonStyle deliberately early-returns on any outline wider
- * than 1.5px (A4 — a thick outline is a meaning-carrying accent, not chrome). So nothing in the A4 event
- * path re-lands that chip, and ApplyToLiveWidgets is the only thing doing it today. Deleting the walker
- * without this leaves the active tier wearing the PREVIOUS theme's fill and ring after every toggle.
+ * WHY it was needed before the walker died (A6b-6, 2026-07-31): the active-tier "current setting" chip is
+ * signalled by a 2px accent RING, and UBaseButton::RefreshThemedButtonStyle deliberately early-returns on
+ * any outline wider than 1.5px (A4 — a thick outline is a meaning-carrying accent, not chrome). So nothing
+ * in the A4 event path re-lands that chip, and the deleted walk was the only thing doing it. The chip is now
+ * re-landed by UScalabilitySettingWidget::ApplyMobiusTheme_Implementation, which calls
+ * ApplyMobiusButtonStyle on all five tier buttons — do not remove that without restoring a writer here.
  */
 UCLASS()
 class MOBIUSWIDGETS_API UScalabilityWidgetBase : public UMobiusThemedUserWidget
