@@ -221,7 +221,14 @@ void ShowLegalNotice(UUserProjectSettings& UserSettings, const bool bForce)
 	const FLegalNoticePalette Palette = GetPalette(/* bUseLightTheme = */ true);
 	const TSharedRef<bool> bAcknowledgedTerms = MakeShared<bool>(false);
 	const TSharedRef<bool> bAcknowledgedDisclaimer = MakeShared<bool>(false);
+	// bPermittedToClose means ACCEPTANCE HAPPENED (or preview) — a close that must NOT terminate the app.
+	// bQuitRequested means a QUIT is already in flight. The two are deliberately separate: the decline path
+	// has to destroy the window (see the override below) exactly like the acceptance path does, and if it
+	// signalled that by setting bPermittedToClose then OnWindowClosed could no longer tell consent from
+	// refusal, and RequestExit would be issued twice (it broadcasts GetApplicationWillTerminateDelegate
+	// synchronously, so a second call re-broadcasts to every listener).
 	const TSharedRef<bool> bPermittedToClose = MakeShared<bool>(false);
+	const TSharedRef<bool> bQuitRequested = MakeShared<bool>(false);
 	const TSharedRef<FButtonStyle> PrimaryButtonStyle = MakeButtonStyle(
 		Palette.Accent, Palette.Accent * 1.20f, Palette.Accent * 0.72f, Palette.Accent, FLinearColor::White);
 	// DangerButtonStyle is gone with the hand-rolled quit button; the title bar supplies its own close-button
@@ -495,7 +502,7 @@ void ShowLegalNotice(UUserProjectSettings& UserSettings, const bool bForce)
 	// SINGLE close policy. Every dismissal route now arrives here — the title bar's close button, an OS close
 	// request, and any other Slate caller trying to dismiss the mandatory modal — because they all go through
 	// SWindow::RequestDestroyWindow(). The acceptance path bypasses it by clearing the override first.
-	NoticeWindow->SetRequestDestroyWindowOverride(FRequestDestroyWindowOverride::CreateLambda([bForce, bPermittedToClose](const TSharedRef<SWindow>& Window)
+	NoticeWindow->SetRequestDestroyWindowOverride(FRequestDestroyWindowOverride::CreateLambda([bForce, bPermittedToClose, bQuitRequested](const TSharedRef<SWindow>& Window)
 	{
 		// Preview must stay dismissible: it runs in the EDITOR, so quitting would take the editor with it, and
 		// it deliberately records no consent. Clear the override BEFORE re-requesting or this lambda re-enters
@@ -510,8 +517,31 @@ void ShowLegalNotice(UUserProjectSettings& UserSettings, const bool bForce)
 			return;
 		}
 
-		// Real first-launch path: declining the notice quits the application. The window is intentionally NOT
-		// destroyed here — refusing to consent is refusing to run.
+		// Real first-launch path: declining the notice quits the application.
+		//
+		// THE WINDOW MUST BE DESTROYED HERE. This dialog is shown with FSlateApplication::AddModalWindow, whose
+		// blocking form runs its own nested pump — `while (InSlateWindow == GetActiveModalWindow())`
+		// (SlateApplication.cpp:2128) — and that loop tests NOTHING ELSE. It never consults
+		// IsEngineExitRequested()/GIsRequestingExit. FPlatformMisc::RequestExit(false) only calls
+		// RequestEngineExit() (sets GIsRequestingExit / GShouldRequestExit), broadcasts the will-terminate
+		// delegates and PostQuitMessage()s (WindowsPlatformMisc.cpp:1353-1381); it destroys no window and never
+		// touches the active-modal stack. So the previous "intentionally NOT destroyed" behaviour left the pump
+		// spinning with the notice still on screen and the exit flag unread: the close button appeared to do
+		// nothing, and the app only died once the user ticked both boxes and pressed Agree — because THAT path
+		// destroys the window, releases the loop, and control finally returns to the engine tick that reads the
+		// flag set minutes earlier. Under UE_SET_REQUEST_EXIT_ON_TICK_ONLY the flag is not even promoted until
+		// that tick runs, so the destroy is load-bearing, not a tidy-up.
+		//
+		// Clear the override FIRST or RequestDestroyWindow() re-enters this lambda, lands in this same branch,
+		// and recurses until the stack dies.
+		//
+		// No consent is recorded (AcceptCurrentLegalNotice is only called from the Agree handler, and
+		// AcceptedLegalNoticeVersion is UPROPERTY(Config)), so the notice reappears on the next launch and keeps
+		// reappearing until it is accepted. Refusing to consent is still refusing to run — it now actually exits.
+		UE_LOG(LogTemp, Display, TEXT("Mobius.LegalNotice: notice declined - quitting without recording acceptance."));
+		*bQuitRequested = true;
+		Window->SetRequestDestroyWindowOverride(FRequestDestroyWindowOverride());
+		Window->RequestDestroyWindow();
 		FPlatformMisc::RequestExit(false);
 	}));
 
@@ -519,10 +549,18 @@ void ShowLegalNotice(UUserProjectSettings& UserSettings, const bool bForce)
 	// The four style captures here are LIFETIME, not logic — SLATE_STYLE_ARGUMENT keeps a raw pointer, and
 	// this delegate is destroyed with the window, so it is the natural owner. Do not "tidy" them out of the
 	// capture list: dropping one leaves SWindow / SScrollBox / SHyperlink reading freed memory.
-	NoticeWindow->GetOnWindowClosedEvent().AddLambda([bForce, bPermittedToClose, WindowStyle, LinkTextStyle, LinkUnderlineStyle, ScrollBarStyle](const TSharedRef<SWindow>&)
+	NoticeWindow->GetOnWindowClosedEvent().AddLambda([bForce, bPermittedToClose, bQuitRequested, WindowStyle, LinkTextStyle, LinkUnderlineStyle, ScrollBarStyle](const TSharedRef<SWindow>&)
 	{
-		if (!bForce && !*bPermittedToClose)
+		// bQuitRequested excludes the decline path, which now destroys the window itself and has already asked
+		// for the exit — without it every decline would issue RequestExit twice and re-broadcast the
+		// will-terminate delegates. What is left for this handler is the DIRECT destroy path: everything that
+		// goes through SWindow::RequestDestroyWindow() (title-bar X, Alt+F4, OS close) hits the override above,
+		// so this only fires when something destroys the window without asking — e.g. Slate tearing down a
+		// parent window via PrivateDestroyWindow.
+		if (!bForce && !*bPermittedToClose && !*bQuitRequested)
 		{
+			UE_LOG(LogTemp, Display, TEXT("Mobius.LegalNotice: notice destroyed without acceptance - quitting."));
+			*bQuitRequested = true;
 			FPlatformMisc::RequestExit(false);
 		}
 	});
