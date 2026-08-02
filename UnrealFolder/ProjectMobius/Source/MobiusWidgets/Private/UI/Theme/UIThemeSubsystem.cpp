@@ -316,67 +316,33 @@ namespace MobiusTheme
 		{
 			return false;
 		}
-		// OWNERSHIP CARVE-OUT 2026-07-30, REAFFIRMED 2026-07-31 (A6b-6). The loading card is owner-pull:
+		// HISTORY 2026-07-30 .. 2026-08-03 — a "Loading" material-path carve-out used to sit here, returning
+		// false so the loading card kept its owner-pull colours. Recorded because the defect it fixed was
+		// owner-reported and will look familiar if it ever returns. The card is owner-pull:
 		// UImprovedLoadingNotifyWidget / UBaseLoadingWidget write their role colours through the MID from
-		// ApplyMobiusTheme (via ThemeMaterialCard). This function would overwrite that write — dark hits
-		// ClearParameterValues() below and reverts the card to MI_LoadingOuterBackground's baked near-black
-		// (0.006995 -> #141517), light forces the hard-coded 0.9131 (#f5f5f5). That IS the owner's "black in
+		// ApplyMobiusTheme (via ThemeMaterialCard). An untargeted write here overwrote that — dark hit
+		// ClearParameterValues() below and reverted the card to MI_LoadingOuterBackground's baked near-black
+		// (0.006995 -> #141517), light forced the hard-coded 0.9131 (#f5f5f5). That IS the owner's "black in
 		// dark, white in light" report — one bug, both halves (commit 31641401).
 		//
-		// A6b-6 DELETED the legacy walk, which was the original clobberer, and the plan for this commit was
-		// to delete the carve-out with it. That was WRONG, and the reason is source-provable rather than
-		// empirical: A6b-6b gave ThemeStandardControlsInTree a UBorder branch, and that pass RECURSES into
-		// embedded user widgets (see the ForEachWidget lambda in that function) WITHOUT calling the child's
-		// ApplyMobiusTheme. WBP_ImprovedLoadingNotify is a child of WBP_CompleteMobiusUI.CanvasPanel_0, whose
-		// class UTopMainUiWrapper is itself a UMobiusThemedUserWidget, and in UMG a child constructs during
-		// its parent's RebuildWidget — so the card's own owner-pull runs FIRST and the wrapper's recursive
-		// control pass runs LAST. Same defect, new writer, and it lands on a FRESH LAUNCH, which is exactly
-		// what the A6b-6 acceptance gate looks at. Removing this line reproduces 31641401.
+		// The clobberer was ThemeStandardControlsInTree recursing into the card's subtree without calling the
+		// child's ApplyMobiusTheme. WBP_ImprovedLoadingNotify is a BindWidget child of UTopMainUiWrapper,
+		// itself a UMobiusThemedUserWidget, and in UMG a child constructs during its parent's RebuildWidget —
+		// so the card's own owner-pull ran FIRST and the wrapper's recursive control pass ran LAST, on a FRESH
+		// LAUNCH. A6b-7 (a6030f99) fixed that structurally: the recursion now STOPS at any child that
+		// IsA<UMobiusThemedUserWidget>, which is exactly what the card's class is. With the clobberer gone the
+		// carve-out had no work left to do, and it was deleted here on 2026-08-03 after a re-gate — fresh PIE
+		// per theme, card measured dark #414141 outer / #2B2B2B inner, light #EAEAEA / #FFFFFF, all exact.
 		//
-		// This is the same ownership rule as StyleBorderForTheme's UMobiusThemedBorder guard and
-		// StyleButtonForTheme's UBaseButton guard — keyed on MATERIAL PATH instead of type.
+		// If a loading-card regression ever reappears, do NOT re-add a material-path guard. Such a test cannot
+		// tell the loading card from any other widget instancing the same MI — WBP_ASET-RSET_Base does exactly
+		// that, and the old carve-out silently excluded it too. The real bug would be a lost owner-pull
+		// dispatch or a new untargeted writer. Same ownership rule as StyleBorderForTheme's UMobiusThemedBorder
+		// guard and StyleButtonForTheme's UBaseButton guard, and as recorded for UMobiusThemedBorder in
+		// BaseLoadingWidget.cpp:96-98: a declared role must beat an untargeted sweep, keyed on TYPE not path.
 		//
-		// A6b-7 (2026-07-31) LANDED the structural fix: ThemeStandardControlsInTree no longer descends into a
-		// child that is itself a UMobiusThemedUserWidget, and WBP_ImprovedLoadingNotify's class
-		// UImprovedLoadingNotifyWidget IS one — so the widget-tree clobber described above can no longer
-		// happen. BUILT 2026-08-03 10:09 and gated the same day. Of the two conditions for removal, ONE has
-		// cleared:
-		//   1. CLEARED — condition 2 (the sweep route). ASCII byte scan of all 1747 Content/**/*.uasset:
-		//      the 17 USlateWidgetStyleAsset + 2 USlateBrushAsset in the project contain the substring
-		//      "Loading" NOWHERE, and both brush assets carry no material at all, so they fail the
-		//      /BackgroundMaterials/ test above before reaching this line. The two sweep call sites are
-		//      :1761 (SWS button brushes) and :1888 (USlateBrushAsset) — NOT :1838, which is inside the
-		//      FTextBlockStyle branch; earlier comments citing :1838 for this were wrong. Neither route can
-		//      reach this carve-out, so widget-tree recursion is its only possible caller.
-		//   2. NOT CLEARED — this carve-out is still IN PLACE and therefore still untested. The 2026-08-03
-		//      gate captured the BASELINE only: fresh PIE per theme (UserProjectSettings.bUseLightUITheme set
-		//      before session start, so a true re-init, never a toggle), card forced visible, PrintWindow +
-		//      per-pixel sample. Dark = #414141 outer / #2B2B2B inner, light = #EAEAEA outer / #FFFFFF inner —
-		//      both EXACT, and the surrounding UI regressed nowhere. That proves A6b-7 broke nothing. It does
-		//      NOT prove this line is dead, because the line was active during the capture. Removing it needs
-		//      delete -> rebuild -> re-run that same gate, and the values above are the pass criteria.
-		//
-		// Gate lever, cheaper than the recipe in auto-memory reference-mobius-dataload-gate-recipe: the card
-		// needs NO data load and NO capture burst. It is a BindWidget child of UTopMainUiWrapper
-		// (TopMainUiWrapper.h LoadingNotifyWidget), so it exists in WBP_CompleteMobiusUI's tree from construct
-		// and C++ only toggles its visibility. Both theme writes therefore land at construct regardless of
-		// visibility. Force it on from python — set_visibility(SELF_HIT_TEST_INVISIBLE) + set_render_opacity(1)
-		// — and it holds still, fully opaque, indefinitely. PlayIntroAnimation touches opacity and scale only,
-		// never colour, so skipping it changes nothing that this gate measures.
-		//
-		// NOTE the brushes here hold RUNTIME MIDs (MID_MI_LoadingOuter/InnerBackground_0) whose Parent is the
-		// authored MI. SourcePath resolves through Mid->Parent, which is why the substring test still fires —
-		// and why no .uasset scan can ever enumerate these brushes. Scan results bound the sweep route only.
-		//
-		// Substring is "Loading" not "Load": it matches MI_LoadingOuter/InnerBackground and deliberately NOT
-		// MI_LoadDataFilesBackground, which has no owner-pull driver. The other live cards in this folder
-		// (FlowCounterTop/Bottom, PlayBar, Egress) have no owner-pull driver either, so they must keep
-		// falling through to the generic branches below. Same rationale already recorded for
-		// UMobiusThemedBorder in BaseLoadingWidget.cpp:96-98 — a declared role must beat an untargeted sweep.
-		if (SourcePath.Contains(TEXT("Loading")))
-		{
-			return false;
-		}
+		// The other cards in this folder (LoadDataFiles, FlowCounterTop/Bottom, PlayBar, Egress) have no
+		// owner-pull driver, so they rely on the generic branches below and must keep falling through.
 		if (!Mid)
 		{
 			Mid = UMaterialInstanceDynamic::Create(Material, MidOuter);
