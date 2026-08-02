@@ -339,21 +339,34 @@ namespace MobiusTheme
 		// A6b-7 (2026-07-31) LANDED the structural fix: ThemeStandardControlsInTree no longer descends into a
 		// child that is itself a UMobiusThemedUserWidget, and WBP_ImprovedLoadingNotify's class
 		// UImprovedLoadingNotifyWidget IS one — so the widget-tree clobber described above can no longer
-		// happen. This carve-out is therefore BELIEVED redundant, and is kept anyway for two reasons, both of
-		// which must clear before it comes out:
-		//   1. It has not been pixel-gated. The A6b-7 change is unbuilt (editor held by another agent), and
-		//      this exact line is the fix for an OWNER-REPORTED defect — the loading card rendered baked
-		//      #141517 in dark and #f5f5f5 in light. Removal needs a fresh-launch capture of the card in BOTH
-		//      themes; recipe in auto-memory reference-mobius-dataload-gate-recipe (400 ms burst, armed
-		//      before the load fires). Expected PASS values: dark #414141 outer / #2B2B2B inner,
-		//      light #EAEAEA outer / #FFFFFF inner.
-		//   2. The widget tree is not the only route here. ApplyTheme's asset-registry sweep calls this
-		//      function directly on every USlateWidgetStyleAsset button brush (:1711) and every
-		//      USlateBrushAsset (:1838) in the project. Those calls never touch a WidgetTree, so the A6b-7
-		//      guard prunes nothing for them. If ANY SWS or USlateBrushAsset resolves to
-		//      MI_LoadingOuterBackground / MI_LoadingInnerBackground, this carve-out is still load-bearing and
-		//      A6b-7 did not retire it at all. Unconfirmed either way — .uasset content needs an ASCII byte
-		//      scan, because the Grep tool silently skips binaries.
+		// happen. BUILT 2026-08-03 10:09 and gated the same day. Of the two conditions for removal, ONE has
+		// cleared:
+		//   1. CLEARED — condition 2 (the sweep route). ASCII byte scan of all 1747 Content/**/*.uasset:
+		//      the 17 USlateWidgetStyleAsset + 2 USlateBrushAsset in the project contain the substring
+		//      "Loading" NOWHERE, and both brush assets carry no material at all, so they fail the
+		//      /BackgroundMaterials/ test above before reaching this line. The two sweep call sites are
+		//      :1761 (SWS button brushes) and :1888 (USlateBrushAsset) — NOT :1838, which is inside the
+		//      FTextBlockStyle branch; earlier comments citing :1838 for this were wrong. Neither route can
+		//      reach this carve-out, so widget-tree recursion is its only possible caller.
+		//   2. NOT CLEARED — this carve-out is still IN PLACE and therefore still untested. The 2026-08-03
+		//      gate captured the BASELINE only: fresh PIE per theme (UserProjectSettings.bUseLightUITheme set
+		//      before session start, so a true re-init, never a toggle), card forced visible, PrintWindow +
+		//      per-pixel sample. Dark = #414141 outer / #2B2B2B inner, light = #EAEAEA outer / #FFFFFF inner —
+		//      both EXACT, and the surrounding UI regressed nowhere. That proves A6b-7 broke nothing. It does
+		//      NOT prove this line is dead, because the line was active during the capture. Removing it needs
+		//      delete -> rebuild -> re-run that same gate, and the values above are the pass criteria.
+		//
+		// Gate lever, cheaper than the recipe in auto-memory reference-mobius-dataload-gate-recipe: the card
+		// needs NO data load and NO capture burst. It is a BindWidget child of UTopMainUiWrapper
+		// (TopMainUiWrapper.h LoadingNotifyWidget), so it exists in WBP_CompleteMobiusUI's tree from construct
+		// and C++ only toggles its visibility. Both theme writes therefore land at construct regardless of
+		// visibility. Force it on from python — set_visibility(SELF_HIT_TEST_INVISIBLE) + set_render_opacity(1)
+		// — and it holds still, fully opaque, indefinitely. PlayIntroAnimation touches opacity and scale only,
+		// never colour, so skipping it changes nothing that this gate measures.
+		//
+		// NOTE the brushes here hold RUNTIME MIDs (MID_MI_LoadingOuter/InnerBackground_0) whose Parent is the
+		// authored MI. SourcePath resolves through Mid->Parent, which is why the substring test still fires —
+		// and why no .uasset scan can ever enumerate these brushes. Scan results bound the sweep route only.
 		//
 		// Substring is "Loading" not "Load": it matches MI_LoadingOuter/InnerBackground and deliberately NOT
 		// MI_LoadDataFilesBackground, which has no owner-pull driver. The other live cards in this folder
