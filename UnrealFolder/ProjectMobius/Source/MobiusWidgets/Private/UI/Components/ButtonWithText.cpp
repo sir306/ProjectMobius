@@ -174,7 +174,7 @@ void UButtonWithText::RefreshThemedLabelStyle()
 	//
 	// Owner-confirmed 2026-07-28: destructive buttons are red TEXT on the normal button surface, NOT a red
 	// fill ("i think it looks better than a background red") — so only the label colour moves here.
-	EMobiusPaletteRole LabelRole = EMobiusPaletteRole::ButtonText;
+	EMobiusPaletteRole LabelRole = bIsToolPanelRow ? EMobiusPaletteRole::LabelText : EMobiusPaletteRole::ButtonText;
 	if (MobiusButtonTextStyle)
 	{
 		if (const FTextBlockStyle* AuthoredStyle = MobiusButtonTextStyle->GetStyle<FTextBlockStyle>())
