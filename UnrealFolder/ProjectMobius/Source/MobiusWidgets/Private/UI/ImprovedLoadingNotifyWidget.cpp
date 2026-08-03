@@ -98,7 +98,10 @@ void UImprovedLoadingNotifyWidget::SetIsLoadingGeometry(bool bNewIsLoadingGeomet
 
 void UImprovedLoadingNotifyWidget::IsLoadingComplete()
 {
-	if (LoadingBarWidget != nullptr && LoadingBarWidget != nullptr)
+	// Both children are BindWidget (not BindWidgetOptional), so UMG refuses to compile a WBP that is
+	// missing either one — this is a defensive guard, not a live null path. The second test used to
+	// repeat LoadingBarWidget (copy-paste); it was always meant to be LoadingInfiniteWidget.
+	if (LoadingBarWidget != nullptr && LoadingInfiniteWidget != nullptr)
 	{
 		// loading is complete so we can hide the widget
 		if (LoadingBarPercent >= 1.0f && !bIsLoadingGeometry)
@@ -223,7 +226,12 @@ void UImprovedLoadingNotifyWidget::UpdateLoadingWidgets()
 	}
 	
 	// set the visibility of the widgets
-	SetLoadingWidgetVisibility(LoadingBarWidget, LoadingBarWidget->bIsLoading);
+	// SetLoadingWidgetVisibility null-checks its argument, but reading bIsLoading off the pointer does not,
+	// so guard the deref here.
+	if (LoadingBarWidget != nullptr)
+	{
+		SetLoadingWidgetVisibility(LoadingBarWidget, LoadingBarWidget->bIsLoading);
+	}
 	SetLoadingWidgetVisibility(LoadingInfiniteWidget, bIsLoadingGeometry);
 
 	UpdateLoadingTitleText();
