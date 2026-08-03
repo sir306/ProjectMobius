@@ -90,11 +90,19 @@ protected:
 
 	/**
 	 * §5/P6 entrance: (re)start the 150ms CubicOut intro (render-opacity 0->1 + centred scale .97->1)
-	 * on the popup root. Called from the Collapsed->visible transition in IsLoadingComplete(). Driven in
-	 * NativeTick from IntroCurve — same C++ pattern as SMoveableWindow's OpenAnimation (D67), which avoids
-	 * the UE 5.5 "WidgetAnimation can't be created via python" block (D78).
+	 * on the popup root. Called from the Collapsed->visible transition in IsLoadingComplete().
+	 *
+	 * Driven by TickIntroAnimation off a Slate active timer, NOT by NativeTick — NativeTick never runs on
+	 * this widget, and driving it from there latched the card at RenderOpacity 0, i.e. invisible. The full
+	 * reasoning is in TickIntroAnimation's comment; read it before changing either function.
 	 */
 	void PlayIntroAnimation();
+
+	/**
+	 * Active-timer tick that advances the intro pose and settles it at full opacity when the curve ends.
+	 * Registered on the cached SWidget by PlayIntroAnimation and unregistered by returning Stop.
+	 */
+	EActiveTimerReturnType TickIntroAnimation(double InCurrentTime, float InDeltaTime);
 #pragma endregion PROTECTED_METHODS
 	
 #pragma endregion METHODS
@@ -142,6 +150,12 @@ private:
 	/** §5/P6 intro animation (150ms CubicOut) + its lerp handle. Plain members (not UPROPERTY). */
 	FCurveSequence IntroAnimation;
 	FCurveHandle IntroCurve;
+
+	/**
+	 * Handle for the active timer driving IntroCurve. Held so PlayIntroAnimation can tell "already
+	 * running" from "needs registering"; TickIntroAnimation clears it when it returns Stop.
+	 */
+	TSharedPtr<FActiveTimerHandle> IntroTickerHandle;
 
 #pragma endregion PROPERTIES
 

@@ -8,6 +8,8 @@
 #include "Components/Border.h"
 #include "Components/TextBlock.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
+#include "Types/WidgetActiveTimerDelegate.h" // FWidgetActiveTimerDelegate (intro driver, see TickIntroAnimation)
+#include "Widgets/SWidget.h"                 // SWidget::RegisterActiveTimer
 
 void UImprovedLoadingNotifyWidget::NativePreConstruct()
 {
@@ -68,15 +70,10 @@ void UImprovedLoadingNotifyWidget::NativeTick(const FGeometry& MyGeometry, float
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	// §5/P6: drive the entrance fade+scale from the curve while it plays (see PlayIntroAnimation). The
-	// active timer guarantees a final tick at Lerp=1, so the popup settles fully opaque at 1.0 scale.
-	if (IntroAnimation.IsPlaying())
-	{
-		const float T = FMath::Clamp(IntroCurve.GetLerp(), 0.0f, 1.0f);
-		SetRenderOpacity(T);
-		const float Scale = 0.97f + 0.03f * T; // .97 -> 1.0, centred (RenderTransformPivot default 0.5,0.5)
-		SetRenderScale(FVector2D(Scale, Scale));
-	}
+	// The §5/P6 intro used to be driven from here. It is NOT any more, and must not move back: this
+	// override never runs on this widget (see TickIntroAnimation), so driving the curve from it left
+	// RenderOpacity latched at the 0 that PlayIntroAnimation writes, and the loading card rendered fully
+	// transparent from its first show onwards.
 }
 
 void UImprovedLoadingNotifyWidget::SynchronizeProperties()
@@ -242,7 +239,8 @@ void UImprovedLoadingNotifyWidget::UpdateLoadingWidgets()
 void UImprovedLoadingNotifyWidget::PlayIntroAnimation()
 {
 	// The curve owns its clock through the active timer of the owning Slate widget, so it needs the
-	// cached SWidget. If the tree isn't built yet, skip the flourish (no visual regression).
+	// cached SWidget. If the tree isn't built yet, skip the flourish — and, critically, return BEFORE
+	// touching the pose. Zeroing opacity with no driver to raise it again is the whole defect below.
 	const TSharedPtr<SWidget> Safe = GetCachedWidget();
 	if (!Safe.IsValid() || !IntroCurve.IsInitialized())
 	{
@@ -253,6 +251,54 @@ void UImprovedLoadingNotifyWidget::PlayIntroAnimation()
 	SetRenderOpacity(0.0f);
 	SetRenderScale(FVector2D(0.97f, 0.97f));
 	IntroAnimation.Play(Safe.ToSharedRef());
+
+	// Drive the curve from an ACTIVE TIMER on the cached SWidget, never from NativeTick — see the long
+	// note in TickIntroAnimation for why NativeTick cannot work here. Guarded so a second show while the
+	// first is still fading does not stack a second timer; Play() above already restarted the curve.
+	if (!IntroTickerHandle.IsValid())
+	{
+		IntroTickerHandle = Safe->RegisterActiveTimer(0.0f,
+			FWidgetActiveTimerDelegate::CreateUObject(this, &UImprovedLoadingNotifyWidget::TickIntroAnimation));
+	}
+}
+
+EActiveTimerReturnType UImprovedLoadingNotifyWidget::TickIntroAnimation(double InCurrentTime, float InDeltaTime)
+{
+	// WHY AN ACTIVE TIMER AND NOT NativeTick (measured in PIE 2026-08-03, do not "simplify" this back):
+	//
+	// NativeTick never runs on this widget. TickFrequency is Auto, and UUserWidget::UpdateCanTick only
+	// enables ticking for Auto when the Blueprint implements Tick, a UMG WidgetAnimation is playing, or a
+	// latent action is pending. WBP_ImprovedLoadingNotify's Event Tick node is an UNCONNECTED STUB that
+	// compiles to nothing, and an FCurveSequence is not a UMG WidgetAnimation — so NeedsTick() stays false
+	// and SObjectWidget::Tick skips NativeTick entirely.
+	//
+	// FCurveSequence::Play does register a Slate active timer of its own, which is what made the original
+	// "mirrors SMoveableWindow's OpenAnimation" reasoning look sound. It is sound — for a raw SWidget,
+	// whose Tick is not gated that way. For a UUserWidget that timer pumps Slate without ever reaching
+	// NativeTick, so PlayIntroAnimation's SetRenderOpacity(0) had no writer to undo it: the card latched
+	// fully transparent on its first show and stayed invisible for the rest of the session. Visibility
+	// cycled correctly the whole time, which is why it read as a theming or data bug rather than a pose one.
+	//
+	// The invariant this function keeps is NOT "the intro plays" — it is "no path leaves the card below
+	// full opacity". Hence the unconditional settle at T=1 on the terminal frame: a load that completes
+	// inside the 150ms intro collapses the card mid-flight, and the next show must not inherit a partial
+	// fade.
+	const bool bPlaying = IntroAnimation.IsPlaying();
+	const float T = bPlaying ? FMath::Clamp(IntroCurve.GetLerp(), 0.0f, 1.0f) : 1.0f;
+	SetRenderOpacity(T);
+	const float Scale = 0.97f + 0.03f * T; // .97 -> 1.0, centred (RenderTransformPivot default 0.5,0.5)
+	SetRenderScale(FVector2D(Scale, Scale));
+
+	if (bPlaying)
+	{
+		return EActiveTimerReturnType::Continue;
+	}
+
+	// Stop rather than linger: a 0-second timer left registered holds the owning window in Slate's
+	// must-tick set every frame, which is the exact cost SErrorWindowWidget's bootstrap-timer comment
+	// calls out. Clearing the handle re-arms the guard in PlayIntroAnimation for the next show.
+	IntroTickerHandle.Reset();
+	return EActiveTimerReturnType::Stop;
 }
 
 void UImprovedLoadingNotifyWidget::SetLoadingWidgetVisibility(TObjectPtr<UBaseLoadingWidget> LoadingWidget,
