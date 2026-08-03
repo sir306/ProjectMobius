@@ -75,6 +75,20 @@ private:
 	/** Drop the OnThemeChangedNative binding, if any. Safe to call when never bound. */
 	void UnbindThemeChanged();
 
+	/**
+	 * Drops the theme binding and every handle into the window's widget tree. Does NOT destroy the
+	 * window — this is the teardown half that both close routes share, so it is safe to run from
+	 * inside SWindow::NotifyWindowBeingDestroyed.
+	 */
+	void ReleaseWindowState();
+
+	/**
+	 * Bound to the window's OnWindowClosed event, which is the ONLY hook every close route reaches:
+	 * the title-bar x, Alt+F4, an OS close, and Slate tearing down a parent window all end at
+	 * SWindow::NotifyWindowBeingDestroyed. It used to only forward OnLogWindowClosed, so a title-bar x
+	 * destroyed the native window and left LogWindowPtr valid — making OpenLogWindow's IsValid()
+	 * early-out permanent for any holder that reused this widget.
+	 */
 	void HandleLogWindowClosedEvent(const TSharedRef<SWindow>& InWindow);
 	FOnLogWindowClosed OnLogWindowClosed;
 

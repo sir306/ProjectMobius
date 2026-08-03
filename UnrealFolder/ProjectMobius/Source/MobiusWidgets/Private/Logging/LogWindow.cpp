@@ -117,17 +117,44 @@ void SLogWindowWidget::ShowLogWindow()
 
 void SLogWindowWidget::CloseLogWindow()
 {
+	// Clear the member BEFORE asking for the destroy, not after. FSlateApplication::RequestDestroyWindow
+	// runs DestroyWindowsImmediately() inline (SlateApplication.cpp:2351), so NotifyWindowBeingDestroyed —
+	// and therefore HandleLogWindowClosedEvent below — fires on THIS call stack, before the old
+	// `LogWindowPtr.Reset()` after the call would have run. SWindow::RequestDestroyWindow's "not destroyed
+	// immediately... queue for destruction on next Tick" comment is stale; on the game thread it is
+	// synchronous. Handing the destroy a local keeps the window alive across the call.
+	//
+	// TOUCH NOTHING AFTER THE DESTROY CALL — no member write, no member read, not even a Reset(). The
+	// destroy is synchronous, so it runs HandleLogWindowClosedEvent ->
+	// UMobiusWidgetSubsystem::LogWindowIsClosing -> LogWindowWidget.Reset(), which drops the last
+	// reference to THIS widget; the AddSP pin releases when the broadcast ends and the destructor runs
+	// before the stack unwinds back here. `this` is freed memory by the time RequestDestroyWindow
+	// returns. Only the stack local WindowToDestroy is safe to name. The previous form did exactly the
+	// forbidden thing — `LogWindowPtr.Reset()` on the line after the destroy — so the reordering closed
+	// a latent use-after-write as well as the reopen bug. SErrorWindowWidget is not exposed to this
+	// (UErrorWindowWidget resets its holder only in ReleaseSlateResources), but keep the two functions
+	// shaped the same so the difference is not mistaken for licence to add a trailing line here.
+	const TSharedPtr<SMoveableWindow> WindowToDestroy = LogWindowPtr;
+	ReleaseWindowState();
+
+	if (WindowToDestroy.IsValid() && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().RequestDestroyWindow(WindowToDestroy.ToSharedRef());
+	}
+}
+
+void SLogWindowWidget::ReleaseWindowState()
+{
 	// Unconditional: the binding outlives the window pointer, and OpenLogWindow re-binds on reopen.
 	UnbindThemeChanged();
 
-	if (!LogWindowPtr.IsValid() || !FSlateApplication::IsInitialized())
-	{
-		LogWindowPtr.Reset();
-		return;
-	}
-
-	FSlateApplication::Get().RequestDestroyWindow(LogWindowPtr.ToSharedRef());
+	// ScrollBox / LogTextBlock / CloseButton live inside the destroyed window's tree and are rebuilt by
+	// OpenLogWindow. LogLines and LogText are NOT cleared: they are the viewer's contents, and
+	// OpenLogWindow seeds the new STextBlock from LogText, so a reopen shows the same backlog.
 	LogWindowPtr.Reset();
+	ScrollBox.Reset();
+	LogTextBlock.Reset();
+	CloseButton.Reset();
 }
 
 void SLogWindowWidget::SetEnabled(bool bEnabled)
@@ -257,7 +284,11 @@ void SLogWindowWidget::OpenLogWindow()
 		LogWindowPtr->BringToFront(true);
 	}
 
-	// Bind our custom close event handler, so we can notify others when the log window is closed
+	// Converge EVERY close route on one teardown, and notify OnLogWindowClosed from it (see
+	// HandleLogWindowClosedEvent). AddSP rather than a raw binding or a lambda capturing `this`: the
+	// destructor's CloseLogWindow() destroys the window while this widget is already being torn down, and
+	// the weak pin makes the callback a no-op then instead of re-entering a half-destructed object. A
+	// fresh SMoveableWindow is built per open, so the binding dies with the window — no handle to track.
 	LogWindowPtr.ToSharedRef()->GetOnWindowClosedEvent().AddSP(this, &SLogWindowWidget::HandleLogWindowClosedEvent);
 }
 
@@ -292,6 +323,19 @@ void SLogWindowWidget::RebuildLogText()
 
 void SLogWindowWidget::HandleLogWindowClosedEvent(const TSharedRef<SWindow>& InWindow)
 {
+	// Teardown ONLY — deliberately NOT CloseLogWindow(). By the time this fires the window is already
+	// inside FSlateApplication::PrivateDestroyWindow and has been popped from WindowDestroyQueue
+	// (SlateApplication.cpp:3114), so a second RequestDestroyWindow would re-queue it and the nested
+	// DestroyWindowsImmediately would re-run NotifyWindowBeingDestroyed, Renderer->OnWindowDestroyed and
+	// NativeWindow->Destroy on the same window.
+	//
+	// RESET FIRST, NOTIFY SECOND — the order is load-bearing, not tidiness. The subscriber is
+	// UMobiusWidgetSubsystem::LogWindowIsClosing, and it drops the last reference to THIS widget. The
+	// AddSP pin below keeps us alive only until ExecuteIfSafe returns, so ~SLogWindowWidget (and its
+	// CloseLogWindow) runs inside this very callback. With LogWindowPtr already null that destructor is
+	// inert; with it still set it would request a destroy of the window currently being destroyed.
+	ReleaseWindowState();
+
 	OnLogWindowClosed.ExecuteIfBound();
 }
 

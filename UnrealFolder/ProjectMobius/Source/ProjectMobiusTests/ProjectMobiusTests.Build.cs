@@ -27,6 +27,7 @@ public class ProjectMobiusTests : ModuleRules
 			"Visualization", // TrajectoryHeatmapCalibrationTest drives UDynamicPixelRenderingTexture directly
 			"UMG", // SlateVectorArtQuadTest inspects USlateVectorArtData (extent/verts/material)
 			"SlateCore", // FSlateBrush / FSlateColor in ThemeMaterialCardBrushTest
+			"Slate", // WindowCloseLifecycleTest drives FSlateApplication / SWindow / SButton::SimulateClick
 			"MobiusWidgets", // ThemeMaterialCardBrushTest calls UBaseLoadingWidget::ThemeMaterialCard
 		});
 	}

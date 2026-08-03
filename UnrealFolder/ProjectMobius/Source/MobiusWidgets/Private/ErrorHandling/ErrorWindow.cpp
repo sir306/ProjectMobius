@@ -272,6 +272,13 @@ void SErrorWindowWidget::OpenErrorWindow()
                 .HasCloseButton(true)
                 .WindowPanelContent(WindowPanel);
 
+        // Converge EVERY close route on one teardown (see HandleWindowClosed). AddSP rather than a raw
+        // binding or a lambda capturing `this`: the destructor's CloseErrorWindow() destroys the window
+        // while this widget is already being torn down, and the weak pin makes the callback a no-op then
+        // instead of re-entering a half-destructed object. A fresh SMoveableWindow is built per open, so
+        // the binding dies with the window and there is no handle to track.
+        ErrorWindowPtr->GetOnWindowClosedEvent().AddSP(this, &SErrorWindowWidget::HandleWindowClosed);
+
         FSlateApplication::Get().AddWindow(ErrorWindowPtr.ToSharedRef());
 
         SetErrorLocationText(FText::GetEmpty());
@@ -279,17 +286,48 @@ void SErrorWindowWidget::OpenErrorWindow()
 
 void SErrorWindowWidget::CloseErrorWindow()
 {
+	// Clear the member BEFORE asking for the destroy, not after. FSlateApplication::RequestDestroyWindow
+	// runs DestroyWindowsImmediately() inline (SlateApplication.cpp:2351), so NotifyWindowBeingDestroyed —
+	// and therefore HandleWindowClosed below — fires on THIS call stack, before the old
+	// `ErrorWindowPtr.Reset()` after the call would have run. SWindow::RequestDestroyWindow's "not
+	// destroyed immediately... queue for destruction on next Tick" comment is stale; on the game thread it
+	// is synchronous. Handing the destroy a local keeps the window alive across the call.
+	const TSharedPtr<SMoveableWindow> WindowToDestroy = ErrorWindowPtr;
+	ReleaseWindowState();
+
+	if (WindowToDestroy.IsValid() && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().RequestDestroyWindow(WindowToDestroy.ToSharedRef());
+	}
+}
+
+void SErrorWindowWidget::ReleaseWindowState()
+{
 	// Unconditional: the binding outlives the window pointer, and OpenErrorWindow re-binds on reopen.
 	UnbindThemeChanged();
 
-	if (!ErrorWindowPtr.IsValid() || !FSlateApplication::IsInitialized())
-	{
-		ErrorWindowPtr.Reset();
-		return;
-	}
-
-	FSlateApplication::Get().RequestDestroyWindow(ErrorWindowPtr.ToSharedRef());
+	// ContentPanel and CloseButton live inside the destroyed window's tree and are rebuilt by
+	// OpenErrorWindow, so holding them past the close would only keep dead widgets alive and let the
+	// SetError*Text setters silently write into a tree nobody paints.
 	ErrorWindowPtr.Reset();
+	ContentPanel.Reset();
+	CloseButton.Reset();
+}
+
+void SErrorWindowWidget::HandleWindowClosed(const TSharedRef<SWindow>& InWindow)
+{
+	// Teardown ONLY — deliberately NOT CloseErrorWindow(). By the time this fires the window is already
+	// inside FSlateApplication::PrivateDestroyWindow and has been popped from WindowDestroyQueue
+	// (SlateApplication.cpp:3114), so a second RequestDestroyWindow would re-queue it and the nested
+	// DestroyWindowsImmediately would re-run NotifyWindowBeingDestroyed, Renderer->OnWindowDestroyed and
+	// NativeWindow->Destroy on the same window.
+	//
+	// This is the same "single close policy" LegalNoticeDialog enforces, but through the event rather than
+	// SetRequestDestroyWindowOverride: that override exists there to VETO/redirect a close (dismiss vs
+	// quit), which this window has no need to do, and it only sees callers that go through
+	// SWindow::RequestDestroyWindow — OnWindowClosed also catches a direct PrivateDestroyWindow (Slate
+	// tearing down a parent window).
+	ReleaseWindowState();
 }
 
 void SErrorWindowWidget::SetSeverity(EMobiusErrorSeverity InSeverity)
