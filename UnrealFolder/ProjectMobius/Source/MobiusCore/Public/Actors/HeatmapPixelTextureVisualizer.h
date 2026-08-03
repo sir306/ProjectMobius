@@ -344,7 +344,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	int32 CircleRadius = 110; // 110 = 1.1m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING
 
-	/** Path footprint in world centimetres. Default 20 cm preserves narrow pedestrian routes. */
+	/**
+	 * Path footprint RADIUS in world centimetres, so the default 20 draws a 40 cm wide route. Matches how
+	 * CircleRadius is used by the density surface. Resolved to texels in UpdateHeatmapMeshBounds, which is
+	 * what keeps a route the same real-world width regardless of how large the floor is.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))
 	int32 TrajectoryCircleRadius = 20;
 
@@ -360,9 +364,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float TrajectoryMinimumVisibleValue = 0.10f;
 
-	/** Brush radius in texture texels. One produces a 3x3 footprint centred on the continuous path. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0", ClampMax = "2"))
-	int32 TrajectoryLineBrushRadius = 1;
+	// A TrajectoryLineBrushRadius fixed in texels lived here. Removed 2026-08-03: texel world size is
+	// max(MeshSize.X, MeshSize.Y)/1024, so a constant texel count rendered the same walk 5.9 cm wide on a
+	// 20 m floor and 73 cm wide on a 250 m one, and made the byte a crossing deposits scale with building
+	// size too. TrajectoryCircleRadius above is the replacement and is expressed in world centimetres.
 
 	/** Legacy trajectory blur setting. Trajectory rendering currently uses no blur. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "3", ClampMax = "15"))
@@ -522,9 +527,12 @@ private:
 	UPROPERTY()
 	int32 ScaledCircleSize; // TODO: This should be a float value for more precise locations and scale to texture and mesh size
 
-	/** Trajectory radius converted to render-target pixels. */
+	/**
+	 * TrajectoryCircleRadius converted to render-target texels by UpdateHeatmapMeshBounds.
+	 * Defaults to one texel so a segment drawn before the mesh bounds resolve still marks the path.
+	 */
 	UPROPERTY()
-	int32 ScaledTrajectoryCircleSize = 0;
+	int32 ScaledTrajectoryCircleSize = 1;
 
 #pragma endregion PRIVATE_PROPERTIES_AND_COMPONENTS
 	

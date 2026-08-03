@@ -32,7 +32,12 @@ namespace TrajectoryCalibration
 	static constexpr float AgentRed = 0.1478f;              // AgentColorValue.R
 	static constexpr float SampleWeight = 0.05f;            // TrajectorySampleWeight
 	static constexpr float MinimumVisible = 0.10f;          // TrajectoryMinimumVisibleValue
-	static constexpr int32 BrushRadius = 1;                 // TrajectoryLineBrushRadius (3x3)
+	// Footprint radius in TEXELS. At runtime this is not a constant: AHeatmapPixelTextureVisualizer
+	// derives it per floor from TrajectoryCircleRadius (20 cm) via UVScale, so it was 3 on the 73 m floor
+	// the calibration capture came from and reaches double digits on a small one. One is used here only
+	// because it keeps the closed-form byte arithmetic below readable; BrushScalesWithRadius covers the
+	// rest of the range.
+	static constexpr int32 BrushRadius = 1;
 
 	// --- LOS band edges ------------------------------------------------------------------------------
 	// Two sets, because the two heatmap surfaces measure different quantities on the same uint8 channel.
@@ -50,10 +55,16 @@ namespace TrajectoryCalibration
 	//
 	// IMPORTANT: these edges are NOT derived from the straight-line model this file uses elsewhere. That
 	// model gives an interior texel 3 hits per "pass" (byte 27), but it draws one line call per pass,
-	// whereas the running pipeline emits one segment per agent per flush and stamps a 3x3 brush along
+	// whereas the running pipeline emits one segment per agent per flush and stamps the disc along
 	// each -- so several consecutive flushes hit the same texel as one agent walks across it. Replaying
 	// a real 30 s capture measured a lone crossing at a median 13 hits, byte 37. Calibrating the edges
 	// off the 3-hit figure is what previously made a single quick crossing render three bands up.
+	//
+	// STALE AS OF 2026-08-03. Those edges were fitted against a brush of a fixed 1-texel radius. The brush
+	// is now sized in world centimetres, which on that same capture resolves to radius 3 and moves a lone
+	// crossing from byte 37 to a replayed 46 — close enough to the 46.5 LOS_B edge that a slow crossing
+	// crosses it. Owner ruling 2026-08-03: recapture, then refit. Until that lands these edges are known
+	// to be slightly tight rather than measured, and the tests below assert arithmetic, not band fit.
 	static constexpr float TrajectoryLOS_A = 24.5f / 255.0f;
 	static constexpr float TrajectoryLOS_B = 46.5f / 255.0f;
 	static constexpr float TrajectoryLOS_D = 110.5f / 255.0f;
@@ -72,10 +83,13 @@ namespace TrajectoryCalibration
 	static constexpr uint8 ExpectedIncrementByte = 1;
 
 	/**
-	 * A straight run stamps the 3x3 brush at every Bresenham step, so an interior centreline texel is
-	 * covered by the steps at X-1, X and X+1 — three hits. The first seeds, the other two increment.
+	 * A straight run stamps the brush at every Bresenham step, so an interior CENTRELINE texel is covered
+	 * by the steps at X-1, X and X+1 — three hits. The first seeds, the other two increment.
+	 *
+	 * Centreline only. Off-centre rows of a disc see fewer steps (the chord through the disc is shorter),
+	 * which is why the neighbouring row holds the bare seed at radius 1.
 	 */
-	static constexpr int32 HitsPerPassInterior = 3;
+	static constexpr int32 HitsPerPassInterior = 2 * BrushRadius + 1;
 
 	static constexpr int32 TextureSize = 64;
 
@@ -173,9 +187,20 @@ bool FTrajectorySinglePassIsDistinguishableTest::RunTest(const FString& Paramete
 	TestTrue(TEXT("Under the density edges the same byte was indistinguishable from bare floor"),
 		IsInLowestDensityBand(Interior));
 
-	// The 3x3 brush means the two neighbouring rows accumulate identically, not as a falloff.
-	TestEqual(TEXT("Brush row above matches the centreline"), Texture->GetRawPixelRed(InteriorX, RouteY - 1), Interior);
-	TestEqual(TEXT("Brush row below matches the centreline"), Texture->GetRawPixelRed(InteriorX, RouteY + 1), Interior);
+	// The disc brush DOES fall off across the path's width, unlike the square brush it replaced. At R=1 a
+	// neighbouring row is covered only by the single centre directly beside it, so it holds the bare seed
+	// while the centreline has taken three hits. This is brush geometry, not data: a rim texel is within
+	// footprint range for a shorter stretch of the walk than a centreline texel is.
+	//
+	// It costs one texel of fringe on a busy route and nothing at all on a light one (seed and centreline
+	// both sit in the lowest data band until a route is walked repeatedly). Pinned here so the fringe is a
+	// known quantity rather than something rediscovered off a screenshot.
+	TestEqual(TEXT("A rim row holds the first-visit seed only"),
+		Texture->GetRawPixelRed(InteriorX, RouteY - 1), ExpectedSeedByte);
+	TestEqual(TEXT("Both rim rows behave identically"),
+		Texture->GetRawPixelRed(InteriorX, RouteY + 1), Texture->GetRawPixelRed(InteriorX, RouteY - 1));
+	TestTrue(TEXT("The centreline still reads hotter than the rim"),
+		Interior > Texture->GetRawPixelRed(InteriorX, RouteY - 1));
 	TestEqual(TEXT("Outside the brush stays untouched"), Texture->GetRawPixelRed(InteriorX, RouteY + 2), static_cast<uint8>(0));
 
 	return true;
@@ -347,8 +372,8 @@ bool FTrajectoryIncrementDeadZoneTest::RunTest(const FString& Parameters)
 }
 
 // -------------------------------------------------------------------------------------------------
-// 4. Dwell renders as a uniform 3x3 plateau, not a peak — a measurement artefact of the box brush
-//    that any per-square-metre claim has to divide out.
+// 4. Dwell renders as a uniform plateau over the whole footprint, not a peak — a measurement artefact
+//    of the brush that any per-square-metre claim has to divide out.
 // -------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FTrajectoryDwellFormsUniformPlateauTest,
@@ -362,7 +387,9 @@ bool FTrajectoryDwellFormsUniformPlateauTest::RunTest(const FString& Parameters)
 	UDynamicPixelRenderingTexture* Texture = MakeTexture();
 
 	// A dwelling agent submits many samples whose start and end round to the same texel. The loop then
-	// stamps one 3x3 box and breaks immediately: one hit for all nine texels, per sample.
+	// stamps the disc once and breaks immediately: one hit for every texel in the footprint, per sample.
+	// Because the walk never advances, no texel is favoured, so a standing agent is the one case where
+	// the footprint IS a flat plateau — the falloff a moving agent leaves comes from the walk, not the brush.
 	constexpr int32 DwellSamples = 12;
 	constexpr int32 CentreX = 20;
 	constexpr int32 CentreY = 20;
@@ -376,18 +403,79 @@ bool FTrajectoryDwellFormsUniformPlateauTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Dwell accumulates one increment per sample after the seed"),
 		Centre, static_cast<uint8>(ExpectedSeedByte + (DwellSamples - 1) * ExpectedIncrementByte));
 
-	// Every texel in the 3x3 footprint must be identical — the defining property of a plateau.
-	for (int32 OffsetY = -1; OffsetY <= 1; ++OffsetY)
+	// Every texel inside the disc must match the centre, and every texel outside it must be untouched.
+	// The corners are the assertion that matters: a square brush would have covered them, and a square
+	// footprint is what made a route render R*sqrt(2) wide on its diagonals.
+	for (int32 OffsetY = -BrushRadius; OffsetY <= BrushRadius; ++OffsetY)
 	{
-		for (int32 OffsetX = -1; OffsetX <= 1; ++OffsetX)
+		for (int32 OffsetX = -BrushRadius; OffsetX <= BrushRadius; ++OffsetX)
 		{
-			TestEqual(*FString::Printf(TEXT("Plateau texel (%d,%d) matches the centre"), OffsetX, OffsetY),
-				Texture->GetRawPixelRed(CentreX + OffsetX, CentreY + OffsetY), Centre);
+			const bool bInsideDisc = (OffsetX * OffsetX + OffsetY * OffsetY) <= (BrushRadius * BrushRadius);
+			const uint8 Stored = Texture->GetRawPixelRed(CentreX + OffsetX, CentreY + OffsetY);
+			TestEqual(*FString::Printf(TEXT("Footprint texel (%d,%d) %s"), OffsetX, OffsetY,
+					bInsideDisc ? TEXT("matches the centre") : TEXT("is outside the disc and untouched")),
+				Stored, bInsideDisc ? Centre : static_cast<uint8>(0));
 		}
 	}
 
 	TestEqual(TEXT("Immediately outside the footprint is untouched"),
-		Texture->GetRawPixelRed(CentreX + 2, CentreY), static_cast<uint8>(0));
+		Texture->GetRawPixelRed(CentreX + BrushRadius + 1, CentreY), static_cast<uint8>(0));
+
+	return true;
+}
+
+// -------------------------------------------------------------------------------------------------
+// 4b. The brush is sized from world centimetres, not texels. AHeatmapPixelTextureVisualizer does the
+//     conversion (TrajectoryCircleRadius * min(UVScale)), but the property that makes it worth doing
+//     lives here: footprint area must actually track the radius it is handed, so that a coarser texel
+//     grid can be compensated for by asking for more texels.
+//
+//     This is the regression guard for the defect that motivated the change — a radius fixed in texels
+//     rendered the same 40 cm route 5.9 cm wide on a 20 m floor and 73 cm wide on a 250 m one, because
+//     a texel is max(MeshSize.X, MeshSize.Y)/1024 across and nothing scaled with it.
+// -------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajectoryBrushScalesWithRadiusTest,
+	"ProjectMobius.Heatmap.Trajectory.BrushScalesWithRadius",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajectoryBrushScalesWithRadiusTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryCalibration;
+
+	constexpr int32 CentreX = 30;
+	constexpr int32 CentreY = 30;
+
+	int32 PreviousWidth = 0;
+	for (int32 Radius = 0; Radius <= 5; ++Radius)
+	{
+		UDynamicPixelRenderingTexture* Texture = MakeTexture();
+		Texture->DrawLineWithMinimumRed(CentreX, CentreX, CentreY, CentreY,
+			MakePathColor(), MinimumVisible, Radius);
+
+		// Measure the footprint the way a viewer reads it: how wide is the mark, in texels.
+		int32 Width = 0;
+		for (int32 OffsetX = -8; OffsetX <= 8; ++OffsetX)
+		{
+			if (Texture->GetRawPixelRed(CentreX + OffsetX, CentreY) > 0)
+			{
+				++Width;
+			}
+		}
+
+		TestEqual(*FString::Printf(TEXT("Radius %d spans %d texels across"), Radius, 2 * Radius + 1),
+			Width, 2 * Radius + 1);
+		TestTrue(*FString::Printf(TEXT("Radius %d is wider than radius %d"), Radius, Radius - 1),
+			Width > PreviousWidth);
+		PreviousWidth = Width;
+
+		// A disc, not a square: the corner of the bounding box must stay clear for any radius above zero.
+		if (Radius > 0)
+		{
+			TestEqual(*FString::Printf(TEXT("Radius %d leaves its bounding-box corner untouched"), Radius),
+				Texture->GetRawPixelRed(CentreX + Radius, CentreY + Radius), static_cast<uint8>(0));
+		}
+	}
 
 	return true;
 }

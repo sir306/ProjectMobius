@@ -111,6 +111,10 @@ public:
 	/**
 	 * Draw a cumulative line while seeding each previously untouched texel with a minimum red value.
 	 * This is useful for quantitative palettes whose low bands otherwise render a first observation invisible.
+	 *
+	 * @param BrushRadius - Radius of the stamped footprint in TEXELS. The brush is a disc, matching
+	 *        DrawCircle, so callers must convert from world units themselves: a texel is not a fixed
+	 *        real-world size. Zero stamps the centreline only.
 	 */
 	void DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y, int32 End_Coordinate_Y,
 		FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius = 0);

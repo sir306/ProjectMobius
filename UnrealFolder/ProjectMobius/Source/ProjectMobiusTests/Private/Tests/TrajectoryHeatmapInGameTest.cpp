@@ -56,6 +56,28 @@ namespace TrajectoryInGame
 	/** Agents in the overlapping-routes scenario. */
 	static constexpr int32 OverlapAgentCount = 5;
 
+	/** Byte written to a previously untouched texel: (uint8)(0.10 * 255) == 25. */
+	static constexpr int32 SeedByte = 25;
+
+	/** Render-target edge, from AHeatmapPixelTextureVisualizer's hardcoded texture size. */
+	static constexpr float TextureTexels = 1024.0f;
+
+	/**
+	 * The footprint radius in texels the actor will derive for this fixture, mirroring
+	 * UpdateHeatmapMeshBounds: TrajectoryCircleRadius (world cm) * min(UVScale), UVScale = 1024 / SizeCm.
+	 *
+	 * Duplicated deliberately. The point of the conversion is that a texel is NOT a fixed real-world size
+	 * — it is max(MeshSize.X, MeshSize.Y)/1024 — so a test that hardcoded a texel count would go on
+	 * passing while the rendered path width drifted with the size of the building. At this fixture's 50 m
+	 * that is ~4.88 cm per texel and a 20 cm radius resolves to 4.
+	 */
+	static int32 ExpectedBrushRadius()
+	{
+		constexpr float TrajectoryCircleRadiusCm = 20.0f;   // AHeatmapPixelTextureVisualizer default
+		const float TexelsPerCm = TextureTexels / (HeatmapMetres * 100.0f);
+		return FMath::Max(1, FMath::RoundToInt(TrajectoryCircleRadiusCm * TexelsPerCm));
+	}
+
 	enum class EScenario : uint8
 	{
 		SingleRoute,
@@ -401,22 +423,28 @@ namespace TrajectoryInGame
 
 			Test.TestTrue(TEXT("the scenario touched some texels"), Stats.TouchedTexels > 0);
 
+			// Bounds are derived from the brush rather than written as constants, because the brush is no
+			// longer a constant: the actor sizes it from TrajectoryCircleRadius in world centimetres, so
+			// changing HeatmapMetres silently changes every byte below. See ExpectedBrushRadius.
+			const int32 Radius = ExpectedBrushRadius();
+			const int32 CentrelineHitsPerPass = 2 * Radius + 1;
+			// Consecutive segments share an endpoint, so a texel whose brush window spans a join takes one
+			// extra hit per pass. Included as slack rather than modelled — join spacing is a fixture detail.
+			const int32 CeilingPerPass = CentrelineHitsPerPass + 1;
+
 			switch (Scenario)
 			{
 			case EScenario::SingleRoute:
-				// A range, not a constant. This fixture happens to land on 27 — seed 25 plus the two
-				// increments the Tier A straight-line model predicts — but that agreement is a property
-				// of THIS fixture's speed against THIS texel size, not a law.
-				//
-				// What a texel actually accumulates is dwell time: the pipeline emits one segment per
-				// agent per flush and Bresenham-walks each with a 3x3 brush, so a slower agent, a finer
-				// texture, or a shorter flush interval all re-stamp the same texel more often. Replaying
-				// a real crowd capture measured a median of 13 hits per crossing against this fixture's
-				// 3. Pinning an exact byte here would make an unrelated fixture tweak look like a
-				// regression, so bound it instead.
+				// A range, not a constant. What a texel accumulates is dwell time: the pipeline emits one
+				// segment per agent per flush and Bresenham-walks each with the disc brush, so a slower
+				// agent, a finer texture, or a shorter flush interval all re-stamp the same texel more
+				// often. Replaying a real crowd capture measured a median of 13 hits per crossing against
+				// this fixture's handful. Pinning an exact byte here would make an unrelated fixture tweak
+				// look like a regression, so bound it instead.
 				Test.TestTrue(*FString::Printf(
-						TEXT("a single traversal is above the seed but still low (was %d)"), Stats.ModalByte),
-					Stats.ModalByte > 25 && Stats.ModalByte <= 40);
+						TEXT("a single traversal is above the seed but still low (was %d, ceiling %d)"),
+						Stats.ModalByte, SeedByte + CeilingPerPass),
+					Stats.ModalByte > SeedByte && Stats.ModalByte <= SeedByte + CeilingPerPass);
 				Test.TestTrue(TEXT("a single traversal stays overwhelmingly in the lowest band"),
 					Stats.LowestBandFraction() > 0.9f);
 				break;
@@ -426,21 +454,39 @@ namespace TrajectoryInGame
 				// single pass while touching far fewer texels than a full traverse.
 				//
 				// The spatial half of this is a regression guard, not a tuning threshold. An agent that
-				// travels 0.5 m can only light up a few dozen texels (this fixture: 26); anything
-				// approaching a full route's worth means stale per-agent positions leaked in from the
-				// previous scenario and got drawn as a bridging streak. That is exactly what this caught
-				// on its first ever run — 826 texels, 796 of them at the single-pass byte, i.e. one long
-				// line — and it is why the file-switch path now calls RequestTrajectoryTrackingReset.
-				Test.TestTrue(TEXT("dwell accumulates above a single traversal"), Stats.PeakByte > 27);
-				Test.TestTrue(*FString::Printf(
-						TEXT("dwell stays spatially concentrated (touched %d)"), Stats.TouchedTexels),
-					Stats.TouchedTexels < 400);
+				// travels 0.5 m can only light up its own footprint plus that half metre of travel;
+				// anything approaching a full route's worth means stale per-agent positions leaked in from
+				// the previous scenario and got drawn as a bridging streak. That is exactly what this
+				// caught on its first ever run — 826 texels, 796 of them at the single-pass byte, i.e. one
+				// long line — and it is why the file-switch path now calls RequestTrajectoryTrackingReset.
+				//
+				// The bound scales with the brush: a 0.5 m dwell covers roughly the disc's area plus the
+				// swept strip, and a bridging streak spans the full 40 m route, so the two stay orders of
+				// magnitude apart at any radius.
+				Test.TestTrue(TEXT("dwell accumulates above a single traversal"),
+					Stats.PeakByte > SeedByte + CentrelineHitsPerPass);
+				{
+					const int32 DwellCeiling = 4 * (FMath::CeilToInt(PI * Radius * Radius) + CentrelineHitsPerPass * 12);
+					Test.TestTrue(*FString::Printf(
+							TEXT("dwell stays spatially concentrated (touched %d, ceiling %d)"),
+							Stats.TouchedTexels, DwellCeiling),
+						Stats.TouchedTexels < DwellCeiling);
+				}
 				break;
 
 			case EScenario::OverlappingRoutes:
-				// Five identical passes: seed 25, then (5 * 3 - 1) truncated increments == 39.
-				Test.TestEqual(TEXT("five overlapping traversals give a typical texel of 39"), Stats.ModalByte, 39);
-				Test.TestTrue(TEXT("overlap reads hotter than a single traversal"), Stats.ModalByte > 27);
+				// Five agents walking the identical route. The exact modal byte is a function of brush
+				// radius against segment-join spacing, which is fixture geometry rather than behaviour, so
+				// assert the property that matters: five passes must read hotter than any single pass
+				// could, and no hotter than five centrelines' worth.
+				Test.TestTrue(*FString::Printf(
+						TEXT("five overlapping traversals read hotter than any single pass (was %d)"),
+						Stats.ModalByte),
+					Stats.ModalByte > SeedByte + CeilingPerPass);
+				Test.TestTrue(*FString::Printf(
+						TEXT("and no hotter than five centrelines (was %d, ceiling %d)"),
+						Stats.ModalByte, SeedByte + OverlapAgentCount * CeilingPerPass),
+					Stats.ModalByte <= SeedByte + OverlapAgentCount * CeilingPerPass);
 				break;
 			}
 			return true;

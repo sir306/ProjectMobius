@@ -256,29 +256,52 @@ void UDynamicPixelRenderingTexture::DrawLineWithMinimumRed(int32 Start_Coordinat
 	const int32 StepY = Start_Coordinate_Y < End_Coordinate_Y ? 1 : -1;
 	int32 Error = DX + DY;
 
+	// The footprint is a disc, on the same DistanceSquared <= RadiusSquared test DrawCircle uses for the
+	// density surface. A square brush would render a path R*sqrt(2) wide on the diagonals and R wide on
+	// the axes, which is not a pedestrian footprint at any radius.
+	//
+	// Deliberately no edge feather: DrawCircle fades its rim by alpha, but this buffer is an accumulator
+	// whose byte value IS the measurement. A feathered rim increments by (uint8)(1.884 * alpha) == 0 while
+	// still tripping the first-visit seed below, which would wrap every path in a 25-byte halo of texels
+	// nobody walked on.
+	const int32 ClampedBrushRadius = FMath::Max(0, BrushRadius);
+	const int32 RadiusSquared = ClampedBrushRadius * ClampedBrushRadius;
+
+	// Resolved once and reused at every step. The caller derives this radius from world centimetres, so on
+	// a small floor it reaches double digits and a per-step bounding-box walk would dominate the line.
+	TArray<FIntPoint, TInlineAllocator<64>> BrushOffsets;
+	for (int32 OffsetY = -ClampedBrushRadius; OffsetY <= ClampedBrushRadius; ++OffsetY)
+	{
+		for (int32 OffsetX = -ClampedBrushRadius; OffsetX <= ClampedBrushRadius; ++OffsetX)
+		{
+			if (OffsetX * OffsetX + OffsetY * OffsetY <= RadiusSquared)
+			{
+				BrushOffsets.Emplace(OffsetX, OffsetY);
+			}
+		}
+	}
+
 	for (;;)
 	{
-		const int32 ClampedBrushRadius = FMath::Max(0, BrushRadius);
-		const int32 MinimumX = FMath::Max(0, Start_Coordinate_X - ClampedBrushRadius);
-		const int32 MaximumX = FMath::Min(TextureDimensionX - 1, Start_Coordinate_X + ClampedBrushRadius);
-		const int32 MinimumY = FMath::Max(0, Start_Coordinate_Y - ClampedBrushRadius);
-		const int32 MaximumY = FMath::Min(TextureDimensionY - 1, Start_Coordinate_Y + ClampedBrushRadius);
-
-		for (int32 PixelY = MinimumY; PixelY <= MaximumY; ++PixelY)
+		for (const FIntPoint& Offset : BrushOffsets)
 		{
-			for (int32 PixelX = MinimumX; PixelX <= MaximumX; ++PixelX)
+			const int32 PixelX = Start_Coordinate_X + Offset.X;
+			const int32 PixelY = Start_Coordinate_Y + Offset.Y;
+			if (PixelX < 0 || PixelX >= TextureDimensionX || PixelY < 0 || PixelY >= TextureDimensionY)
 			{
-				uint8* PixelPtr = GetPixelPtr(PixelX, PixelY);
-				if (*(PixelPtr + 2) == 0)
-				{
-					FLinearColor FirstVisitColor = LineColor;
-					FirstVisitColor.R = FMath::Max(FirstVisitColor.R, MinimumRedValue);
-					SetPixelColor(PixelPtr, FirstVisitColor, false);
-				}
-				else
-				{
-					SetPixelColor(PixelPtr, LineColor, true);
-				}
+				continue;
+			}
+
+			uint8* PixelPtr = GetPixelPtr(PixelX, PixelY);
+			if (*(PixelPtr + 2) == 0)
+			{
+				FLinearColor FirstVisitColor = LineColor;
+				FirstVisitColor.R = FMath::Max(FirstVisitColor.R, MinimumRedValue);
+				SetPixelColor(PixelPtr, FirstVisitColor, false);
+			}
+			else
+			{
+				SetPixelColor(PixelPtr, LineColor, true);
 			}
 		}
 

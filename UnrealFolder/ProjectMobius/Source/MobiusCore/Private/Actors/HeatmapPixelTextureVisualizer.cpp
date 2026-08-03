@@ -635,8 +635,13 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithTrajectorySegments(const T
 		// A raster line has no sampling gaps: every pixel traversed by an agent segment receives
 		// one additive count. The first visit is seeded at the palette's visible floor because the
 		// material derives its output alpha from the red channel and otherwise hides low values.
+		//
+		// The brush radius comes from TrajectoryCircleRadius in world centimetres, resolved to texels in
+		// UpdateHeatmapMeshBounds, exactly as the density surface sizes its agent disc. A radius fixed in
+		// texels cannot work here: a texel is max(MeshSize.X, MeshSize.Y)/1024 across, so the same footprint
+		// spanned 5.9 cm on a 20 m floor and 73 cm on a 250 m one.
 		TrajectoryAccumulationTexture->DrawLineWithMinimumRed(StartX, EndX, StartY, EndY, PathColor,
-			TrajectoryMinimumVisibleValue, TrajectoryLineBrushRadius);
+			TrajectoryMinimumVisibleValue, FMath::Max(1, ScaledTrajectoryCircleSize));
 
 #if !UE_BUILD_SHIPPING
 		if (bCapturing)
