@@ -17,10 +17,16 @@
  * Keys:
  *   Text:    "Mobius.Text.Title" (Bold 18), "Mobius.Text.Header" (Bold 16), "Mobius.Text.Label" (Regular 14),
  *            "Mobius.Text.Body" (Regular 12), "Mobius.Text.Field" (Regular 12), "Mobius.Text.Caption" (Regular 10),
- *            "Mobius.Text.Error.Location" (Regular 11, error tint)
+ *            "Mobius.Text.Source" (Regular 10, source/reporter attribution — A19 renamed this from
+ *            "Mobius.Text.Error.Location" and dropped its red tint; it is retinted to SublabelText per theme)
  *   Colors:  "Mobius.Color.Error" / ".ErrorInactive" / ".ErrorFlash" / ".Surface" / ".Outline" / ".Foreground"
  *   Margins: "Mobius.Padding.Window" (16), "Mobius.Padding.Button" (4,2)
  *   Widgets: "Mobius.Button" (FButtonStyle), "Mobius.Window.Error" (FWindowStyle, red title theme)
+ *
+ * A19 note: "Mobius.Window.Error" and the three "Mobius.Color.Error*" entries are NO LONGER CONSUMED —
+ * the error window now takes UUIThemeSubsystem::GetThemedWindowStyle() as its base. They are kept only
+ * until the pixel gate confirms on screen that the legacy red title brushes really were inert (the claim
+ * rests on SWindowTitleBarWidget forcing them to NoBrush). Delete them once that capture exists.
  *
  * Integer font sizes only — fractional sizes defeat the Slate font cache and shimmer under DPI scale.
  */

@@ -94,10 +94,7 @@ void UScalabilityWidgetBase::UpdateScalabilityLevel()
 	}
 	else
 	{
+		// A19: on-screen red debug message removed — see PerformanceUtilSubsystem.cpp for the reasoning.
 		UE_LOG(LogTemp, Warning, TEXT("Performance Util Subsystem not found!"));
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Performance Util Subsystem not found!"));
-		}
 	}
 }

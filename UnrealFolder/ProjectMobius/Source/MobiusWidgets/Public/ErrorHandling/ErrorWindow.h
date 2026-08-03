@@ -67,6 +67,19 @@ public:
 	void ShowErrorWindow();
 
 	/**
+	 * True while this widget owns a live native window. Used by UMobiusWidgetSubsystem to decide whether a
+	 * NEW error needs its own window rather than overwriting the message already on screen.
+	 */
+	bool IsWindowOpen() const { return ErrorWindowPtr.IsValid(); }
+
+	/**
+	 * Nudge the window away from its auto-centred position, so stacked error windows do not land exactly
+	 * on top of each other. Applied after the window is added; a no-op if there is no live window.
+	 * @param Delta Screen-space offset in pixels.
+	 */
+	void OffsetWindowPosition(const FVector2D& Delta);
+
+	/**
 	 * Set the severity that drives the emphasis cue (top accent bar): Error/Fatal = red, Warning =
 	 * amber, Info = accent. Read live by the accent colour lambda, so this is safe to call after the
 	 * window is shown (the window is reused across errors, not rebuilt each time).
@@ -92,18 +105,23 @@ public:
 
 private:
 	/**
-	 * Re-theme the Close button for the current theme. Event-driven: bound to
+	 * Re-apply everything in this window that is SNAPSHOTTED rather than polled: the Close button style,
+	 * the three body text colours (A19) and the window chrome. Event-driven: bound to
 	 * UUIThemeSubsystem::OnThemeChangedNative, and also called once at bind time for the initial apply.
+	 *
+	 * Was ApplyCloseButtonTheme, which covered only the button — the title / message / reporter text stayed
+	 * at their open-time theme, so a toggle with the window up moved half the window and left the other
+	 * half behind. That asymmetry is invisible if you only ever open in one theme, which is why it survived.
 	 *
 	 * This used to be an active timer with a 0-second period registered on the Close button (this widget is
 	 * free-standing chrome, never slotted under any window, so its own timers never fire — the OnPaint
 	 * override above is dead). A 0-second timer fires every frame and holds the owning window in Slate's
 	 * must-tick set; only the style rebuild was theme-guarded, not the poll itself.
 	 */
-	void ApplyCloseButtonTheme();
+	void ApplyThemeToWindow();
 
 	/**
-	 * Bind ApplyCloseButtonTheme to the theme subsystem and do the first apply. Returns false if the
+	 * Bind ApplyThemeToWindow to the theme subsystem and do the first apply. Returns false if the
 	 * subsystem does not exist yet — it is a GameInstanceSubsystem, so there may be no game instance.
 	 * Idempotent: a second call while already bound is a no-op that returns true.
 	 */
@@ -152,14 +170,14 @@ private:
 	/** Themed Close-button style (member so SButton's cached brush pointers stay valid). */
 	FButtonStyle CloseButtonStyle;
 
-	/** Close button, stored so its style can be re-applied on a live theme change (see PollCloseButtonTheme). */
+	/** Close button, stored so its style can be re-applied on a live theme change (see ApplyThemeToWindow). */
 	TSharedPtr<SButton> CloseButton;
 
 	/**
-	 * Theme last stamped into CloseButtonStyle. Initialised to an out-of-range sentinel (Dark=0/Light=1)
-	 * so the first apply always rebuilds the button style.
+	 * Theme last stamped by ApplyThemeToWindow. Initialised to (and reset by ReleaseWindowState back to) an
+	 * out-of-range sentinel (Dark=0/Light=1) so the first apply after every open always re-stamps.
 	 */
-	EMobiusUITheme LastAppliedCloseButtonTheme = static_cast<EMobiusUITheme>(0xFF);
+	EMobiusUITheme LastAppliedTheme = static_cast<EMobiusUITheme>(0xFF);
 
 	/** Subsystem we bound OnThemeChangedNative on, and the handle to remove. Weak: the GameInstance can go
 	 *  first (PIE stop) and this window is free-standing chrome that outlives nothing in particular. */

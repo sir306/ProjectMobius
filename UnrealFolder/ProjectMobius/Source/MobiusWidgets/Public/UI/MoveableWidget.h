@@ -29,11 +29,16 @@
 #include "MoveableWidget.generated.h"
 
 /**
- * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget so this widget and its subclass
- * UMoveableErrorWidget (WBP_ErrorPopup1) theme their own tree on construct + OnThemeChanged. Without it,
- * their text would go unthemed the moment the global value walk is deleted. No behaviour of its own is
- * added: this widget has no role colours to pull, only standard controls and text in its tree, which the
- * base handles. Both classes already call Super::NativeConstruct, so the base's bind runs.
+ * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget so this widget themes its own
+ * tree on construct + OnThemeChanged. Without it, its text would go unthemed the moment the global value
+ * walk is deleted. No behaviour of its own is added: this widget has no role colours to pull, only standard
+ * controls and text in its tree, which the base handles. It calls Super::NativeConstruct, so the base's
+ * bind runs.
+ *
+ * A19 (2026-08-03): this used to also cover a subclass, UMoveableErrorWidget (the UMG error popup behind
+ * WBP_ErrorPopup1). That class and both popup assets were deleted — zero referencers of any kind, and the
+ * live error surface has been the Slate SErrorWindowWidget for some time. Sole remaining consumer of this
+ * base is WBP_MoveableWidgetTest.
  */
 UCLASS()
 class MOBIUSWIDGETS_API UMoveableWidget : public UMobiusThemedUserWidget

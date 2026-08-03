@@ -5,6 +5,7 @@
 #include "BRisk/BRiskSmokeVisualizer.h"
 #include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
+#include "IMobiusErrorReporter.h"                          // A19-b: surface import failures to the user
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
 #include "Subsystems/TimeDilationSubSystem.h"
@@ -208,6 +209,22 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 	{
 		LastError = TEXT("LoadScenarioFromSmv called with an empty path.");
 		UE_LOG(LogBRiskDataSubsystem, Warning, TEXT("%s"), *LastError);
+
+		// A19-b: Warning with NO prompt, deliberately. An empty path is a caller bug, not something the
+		// user can act on, so it belongs in the log window rather than in a window over their work — the
+		// same call it gets in BRiskEgressSubsystem's defaulted-endpoints report.
+		if (IMobiusErrorReporter* Reporter = IMobiusErrorReporter::Get(this))
+		{
+			Reporter->ReportError(
+				NSLOCTEXT("MobiusBRisk", "BRiskImportTitleBar", "B-Risk Import Error"),
+				NSLOCTEXT("MobiusBRisk", "BRiskEmptyPathTitle", "No scenario file supplied"),
+				NSLOCTEXT("MobiusBRisk", "BRiskEmptyPathBody",
+					"A B-Risk load was requested with an empty file path, so nothing was loaded."),
+				NSLOCTEXT("MobiusBRisk", "BRiskImportSource", "BRiskDataSubsystem"),
+				EMobiusErrorSeverity::Warning,
+				/*bShowPrompt=*/false);
+		}
+
 		OnBRiskScenarioLoaded.Broadcast(false);
 		return;
 	}
@@ -281,6 +298,23 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 				Self->LastError = ErrorMessage;
 				UE_LOG(LogBRiskDataSubsystem, Error,
 					TEXT("B-Risk scenario load failed: %s"), *ErrorMessage);
+
+				// A19-b: until now this path was LOG-ONLY. Every hard failure in FBRiskDataImporter —
+				// missing/unreadable .smv, wrong extension, a zone CSV with no Time column or no data rows,
+				// a malformed numeric cell, a series/time length mismatch, no ZONE references — landed here,
+				// set LastError, and showed the user absolutely nothing. The scenario simply did not appear.
+				// ULoadBRiskDataWidget only validates the file EXTENSION before handing off, so it cannot
+				// cover any of these. ErrorMessage is already a specific, path-carrying sentence from the
+				// importer, so it is surfaced verbatim rather than re-worded into something vaguer.
+				if (IMobiusErrorReporter* Reporter = IMobiusErrorReporter::Get(Self))
+				{
+					Reporter->ReportError(
+						NSLOCTEXT("MobiusBRisk", "BRiskImportTitleBar", "B-Risk Import Error"),
+						NSLOCTEXT("MobiusBRisk", "BRiskImportTitle", "Scenario could not be loaded"),
+						FText::FromString(ErrorMessage),
+						NSLOCTEXT("MobiusBRisk", "BRiskImportSource", "BRiskDataSubsystem"),
+						EMobiusErrorSeverity::Error);
+				}
 			}
 
 			Self->OnBRiskScenarioLoaded.Broadcast(bSuccess);

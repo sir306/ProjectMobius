@@ -62,6 +62,29 @@ namespace
 		}
 		return Fallback;
 	}
+
+	/** Shorthand for the common case: fall back to the role's LIGHT value when there is no subsystem yet. */
+	FLinearColor PollErrorWindowColor(EMobiusPaletteRole Role)
+	{
+		return PollErrorWindowColor(Role, MobiusThemePalette::Color(Role, /*bLight=*/true));
+	}
+
+	/**
+	 * A19(d): window chrome for the error window. Themed like every other Mobius window, with the A18
+	 * danger × layered on top. Falls back to the legacy red-title style only when there is no game
+	 * instance yet — GetThemedWindowStyle lives on a GameInstanceSubsystem, so it can genuinely be absent.
+	 */
+	FWindowStyle ResolveErrorWindowChrome()
+	{
+		UUIThemeSubsystem* Theme = FindThemeSubsystemForErrorWindow();
+		FWindowStyle Chrome = Theme
+			? Theme->GetThemedWindowStyle()
+			: FMobiusStyle::Get().GetWidgetStyle<FWindowStyle>("Mobius.Window.Error");
+
+		// A18: the title-bar × reads as the destructive affordance it is.
+		MobiusWindowButtonStyle::ApplyDangerCloseGlyph(Chrome, Theme);
+		return Chrome;
+	}
 }
 
 
@@ -129,6 +152,17 @@ void SErrorWindowWidget::ShowErrorWindow()
 	}
 }
 
+void SErrorWindowWidget::OffsetWindowPosition(const FVector2D& Delta)
+{
+	if (ErrorWindowPtr.IsValid())
+	{
+		// GetPositionInScreen returns FDeprecateVector2DResult and MoveWindowTo takes
+		// FDeprecateVector2DParameter; go through FVector2D explicitly so the arithmetic is unambiguous.
+		const FVector2D Current(ErrorWindowPtr->GetPositionInScreen());
+		ErrorWindowPtr->MoveWindowTo(Current + Delta);
+	}
+}
+
 void SErrorWindowWidget::OpenErrorWindow()
 {
         if (ErrorWindowPtr.IsValid() || !FSlateApplication::IsInitialized())
@@ -141,17 +175,17 @@ void SErrorWindowWidget::OpenErrorWindow()
         // so the shared 12/10 sizes render tiny here. Members (not stack-locals) because the content
         // panel keeps the style pointers past this scope. Colour is left untouched (the shared ramp is
         // retinted per theme in ApplySharedStyles at open time), so the polled colour is preserved.
-        ErrorWindowStyle = FMobiusStyle::Get().GetWidgetStyle<FWindowStyle>("Mobius.Window.Error");
+        // A19(d): the window CHROME now comes from the same source as every other Mobius window
+        // (GetThemedWindowStyle) instead of the legacy "Mobius.Window.Error" red-title style, so the frame,
+        // title bar and title text follow the theme rather than a baked red. The old style is kept as the
+        // fallback for the pre-game-instance case only, where there is no subsystem to ask.
+        ErrorWindowStyle = ResolveErrorWindowChrome();
         TitleTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Title");
         MessageTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Body");
-        LocationTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Error.Location");
+        LocationTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Source");
         TitleTextStyle.Font.Size = 16.0f;
         MessageTextStyle.Font.Size = 13.0f;
         LocationTextStyle.Font.Size = 12.0f;
-
-        // A18: title-bar × reads as the destructive affordance it is. Stamped at open (like the rest of
-        // this window style), so a theme toggle while the window is up is picked up on the next open.
-        MobiusWindowButtonStyle::ApplyDangerCloseGlyph(ErrorWindowStyle, FindThemeSubsystemForErrorWindow());
 
         // Themed Close button (member: SButton caches raw pointers into the style's brushes).
         CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(FindThemeSubsystemForErrorWindow());
@@ -174,6 +208,13 @@ void SErrorWindowWidget::OpenErrorWindow()
                         // SWindowTitleBarWidget forces title brushes to NoBrush and polls TitlebarText for
                         // the title colour). Driven by severity so a Warning-level "Performance Notice" is
                         // NOT painted error-red: Error/Fatal = red, Warning = amber, Info = accent (blue).
+                        //
+                        // A19(a): all three were hard-coded literals. They are now palette roles, polled
+                        // per paint like the rest of this window, so the rule follows a live theme toggle
+                        // and there is exactly ONE red in the app. Measured on the body surface (RibbonBg):
+                        // DangerText 5.2:1 light / 4.2:1 dark, WarningText 4.8:1 / 5.5:1, Accent 5.2:1 /
+                        // 4.0:1. The literal amber this replaces measured 1.96:1 in light — below even the
+                        // 3:1 UI-component bar, which is why WarningText had to be added to the palette.
                         + SVerticalBox::Slot()
                         .AutoHeight()
                         [
@@ -183,13 +224,13 @@ void SErrorWindowWidget::OpenErrorWindow()
                                         switch (*Severity)
                                         {
                                         case EMobiusErrorSeverity::Warning:
-                                                return FLinearColor(0.9f, 0.35f, 0.0f); // amber warning cue
+                                                return PollErrorWindowColor(EMobiusPaletteRole::WarningText);
                                         case EMobiusErrorSeverity::Info:
-                                                return PollErrorWindowColor(EMobiusPaletteRole::Accent, MobiusThemePalette::Color(EMobiusPaletteRole::Accent, /*bLight=*/true));
+                                                return PollErrorWindowColor(EMobiusPaletteRole::Accent);
                                         case EMobiusErrorSeverity::Error:
                                         case EMobiusErrorSeverity::Fatal:
                                         default:
-                                                return FLinearColor(0.8f, 0.1f, 0.1f); // error red (== Mobius.Color.Error)
+                                                return PollErrorWindowColor(EMobiusPaletteRole::DangerText);
                                         }
                                 })
                                 .Size(FVector2D(1.0f, 3.0f))
@@ -312,6 +353,11 @@ void SErrorWindowWidget::ReleaseWindowState()
 	ErrorWindowPtr.Reset();
 	ContentPanel.Reset();
 	CloseButton.Reset();
+
+	// Back to the out-of-range sentinel so a REOPEN re-pushes unconditionally. Without this, reopening in
+	// the same theme early-outs of ApplyThemeToWindow and the freshly rebuilt ContentPanel/CloseButton
+	// would rely entirely on construct having got it right.
+	LastAppliedTheme = static_cast<EMobiusUITheme>(0xFF);
 }
 
 void SErrorWindowWidget::HandleWindowClosed(const TSharedRef<SWindow>& InWindow)
@@ -344,23 +390,62 @@ FReply SErrorWindowWidget::HandleCloseClicked()
 	return FReply::Handled();
 }
 
-void SErrorWindowWidget::ApplyCloseButtonTheme()
+void SErrorWindowWidget::ApplyThemeToWindow()
 {
-	// Only rebuild when the theme actually changed (sentinel forces the first apply). The CloseButtonStyle
-	// built at construct is frozen at the construct-time theme; a reused window shown in another theme
-	// would otherwise keep the wrong button background (the label already polls ButtonText live).
-	if (const UUIThemeSubsystem* ThemeSubsystem = FindThemeSubsystemForErrorWindow())
+	// Only rebuild when the theme actually changed (sentinel forces the first apply). Everything touched
+	// here is SNAPSHOTTED at open, so without this pass a theme toggle with the window up repaints only
+	// the parts that poll (body surface, frame, Close label) and leaves the rest at the open-time theme.
+	const UUIThemeSubsystem* ThemeSubsystem = FindThemeSubsystemForErrorWindow();
+	if (!ThemeSubsystem)
 	{
-		const EMobiusUITheme CurrentThemeValue = ThemeSubsystem->GetTheme();
-		if (CurrentThemeValue != LastAppliedCloseButtonTheme)
-		{
-			CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(ThemeSubsystem);
-			if (CloseButton.IsValid())
-			{
-				CloseButton->SetButtonStyle(&CloseButtonStyle);
-			}
-			LastAppliedCloseButtonTheme = CurrentThemeValue;
-		}
+		return;
+	}
+
+	const EMobiusUITheme CurrentThemeValue = ThemeSubsystem->GetTheme();
+	if (CurrentThemeValue == LastAppliedTheme)
+	{
+		return;
+	}
+	LastAppliedTheme = CurrentThemeValue;
+
+	// 1. Close button. Built at construct and therefore frozen at the construct-time theme; a reused
+	//    window shown in another theme would otherwise keep the wrong button background (the LABEL
+	//    already polls ButtonText live, so only the brushes are at risk).
+	CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(ThemeSubsystem);
+	if (CloseButton.IsValid())
+	{
+		CloseButton->SetButtonStyle(&CloseButtonStyle);
+	}
+
+	// 2. A19: the three body text colours. These are the half of the window that did NOT follow a live
+	//    toggle. OpenErrorWindow copies the shared ramp into members and locally bumps the font sizes
+	//    (this native window gets no UMG DPI multiplier), and ApplySharedStyles retints the SHARED style
+	//    objects — which these copies no longer track. Worse, STextBlock stores its FTextBlockStyle by
+	//    value, so even re-stamping the members would not reach the widgets.
+	//
+	//    So push COLOUR straight through, using the same roles ApplySharedStyles uses for the same keys
+	//    (Title/Body -> LabelText, Source -> SublabelText) so the two writers can never disagree. Colour
+	//    only, deliberately: a whole-style re-apply would undo SFieldAndTitleText's shrink-to-fit font
+	//    size and its Mono typeface. Keep the members in step too, so the next open starts correct.
+	const FSlateColor LabelColor(ThemeSubsystem->GetPaletteColor(EMobiusPaletteRole::LabelText));
+	const FSlateColor SourceColor(ThemeSubsystem->GetPaletteColor(EMobiusPaletteRole::SublabelText));
+	TitleTextStyle.ColorAndOpacity = LabelColor;
+	MessageTextStyle.ColorAndOpacity = LabelColor;
+	LocationTextStyle.ColorAndOpacity = SourceColor;
+	if (ContentPanel.IsValid())
+	{
+		ContentPanel->SetTextColors(LabelColor, LabelColor, SourceColor);
+	}
+
+	// 3. A19(d): window chrome. SWindow keeps a pointer to the style we handed it, so re-stamping the
+	//    member in place is the intended route — but SWindowTitleBarWidget may well have copied brushes
+	//    into its own children at construct (STextBlock above does exactly that), in which case the title
+	//    bar will only pick this up on the NEXT open. Treat "the title bar follows a live toggle" as
+	//    UNVERIFIED until the pixel gate says otherwise; the reopen path is correct either way.
+	ErrorWindowStyle = ResolveErrorWindowChrome();
+	if (ErrorWindowPtr.IsValid())
+	{
+		ErrorWindowPtr->Invalidate(EInvalidateWidgetReason::Layout);
 	}
 }
 
@@ -378,10 +463,10 @@ bool SErrorWindowWidget::TryBindThemeChanged()
 	}
 
 	BoundThemeSubsystem = ThemeSubsystem;
-	ThemeChangedHandle = ThemeSubsystem->OnThemeChangedNative.AddSP(this, &SErrorWindowWidget::ApplyCloseButtonTheme);
+	ThemeChangedHandle = ThemeSubsystem->OnThemeChangedNative.AddSP(this, &SErrorWindowWidget::ApplyThemeToWindow);
 
 	// The event only fires on a later toggle, so stamp the current theme now.
-	ApplyCloseButtonTheme();
+	ApplyThemeToWindow();
 	return true;
 }
 

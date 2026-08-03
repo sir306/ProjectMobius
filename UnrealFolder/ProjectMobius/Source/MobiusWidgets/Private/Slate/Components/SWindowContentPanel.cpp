@@ -72,6 +72,20 @@ void SWindowContentPanel::SetMessageText(const FText& InMessageText)
 	}
 }
 
+void SWindowContentPanel::SetTextColors(const FSlateColor& InTitleColor, const FSlateColor& InMessageColor,
+	const FSlateColor& InLocationColor)
+{
+	if (TitleMessageWidget.IsValid())
+	{
+		// Already colour-only + Invalidate(Paint) on the far side; see its comment.
+		TitleMessageWidget->SetTextColors(InTitleColor, InMessageColor);
+	}
+	if (LocationTextBlock.IsValid())
+	{
+		LocationTextBlock->SetColorAndOpacity(InLocationColor);
+	}
+}
+
 void SWindowContentPanel::SetLocationText(const FText& InLocationText)
 {
 	const bool bHasLocation = !InLocationText.IsEmptyOrWhitespace();

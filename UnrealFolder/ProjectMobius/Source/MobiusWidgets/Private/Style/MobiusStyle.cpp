@@ -112,9 +112,13 @@ TSharedRef<FSlateStyleSet> FMobiusStyle::Create()
 	Style->Set("Mobius.Text.Body", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 10)));
 	Style->Set("Mobius.Text.Field", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Regular", 10)));
 	Style->Set("Mobius.Text.Caption", FTextBlockStyle(NormalText).SetFont(InterFontStyle("Medium", 9)));
-	Style->Set("Mobius.Text.Error.Location", FTextBlockStyle(NormalText)
-		.SetFont(InterFontStyle("Regular", 10))
-		.SetColorAndOpacity(FSlateColor(ErrorColor)));
+	// A19: was "Mobius.Text.Error.Location", tinted ErrorColor and left OUT of the per-theme retint, so the
+	// error window's reporter line ("AsyncAssimpMeshLoader") rendered raw red in BOTH themes. Red was doing
+	// two unrelated jobs — severity AND source attribution. It is now source attribution only: muted,
+	// per-theme, and renamed so nothing reads as error-coloured. Colour comes from the retint in
+	// UIThemeSubsystem::ApplySharedStyles (SublabelText), not from here.
+	Style->Set("Mobius.Text.Source", FTextBlockStyle(NormalText)
+		.SetFont(InterFontStyle("Regular", 10)));
 
 	// ---- Widget styles --------------------------------------------------------------------------
 	// 7a "AutoCAD dark" toolbar button (drives ButtonWithText Browse etc.; ribbon tabs override their

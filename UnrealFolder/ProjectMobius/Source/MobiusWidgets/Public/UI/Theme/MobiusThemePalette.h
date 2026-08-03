@@ -88,11 +88,29 @@ enum class EMobiusPaletteRole : uint8
 	/**
 	 * DESTRUCTIVE / ERROR text + glyph (owner directive 2026-07-28: "we want danger/error role in the
 	 * palette as that is better UX design making it more accessible to what people expect"). Consumers:
-	 * the Remove flow-counter label today; close (×) icon buttons and the error-window styling next.
-	 * Deliberately ONE role for now — a full danger ramp (fill / border / hover / pressed) waits on the
-	 * error-UI task rather than being invented here.
+	 * the Remove flow-counter label, close (×) icon buttons, and (A19) the error window's severity rule
+	 * for Error/Fatal.
+	 *
+	 * A19 RULING 2026-08-03 — the ramp question this comment used to defer is now SETTLED, do not
+	 * re-litigate it: the error-UI pass added exactly ONE sibling role (WarningText, below) and NO fill /
+	 * border / hover / pressed ramp. The A5 ruling stands — destructive reads as red TEXT/GLYPH on the
+	 * normal surface, never a red fill. DangerText also drives the 3px severity rule, which is a cue and
+	 * not a fill; that was ruled acceptable rather than inventing a DangerBg.
 	 */
 	DangerText,
+	/**
+	 * WARNING text + severity cue (A19, owner-approved 2026-08-03). Added because the error window's
+	 * Warning amber was a theme-blind literal: it measures 5.5:1 on the dark body surface but only
+	 * **1.96:1** on the light one, i.e. effectively invisible in light theme. Dark is that same amber,
+	 * unchanged, so nothing the owner has already signed off on moves. Light is a new value.
+	 *
+	 * APPENDED, NOT INSERTED — and any future role must be too. GMobiusPalette is INDEX-mapped to this
+	 * enum and the static_assert below only catches a COUNT mismatch, never an index shift. Two
+	 * .uasset-authored UPROPERTYs hold this enum (UMobiusThemedBorder::FillRole / ::OutlineRole), which
+	 * UE tags by value NAME rather than index, so an insertion would probably survive — "probably" is
+	 * not a reason to risk it when appending is free.
+	 */
+	WarningText,
 	Count UMETA(Hidden)
 };
 
@@ -180,6 +198,20 @@ namespace MobiusThemePalette
 		// wanted for the 11px labels, #FF9E9E is 4.5:1; it reads more salmon than red, so it is the
 		// owner's call, not a silent substitution.
 		/* DangerText        */ { FLinearColor(0.55199f, 0.02415f, 0.01162f),     FLinearColor(1.0f, 0.14701f, 0.11192f) },
+		// WarningText — A19, owner-approved 2026-08-03. Measured against the error window's body surface
+		// (RibbonBg: light 0.9131, dark 0.03955), which is the only surface either half lands on today.
+		//
+		// DARK is the amber that was hard-coded at ErrorWindow.cpp's severity lambda, carried over
+		// UNCHANGED (linear 0.9, 0.35, 0.0 ~= #F3A000). It measures 5.5:1 — nothing was wrong with it, and
+		// the owner has already been looking at it, so this is a lift-and-name, not a retune.
+		//
+		// LIGHT #9D5D00 is new: the dark amber measures only **1.96:1** on the light body surface, i.e.
+		// it fails even the 3:1 UI-component bar and reads as near-invisible. #9D5D00 measures 4.8:1 —
+		// AA for normal text — and is the deepest amber that still reads amber rather than brown. It was
+		// chosen on that measurement; a suspected Fluent/Win11 SystemFillColorCaution provenance was NOT
+		// verified, unlike DangerText light #C42B1C whose Fluent origin is documented above. Rejected
+		// alternative: #B54708 (5.0:1) reads noticeably more orange next to DangerText.
+		/* WarningText       */ { FLinearColor(0.33705f, 0.10952f, 0.0f),        FLinearColor(0.9f, 0.35f, 0.0f) },
 	};
 
 	static_assert(UE_ARRAY_COUNT(GMobiusPalette) == static_cast<int32>(EMobiusPaletteRole::Count),

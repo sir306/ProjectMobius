@@ -105,12 +105,11 @@ void UPerformanceUtilSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 	else
 	{
+		// A19: the on-screen red debug message that used to sit here is gone. It painted untethered engine
+		// text over the app for a condition the user cannot act on (a missing engine object = a broken
+		// build), it bypassed every Mobius error path, and it violates the project's no-on-screen-debug
+		// rule. The log line is the record.
 		UE_LOG(LogTemp, Warning, TEXT("Game User Settings not found!"));
-		// package build debug to screen
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Game User Settings not found!"));
-		}
 	}
 
 	// Detect (or apply the persisted override for) the render performance tier once at startup

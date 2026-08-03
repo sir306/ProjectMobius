@@ -1157,8 +1157,10 @@ void UUIThemeSubsystem::StyleImageForTheme(UImage* Image, const bool bLight)
 	// a near-white surface into mid-grey 0.7913. A declared role cannot collide, which is the entire argument
 	// for the rebuild; the 73 migrated borders escaped this the same way.
 	//
-	// Scoped by OWNER rather than by name on purpose: three other widgets are also called BackgroundImage
-	// (WBP_ErrorPopup, WBP_ErrorPopup1, WBP_MoveableWidgetTest) and a bare name test would recolour them too.
+	// Scoped by OWNER rather than by name on purpose: another widget is also called BackgroundImage
+	// (WBP_MoveableWidgetTest) and a bare name test would recolour it too. Two more used to be — the
+	// WBP_ErrorPopup / WBP_ErrorPopup1 pair, deleted as dead assets in A19 (2026-08-03). Keep the owner
+	// scoping regardless; it is correct independently of how many name collisions happen to exist today.
 	//
 	// The fix lives HERE, not in the play bar, because USimulationPlayBar is in ProjectMobius and cannot see
 	// this subsystem at all — MobiusWidgets depends on ProjectMobius, so the reverse is a module cycle. That
@@ -1924,6 +1926,11 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 	RetintRamp("Mobius.Text.Body",    EMobiusPaletteRole::LabelText);       // body copy
 	RetintRamp("Mobius.Text.Field",   EMobiusPaletteRole::InputText);       // value readouts
 	RetintRamp("Mobius.Text.Caption", EMobiusPaletteRole::SublabelText);    // captions / hints
+	// A19: the error window's reporter/source line. Was "Mobius.Text.Error.Location", hard-tinted red and
+	// deliberately NOT in this list, which is why it read the same raw red in both themes. Demoted to
+	// SublabelText — measured 5.3:1 light / 4.2:1 dark on the error body surface, against MicroText's
+	// 3.25:1 and HintText's 2.6:1 in light, which is why the A19 row's suggestion of those two was not taken.
+	RetintRamp("Mobius.Text.Source",  EMobiusPaletteRole::SublabelText);    // source / reporter attribution
 }
 
 // Dev diagnostic: dump colour-relevant state of every live ButtonWithText.
