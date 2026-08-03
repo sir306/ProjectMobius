@@ -504,6 +504,13 @@ void UMobiusWidgetSubsystem::SetLoadingText(bool bIsLoadingBar, FString NewLoadi
 
 void UMobiusWidgetSubsystem::UpdateLoadingInfiniteWidget(bool bIsLoading, FString NewLoadingText)
 {
+	// check if the loading widget is null
+	if(LoadingNotifyWidget == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Loading Widget is null, cannot update load percent"));
+		return;
+	}
+
 	FText LoadingText = FText::FromString(ElideLoadingTextMiddle(NewLoadingText));
 	LoadingNotifyWidget->SetLoadingText(false, LoadingText);
 	LoadingNotifyWidget->SetIsLoadingGeometry(bIsLoading);
