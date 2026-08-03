@@ -288,8 +288,9 @@ void UDynamicPixelRenderingTexture::DrawLineWithMinimumRed(int32 Start_Coordinat
 	// nobody walked on.
 	// Cached across calls, not just across steps. The trajectory path issues one of these per agent per
 	// flush — on the order of 1900 calls, all at the same radius — so rebuilding the offset list per call
-	// would rebuild the identical disc every time. A 20 cm footprint on a small floor is radius ~10, i.e.
-	// 317 offsets, which is also well past what any reasonable inline allocator would hold.
+	// would rebuild the identical disc every time. A 10 cm footprint on a 20 m floor is radius ~5, and a
+	// larger footprint or a smaller floor pushes it into the hundreds of offsets, well past what any
+	// reasonable inline allocator would hold.
 	const TArray<FIntPoint>& BrushOffsets = GetBrushOffsets(FMath::Max(0, BrushRadius));
 
 	for (;;)

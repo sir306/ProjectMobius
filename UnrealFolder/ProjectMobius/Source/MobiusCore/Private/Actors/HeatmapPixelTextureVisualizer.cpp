@@ -991,7 +991,7 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapMeshBounds()
 	
 	// Using the UV scale, calculate the circle size
 	ScaledCircleSize = CircleRadius * FMath::Min(UVScale.X, UVScale.Y);
-	// Large floor meshes can convert a 20 cm path footprint to a fractional texel. Keep one
+	// Large floor meshes can convert a 10 cm path footprint to a fractional texel. Keep one
 	// texel minimum so a trajectory remains visible without inflating its world-space radius.
 	ScaledTrajectoryCircleSize = FMath::Max(1, FMath::RoundToInt(TrajectoryCircleRadius * FMath::Min(UVScale.X, UVScale.Y)));
 	UE_LOG(LogTemp, Log, TEXT("UVScale: (%f, %f), ScaledCircleSize: %d"), UVScale.X, UVScale.Y, ScaledCircleSize);

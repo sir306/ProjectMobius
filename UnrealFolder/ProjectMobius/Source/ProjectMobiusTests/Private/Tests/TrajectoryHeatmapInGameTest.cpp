@@ -69,11 +69,11 @@ namespace TrajectoryInGame
 	 * Duplicated deliberately. The point of the conversion is that a texel is NOT a fixed real-world size
 	 * — it is max(MeshSize.X, MeshSize.Y)/1024 — so a test that hardcoded a texel count would go on
 	 * passing while the rendered path width drifted with the size of the building. At this fixture's 50 m
-	 * that is ~4.88 cm per texel and a 20 cm radius resolves to 4.
+	 * that is ~4.88 cm per texel and a 10 cm radius resolves to 2.
 	 */
 	static int32 ExpectedBrushRadius()
 	{
-		constexpr float TrajectoryCircleRadiusCm = 20.0f;   // AHeatmapPixelTextureVisualizer default
+		constexpr float TrajectoryCircleRadiusCm = 10.0f;   // AHeatmapPixelTextureVisualizer default
 		const float TexelsPerCm = TextureTexels / (HeatmapMetres * 100.0f);
 		return FMath::Max(1, FMath::RoundToInt(TrajectoryCircleRadiusCm * TexelsPerCm));
 	}

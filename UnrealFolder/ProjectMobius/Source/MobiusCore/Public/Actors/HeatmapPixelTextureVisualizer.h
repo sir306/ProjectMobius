@@ -345,12 +345,29 @@ public:
 	int32 CircleRadius = 110; // 110 = 1.1m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING
 
 	/**
-	 * Path footprint RADIUS in world centimetres, so the default 20 draws a 40 cm wide route. Matches how
+	 * Path footprint RADIUS in world centimetres, so the default 10 draws a 20 cm wide route. Matches how
 	 * CircleRadius is used by the density surface. Resolved to texels in UpdateHeatmapMeshBounds, which is
 	 * what keeps a route the same real-world width regardless of how large the floor is.
+	 *
+	 * Halved from 20 on 2026-08-03 after a visual check: at 20 (a 40 cm route) the trail read as wide as
+	 * the agent walking it, which is a body footprint, not a path. A trajectory marks where someone went,
+	 * so it should be narrower than the person.
+	 *
+	 * Note this stops mattering on large floors, and halving moved that boundary. The texel radius has a
+	 * floor of 1, so once a texel is wider than this value the route is 3 texels across whatever is set
+	 * here. At 10 cm that bites from roughly 60 m up, where 20 cm held out to about 120 m:
+	 *
+	 *     20 m -> r=5, 21.5 cm      73 m -> r=1, 21.4 cm (floored)
+	 *     40 m -> r=3, 27.3 cm     150 m -> r=1, 43.9 cm (floored)
+	 *     60 m -> r=2, 29.3 cm     250 m -> r=1, 73.2 cm (floored)
+	 *
+	 * Two things follow. Widths are jumpier between floors than they were, because rounding a radius of
+	 * one or two texels quantises coarsely — that is the 21/27/29 cm wobble above, not a bug. And above
+	 * ~60 m the parameter is no longer in control; only render-target resolution is. Both are arguments
+	 * for sizing the texture to the floor rather than hardcoding 1024 (see UpdateHeatmapMeshBounds).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))
-	int32 TrajectoryCircleRadius = 20;
+	int32 TrajectoryCircleRadius = 10;
 
 	/** World-space spacing of rasterised path samples. Smaller values give continuous paths at higher cost. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))

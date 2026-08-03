@@ -304,10 +304,20 @@ namespace TrajectoryRealData
 
 			// The number that this whole exercise turns on. Brush radius, hits per crossing and therefore
 			// every band edge follow from it, so it is logged whether or not anything fails.
+			// Mirrors AHeatmapPixelTextureVisualizer::TrajectoryCircleRadius. Logged rather than asserted:
+			// if the radius floors at 1 the route is 3 texels wide whatever the parameter says, and that
+			// is worth seeing in the log before anyone fits a band edge to the resulting capture.
+			constexpr float TrajectoryCircleRadiusCm = 10.0f;
 			const float CmPerTexel = SizeCm / 1024.0f;
+			const int32 BrushTexels = FMath::Max(1, FMath::RoundToInt(TrajectoryCircleRadiusCm / CmPerTexel));
 			UE_LOG(LogTemp, Display,
-				TEXT("[TrajectoryRealData] heatmap %.0f m -> %.3f cm/texel, 20 cm brush radius -> %d texels"),
-				Metres, CmPerTexel, FMath::Max(1, FMath::RoundToInt(20.0f / CmPerTexel)));
+				TEXT("[TrajectoryRealData] heatmap %.0f m -> %.3f cm/texel; %.0f cm radius -> %d texels, ")
+				TEXT("route renders %.1f cm wide%s"),
+				Metres, CmPerTexel, TrajectoryCircleRadiusCm, BrushTexels,
+				(2 * BrushTexels + 1) * CmPerTexel,
+				BrushTexels == 1 && CmPerTexel > TrajectoryCircleRadiusCm
+					? TEXT(" (RADIUS FLOORED - texel size is in control here, not the parameter)")
+					: TEXT(""));
 
 			// Arm AFTER the heatmap exists: Arm() resets the playhead and clears the accumulation, so the
 			// captured window lines up with the movement data with no time offset.

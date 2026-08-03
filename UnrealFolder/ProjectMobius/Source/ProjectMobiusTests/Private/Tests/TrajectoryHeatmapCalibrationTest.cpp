@@ -33,10 +33,10 @@ namespace TrajectoryCalibration
 	static constexpr float SampleWeight = 0.05f;            // TrajectorySampleWeight
 	static constexpr float MinimumVisible = 0.10f;          // TrajectoryMinimumVisibleValue
 	// Footprint radius in TEXELS. At runtime this is not a constant: AHeatmapPixelTextureVisualizer
-	// derives it per floor from TrajectoryCircleRadius (20 cm) via UVScale, so it was 3 on the 73 m floor
-	// the calibration capture came from and reaches double digits on a small one. One is used here only
-	// because it keeps the closed-form byte arithmetic below readable; BrushScalesWithRadius covers the
-	// rest of the range.
+	// derives it per floor from TrajectoryCircleRadius (10 cm) via UVScale, so it floors at 1 on the 73 m
+	// floor the calibration capture came from and reaches ~5 on a 20 m one. One is used here only because
+	// it keeps the closed-form byte arithmetic below readable; BrushScalesWithRadius covers the rest of
+	// the range.
 	static constexpr int32 BrushRadius = 1;
 
 	// --- LOS band edges ------------------------------------------------------------------------------
