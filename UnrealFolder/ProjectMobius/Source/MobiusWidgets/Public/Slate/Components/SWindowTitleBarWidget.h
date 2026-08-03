@@ -11,6 +11,8 @@ class STextBlock;
 class SMoveableWindow;
 class SWindowTitleBar;
 class IWindowTitleBar;
+class UUIThemeSubsystem;
+enum class EMobiusUITheme : uint8;
 
 /**
  * Reusable window title bar widget with customizable styling.
@@ -81,8 +83,38 @@ public:
 	TSharedPtr<IWindowTitleBar> GetTitleBar() const;
 
 private:
+        /**
+         * A19-c: re-tint the close (x) glyph for the current theme. Bound to
+         * UUIThemeSubsystem::OnThemeChangedNative, and called once at bind time for the initial stamp.
+         *
+         * Every other colour in this bar is a per-paint poll, but a brush TINT is not an attribute, so the
+         * glyph was stamped once at open and a live toggle left it on the other theme's red. It must be
+         * re-stamped here rather than by the window that owns the style, because Construct COPIES that
+         * style into WindowStyle below. Writing the member in place is sufficient: the engine reads the
+         * close-button image through its style pointer every paint (SWindowTitleBar::GetCloseImage).
+         */
+        void ApplyThemeToTitleBar();
+
+        /** Bind ApplyThemeToTitleBar and do the first stamp. False if there is no GameInstance yet. */
+        bool TryBindThemeChanged();
+
+        /** Bootstrap retry for TryBindThemeChanged; returns Stop as soon as it binds, so this is not a poll. */
+        EActiveTimerReturnType EnsureThemeBinding(double InCurrentTime, float InDeltaTime);
+
+        /** Drop the OnThemeChangedNative binding, if any. Safe to call when never bound. */
+        void UnbindThemeChanged();
+
         TSharedPtr<SWindowTitleBar> TitleBarWidget;
         TSharedPtr<STextBlock> TitleTextBlock;
         FWindowStyle WindowStyle;
+
+        /** Subsystem we bound OnThemeChangedNative on, and the handle to remove. Weak: the GameInstance can
+         *  go first (PIE stop) and window chrome outlives nothing in particular. */
+        TWeakObjectPtr<UUIThemeSubsystem> BoundThemeSubsystem;
+        FDelegateHandle ThemeChangedHandle;
+
+        /** Theme last stamped into WindowStyle's close glyph. Out-of-range sentinel (Dark=0/Light=1) so the
+         *  first apply always runs. */
+        EMobiusUITheme LastAppliedTheme = static_cast<EMobiusUITheme>(0xFF);
         FTextBlockStyle TitleTextStyle;
 };

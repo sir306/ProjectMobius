@@ -48,18 +48,19 @@ TSharedRef<FSlateStyleSet> FMobiusStyle::Create()
 	TSharedRef<FSlateStyleSet> Style = MakeShared<FSlateStyleSet>(GetStyleSetName());
 
 	// ---- Colors -------------------------------------------------------------------------------
-	// Palette values pending owner sign-off; error tints lifted verbatim from the previous
-	// hardcoded ErrorWindow theme so visuals do not change with the migration.
-	const FLinearColor ErrorColor(0.8f, 0.1f, 0.1f);
-	const FLinearColor ErrorInactiveColor(0.6f, 0.1f, 0.1f);
-	const FLinearColor ErrorFlashColor(0.9f, 0.2f, 0.2f);
+	// A19 (2026-08-03): the three "Mobius.Color.Error*" entries are DELETED, along with the
+	// "Mobius.Window.Error" red-title window style they fed. They were the last of the pre-palette error
+	// tints (0.8,0.1,0.1 and friends), and by the end nothing consumed them: the severity cue now takes
+	// DangerText / WarningText / Accent from the palette, and the error window's chrome comes from
+	// UUIThemeSubsystem::GetThemedWindowStyle.
+	//
+	// Their inertness was PIXEL-VERIFIED before removal, not assumed: on a live theme toggle the error
+	// window's title bar repainted #FFFFFF -> #383838 (TitlebarBg, painted by SWindowTitleBarWidget's own
+	// SColorBlock), proving the legacy red title brushes were already being discarded.
 	const FLinearColor SurfaceColor = FLinearColor::FromSRGBColor(FColor(0x1E, 0x22, 0x28, 235)); // dark slate @ ~92%
 	const FLinearColor OutlineColor = FLinearColor::FromSRGBColor(FColor(0x3A, 0x41, 0x4B));
 	const FLinearColor ForegroundColor(0.9f, 0.9f, 0.9f);
 
-	Style->Set("Mobius.Color.Error", ErrorColor);
-	Style->Set("Mobius.Color.ErrorInactive", ErrorInactiveColor);
-	Style->Set("Mobius.Color.ErrorFlash", ErrorFlashColor);
 	Style->Set("Mobius.Color.Surface", SurfaceColor);
 	Style->Set("Mobius.Color.Outline", OutlineColor);
 	Style->Set("Mobius.Color.Foreground", ForegroundColor);
@@ -141,13 +142,9 @@ TSharedRef<FSlateStyleSet> FMobiusStyle::Create()
 		.SetPressedPadding(FMargin(8.0f, 3.0f));
 	Style->Set("Mobius.Button", MobiusButton);
 
-	// Red-themed window chrome for the error window (previously hand-built in ErrorWindow.cpp).
-	FWindowStyle ErrorWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
-	ErrorWindowStyle.ActiveTitleBrush.TintColor = FSlateColor(ErrorColor);
-	ErrorWindowStyle.InactiveTitleBrush.TintColor = FSlateColor(ErrorInactiveColor);
-	ErrorWindowStyle.FlashTitleBrush.TintColor = FSlateColor(ErrorFlashColor);
-	ErrorWindowStyle.TitleTextStyle.ColorAndOpacity = FSlateColor(FLinearColor::Red);
-	Style->Set("Mobius.Window.Error", ErrorWindowStyle);
+	// A19: "Mobius.Window.Error" (the red-title FWindowStyle) removed here — see the Colors note above.
+	// The error window now takes UUIThemeSubsystem::GetThemedWindowStyle() with the A18 danger close-glyph
+	// layered on top, and falls back to FCoreStyle's plain "Window" in the pre-GameInstance case.
 
 	return Style;
 }

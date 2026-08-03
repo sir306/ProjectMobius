@@ -9,7 +9,6 @@
 
 class UImprovedLoadingNotifyWidget;
 class UMobiusSettingPanel;
-class ULoadingNotifyWidget;
 class UErrorWindowWidget;
 /**
  * 

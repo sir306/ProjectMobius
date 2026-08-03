@@ -77,9 +77,12 @@ namespace
 	FWindowStyle ResolveErrorWindowChrome()
 	{
 		UUIThemeSubsystem* Theme = FindThemeSubsystemForErrorWindow();
+		// A19: the fallback was "Mobius.Window.Error", the legacy red-title style. That style is now deleted
+		// (pixel-verified inert — SWindowTitleBarWidget replaces the title brushes with NoBrush and paints
+		// its own polled SColorBlock), so fall back to FCoreStyle's plain window instead.
 		FWindowStyle Chrome = Theme
 			? Theme->GetThemedWindowStyle()
-			: FMobiusStyle::Get().GetWidgetStyle<FWindowStyle>("Mobius.Window.Error");
+			: FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
 
 		// A18: the title-bar × reads as the destructive affordance it is.
 		MobiusWindowButtonStyle::ApplyDangerCloseGlyph(Chrome, Theme);

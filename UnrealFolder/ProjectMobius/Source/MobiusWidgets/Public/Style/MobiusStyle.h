@@ -19,14 +19,15 @@
  *            "Mobius.Text.Body" (Regular 12), "Mobius.Text.Field" (Regular 12), "Mobius.Text.Caption" (Regular 10),
  *            "Mobius.Text.Source" (Regular 10, source/reporter attribution — A19 renamed this from
  *            "Mobius.Text.Error.Location" and dropped its red tint; it is retinted to SublabelText per theme)
- *   Colors:  "Mobius.Color.Error" / ".ErrorInactive" / ".ErrorFlash" / ".Surface" / ".Outline" / ".Foreground"
+ *   Colors:  "Mobius.Color.Surface" / ".Outline" / ".Foreground"
  *   Margins: "Mobius.Padding.Window" (16), "Mobius.Padding.Button" (4,2)
- *   Widgets: "Mobius.Button" (FButtonStyle), "Mobius.Window.Error" (FWindowStyle, red title theme)
+ *   Widgets: "Mobius.Button" (FButtonStyle)
  *
- * A19 note: "Mobius.Window.Error" and the three "Mobius.Color.Error*" entries are NO LONGER CONSUMED —
- * the error window now takes UUIThemeSubsystem::GetThemedWindowStyle() as its base. They are kept only
- * until the pixel gate confirms on screen that the legacy red title brushes really were inert (the claim
- * rests on SWindowTitleBarWidget forcing them to NoBrush). Delete them once that capture exists.
+ * A19 (2026-08-03): "Mobius.Window.Error" and the three "Mobius.Color.Error*" entries are GONE. Error
+ * severity is a palette role (DangerText / WarningText / Accent) and the error window's chrome comes from
+ * UUIThemeSubsystem::GetThemedWindowStyle(). The legacy red title brushes were confirmed inert on screen
+ * before removal, not assumed: a live theme toggle repainted the title bar #FFFFFF -> #383838 from
+ * SWindowTitleBarWidget's own polled SColorBlock. Do not reintroduce error colours here.
  *
  * Integer font sizes only — fractional sizes defeat the Slate font cache and shimmer under DPI scale.
  */

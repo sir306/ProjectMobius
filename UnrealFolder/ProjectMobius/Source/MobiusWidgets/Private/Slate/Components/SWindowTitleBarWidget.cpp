@@ -4,6 +4,7 @@
 #include "Framework/Application/SWindowTitleBar.h"
 #include "Input/Events.h"
 #include "InputCoreTypes.h"
+#include "Slate/Components/MobiusWindowButtonStyle.h" // A19-c: ApplyDangerCloseGlyph on theme change
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/StyleDefaults.h"
@@ -180,6 +181,81 @@ SWindowTitleBarWidget::SWindowTitleBarWidget()
 
 SWindowTitleBarWidget::~SWindowTitleBarWidget()
 {
+	UnbindThemeChanged();
+}
+
+void SWindowTitleBarWidget::ApplyThemeToTitleBar()
+{
+	// A19-c. Everything else in this bar polls per paint, but the close (x) GLYPH cannot: it is an
+	// FSlateBrush tint, and a brush tint is not an attribute. It was therefore stamped once, at open, and a
+	// live theme toggle left it showing the OTHER theme's red -- measured #B62C1F (light DangerText) still
+	// sitting on the dark title bar at ~1.9:1, i.e. all but invisible.
+	//
+	// It has to be re-stamped HERE and not by the window that owns the style. Construct COPIES the caller's
+	// FWindowStyle into our WindowStyle member (see above), so SErrorWindowWidget re-stamping its own
+	// ErrorWindowStyle can never reach this bar -- that is exactly why the first attempt at this failed.
+	//
+	// An in-place write is enough, and this is the one place in this file where that is true: the engine
+	// reads the close-button image through the style POINTER every paint
+	// (SWindowTitleBar::GetCloseImage, SWindowTitleBar.cpp:411-419, returning &Style->CloseButtonStyle.*),
+	// and Style points at our member. So mutate the member and invalidate; no rebuild, and no need to reach
+	// the engine's private CloseButton pointer, which a subclass cannot see anyway.
+	//
+	// Unconditional because UUIThemeSubsystem::GetThemedWindowStyle already applies the danger glyph to
+	// every Mobius window, so "this window wants a red x" is true for all of them (A18). Fixing it at this
+	// level fixes the error window, the log window and the ImPlot chart windows in one place.
+	const UUIThemeSubsystem* ThemeSubsystem = FindMobiusThemeSubsystem();
+	if (!ThemeSubsystem)
+	{
+		return;
+	}
+
+	const EMobiusUITheme CurrentThemeValue = ThemeSubsystem->GetTheme();
+	if (CurrentThemeValue == LastAppliedTheme)
+	{
+		return;
+	}
+	LastAppliedTheme = CurrentThemeValue;
+
+	MobiusWindowButtonStyle::ApplyDangerCloseGlyph(WindowStyle, ThemeSubsystem);
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+bool SWindowTitleBarWidget::TryBindThemeChanged()
+{
+	if (ThemeChangedHandle.IsValid())
+	{
+		return true;
+	}
+
+	UUIThemeSubsystem* ThemeSubsystem = FindMobiusThemeSubsystem();
+	if (!ThemeSubsystem)
+	{
+		return false;
+	}
+
+	BoundThemeSubsystem = ThemeSubsystem;
+	ThemeChangedHandle = ThemeSubsystem->OnThemeChangedNative.AddSP(this, &SWindowTitleBarWidget::ApplyThemeToTitleBar);
+
+	// The event only fires on a later toggle, so stamp the current theme now.
+	ApplyThemeToTitleBar();
+	return true;
+}
+
+EActiveTimerReturnType SWindowTitleBarWidget::EnsureThemeBinding(double, float)
+{
+	return TryBindThemeChanged() ? EActiveTimerReturnType::Stop : EActiveTimerReturnType::Continue;
+}
+
+void SWindowTitleBarWidget::UnbindThemeChanged()
+{
+	// By handle, so no AsShared() is needed and this is safe from the destructor.
+	if (UUIThemeSubsystem* ThemeSubsystem = BoundThemeSubsystem.Get())
+	{
+		ThemeSubsystem->OnThemeChangedNative.Remove(ThemeChangedHandle);
+	}
+	BoundThemeSubsystem.Reset();
+	ThemeChangedHandle.Reset();
 }
 
 void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
@@ -251,6 +327,15 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
                         TitleBarWidget.ToSharedRef()
                 ]
         ];
+
+	// A19-c: keep the close-glyph tint in step with the theme. Bind now if the subsystem exists (it is a
+	// GameInstanceSubsystem, so it may not yet); otherwise retry at 2 Hz until it does, then stop. Unlike
+	// SErrorWindowWidget's copy of this idiom, the timer can live on this widget: this one IS slotted under
+	// the window and therefore painted, which is what pumps active timers.
+	if (!TryBindThemeChanged())
+	{
+		RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SWindowTitleBarWidget::EnsureThemeBinding));
+	}
 }
 
 void SWindowTitleBarWidget::SetTitleText(const FText& InTitleText)

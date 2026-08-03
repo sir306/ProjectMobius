@@ -26,7 +26,6 @@
 
 #include "Diagnostics/MobiusClickLog.h"
 #include "UI/ImprovedLoadingNotifyWidget.h"
-#include "UI/LoadingNotifyWidget.h"
 #include "ErrorHandling/ErrorWindow.h"        // A19: free-standing extra error windows (SNew + SetSeverity)
 #include "ErrorHandling/ErrorWindowWidget.h"
 #include "Logging/LogWindow.h"
