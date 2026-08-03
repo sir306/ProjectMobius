@@ -120,6 +120,18 @@ namespace
 		// left alone precisely because the live lambda outranks it.
 		Style.TitleTextStyle.ShadowOffset = FVector2f::ZeroVector;
 		Style.TitleTextStyle.ShadowColorAndOpacity = FLinearColor::Transparent;
+
+		// A18: this title-bar × is the dialog's ONLY dismiss affordance and it QUITS THE APP (HasCloseButton
+		// + "Quit application" tooltip below) — the most destructive close button in the project, so its
+		// glyph reads as one. Baked straight from Palette rather than routed through
+		// MobiusWindowButtonStyle::ApplyDangerCloseGlyph: this window builds its whole style from a static
+		// Palette, never a live UUIThemeSubsystem (see the class comment above on why), so there is no
+		// subsystem pointer to hand that helper — same reasoning as every other brush in this function.
+		Style.CloseButtonStyle.Normal.TintColor = FSlateColor(Palette.DangerText);
+		Style.CloseButtonStyle.Hovered.TintColor = FSlateColor(Palette.DangerText);
+		Style.CloseButtonStyle.Pressed.TintColor = FSlateColor(Palette.DangerText);
+		Style.CloseButtonStyle.Disabled.TintColor = FSlateColor(Palette.DangerText);
+
 		return MakeShared<FWindowStyle>(MoveTemp(Style));
 	}
 
@@ -232,8 +244,8 @@ void ShowLegalNotice(UUserProjectSettings& UserSettings, const bool bForce)
 	const TSharedRef<FButtonStyle> PrimaryButtonStyle = MakeButtonStyle(
 		Palette.Accent, Palette.Accent * 1.20f, Palette.Accent * 0.72f, Palette.Accent, FLinearColor::White);
 	// DangerButtonStyle is gone with the hand-rolled quit button; the title bar supplies its own close-button
-	// styling. Palette.DangerText is consequently unused here — kept in the struct as the correct token if a
-	// destructive control is ever added back to this dialog's body.
+	// styling. Palette.DangerText now drives that glyph directly (A18, MakeWindowStyle below) instead of
+	// going unused.
 	const TSharedRef<FCheckBoxStyle> CheckBoxStyle = MakeCheckBoxStyle(Palette);
 	// SLATE_STYLE_ARGUMENT stores a raw pointer, so every one of these must outlive the widget that points at
 	// it. They are kept alive by being captured in the OnWindowClosed lambda below, which dies with the window
