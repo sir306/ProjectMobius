@@ -91,6 +91,9 @@ public:
 	 * die silently on a rename. Destructive = red TEXT on the normal surface, not a red fill (owner, 07-28).
 	 *
 	 * Ribbon tabs are excluded — ApplyRibbonTabStyle owns their label colour (active vs inactive accent).
+	 * So are buttons with bFollowThemePalette cleared (A20): that flag means the OWNER drives this button's
+	 * colours, and it has to cover the label as well as the brushes or the owner's write is overwritten on
+	 * every theme change. Note this also skips RefreshTextStyle(), so such a button keeps an owner-set FONT.
 	 */
 	void RefreshThemedLabelStyle();
 

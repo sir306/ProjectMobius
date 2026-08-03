@@ -224,11 +224,11 @@ public:
 	// no colour value-matching, no name table, no polling, which is what let A6b-6 delete the walker
 	// outright rather than keep a husk of it. Static: they need the palette and nothing else.
 	//
-	// Three widget-NAME special cases are carried inside (they are behaviour, not theming, and each one
+	// TWO widget-NAME special cases are carried inside (they are behaviour, not theming, and each one
 	// regresses a specific control if dropped): PlaybackSlider's bar is forced transparent because a
 	// UProgressBar draws its track; ScrubFillBar is that progress bar and takes a different look from
-	// every other bar; ThemeToggle is a bespoke pill built out of a checkbox and must NOT get the
-	// standard box treatment (it self-themes instead).
+	// every other bar. A20 (2026-08-03) removed the third — the `*ThemeToggle*` checkbox exclusion — with
+	// the checkbox pill it protected; the UI-theme control is now two UButtonWithText segments.
 	// ---------------------------------------------------------------------------------------------
 
 	/**
@@ -263,7 +263,7 @@ public:
 	/**
 	 * CheckBox: checked = CheckboxCheckedBg fill + white 1u outline, unchecked = CheckboxBg fill +
 	 * CheckboxBorder 1u outline, both radius 3 (Q24/C4). Mutates the brushes in place so the authored
-	 * ImageSize (D43 = 20x20) survives. Skips any widget named *ThemeToggle* — see the note above.
+	 * ImageSize (D43 = 20x20) survives. No name exclusions (A20 removed the last one).
 	 */
 	static void StyleCheckBoxForTheme(UCheckBox* CheckBox, bool bLight);
 

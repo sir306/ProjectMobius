@@ -151,7 +151,17 @@ void UButtonWithText::RefreshTextStyle()
 void UButtonWithText::RefreshThemedLabelStyle()
 {
 	// Ribbon tabs: ApplyRibbonTabStyle already re-pushes the style AND paints the active/inactive accent.
-	if (bIsRibbonButton || !MyButtonText.IsValid())
+	//
+	// A20 (2026-08-03): ShouldFollowThemePalette() now gates the LABEL too, not just the button brushes.
+	// bFollowThemePalette means "this button's owner drives its colours, so the palette re-stamp must not
+	// repaint that meaning away" (see UBaseButton.h) — and that was only half true: RefreshThemedButtonStyle
+	// honoured it while this function did not, so an owner-driven label was still overwritten with
+	// ButtonText on construct and on every OnThemeChanged. RefreshTextStyle() inside it also re-pushed the
+	// asset's text style, which resets the FONT as well as the colour. Measured before widening the gate:
+	// ZERO of the 71 /Game Widget Blueprints author bFollowThemePalette (byte-scanned every .uasset for the
+	// property name; UE only serialises a non-default value), so no existing button changes behaviour — the
+	// first consumer is the A20 theme segments, whose active label is white SemiBold.
+	if (bIsRibbonButton || !ShouldFollowThemePalette() || !MyButtonText.IsValid())
 	{
 		return;
 	}

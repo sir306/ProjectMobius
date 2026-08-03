@@ -1387,12 +1387,10 @@ void UUIThemeSubsystem::StyleCheckBoxForTheme(UCheckBox* CheckBox, const bool bL
 		return;
 	}
 
-	// The ThemeToggle is a bespoke pill/slider control assembled from a checkbox — the standard box would
-	// destroy it. It self-themes (UThemeToggleWidget), so skip it here.
-	if (CheckBox->GetName().Contains(TEXT("ThemeToggle")))
-	{
-		return;
-	}
+	// A20 (2026-08-03): the `*ThemeToggle*` early-return that used to sit here is GONE. It protected a
+	// bespoke pill/track control assembled out of a checkbox; the UI-theme control is now a two-segment
+	// Light|Dark button pair (UThemeToggleWidget), so there is no pill left to protect and one fewer
+	// widget-NAME special case in this file.
 
 	// Q24 (C4): checked = accent fill; unchecked = input-bg box + checkbox border, radius 3.
 	// A5: the walk also ran RemapBrush over all nine brushes first. Dropped — the six explicit writes
