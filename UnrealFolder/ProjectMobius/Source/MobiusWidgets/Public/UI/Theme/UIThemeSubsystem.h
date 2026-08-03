@@ -205,8 +205,11 @@ public:
 
 	/**
 	 * Style a UComboBoxString's WidgetStyle / ItemStyle MEMBERS for the given theme (new architecture,
-	 * migration W1). The closed-combo button SURFACE becomes an M_MobiusInput brush (samples
-	 * MPC_UITheme.Field) so it follows a runtime toggle GPU-side; the dropdown row colours are baked flat.
+	 * migration W1). The closed-combo button SURFACE is a FLAT RoundedBox brush — InputBg fill, 1px
+	 * InputBorder outline, no ResourceObject — because a material Image brush cannot carry a Slate
+	 * outline; it re-themes by re-running this on a toggle, not GPU-side. (It was originally specced as
+	 * an M_MobiusInput material brush sampling MPC_UITheme.Field; that never shipped, and the unused
+	 * master was retired to /Game/99_Old/ by A3 on 2026-08-03.) Dropdown row colours are baked flat.
 	 * It writes ONLY UPROPERTY members and NEVER touches the live SComboBox / SMenuAnchor, so it is valid
 	 * ONLY before the Slate is built — call it from a UComboBoxString subclass's RebuildWidget() before
 	 * Super (see UMobiusThemedComboBox). "Born themed, never restyled live" is the fix for the

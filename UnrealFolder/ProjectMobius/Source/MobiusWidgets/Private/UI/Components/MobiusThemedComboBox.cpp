@@ -64,7 +64,8 @@ TSharedRef<SWidget> UMobiusThemedComboBox::RebuildWidget()
 {
 	const bool bLight = ResolveIsLight();
 
-	// Surface brush (M_MobiusInput), dropdown row colours + the menu-border outline → the style MEMBERS.
+	// Surface brush (flat InputBg RoundedBox, no material), dropdown row colours + the menu-border
+	// outline → the style MEMBERS.
 	// Members only; the (not-yet-built) live widget is untouched.
 	UUIThemeSubsystem::StyleComboBoxForBuild(this, bLight);
 
