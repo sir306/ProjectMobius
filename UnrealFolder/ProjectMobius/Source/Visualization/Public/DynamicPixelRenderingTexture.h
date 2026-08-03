@@ -119,6 +119,21 @@ public:
 	void DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y, int32 End_Coordinate_Y,
 		FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius = 0);
 
+private:
+	/**
+	 * Disc offsets for DrawLineWithMinimumRed, rebuilt only when the radius changes.
+	 *
+	 * The trajectory path calls that function once per agent per flush — order 1900 calls, all at the
+	 * same radius — so building the list per call would rebuild an identical disc every time. Not
+	 * thread-safe by design: the only caller walks its segments on one thread.
+	 */
+	const TArray<FIntPoint>& GetBrushOffsets(int32 BrushRadius);
+
+	TArray<FIntPoint> CachedBrushOffsets;
+	int32 CachedBrushRadius = INDEX_NONE;
+
+public:
+
 	/**
 	 * Draw an Anti-Aliased line on the texture from the start to the end with the specified color
 	 * - This is method could be used for my voronoi diagram implementation

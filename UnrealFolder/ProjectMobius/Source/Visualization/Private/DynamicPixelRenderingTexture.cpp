@@ -247,6 +247,32 @@ void UDynamicPixelRenderingTexture::DrawLine(int32 Start_Coordinate_X, int32 End
 	}
 }
 
+const TArray<FIntPoint>& UDynamicPixelRenderingTexture::GetBrushOffsets(int32 BrushRadius)
+{
+	if (CachedBrushRadius == BrushRadius)
+	{
+		return CachedBrushOffsets;
+	}
+
+	// A disc, on the same DistanceSquared <= RadiusSquared test DrawCircle uses for the density surface.
+	// A square brush would render a path R*sqrt(2) wide on the diagonals and R wide on the axes, which is
+	// not a pedestrian footprint at any radius.
+	const int32 RadiusSquared = BrushRadius * BrushRadius;
+	CachedBrushOffsets.Reset();
+	for (int32 OffsetY = -BrushRadius; OffsetY <= BrushRadius; ++OffsetY)
+	{
+		for (int32 OffsetX = -BrushRadius; OffsetX <= BrushRadius; ++OffsetX)
+		{
+			if (OffsetX * OffsetX + OffsetY * OffsetY <= RadiusSquared)
+			{
+				CachedBrushOffsets.Emplace(OffsetX, OffsetY);
+			}
+		}
+	}
+	CachedBrushRadius = BrushRadius;
+	return CachedBrushOffsets;
+}
+
 void UDynamicPixelRenderingTexture::DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X,
 	int32 Start_Coordinate_Y, int32 End_Coordinate_Y, FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius)
 {
@@ -256,30 +282,15 @@ void UDynamicPixelRenderingTexture::DrawLineWithMinimumRed(int32 Start_Coordinat
 	const int32 StepY = Start_Coordinate_Y < End_Coordinate_Y ? 1 : -1;
 	int32 Error = DX + DY;
 
-	// The footprint is a disc, on the same DistanceSquared <= RadiusSquared test DrawCircle uses for the
-	// density surface. A square brush would render a path R*sqrt(2) wide on the diagonals and R wide on
-	// the axes, which is not a pedestrian footprint at any radius.
-	//
 	// Deliberately no edge feather: DrawCircle fades its rim by alpha, but this buffer is an accumulator
 	// whose byte value IS the measurement. A feathered rim increments by (uint8)(1.884 * alpha) == 0 while
 	// still tripping the first-visit seed below, which would wrap every path in a 25-byte halo of texels
 	// nobody walked on.
-	const int32 ClampedBrushRadius = FMath::Max(0, BrushRadius);
-	const int32 RadiusSquared = ClampedBrushRadius * ClampedBrushRadius;
-
-	// Resolved once and reused at every step. The caller derives this radius from world centimetres, so on
-	// a small floor it reaches double digits and a per-step bounding-box walk would dominate the line.
-	TArray<FIntPoint, TInlineAllocator<64>> BrushOffsets;
-	for (int32 OffsetY = -ClampedBrushRadius; OffsetY <= ClampedBrushRadius; ++OffsetY)
-	{
-		for (int32 OffsetX = -ClampedBrushRadius; OffsetX <= ClampedBrushRadius; ++OffsetX)
-		{
-			if (OffsetX * OffsetX + OffsetY * OffsetY <= RadiusSquared)
-			{
-				BrushOffsets.Emplace(OffsetX, OffsetY);
-			}
-		}
-	}
+	// Cached across calls, not just across steps. The trajectory path issues one of these per agent per
+	// flush — on the order of 1900 calls, all at the same radius — so rebuilding the offset list per call
+	// would rebuild the identical disc every time. A 20 cm footprint on a small floor is radius ~10, i.e.
+	// 317 offsets, which is also well past what any reasonable inline allocator would hold.
+	const TArray<FIntPoint>& BrushOffsets = GetBrushOffsets(FMath::Max(0, BrushRadius));
 
 	for (;;)
 	{
