@@ -345,10 +345,15 @@ void UMobiusWidgetSubsystem::OpenLogWindow()
 	if (!LogWindowWidget.IsValid())
 	{
 		OnLogWindowClosedNative = FOnLogWindowClosed::CreateUObject(this, &UMobiusWidgetSubsystem::LogWindowIsClosing);
-		
+
 		LogWindowWidget = SNew(SLogWindowWidget)
 			.OnLogWindowClosed(OnLogWindowClosedNative);
-		
+
+		// Register ONCE per created widget, so the invariant is "widget exists <=> one registration held".
+		// This used to sit at the bottom of the function, outside this guard, so every re-show of an
+		// already-open window incremented MoveableWindowActivityRefCount with nothing to match it — and
+		// that counter is shared with the error windows and the ImPlot charts.
+		RegisterMoveableWindowActivity();
 	}
 
 	if (FeedbackSubsystem.IsValid())
@@ -357,18 +362,36 @@ void UMobiusWidgetSubsystem::OpenLogWindow()
 	}
 
 	LogWindowWidget->ShowLogWindow();
-	RegisterMoveableWindowActivity();
 }
 
 void UMobiusWidgetSubsystem::CloseLogWindow()
 {
+	if (!LogWindowWidget.IsValid())
+	{
+		return;
+	}
+
+	// PROGRAMMATIC close — teardown, or the logger being switched off. Marks the difference from a user
+	// dismissing the window, which is the only route allowed to revise the session "show the log window"
+	// state. LogWindowIsClosing cannot infer this for itself: Deinitialize() closes through this very
+	// function, so without the flag a PIE stop or a level change would be indistinguishable from a click,
+	// clear the flag, and the window would stop surviving a level load.
+	TGuardValue<bool> ProgrammaticGuard(bClosingLogWindowProgrammatically, true);
+
+	// This destroys the native window synchronously, which fires OnLogWindowClosed -> LogWindowIsClosing,
+	// and THAT is what drops our reference and unregisters the activity. Do not repeat that bookkeeping
+	// here: the old code did, and because the IsValid() above had already been evaluated it decremented
+	// MoveableWindowActivityRefCount twice for one window.
+	LogWindowWidget->CloseLogWindow();
+
+	// Fallback for the one path where the callback cannot fire: SLogWindowWidget::CloseLogWindow skips the
+	// destroy (and therefore OnWindowClosed) when FSlateApplication is not initialized.
 	if (LogWindowWidget.IsValid())
 	{
-		LogWindowWidget->CloseLogWindow();
 		LogWindowWidget.Reset();
 		UnregisterMoveableWindowActivity();
-		OnLogWindowClosedNative.Unbind();
 	}
+	OnLogWindowClosedNative.Unbind();
 }
 
 void UMobiusWidgetSubsystem::SetLogWindowEnabled(bool bEnabled)
@@ -551,10 +574,33 @@ void UMobiusWidgetSubsystem::LogWindowIsClosing()
 		OnLogWindowClosedBP.Broadcast();
 	}
 	OnLogWindowClosedNative.Unbind();
-	
+
 	if (LogWindowWidget.IsValid())
 	{
 		LogWindowWidget.Reset();
 		UnregisterMoveableWindowActivity();
+	}
+
+	// Reaching here WITHOUT the guard means a person dismissed the window (title-bar x, or its Close
+	// button). Mirror that into the session flag, which is exactly what unticking "Show Current Session
+	// Logging Window?" does — that toggle's FALSE path calls this same RequestLogWindowClose. The
+	// OnLogWindowClosedBP broadcast above already unticked the checkbox; this keeps the subsystem's view
+	// in step with it, so a level change or PIE restart does not resurrect a window the user closed
+	// (UMobiusWidgetSubsystem::Initialize reopens on IsLogWindowOpen()).
+	//
+	// SESSION STATE ONLY. No config write — bDisplayMobiusLogWindowAtStartup and
+	// bEnableMobiusLoggerAtStartup are the two persisted toggles and they are deliberately separate from
+	// this one ("we may not want to show at start but still log"). Nothing here touches
+	// UMobiusCustomLoggerSubsystem either: lines keep being captured and cached with the window shut.
+	//
+	// AFTER LogWindowWidget.Reset() on purpose: RequestLogWindowClose broadcasts a Close command that
+	// lands back in HandleLogWindowCommand -> CloseLogWindow, and with the pointer already cleared that
+	// re-entry early-outs instead of destroying a window that is mid-destruction.
+	if (!bClosingLogWindowProgrammatically)
+	{
+		if (UMobiusUserFeedbackSubsystem* Feedback = FeedbackSubsystem.Get())
+		{
+			Feedback->RequestLogWindowClose();
+		}
 	}
 }

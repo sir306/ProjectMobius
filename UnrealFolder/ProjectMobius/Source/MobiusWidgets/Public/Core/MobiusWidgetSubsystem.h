@@ -281,4 +281,12 @@ private:
         TArray<FMobiusErrorMessage> DeferredErrors;
         TSharedPtr<SLogWindowWidget> LogWindowWidget;
         bool bLogWindowEnabled = true;
+
+        /**
+         * True only while CloseLogWindow() is driving the close — i.e. teardown, or the logger being
+         * switched off. Lets LogWindowIsClosing tell a PROGRAMMATIC close from a USER one (title-bar x or
+         * the window's Close button), which is the only distinction the close path cannot infer for
+         * itself: Deinitialize() closes the window through that same function.
+         */
+        bool bClosingLogWindowProgrammatically = false;
 };
