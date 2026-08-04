@@ -26,6 +26,7 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Brushes/SlateColorBrush.h" // GetThemedWindowStyle: flat frame brushes (a tint cannot brighten)
+#include "Brushes/SlateImageBrush.h" // StyleCheckBoxForTheme: the engine's knocked-out tick art
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -1394,31 +1395,54 @@ void UUIThemeSubsystem::StyleCheckBoxForTheme(UCheckBox* CheckBox, const bool bL
 	// Light|Dark button pair (UThemeToggleWidget), so there is no pill left to protect and one fewer
 	// widget-NAME special case in this file.
 
-	// Q24 (C4): checked = accent fill; unchecked = input-bg box + checkbox border, radius 3.
 	// A5: the walk also ran RemapBrush over all nine brushes first. Dropped — the six explicit writes
 	// below fully overwrite every brush that mattered, and the three Undetermined* brushes are dead
 	// (nothing in Mobius uses ECheckBoxState::Undetermined; grepped). That removes the last value-match
 	// from the checkbox path.
+	//
+	// PANEL REBUILD (2026-08-04) — the checked state is now an IMAGE brush again, restoring the tick.
+	// Q24/C4 used DrawAs=RoundedBox for all six brushes and recorded "the white-check glyph needs a
+	// composite/checkmark brush asset" as an open limitation. It never needed one: Slate's RoundedBox
+	// renderer ignores a brush's texture, so the tick the engine already ships was simply not being drawn.
+	// Measured from the engine art itself — Engine/Content/Slate/Common/CheckBox_Checked.png is a solid
+	// 16x16 white box with the check KNOCKED OUT (alpha 0), so one Image brush tinted CheckboxCheckedBg
+	// gives an accent box with the surface behind showing through as the tick. Owner ruling: use the image,
+	// adjust size + tint.
+	//
+	// TRAP: CheckBox_Checked_Hovered.png has NO tick (verified pixel by pixel — it is a plain filled box).
+	// Every checked state therefore points at CheckBox_Checked.png; do not "fix" hovered to use the
+	// _Hovered art, that is the mis-assignment WBP_SettingToggleCompBase shipped with.
 	FCheckBoxStyle Style = CheckBox->GetWidgetStyle();
+
+	const FLinearColor Accent = PaletteColor(EMobiusPaletteRole::CheckboxCheckedBg, bLight);
+	const FLinearColor BoxBg = PaletteColor(EMobiusPaletteRole::CheckboxBg, bLight);
+	const FLinearColor BoxBorder = PaletteColor(EMobiusPaletteRole::CheckboxBorder, bLight);
+
+	// Radius 0: the mockup draws square 16x16 boxes, and square is also the checked PNG's silhouette, so
+	// ticking a box does not change its outline shape.
 	auto ApplyRoundedBox = [](FSlateBrush& B, const FLinearColor& Fill, const FLinearColor& Outline, float OutlineWidth)
 	{
-		// Mutate in place so the asset's authored ImageSize (D43 = 20x20) survives.
+		// Mutate in place so the asset's authored ImageSize survives.
 		B.DrawAs = ESlateBrushDrawType::RoundedBox;
 		B.SetResourceObject(nullptr);
 		B.TintColor = FSlateColor(Fill);
 		B.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-		B.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+		B.OutlineSettings.CornerRadii = FVector4(0.0, 0.0, 0.0, 0.0);
 		B.OutlineSettings.Color = FSlateColor(Outline);
 		B.OutlineSettings.Width = OutlineWidth;
 	};
-	const FLinearColor Accent = PaletteColor(EMobiusPaletteRole::CheckboxCheckedBg, bLight);
-	const FLinearColor BoxBg = PaletteColor(EMobiusPaletteRole::CheckboxBg, bLight);
-	const FLinearColor BoxBorder = PaletteColor(EMobiusPaletteRole::CheckboxBorder, bLight);
-	// Checked = accent fill + white 1u outline (accent-on signal; the white-check glyph needs a
-	// composite/checkmark brush asset — the remaining Q24 limitation).
-	ApplyRoundedBox(Style.CheckedImage, Accent, FLinearColor::White, 1.0f);
-	ApplyRoundedBox(Style.CheckedHoveredImage, Accent, FLinearColor::White, 1.0f);
-	ApplyRoundedBox(Style.CheckedPressedImage, Accent, FLinearColor::White, 1.0f);
+
+	auto ApplyTickImage = [&Accent](FSlateBrush& B)
+	{
+		// Rebuild rather than mutate: ResourceName has no setter, and the asset's authored name points at
+		// the tickless _Hovered art. FSlateImageBrush's ctor is the only way to (re)name the resource.
+		const FVector2D Size = B.GetImageSize().IsNearlyZero() ? FVector2D(16.0, 16.0) : FVector2D(B.GetImageSize());
+		B = FSlateImageBrush(FPaths::EngineContentDir() / TEXT("Slate/Common/CheckBox_Checked.png"), Size, Accent);
+	};
+
+	ApplyTickImage(Style.CheckedImage);
+	ApplyTickImage(Style.CheckedHoveredImage);
+	ApplyTickImage(Style.CheckedPressedImage);
 	ApplyRoundedBox(Style.UncheckedImage, BoxBg, BoxBorder, 1.0f);
 	ApplyRoundedBox(Style.UncheckedHoveredImage, BoxBg, BoxBorder, 1.0f);
 	ApplyRoundedBox(Style.UncheckedPressedImage, BoxBg, BoxBorder, 1.0f);
