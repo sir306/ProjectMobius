@@ -26,6 +26,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/CoreStyle.h"
@@ -34,6 +35,104 @@
 
 namespace MobiusPanelWindow
 {
+	// =============================================================================================
+	// WORLD-TEARDOWN CLOSE (2026-08-05)
+	//
+	// Without this, a panel window OUTLIVES PIE. Measured: stop PIE with either card open and the
+	// window stays on the desktop, same HWND, resized to 103x100 — the "collapsed content has zero
+	// desired size and an Autosized window sizes to desired" signature. It went away only minutes
+	// later, on a garbage-collection pass.
+	//
+	// The cause is a genuine ownership CYCLE, not a missing call. Both panel classes close from
+	// NativeDestruct, but `.WindowPanelContent(Content->TakeWidget())` gives the window a shared ref
+	// to the widget's SObjectWidget, which keeps the UUserWidget alive. So the window holds the
+	// widget, the widget's destructor is what would close the window, and neither happens until GC
+	// breaks the cycle. Adding another NativeDestruct call cannot fix that; the close has to come
+	// from OUTSIDE the cycle.
+	//
+	// FWorldDelegates::OnWorldBeginTearDown rather than FEditorDelegates::EndPIE: this is a Runtime
+	// module, EndPIE needs WITH_EDITOR, and the same cycle exists in a packaged build on level travel
+	// and shutdown. The runtime delegate fixes both with one hook.
+	//
+	// The registry holds WEAK handles only, so it never extends any lifetime; it exists purely to
+	// know what to close. Entries are removed by the closed-event lambda in Open(), which runs on
+	// EVERY close route (title-bar X, Alt+F4, CloseWindow, and this teardown path).
+	// =============================================================================================
+	namespace
+	{
+		struct FHostedPanel
+		{
+			TWeakPtr<SMoveableWindow> Window;
+			TWeakObjectPtr<UUserWidget> Content;
+		};
+
+		TArray<FHostedPanel> GHostedPanels;
+		FDelegateHandle GWorldTearDownHandle;
+
+		void CloseHostedPanelsForWorld(UWorld* World)
+		{
+			if (GHostedPanels.IsEmpty())
+			{
+				return;
+			}
+
+			// Iterate a COPY: RequestDestroyWindow is synchronous and runs the closed-event lambda inline,
+			// which unregisters the entry and therefore mutates GHostedPanels mid-loop.
+			TArray<FHostedPanel> Snapshot = GHostedPanels;
+			for (const FHostedPanel& Panel : Snapshot)
+			{
+				const TSharedPtr<SMoveableWindow> Window = Panel.Window.Pin();
+				if (!Window.IsValid())
+				{
+					continue;
+				}
+
+				// Skip ONLY a panel that provably belongs to a different, still-live world. Everything else
+				// gets closed, deliberately erring that way: a panel whose content was already collected, or
+				// whose GetWorld() has gone null because teardown is under way, can only ever paint a dead
+				// tree — and an orphaned always-on-top window is a worse outcome than closing one early.
+				const UUserWidget* Content = Panel.Content.Get();
+				const UWorld* ContentWorld = Content ? Content->GetWorld() : nullptr;
+				if (Content && ContentWorld && World && ContentWorld != World)
+				{
+					continue;
+				}
+
+				if (FSlateApplication::IsInitialized())
+				{
+					FSlateApplication::Get().RequestDestroyWindow(Window.ToSharedRef());
+				}
+			}
+
+			GHostedPanels.RemoveAll([](const FHostedPanel& Panel) { return !Panel.Window.IsValid(); });
+		}
+
+		void RegisterHostedPanel(const TSharedPtr<SMoveableWindow>& Window, UUserWidget* Content)
+		{
+			// Hooked once and deliberately never removed. Unhooking when the registry empties would mean
+			// removing a delegate from inside its own broadcast (the teardown path empties it), and this
+			// matches how the module already parks process-lifetime statics such as its FAutoConsoleCommands.
+			// Caveat: a C++ hot reload would leave this dangling — irrelevant in practice here, because
+			// building with the editor open is already forbidden in this project (it hot-reloads and trips
+			// the MASS duplicate-shared-fragment assert).
+			if (!GWorldTearDownHandle.IsValid())
+			{
+				GWorldTearDownHandle = FWorldDelegates::OnWorldBeginTearDown.AddStatic(&CloseHostedPanelsForWorld);
+			}
+
+			GHostedPanels.Add(FHostedPanel{ Window, Content });
+		}
+
+		/** WindowKey is an IDENTITY key only and is never dereferenced — the window may already be gone. */
+		void UnregisterHostedPanel(const SMoveableWindow* WindowKey)
+		{
+			GHostedPanels.RemoveAll([WindowKey](const FHostedPanel& Panel)
+			{
+				return !Panel.Window.IsValid() || Panel.Window.Pin().Get() == WindowKey;
+			});
+		}
+	}
+
 	TSharedPtr<SMoveableWindow> Open(UUserWidget* Content, const FText& Title, TFunction<void()> OnClosed)
 	{
 		if (!Content || !FSlateApplication::IsInitialized())
@@ -102,11 +201,21 @@ namespace MobiusPanelWindow
 		FSlateApplication::Get().AddWindow(Window.ToSharedRef());
 		Window->BringToFront(true);
 
+		// Track it so world teardown can close it — see the registry note at the top of this file. Weak
+		// handles only; this does not keep either the window or the panel alive.
+		RegisterHostedPanel(Window, Content);
+
 		// Converge every close route on the caller's callback. StyleHolder is captured only to keep the
-		// FWindowStyle alive for the window's lifetime (see the raw-pointer note above).
+		// FWindowStyle alive for the window's lifetime (see the raw-pointer note above). WindowKey is an
+		// identity key for deregistration and is never dereferenced.
+		const SMoveableWindow* const WindowKey = Window.Get();
 		Window->GetOnWindowClosedEvent().AddLambda(
-			[OnClosed = MoveTemp(OnClosed), StyleHolder](const TSharedRef<SWindow>&)
+			[OnClosed = MoveTemp(OnClosed), StyleHolder, WindowKey](const TSharedRef<SWindow>&)
 			{
+				// Deregister FIRST: OnClosed calls back into the owning widget, and leaving a stale entry
+				// in the registry would let the teardown pass try to destroy an already-destroyed window.
+				UnregisterHostedPanel(WindowKey);
+
 				if (OnClosed)
 				{
 					OnClosed();
