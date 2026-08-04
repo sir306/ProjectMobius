@@ -82,25 +82,29 @@ struct FTrajectoryFieldConfig
 	int32 MaxGridDim = 2048;
 
 	/**
-	 * Teleport rejection. 1000 cm/s = 10 m/s sits just under the 100 m world record (10.44 m/s) and well
-	 * above any evacuation gait - reported running speeds in egress data top out around 5 m/s, and the
-	 * playback interpolation that produces these segments is continuous in sim time, so a legitimate
-	 * per-frame segment can never approach it. Real discontinuities (agent recycling, dataset swap,
-	 * floor change) land in the thousands of cm/s. Painting one of those draws a false corridor straight
-	 * across the building.
+	 * Teleport rejection. 2000 cm/s = 20 m/s. Set from human performance rather than from egress gait:
+	 * the gate exists to catch discontinuities (agent recycling, dataset swap, floor change), which land
+	 * in the thousands of cm/s, and a threshold set just above the fastest human (10.44 m/s over 100 m)
+	 * leaves no headroom for a legitimate segment sampled across a frame hitch. Anything under 20 m/s is
+	 * accepted; painting a real discontinuity draws a false corridor straight across the building.
 	 */
-	float MaxPlausibleSpeedCmPerSec = 1000.0f;
+	float MaxPlausibleSpeedCmPerSec = 2000.0f;
 
 	/**
 	 * Second, independent teleport gate. Speed alone cannot catch a timeline scrub: skip 100 s of sim
 	 * time while an agent legitimately moves 50 m and the implied speed is 0.5 m/s, which passes the
-	 * speed gate and paints a straight line across the building. Delta-t is the tell - a per-frame
-	 * segment cannot span a second of sim time unless playback is running above ~60x.
+	 * speed gate and paints a straight line across the building. Delta-t is the tell.
+	 *
+	 * 5.0 s, not 1.0 s. DeltaSeconds is PER-FRAME sim time, so at 8x playback it is 8/fps - 0.27 s at
+	 * 30 fps but 1.6 s across a 5 fps hitch, which a 1.0 s cap would reject. The rejected mass would then
+	 * vanish and present as a DDA conservation failure rather than as a gate misfire. 5.0 s tolerates 8x
+	 * down to 1.6 fps and still catches the scrub case: 100 s at 0.5 m/s passes the speed gate but is
+	 * 100 s >> 5 s.
 	 *
 	 * Together the two gates bound the longest paintable segment at
-	 * MaxPlausibleSpeedCmPerSec * MaxPlausibleDeltaSeconds = 10 m.
+	 * MaxPlausibleSpeedCmPerSec * MaxPlausibleDeltaSeconds = 100 m.
 	 */
-	float MaxPlausibleDeltaSeconds = 1.0f;
+	float MaxPlausibleDeltaSeconds = 5.0f;
 };
 
 /**

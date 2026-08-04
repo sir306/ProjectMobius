@@ -49,6 +49,71 @@ namespace TrajectoryFieldPrivate
 	{
 		return IsUsable(static_cast<double>(V.X)) && IsUsable(static_cast<double>(V.Y));
 	}
+
+	/**
+	 * Antiderivative for the disc-area kernel: G(u) = integral of sqrt(R^2 - s^2) ds from 0 to u
+	 *                                               = 0.5 * ( u*sqrt(R^2 - u^2) + R^2*asin(u/R) ).
+	 * Argument is clamped into [0, R] so a caller can pass an unbounded rectangle edge.
+	 */
+	double DiscArcIntegral(double U, double R)
+	{
+		if (R <= 0.0)
+		{
+			return 0.0;
+		}
+
+		const double Clamped = FMath::Clamp(U, 0.0, R);
+		const double Inner = FMath::Max(0.0, R * R - Clamped * Clamped);
+		return 0.5 * (Clamped * FMath::Sqrt(Inner) + R * R * FMath::Asin(FMath::Clamp(Clamped / R, -1.0, 1.0)));
+	}
+
+	/**
+	 * Area of { 0 <= u <= X, 0 <= v <= Y, u^2 + v^2 <= R^2 } - the first-quadrant corner primitive. X and
+	 * Y are magnitudes. Below u* = sqrt(R^2 - Y^2) the rectangle is wholly inside the disc, so that part
+	 * is exact rather than integrated; past it the arc is the upper bound.
+	 */
+	double DiscCornerArea(double X, double Y, double R)
+	{
+		if (R <= 0.0)
+		{
+			return 0.0;
+		}
+
+		const double Xc = FMath::Clamp(X, 0.0, R);
+		const double Yc = FMath::Clamp(Y, 0.0, R);
+		if (Xc <= 0.0 || Yc <= 0.0)
+		{
+			return 0.0;
+		}
+
+		const double UStar = FMath::Sqrt(FMath::Max(0.0, R * R - Yc * Yc));
+		if (Xc <= UStar)
+		{
+			return Xc * Yc;
+		}
+
+		return UStar * Yc + (DiscArcIntegral(Xc, R) - DiscArcIntegral(UStar, R));
+	}
+
+	/**
+	 * The corner primitive extended to signed arguments by the disc's own two-fold mirror symmetry, so a
+	 * rectangle straddling either axis needs no case analysis: the usual 2D inclusion-exclusion of four
+	 * corner terms then works over the whole plane.
+	 */
+	double DiscSignedCorner(double X, double Y, double R)
+	{
+		const double Magnitude = DiscCornerArea(FMath::Abs(X), FMath::Abs(Y), R);
+		const double Sign = ((X < 0.0) ? -1.0 : 1.0) * ((Y < 0.0) ? -1.0 : 1.0);
+		return Sign * Magnitude;
+	}
+
+	/** Area of the disc of radius R centred at the origin intersected with [X0,X1] x [Y0,Y1]. */
+	double DiscAreaInRect(double X0, double X1, double Y0, double Y1, double R)
+	{
+		const double Area = DiscSignedCorner(X1, Y1, R) - DiscSignedCorner(X0, Y1, R)
+		                  - DiscSignedCorner(X1, Y0, R) + DiscSignedCorner(X0, Y0, R);
+		return FMath::Max(0.0, Area);
+	}
 }
 
 int32 FTrajectoryField::AxisIndexFromCoord(double G, double Dir, int32 N)
@@ -182,47 +247,74 @@ void FTrajectoryField::BuildKernel()
 		: 0.0f;
 	KernelRadiusTexels = FMath::Max(0.0f, KernelRadiusTexels);
 
-	KernelHalfExtent = static_cast<int32>(FMath::FloorToDouble(static_cast<double>(KernelRadiusTexels)));
+	// ---------------------------------------------------------------------------------------------
+	// SHAPE RULE - normalised disc AREA COVERAGE (PRD D3 / section 4.3 "normalised disc/capsule
+	// coverage"). The weight of a neighbour is the fraction of the disc's area that falls inside that
+	// neighbour's cell:
+	//
+	//     weight(dx,dy) = Area( disc(R) intersect cell(dx,dy) ) / (pi * R^2)
+	//
+	// Computed analytically (TrajectoryFieldPrivate::DiscAreaInRect), not sampled, so the weights are
+	// reproducible by hand to full double precision and the raw areas sum to pi*R^2 by construction.
+	//
+	// This replaces an earlier centre-MEMBERSHIP rule (dx^2 + dy^2 <= R^2, all members weighted equally),
+	// which at R = 1.0 yields 5 equal taps instead of these 9. Both rules normalise to 1.0, so
+	// Sum(Presentation) == Sum(Canonical) - i.e. AC3 - holds under either and could not discriminate
+	// them; the independently hand-derived oracle could. Coverage is an area measure and is what
+	// "stamping a disc of DisplayPathWidthCm along the path" actually produces, so it is the rule.
+	//
+	// Reference values at R = 1.0 texel (the default: 20 cm width at 10 cm/texel), each exact:
+	//     centre  1/pi                        = 0.318309886
+	//     edge   (pi/6 + sqrt3/4 - 1/2)/pi    = 0.145343947   x4
+	//     corner (pi/12 - sqrt3/4 + 1/4)/pi   = 0.025078581   x4
+	// and R <= 0.5 texel collapses the table to the identity kernel exactly.
+	// ---------------------------------------------------------------------------------------------
+	const double Radius = static_cast<double>(KernelRadiusTexels);
+
+	// Cell (dx,dy) spans [dx-0.5, dx+0.5], so it can only hold disc area when dx - 0.5 < R, i.e.
+	// dx < R + 0.5. The half extent is therefore ceil(R - 0.5), NOT floor(R): at R = 1.6 floor() would
+	// crop the outermost partial ring. Mass would still be conserved (the renormalisation below absorbs
+	// it) but the rendered stroke would be narrower than DisplayPathWidthCm asks for, which is a silent
+	// violation of FR3 rather than a visible failure.
+	KernelHalfExtent = FMath::Max(0, static_cast<int32>(FMath::CeilToDouble(Radius - 0.5)));
+
 	// Never let the kernel span more than the grid; the edge renormalisation assumes at least the centre
 	// tap is in bounds, which it always is, but an absurd width on a tiny grid would waste the whole walk.
 	const int32 MaxHalf = FMath::Max(0, FMath::Min(GridDims.X, GridDims.Y) / 2);
 	KernelHalfExtent = FMath::Clamp(KernelHalfExtent, 0, MaxHalf);
 
-	// ---------------------------------------------------------------------------------------------
-	// SHAPE RULE (the one convention here that has a defensible alternative). An integer texel offset
-	// is a member of the disc iff its centre lies within the radius:
-	//
-	//     dx*dx + dy*dy <= R*R          (no tolerance - the test is exact)
-	//
-	// then all members are weighted EQUALLY. This is disc MEMBERSHIP, not analytic area coverage. It was
-	// chosen over area coverage because it has zero free parameters and is therefore unambiguous to
-	// re-derive by hand, whereas an area-fraction kernel needs an integration scheme that is itself an
-	// unstated convention. The single discriminating observable is the tap count at R = 1.0: this rule
-	// gives 5 (the plus), an area rule gives 9 (the corners overlap the disc, nearest corner at 0.707).
-	// Swapping to area coverage is a change to this loop body and nothing else.
-	// ---------------------------------------------------------------------------------------------
-	const double RadiusSquared = static_cast<double>(KernelRadiusTexels) * static_cast<double>(KernelRadiusTexels);
-
+	// Areas are collected in double and normalised once, rather than stored as float and scaled in place:
+	// two float roundings per weight would eat most of the 1e-6 relative tolerance the oracle weights are
+	// stated to.
+	TArray<double> TapAreas;
 	double RawSum = 0.0;
 	for (int32 DY = -KernelHalfExtent; DY <= KernelHalfExtent; ++DY)
 	{
 		for (int32 DX = -KernelHalfExtent; DX <= KernelHalfExtent; ++DX)
 		{
-			const double DistSquared = static_cast<double>(DX * DX + DY * DY);
-			if (DistSquared <= RadiusSquared)
+			const double Area = TrajectoryFieldPrivate::DiscAreaInRect(
+				static_cast<double>(DX) - 0.5, static_cast<double>(DX) + 0.5,
+				static_cast<double>(DY) - 0.5, static_cast<double>(DY) + 0.5, Radius);
+
+			// Strictly greater than zero: a cell the disc only touches at a single point (dx = 3 at
+			// R = 2.5) contributes no area and must not become a zero-weight tap the splat loop pays for.
+			if (Area > 0.0)
 			{
 				if (DX == 0 && DY == 0)
 				{
 					KernelCentreIndex = KernelOffsets.Num();
 				}
 				KernelOffsets.Add(FIntPoint(DX, DY));
-				KernelWeights.Add(1.0f);
-				RawSum += 1.0;
+				KernelWeights.Add(0.0f);
+				TapAreas.Add(Area);
+				RawSum += Area;
 			}
 		}
 	}
 
-	// (0,0) always satisfies 0 <= R*R for R >= 0, so the table is never empty.
+	// R == 0 (DisplayPathWidthCm == 0) is the only case that produces no tap at all, since a
+	// zero-radius disc has no area. Fall back to the identity kernel, which is the correct limit:
+	// presentation then equals canonical.
 	if (RawSum <= 0.0 || KernelCentreIndex == INDEX_NONE)
 	{
 		KernelOffsets.Reset();
@@ -234,9 +326,9 @@ void FTrajectoryField::BuildKernel()
 	}
 
 	const double InvRawSum = 1.0 / RawSum;
-	for (float& Weight : KernelWeights)
+	for (int32 Tap = 0; Tap < KernelWeights.Num(); ++Tap)
 	{
-		Weight = static_cast<float>(static_cast<double>(Weight) * InvRawSum);
+		KernelWeights[Tap] = static_cast<float>(TapAreas[Tap] * InvRawSum);
 	}
 
 	// Fold the quantisation residual into the centre tap so the table sums to 1.0 to within a single
