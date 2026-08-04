@@ -1504,6 +1504,78 @@ bool FTrajMaterialHonoursTextureSamplerTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every texture sample honours the texture's own sampler state"), SharedSamplerCount, 0);
 	return true;
 }
+
+// =====================================================================================================
+// THE UNLIT GATE. Same reasoning as the sampler gate above: an ASSET setting, asserted from C++, because
+// the asset is the only place it can live and the only place it can be silently undone.
+//
+// Owner ruling A0-48 (2026-08-05): the trajectory surface is UNLIT. Under default-lit the band colour was
+// shaded, exposed and tonemapped before reaching the screen -- measured, the CPU-colourised PNG held 4
+// distinct colours while the rendered view held 5,124 with ZERO pixels matching a band colour exactly and
+// 542 shades inside +/-8 of one blue-grey. Unlit removes the lighting and exposure stages, which is both
+// the fidelity fix and a small perf win on a full-screen-ish surface.
+//
+// An unlit material's ONLY colour output is Emissive Color -- Base Color is ignored entirely -- so the
+// two assertions below are one fact: the shading model must be Unlit AND the band custom node must reach
+// Emissive. Setting the model without moving the connection renders the surface black.
+//
+// Base Color is intentionally left connected as well, so reverting to default-lit is a one-property flip
+// rather than a rewire. That is NOT asserted here: it is a convenience, not a requirement.
+//
+// Regenerating this material from M_HeatmapRT_V2 (which is default-lit, shared with the density surface,
+// and must stay that way) reverts both. This test is what says so.
+// =====================================================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajMaterialIsUnlitTest,
+	"ProjectMobius.Heatmap.Trajectory.Material.IsUnlitAndDrivesEmissive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajMaterialIsUnlitTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* MaterialPath =
+		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_Trajectory.M_HeatmapRT_Trajectory");
+	UMaterial* Material = LoadObject<UMaterial>(nullptr, MaterialPath);
+	if (!TestNotNull(TEXT("M_HeatmapRT_Trajectory loads"), Material))
+	{
+		return false;
+	}
+
+	// Read the DESERIALISED property. A binary grep of the .uasset cannot answer this: enum defaults are
+	// not serialised, so a matched string may be a name-table entry rather than an assigned value. That
+	// mistake produced a wrong diagnosis twice on this surface.
+	// UMaterial::ShadingModel is private in 5.5 -- go through the accessor, which also resolves the
+	// multi-model field rather than a single raw enum.
+	const FMaterialShadingModelField ShadingModels = Material->GetShadingModels();
+	const bool bIsUnlit = ShadingModels.HasShadingModel(MSM_Unlit) && ShadingModels.CountShadingModels() == 1;
+	AddInfo(FString::Printf(TEXT("shading models: count=%d, has MSM_Unlit=%s"),
+		ShadingModels.CountShadingModels(),
+		ShadingModels.HasShadingModel(MSM_Unlit) ? TEXT("true") : TEXT("false")));
+	if (!bIsUnlit)
+	{
+		AddError(FString::Printf(
+			TEXT("%s is not Unlit. Lit shading re-introduces the viewport/export mismatch: the bands get ")
+			TEXT("shaded and tonemapped and no palette colour survives to screen. FIX: open the material, ")
+			TEXT("set Shading Model to Unlit, confirm the band custom node drives Emissive Color, save, ")
+			TEXT("and COMMIT the .uasset."),
+			MaterialPath));
+	}
+
+	const FExpressionInput* Emissive = Material->GetExpressionInputForProperty(MP_EmissiveColor);
+	const bool bEmissiveDriven = Emissive != nullptr && Emissive->Expression != nullptr;
+	if (!bEmissiveDriven)
+	{
+		AddError(FString::Printf(
+			TEXT("%s has nothing connected to Emissive Color. An Unlit material ignores Base Color, so ")
+			TEXT("the surface renders BLACK. FIX: connect the band custom node to Emissive Color."),
+			MaterialPath));
+	}
+	else
+	{
+		AddInfo(FString::Printf(TEXT("Emissive Color <- %s"), *Emissive->Expression->GetName()));
+	}
+
+	return true;
+}
 #endif // WITH_EDITOR
 
 #endif // !UE_BUILD_SHIPPING
