@@ -404,10 +404,23 @@ public:
 	 * Presentation stroke WIDTH in world centimetres (replaces the old TrajectoryCircleRadius, which was a
 	 * radius and doubled as a deposition brush). It feeds only the splat kernel: canonical person-metres
 	 * and person-seconds are unchanged by it, and Sum(presentation) == Sum(canonical) is the invariant that
-	 * proves so. 20 cm is a path width, not a body footprint.
+	 * proves so. This is a path width, not a body footprint.
+	 *
+	 * 10 cm (owner ruling A0-47, 2026-08-05) rather than the original 20. At the default 10 cm/texel this
+	 * puts KernelRadiusTexels at 0.5, which collapses the splat from 9 taps to 1 — so the stroke renders
+	 * one texel wide instead of ~3, roughly a 3x narrowing. That is the NARROWEST value that changes
+	 * anything here: width below one texel is not drawable, so going finer means lowering
+	 * TrajectoryWorldCmPerTexel too, at quadratic memory cost.
+	 *
+	 * Deliberately NOT changed on FTrajectoryFieldConfig::DisplayPathWidthCm, which stays at 20: the
+	 * oracle derivations and the calibration tests are written against a 20 cm / 10 cm-per-texel radius of
+	 * exactly 1.0 texel, and those must not be re-tuned to match a display preference.
+	 *
+	 * EditAnywhere + BlueprintReadWrite is the hook for the eventual sizing UI — a widget can drive this
+	 * directly with no C++ change.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
-	float TrajectoryDisplayPathWidthCm = 20.0f;
+	float TrajectoryDisplayPathWidthCm = 10.0f;
 
 	/**
 	 * D2b — hard ceiling on either grid axis. Exceeding it coarsens cm/texel rather than stretching the
