@@ -78,6 +78,9 @@
 #include "Tests/AutomationCommon.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
+#include "MassAI/SubSystems/MassEntitySpawnSubsystem.h"
+#include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "SimData/ISimSampleProvider.h"
 #include "Subsystems/TimeDilationSubSystem.h"
 #include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Subsystems/HeatmapSubsystem.h"
@@ -102,12 +105,16 @@ namespace TrajectoryRealData
 	/**
 	 * Heatmap span in metres.
 	 *
-	 * Not derived from the building: these runs import agent movement only, and UHeatmapSubsystem sizes
-	 * its heatmaps from HeatmapBoundingSize, which is populated by a building import. Rather than pull
-	 * a 27 MB fbx through the runtime mesh path just to get a number, the size is passed in (exactly as
-	 * mobius.Heatmap.SpawnTrajectory does) and the run self-checks: positions outside the mesh are
-	 * CLAMPED onto the texture edge by the rasteriser, so a pile-up on the border means undersized.
-	 * ReportEdgePileup below turns that into a warning instead of a silently squashed capture.
+	 * The SPAN is not derived from the building: these runs import agent movement only, and
+	 * UHeatmapSubsystem sizes its heatmaps from HeatmapBoundingSize, which is populated by a building
+	 * import. Rather than pull a 27 MB fbx through the runtime mesh path just to get a number, the size is
+	 * passed in (exactly as mobius.Heatmap.SpawnTrajectory does) and the run self-checks: positions
+	 * outside the mesh are CLAMPED onto the texture edge by the rasteriser, so a pile-up on the border
+	 * means undersized. ReportEdgePileup below turns that into a warning instead of a silently squashed
+	 * capture.
+	 *
+	 * The PLACEMENT, unlike the span, IS derived from the data - see ComputeAgentBoundsCm. Span and
+	 * placement are separable and only the span is a judgement call.
 	 *
 	 * Override with -MobiusHeatmapMetres=<n>.
 	 */
@@ -130,6 +137,110 @@ namespace TrajectoryRealData
 		float Metres = DefaultHeatmapMetres;
 		FParse::Value(FCommandLine::Get(), TEXT("MobiusHeatmapMetres="), Metres);
 		return Metres;
+	}
+
+	/** How many timestep blocks to sample when locating the agents. Placement does not need all of them. */
+	static constexpr int32 BoundsProbeBlocks = 64;
+
+	/** This file's own heatmap. Must be unique across the session - see FindOwnHeatmap. */
+	static const TCHAR* OwnHeatmapName = TEXT("Heatmap_RealDatasetCapture");
+
+	/**
+	 * The heatmap THIS file spawned, matched by name.
+	 *
+	 * "First actor with bTrajectoryHeatmap" is not a lookup, it is a coin toss: every Tier B test in the
+	 * session leaves its heatmap in the world, so this file was measuring whichever one happened to come
+	 * first out of TActorIterator - in practice TrajectoryHeatmapInGameTest's 50 m invariance heatmap
+	 * rather than its own 200 m capture. That was invisible while both were spawned at the world origin
+	 * and produced a 76% off-grid drop the moment they stopped coinciding.
+	 */
+	static AHeatmapPixelTextureVisualizer* FindOwnHeatmap(UWorld* World)
+	{
+		if (!World)
+		{
+			return nullptr;
+		}
+		for (TActorIterator<AHeatmapPixelTextureVisualizer> It(World); It; ++It)
+		{
+			if (IsValid(*It) && It->bTrajectoryHeatmap && It->ActorName == OwnHeatmapName)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	}
+
+	/**
+	 * World-cm XY bounding box of the loaded agent data, or an invalid box if it cannot be read.
+	 *
+	 * The heatmap has to be PLACED, not just sized. FTrajectoryField takes the mesh component's world
+	 * location as the grid's MINIMUM corner, and the importer negates Y - a source sample at (x, y) metres
+	 * becomes world (+100x, -100y) cm. An actor spawned at FVector::ZeroVector therefore covers
+	 * [0, +span] on both axes while every agent sits at negative Y, and the field books the whole capture
+	 * to dropped mass. That is exactly what made three synthetic Tier B tests green against an empty field
+	 * (STATUS 6.8, ruling A0-28); here it would have silently truncated the capture at Y = 0 instead,
+	 * which is worse, because a half-full heatmap still looks like data.
+	 *
+	 * Reading the real extent rather than assuming the sign also means this keeps working if the importer's
+	 * convention ever changes: the box is measured, not derived.
+	 *
+	 * Sampled at a stride rather than exhaustively - the 5000-agent file is millions of samples and this
+	 * only has to be good enough to centre a 200 m span. Stand-in blocks (streaming cold miss) are skipped
+	 * because their positions belong to another timestep. Undersizing is still caught downstream by
+	 * ReportEdgePileup.
+	 */
+	static FBox2D ComputeAgentBoundsCm(UWorld* World)
+	{
+		FBox2D Bounds(ForceInit);
+
+		const UMassEntitySpawnSubsystem* SpawnSubsystem = World ? World->GetSubsystem<UMassEntitySpawnSubsystem>() : nullptr;
+		const FSimulationFragment* Simulation = SpawnSubsystem ? SpawnSubsystem->GetSimulationFragment() : nullptr;
+		const ISimSampleProvider* const Provider = Simulation ? Simulation->Provider.Get() : nullptr;
+		if (!Provider || !Provider->IsValidAndPopulated())
+		{
+			return Bounds;
+		}
+
+		const int32 NumTimesteps = Provider->GetNumTimesteps();
+		if (NumTimesteps <= 0)
+		{
+			return Bounds;
+		}
+		const int32 Stride = FMath::Max(1, NumTimesteps / BoundsProbeBlocks);
+
+		for (int32 Step = 0; Step < NumTimesteps; Step += Stride)
+		{
+			if (!Provider->HasExactSamplesForTimestep(Step))
+			{
+				continue;
+			}
+			const TArray<FSimMovementSample>* Block = Provider->GetSamplesForTimestep(Step);
+			if (!Block)
+			{
+				continue;
+			}
+			for (const FSimMovementSample& Sample : *Block)
+			{
+				Bounds += FVector2D(Sample.Position.X, Sample.Position.Y);
+			}
+		}
+		return Bounds;
+	}
+
+	/**
+	 * Spawn location for a heatmap of the given span, centred on wherever the agents actually are.
+	 * Returns the origin (grid MINIMUM corner), which is also what the rendered-view camera offsets from.
+	 * Z stays 0: the subsystem's floor filter is a band of MaxAddHeight (10 cm) ABOVE the mesh's Z.
+	 */
+	static FVector HeatmapOriginForAgents(UWorld* World, float SizeCm, FBox2D& OutBounds)
+	{
+		OutBounds = ComputeAgentBoundsCm(World);
+		if (!OutBounds.bIsValid)
+		{
+			return FVector::ZeroVector;
+		}
+		const FVector2D Centre = OutBounds.GetCenter();
+		return FVector(Centre.X - SizeCm * 0.5f, Centre.Y - SizeCm * 0.5f, 0.0);
 	}
 
 	/**
@@ -318,8 +429,38 @@ namespace TrajectoryRealData
 			const float Metres = HeatmapMetres();
 			const float SizeCm = Metres * 100.0f;
 
+			// Placed over the agents, not at the world origin - see ComputeAgentBoundsCm for why the origin
+			// is the wrong answer and how the extent is measured rather than assumed.
+			FBox2D AgentBounds(ForceInit);
+			const FVector SpawnOrigin = HeatmapOriginForAgents(World, SizeCm, AgentBounds);
+			if (AgentBounds.bIsValid)
+			{
+				const FVector2D Span = AgentBounds.GetSize();
+				UE_LOG(LogTemp, Display,
+					TEXT("[TrajectoryRealData] agent extent X [%.0f, %.0f] Y [%.0f, %.0f] cm (%.1f x %.1f m); ")
+					TEXT("%.0f m heatmap placed with its minimum corner at (%.0f, %.0f)"),
+					AgentBounds.Min.X, AgentBounds.Max.X, AgentBounds.Min.Y, AgentBounds.Max.Y,
+					Span.X / 100.0f, Span.Y / 100.0f, Metres, SpawnOrigin.X, SpawnOrigin.Y);
+				if (Span.X > SizeCm || Span.Y > SizeCm)
+				{
+					Test.AddWarning(FString::Printf(
+						TEXT("agents span %.1f x %.1f m but the heatmap is %.0f m - the capture will be ")
+						TEXT("clipped. Re-run with -MobiusHeatmapMetres=%.0f or larger."),
+						Span.X / 100.0f, Span.Y / 100.0f, Metres,
+						FMath::CeilToFloat(FMath::Max(Span.X, Span.Y) / 100.0f)));
+				}
+			}
+			else
+			{
+				// Not fatal: the capture may still be usable, but nobody should fit a band edge to it
+				// without knowing the grid was placed blind.
+				Test.AddWarning(TEXT("could not read the agent extent from the sim provider - falling back to ")
+					TEXT("the world origin, which is very likely the wrong half of Y. Treat this capture as ")
+					TEXT("unplaced."));
+			}
+
 			AHeatmapPixelTextureVisualizer* Heatmap =
-				World->SpawnActor<AHeatmapPixelTextureVisualizer>(FVector::ZeroVector, FRotator::ZeroRotator);
+				World->SpawnActor<AHeatmapPixelTextureVisualizer>(SpawnOrigin, FRotator::ZeroRotator);
 			if (!Heatmap)
 			{
 				Test.AddError(TEXT("failed to spawn the heatmap"));
@@ -437,18 +578,7 @@ namespace TrajectoryRealData
 		virtual bool Update() override
 		{
 			UWorld* World = GetActiveGameWorld();
-			AHeatmapPixelTextureVisualizer* Heatmap = nullptr;
-			if (World)
-			{
-				for (TActorIterator<AHeatmapPixelTextureVisualizer> It(World); It; ++It)
-				{
-					if (IsValid(*It) && It->bTrajectoryHeatmap)
-					{
-						Heatmap = *It;
-						break;
-					}
-				}
-			}
+			AHeatmapPixelTextureVisualizer* Heatmap = FindOwnHeatmap(World);
 			if (!Heatmap)
 			{
 				Test.AddError(TEXT("no trajectory heatmap found at assertion time"));
@@ -484,6 +614,36 @@ namespace TrajectoryRealData
 				}
 				const float CellArea = Field.GetCellAreaSquareMetres();
 				Stats.CanonicalPeakDensity = (CellArea > 0.0f) ? (MaxCellMetres / CellArea) : 0.0f;
+
+				// The placement check that has teeth. TouchedTexels > 0 passes on a heatmap covering a
+				// corner of the building; the dropped fraction does not. A grid parked on the wrong half
+				// of Y reads 100% here, which is the state this file shipped in until 2026-08-04.
+				const double Deposited = Field.GetTotalPersonMetres();
+				const double Offered = Deposited + Field.GetDroppedPersonMetres()
+					+ Field.GetRejectedPersonMetres() + Field.GetNegligiblePersonMetres();
+				const double DroppedFraction = Offered > 0.0 ? (Field.GetDroppedPersonMetres() / Offered) : 0.0;
+
+				// Where the grid actually is, versus where the agents actually are. Logged as texels so a
+				// (-1,-1) names an off-grid corner directly instead of leaving it to be inferred.
+				const FBox2D Bounds = ComputeAgentBoundsCm(World);
+				const FIntPoint MinTexel = Heatmap->WorldToTexelForTesting(FVector(Bounds.Min.X, Bounds.Min.Y, 0.0));
+				const FIntPoint MaxTexel = Heatmap->WorldToTexelForTesting(FVector(Bounds.Max.X, Bounds.Max.Y, 0.0));
+				UE_LOG(LogTemp, Display,
+					TEXT("[TrajectoryRealData] grid %dx%d at %.4f cm/texel, actor at (%.0f, %.0f, %.0f); ")
+					TEXT("agent box min (%.0f, %.0f) -> texel (%d, %d), max (%.0f, %.0f) -> texel (%d, %d)"),
+					Field.GetGridDims().X, Field.GetGridDims().Y, Field.GetEffectiveCmPerTexel(),
+					Heatmap->GetActorLocation().X, Heatmap->GetActorLocation().Y, Heatmap->GetActorLocation().Z,
+					Bounds.Min.X, Bounds.Min.Y, MinTexel.X, MinTexel.Y,
+					Bounds.Max.X, Bounds.Max.Y, MaxTexel.X, MaxTexel.Y);
+				UE_LOG(LogTemp, Display,
+					TEXT("[TrajectoryRealData] %s canonical mass: %.1f of %.1f person-metres deposited, ")
+					TEXT("%.1f%% dropped off-grid, %.1f rejected by a gate"),
+					NameFor(Dataset), Deposited, Offered, DroppedFraction * 100.0,
+					Field.GetRejectedPersonMetres());
+				Test.TestTrue(
+					TEXT("most of the offered path length landed on the grid (a high drop fraction means the ")
+					TEXT("heatmap is mis-placed or undersized, not that the data is bad)"),
+					DroppedFraction < 0.5);
 			}
 
 			// The measurement is the product. Reported unconditionally, pass or fail.
@@ -688,15 +848,7 @@ namespace TrajectoryRealData
 				return true;
 			}
 
-			AHeatmapPixelTextureVisualizer* Heatmap = nullptr;
-			for (TActorIterator<AHeatmapPixelTextureVisualizer> It(World); It; ++It)
-			{
-				if (IsValid(*It) && It->bTrajectoryHeatmap)
-				{
-					Heatmap = *It;
-					break;
-				}
-			}
+			AHeatmapPixelTextureVisualizer* Heatmap = FindOwnHeatmap(World);
 			if (!Heatmap)
 			{
 				Test.AddError(TEXT("no trajectory heatmap to frame for the rendered capture"));

@@ -217,12 +217,23 @@ namespace TrajectoryInvariance
 		return nullptr;
 	}
 
+	/** This file's own heatmap. Must be unique across the session - see FindTrajectoryHeatmap. */
+	static const TCHAR* OwnHeatmapName = TEXT("Heatmap_InvarianceCheck");
+
+	/**
+	 * The heatmap THIS file spawned, matched by name.
+	 *
+	 * "First actor with bTrajectoryHeatmap" is not a lookup, it is a coin toss: every Tier B test in the
+	 * session leaves its heatmap in the world, and TrajectoryHeatmapRealDatasetTest's is a different size
+	 * in a different place. It was harmless only while every test spawned at the world origin, and it read
+	 * the wrong actor the moment that stopped being true.
+	 */
 	static AHeatmapPixelTextureVisualizer* FindTrajectoryHeatmap(UWorld* World)
 	{
 		if (!World) { return nullptr; }
 		for (TActorIterator<AHeatmapPixelTextureVisualizer> It(World); It; ++It)
 		{
-			if (IsValid(*It) && It->bTrajectoryHeatmap)
+			if (IsValid(*It) && It->bTrajectoryHeatmap && It->ActorName == OwnHeatmapName)
 			{
 				return *It;
 			}
