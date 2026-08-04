@@ -1571,7 +1571,30 @@ bool FTrajMaterialIsUnlitTest::RunTest(const FString& Parameters)
 	}
 	else
 	{
-		AddInfo(FString::Printf(TEXT("Emissive Color <- %s"), *Emissive->Expression->GetName()));
+		AddInfo(FString::Printf(TEXT("Emissive Color <- %s output index %d (mask=%d rgba=%d%d%d%d)"),
+			*Emissive->Expression->GetName(), Emissive->OutputIndex,
+			Emissive->Mask, Emissive->MaskR, Emissive->MaskG, Emissive->MaskB, Emissive->MaskA));
+	}
+
+	// A non-null expression is NOT enough. Emissive must be fed the SAME output of the SAME node that
+	// Base Color was, or an Unlit surface renders BLACK while every assertion above still passes -- the
+	// owner reported exactly that on 2026-08-05. `connect_material_property` was called with an empty
+	// output name, which does not guarantee the output index Base Color used.
+	const FExpressionInput* BaseColour = Material->GetExpressionInputForProperty(MP_BaseColor);
+	if (BaseColour != nullptr && BaseColour->Expression != nullptr)
+	{
+		AddInfo(FString::Printf(TEXT("Base Color    <- %s output index %d (mask=%d rgba=%d%d%d%d)"),
+			*BaseColour->Expression->GetName(), BaseColour->OutputIndex,
+			BaseColour->Mask, BaseColour->MaskR, BaseColour->MaskG, BaseColour->MaskB, BaseColour->MaskA));
+		if (bEmissiveDriven && BaseColour->Expression == Emissive->Expression
+			&& BaseColour->OutputIndex != Emissive->OutputIndex)
+		{
+			AddError(FString::Printf(
+				TEXT("%s drives Base Color from output %d but Emissive from output %d of the same node. ")
+				TEXT("Under Unlit only Emissive is read, so the surface renders BLACK. FIX: connect ")
+				TEXT("Emissive to output %d."),
+				MaterialPath, BaseColour->OutputIndex, Emissive->OutputIndex, BaseColour->OutputIndex));
+		}
 	}
 
 	return true;
