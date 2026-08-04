@@ -72,9 +72,19 @@ public:
 	 * @param InHeight - The height of the texture
 	 * @param InitialColor - The initial color of the texture
 	 * @param InFilter - The filter to use for the texture - default is TF_Nearest
+	 * @param InAddress - Addressing mode - default is TA_Clamp
+	 *
+	 * NOTE on InFilter and InAddress: both are only consulted when the MATERIAL asks for the texture's own
+	 * sampler state, i.e. when its Texture Sample node has Sampler Source = "From Texture Asset". With
+	 * either of the *_WorldGroupSettings options the node uses a shared, pooled sampler and BOTH of these
+	 * are discarded - filtering comes from texture-group settings instead. That is why a heatmap can render
+	 * blurred despite TF_Nearest being set here. A transient texture defaults to TA_Wrap, so the clamp
+	 * default below exists to make the "From Texture Asset" path safe: without it, honouring the texture's
+	 * sampler would swap a blur for edge bleeding.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Methods")
-	void InitializeTexture(int32 InWidth, int32 InHeight, FLinearColor InitialColor, TextureFilter InFilter = TF_Nearest);
+	void InitializeTexture(int32 InWidth, int32 InHeight, FLinearColor InitialColor, TextureFilter InFilter = TF_Nearest,
+	                       TextureAddress InAddress = TA_Clamp);
 
 	/**
 	 * Set Pixel Color at the specified location of the specified color

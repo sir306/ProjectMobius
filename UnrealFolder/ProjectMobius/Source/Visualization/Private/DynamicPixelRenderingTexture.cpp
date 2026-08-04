@@ -89,7 +89,7 @@ UDynamicPixelRenderingTexture::~UDynamicPixelRenderingTexture()
 }
 
 void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHeight, const FLinearColor InitialColor,
-                                                      TextureFilter InFilter)
+                                                      TextureFilter InFilter, TextureAddress InAddress)
 {
 	// set the initial parameters
 	TextureDimensionX = InWidth;
@@ -117,6 +117,13 @@ void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHei
 	DynamicTexture->SRGB = 0; //TBD: may need to set to false, it may not be required and could be a performance hit
 	// Set the filter method
 	DynamicTexture->Filter = InFilter;
+	// Addressing. A transient texture defaults to TA_Wrap, which is wrong for every consumer of this class:
+	// a heatmap that wraps samples the opposite edge of the building. It only takes effect when the material
+	// samples with Sampler Source = "From Texture Asset" (see the header note) -- under a shared
+	// *_WorldGroupSettings sampler this, like Filter, is ignored. Setting it is what makes switching a
+	// material to the texture's own sampler safe, rather than trading a blur for edge bleeding.
+	DynamicTexture->AddressX = InAddress;
+	DynamicTexture->AddressY = InAddress;
 	// Update the texture resource - Essentially applies the changes to the texture
 	DynamicTexture->UpdateResource();
 	

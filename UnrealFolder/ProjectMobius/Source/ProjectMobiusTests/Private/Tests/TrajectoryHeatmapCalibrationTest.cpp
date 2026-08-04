@@ -50,6 +50,14 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "TrajectoryField.h"
+#if WITH_EDITOR
+// The blur gate inspects the material graph, which is editor-only data.
+#include "Materials/Material.h"
+#include "Materials/MaterialExpression.h"
+// SamplerSource is declared on the SAMPLE expression, not on the texture base (which carries only Texture
+// and SamplerType) - UE 5.5: Engine/Public/Materials/MaterialExpressionTextureSample.h:57.
+#include "Materials/MaterialExpressionTextureSample.h"
+#endif
 
 namespace TrajectoryOracle
 {
@@ -1435,5 +1443,67 @@ bool FTrajNonSquareNegativeOriginTest::RunTest(const FString& Parameters)
 		NearlyEqualHybrid(Off.GetDroppedPersonMetres(), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
 	return true;
 }
+
+// =====================================================================================================
+// THE BLUR GATE. Asserts an ASSET setting, on purpose, because that is the only place this can be fixed
+// and the only place a collaborator can silently un-fix it.
+//
+// The accumulation texture is created with Filter = TF_Nearest and TA_Clamp addressing, but a material only
+// consults a texture's own sampler state when its Texture Sample node has Sampler Source set to
+// "From Texture Asset". With either *_WorldGroupSettings option the node samples through a shared, pooled
+// sampler and BOTH of those settings are discarded - filtering comes from texture-group settings instead.
+// The GPU then bilinear-interpolates the accumulation buffer BEFORE the custom node bands it, so banding is
+// applied to interpolated values and every band boundary smears. That is the difference between the
+// per-texel-exact exported PNG and a blurred viewport.
+//
+// It cannot be fixed from C++ (sampler source is a property of the node, not of the texture) and it cannot
+// be fixed by a script anybody has to remember to run - the asset is committed, so the asset is the fix.
+// This test is what stops it regressing: regenerate the material from M_HeatmapRT_V2, or open it and change
+// the dropdown back, and the suite says so.
+// =====================================================================================================
+#if WITH_EDITOR
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajMaterialHonoursTextureSamplerTest,
+	"ProjectMobius.Heatmap.Trajectory.Material.SamplesWithTextureOwnSampler",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajMaterialHonoursTextureSamplerTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* MaterialPath =
+		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_Trajectory.M_HeatmapRT_Trajectory");
+	UMaterial* Material = LoadObject<UMaterial>(nullptr, MaterialPath);
+	if (!TestNotNull(TEXT("M_HeatmapRT_Trajectory loads"), Material))
+	{
+		return false;
+	}
+
+	int32 SampleCount = 0;
+	int32 SharedSamplerCount = 0;
+	for (UMaterialExpression* Expression : Material->GetExpressions())
+	{
+		UMaterialExpressionTextureSample* TextureExpression = Cast<UMaterialExpressionTextureSample>(Expression);
+		if (!TextureExpression)
+		{
+			continue;
+		}
+		++SampleCount;
+		if (TextureExpression->SamplerSource != SSM_FromTextureAsset)
+		{
+			++SharedSamplerCount;
+			AddError(FString::Printf(
+				TEXT("%s samples through a SHARED sampler (SamplerSource = %d), which discards the ")
+				TEXT("accumulation texture's TF_Nearest and TA_Clamp. The GPU therefore interpolates the ")
+				TEXT("buffer before the bands are applied and the render blurs, disagreeing with the ")
+				TEXT("exported PNG. FIX: open %s, select the Texture Sample node, set Sampler Source to ")
+				TEXT("'From Texture Asset', save, and COMMIT the .uasset."),
+				*Expression->GetName(), static_cast<int32>(TextureExpression->SamplerSource), MaterialPath));
+		}
+	}
+
+	TestTrue(TEXT("the material samples at least one texture (graph has not been gutted)"), SampleCount > 0);
+	TestEqual(TEXT("every texture sample honours the texture's own sampler state"), SharedSamplerCount, 0);
+	return true;
+}
+#endif // WITH_EDITOR
 
 #endif // !UE_BUILD_SHIPPING
