@@ -1337,6 +1337,63 @@ bool FTrajKernelHalfExtentTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// Byte 0 is reserved for "no data". The band scheme's lowest bucket keys on a zero value, so a cell that
+// actually holds mass must never encode to 0 - otherwise a lightly-used route is indistinguishable from
+// ground nobody walked on. This is the Tier A form of a failure that first showed up on real data, where
+// ~1700 touched texels of a 1000-agent capture were rounding away to zero.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajEncodeReservesZeroTest,
+	"ProjectMobius.Heatmap.Trajectory.Lifecycle.EncodeReservesZeroForNoData",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajEncodeReservesZeroTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+	FTrajectoryField Field = MakeField(1000.0, 1000.0, 10.0f);
+
+	// One heavily-used cell plus one very faint route far from it. Auto-exposure scales to the hot cell, so
+	// the faint cells land far below half a byte - which is exactly the case that used to vanish.
+	for (int32 i = 0; i < 500; ++i)
+	{
+		Field.DepositSegment(FVector2D(505, 505), FVector2D(515, 505), 0.1f);
+	}
+	Field.DepositSegment(FVector2D(25, 25), FVector2D(95, 25), 0.5f);
+
+	TArray<uint8> Buffer;
+	Field.EncodeToDisplay(ETrajectoryMapMode::RouteUsage, Buffer);
+
+	const TArray<float>& Presentation = Field.GetPresentation(ETrajectoryMapMode::RouteUsage);
+	const int32 NumCells = Field.GetGridDims().X * Field.GetGridDims().Y;
+	int32 PositiveCells = 0;
+	int32 VanishedCells = 0;
+	for (int32 Index = 0; Index < NumCells; ++Index)
+	{
+		if (Presentation[Index] > 0.0f)
+		{
+			++PositiveCells;
+			if (Buffer[Index * FTrajectoryField::BytesPerPixel + FTrajectoryField::ChannelOffsetR] == 0)
+			{
+				++VanishedCells;
+			}
+		}
+	}
+	TestTrue(TEXT("the faint route did produce presentation mass"), PositiveCells > 10);
+	TestEqual(TEXT("no cell holding mass encodes to byte 0 (0 means no-data, exclusively)"), VanishedCells, 0);
+
+	// The floor must not touch genuinely empty cells: byte 0 has to still mean something.
+	int32 EmptyButNonZeroByte = 0;
+	for (int32 Index = 0; Index < NumCells; ++Index)
+	{
+		if (Presentation[Index] == 0.0f
+			&& Buffer[Index * FTrajectoryField::BytesPerPixel + FTrajectoryField::ChannelOffsetR] != 0)
+		{
+			++EmptyButNonZeroByte;
+		}
+	}
+	TestEqual(TEXT("empty cells still encode to exactly 0"), EmptyButNonZeroByte, 0);
+	return true;
+}
+
 // Non-square grid, NEGATIVE origin. Every other test in this file uses a square field at origin (0,0), so
 // a transposed row stride (x and y swapped in the index), a dropped origin offset, or a sign error on
 // negative world coordinates would all pass the entire suite -- sums are blind to all three. The

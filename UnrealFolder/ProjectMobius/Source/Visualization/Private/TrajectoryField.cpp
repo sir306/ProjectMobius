@@ -828,6 +828,20 @@ void FTrajectoryField::EncodeToDisplay(ETrajectoryMapMode Mode, TArray<uint8>& O
 		{
 			const double Density = static_cast<double>(Presentation[Index]) * InvCellArea;
 			Quantised = FMath::Clamp(static_cast<int32>(FMath::RoundToDouble(Density * Scale)), 0, 255);
+
+			// Byte 0 is RESERVED for "no data" (the band scheme's lowest bucket keys on it), so a cell that
+			// genuinely holds mass must never encode to 0. Without this floor, round() sends every cell
+			// fainter than half a byte to 0, and a real but lightly-used route becomes indistinguishable
+			// from ground nobody walked on - on a 1000-agent capture that was ~1700 texels.
+			//
+			// This is NOT the old minimum-visible seed returning. That seed added a constant (byte 25) to
+			// the accumulator itself, which is what made the first band meaningless. This touches only the
+			// display quantisation, never a canonical or presentation value, and it lifts a cell by at most
+			// one byte - and only a cell that is already strictly positive.
+			if (Quantised == 0 && Presentation[Index] > 0.0f)
+			{
+				Quantised = 1;
+			}
 		}
 
 		uint8* RESTRICT Pixel = Bytes + Index * BytesPerPixel;

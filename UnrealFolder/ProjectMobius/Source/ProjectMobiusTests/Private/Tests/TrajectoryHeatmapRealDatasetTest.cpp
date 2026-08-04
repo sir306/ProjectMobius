@@ -28,8 +28,10 @@
 //
 // Each run arms FTrajectoryCaptureRecorder, so the artifacts are the full capture set under
 // Saved/TrajectoryCapture/<stamp>/ -- raster.csv, texture.csv, accumulation_los.png and
-// accumulation_scaled.png. Feed those to MobiusPerf\analysis\hits_per_crossing.py and
-// crossings_vs_byte.py; both self-configure from the capture, including the brush radius.
+// accumulation_scaled.png. Feed the exported .csv + .meta.json pair to
+// MobiusPerf\analysis\field_stats.py and then band_fit.py. (The older hits_per_crossing.py and
+// crossings_vs_byte.py are GONE: both measured hits-per-crossing, a property of the brush rasteriser
+// this rebuild removed, and there is no brush radius left for them to self-configure from.)
 //
 // THE DATASET IS NOT IN GIT. .gitignore:162 excludes
 // UnrealFolder/ProjectMobius/UnitTestSampleData/TechSchoolTest/ deliberately -- it is ~760 MB. These
@@ -165,7 +167,7 @@ namespace TrajectoryRealData
 		int32 ModalByte = 0;
 		int32 SaturatedTexels = 0;   // byte == 255, i.e. counts already lost
 		int32 EdgeTexels = 0;        // touched texels on the outermost row/column
-		int32 NoDataCollisions = 0;  // touched texels that still colourise as "no data"
+		int32 BelowFirstBandTexels = 0;  // touched texels below the provisional first band edge (reported, not gated)
 
 		// Canonical-field companions to the byte-level stats above, read through
 		// GetTrajectoryFieldForTesting() rather than the encoded display buffer. Zero/invalid if the
@@ -209,7 +211,7 @@ namespace TrajectoryRealData
 				}
 				if ((static_cast<float>(Red) / 255.0f) < TrajectoryLOS_A)
 				{
-					++Stats.NoDataCollisions;
+					++Stats.BelowFirstBandTexels;
 				}
 				if (X == 0 || Y == 0 || X == Width - 1 || Y == Height - 1)
 				{
@@ -508,10 +510,28 @@ namespace TrajectoryRealData
 
 			Test.TestTrue(TEXT("the dataset put something on the heatmap"), Stats.TouchedTexels > 0);
 
+		// A0: the gate that used to sit here asserted BelowFirstBandTexels == 0, i.e. that no touched texel
+		// encodes below 24.5/255 -- and 24.5 is literally the OLD seed byte. That invariant held only
+		// because the removed rasteriser stamped every touched texel to byte 25 before incrementing, which
+		// is exactly what made the first band meaningless; TEST_PLAN section 7 lists those byte-edge fits
+		// among the coverage that dies with the brush. Under a no-seed encode a genuinely faint route
+		// legitimately lands in 1..24, so the assertion tested a property this design does not promise, and
+		// it failed on all three datasets (1706 / 6997 / 1670 texels) for the right reason.
+		//
+		// The invariant that IS promised -- byte 0 means no-data, exclusively -- is now asserted exactly, in
+		// Tier A, against the field itself: Lifecycle.EncodeReservesZeroForNoData. What remains here is the
+		// band-fit MEASUREMENT it was always really producing, reported rather than gated, because the band
+		// edges are provisional under D9 and are refitted by band_fit.py.
+
 			// Structural, and true of any dataset: LOS_A is reserved for "no data", so nothing that was
 			// actually walked on may land in it. A hit here means the seed and the band edge have drifted
 			// apart, which is the original banding bug returning.
-			Test.TestEqual(TEXT("no touched texel colourises as no-data"), Stats.NoDataCollisions, 0);
+			UE_LOG(LogTemp, Display,
+			TEXT("[TrajectoryRealData] %s band-fit input: %d of %d touched texels (%.1f%%) fall below the ")
+			TEXT("provisional first band edge - feed this to MobiusPerf\\analysis\\band_fit.py, it is the ")
+			TEXT("signal that the edges need refitting, NOT a failure"),
+			NameFor(Dataset), Stats.BelowFirstBandTexels, Stats.TouchedTexels,
+			Stats.TouchedTexels > 0 ? (100.0f * Stats.BelowFirstBandTexels / Stats.TouchedTexels) : 0.0f);
 
 			ReportEdgePileup(Stats);
 
