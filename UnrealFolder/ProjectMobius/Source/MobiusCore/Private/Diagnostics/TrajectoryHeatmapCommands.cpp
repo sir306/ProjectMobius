@@ -89,10 +89,21 @@ namespace TrajectoryHeatmapCommands
 // Deliberately does NOT go through UHeatmapSubsystem::CreateHeatmap: that derives its size from
 // HeatmapBoundingSize, which is only populated once a building has been imported. Passing the size in
 // directly is what lets a calibration run work with no geometry loaded at all.
+//
+// CentreX/CentreY exist because the size is only half the question. The trajectory field takes the mesh
+// component's world location as its grid's MINIMUM corner, so a heatmap left at the origin covers the
+// +X/+Y quadrant only - and no imported dataset sits there. The importer negates Y, and the technical
+// school for instance runs X [-9.4, 57.8] m, Y [-30.1, 22.9] m. Capture it from the origin and you get a
+// truncated slice of the site with most of the path length booked to dropped mass, which looks like data
+// rather than like an error. The default stays (0,0) because the no-geometry calibration case this
+// command was written for genuinely wants it; the covered box is logged either way so the mismatch is
+// visible before a capture is taken rather than after it is analysed.
 // -------------------------------------------------------------------------------------------------
 static FAutoConsoleCommandWithWorldAndArgs GMobiusHeatmapSpawnTrajectory(
 	TEXT("mobius.Heatmap.SpawnTrajectory"),
-	TEXT("Spawn a heatmap of [SizeMetres=50] at [WorldZ=0] and enable trajectory mode. Needs no building geometry."),
+	TEXT("Spawn a heatmap of [SizeMetres=50] at [WorldZ=0], centred on [CentreX=0] [CentreY=0] (metres), ")
+	TEXT("and enable trajectory mode. Needs no building geometry. Centre it on the agents: the grid's ")
+	TEXT("minimum corner is the actor location, so the default covers the +X/+Y quadrant only."),
 	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World)
 		{
@@ -109,8 +120,16 @@ static FAutoConsoleCommandWithWorldAndArgs GMobiusHeatmapSpawnTrajectory(
 			const float WorldZ = ArgAsFloat(Args, 1, 0.0f);
 			const float SizeCm = SizeMetres * CentimetresPerMetre;
 
+			// Args 2/3 are the CENTRE, which is how anyone thinks about placing a heatmap over a
+			// building. The actor goes at the minimum corner, half a span away, because that is what
+			// FTrajectoryField::Initialise reads as the grid origin. Both are logged below so the
+			// relationship is on screen and nobody has to rediscover it.
+			const float CentreXCm = ArgAsFloat(Args, 2, 0.0f) * CentimetresPerMetre;
+			const float CentreYCm = ArgAsFloat(Args, 3, 0.0f) * CentimetresPerMetre;
+			const FVector MinCorner(CentreXCm - SizeCm * 0.5f, CentreYCm - SizeCm * 0.5f, WorldZ);
+
 			AHeatmapPixelTextureVisualizer* Heatmap =
-				World->SpawnActor<AHeatmapPixelTextureVisualizer>(FVector(0.0f, 0.0f, WorldZ), FRotator::ZeroRotator);
+				World->SpawnActor<AHeatmapPixelTextureVisualizer>(MinCorner, FRotator::ZeroRotator);
 			if (!Heatmap)
 			{
 				UE_LOG(LogMobiusTrajectoryCmd, Error, TEXT("Failed to spawn AHeatmapPixelTextureVisualizer."));
@@ -129,6 +148,15 @@ static FAutoConsoleCommandWithWorldAndArgs GMobiusHeatmapSpawnTrajectory(
 			UE_LOG(LogMobiusTrajectoryCmd, Display,
 				TEXT("Trajectory heatmap ready. %.1f m across, 1024 texels, %.4f m/texel (%.1f cm). Origin Z=%.1f."),
 				SizeMetres, MetresPerTexel, MetresPerTexel * CentimetresPerMetre, WorldZ);
+			// The line to read before capturing. If the agents are not inside this box the capture is a
+			// truncated slice, and nothing downstream will say so - the field just books the rest to
+			// dropped mass.
+			UE_LOG(LogMobiusTrajectoryCmd, Display,
+				TEXT("Covers world X [%.0f, %.0f] Y [%.0f, %.0f] cm (centre %.0f, %.0f; actor at the minimum ")
+				TEXT("corner %.0f, %.0f). Re-spawn with 'mobius.Heatmap.SpawnTrajectory %.0f %.0f <centreX_m> ")
+				TEXT("<centreY_m>' if the agents are not inside it."),
+				MinCorner.X, MinCorner.X + SizeCm, MinCorner.Y, MinCorner.Y + SizeCm,
+				CentreXCm, CentreYCm, MinCorner.X, MinCorner.Y, SizeMetres, WorldZ);
 		}));
 
 // -------------------------------------------------------------------------------------------------
