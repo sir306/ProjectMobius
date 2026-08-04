@@ -565,11 +565,23 @@ void FTrajectoryField::DepositSegment(const FVector2D& StartCm, const FVector2D&
 	using namespace TrajectoryFieldPrivate;
 
 	// ---- validity gates ------------------------------------------------------------------------
-	if (!IsUsable2D(StartCm) || !IsUsable2D(EndCm) || !IsUsable(static_cast<double>(DeltaSeconds)))
+	const bool bEndpointsUsable = IsUsable2D(StartCm) && IsUsable2D(EndCm);
+	if (!bEndpointsUsable || !IsUsable(static_cast<double>(DeltaSeconds)))
 	{
-		// Length is not a number, so this contributes to no mass bucket - only to the counters.
 		++RejectedNonFiniteCount;
-		RecordRejection(0.0, 0.0, false);
+
+		// A0 fix (A8 finding): when the ENDPOINTS are finite and only Delta-t is not, the length is a
+		// perfectly good number and must still be booked, or a real offered metre lands in no bucket at all
+		// and the four-bucket identity silently fails to close. Only a non-finite endpoint makes the length
+		// itself meaningless, and that is the one case that legitimately contributes to no mass bucket.
+		if (bEndpointsUsable)
+		{
+			RecordRejection(FVector2D::Distance(StartCm, EndCm) * 0.01, 0.0, true);
+		}
+		else
+		{
+			RecordRejection(0.0, 0.0, false);
+		}
 		return;
 	}
 

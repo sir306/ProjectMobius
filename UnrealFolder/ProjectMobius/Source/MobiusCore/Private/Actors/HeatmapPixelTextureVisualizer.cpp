@@ -555,22 +555,13 @@ bool AHeatmapPixelTextureVisualizer::TrajectoryWorldToCell(const FVector& WorldL
 		return false;
 	}
 
-	const float CmPerTexel = TrajectoryField.GetEffectiveCmPerTexel();
-	if (CmPerTexel <= 0.0f)
-	{
-		return false;
-	}
-
-	const FIntPoint Dims = TrajectoryField.GetGridDims();
-	const int32 CellX = FMath::FloorToInt32((WorldLocation.X - TrajectoryFieldOriginCm.X) / CmPerTexel);
-	const int32 CellY = FMath::FloorToInt32((WorldLocation.Y - TrajectoryFieldOriginCm.Y) / CmPerTexel);
-	if (CellX < 0 || CellX >= Dims.X || CellY < 0 || CellY >= Dims.Y)
-	{
-		return false;
-	}
-
-	OutCell = FIntPoint(CellX, CellY);
-	return true;
+	// A0 fix (A8 finding): defer to the field's own rule instead of re-deriving it with FloorToInt32.
+	// A bare floor() is upper-index-owns, which contradicts the ratified lower-index rule the DDA deposits
+	// with: a point exactly on a grid line resolved one cell too high here, and a point on the grid's far
+	// edge was rejected outright where the field's closed box accepts it into the last cell. Since this
+	// feeds WorldToTexelForTesting, any Tier B expectation built on a boundary-aligned world coordinate was
+	// silently pointing at the wrong texel - and boundary coordinates are exactly what a test picks.
+	return TrajectoryField.WorldToCell(FVector2D(WorldLocation.X, WorldLocation.Y), OutCell);
 }
 
 void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()

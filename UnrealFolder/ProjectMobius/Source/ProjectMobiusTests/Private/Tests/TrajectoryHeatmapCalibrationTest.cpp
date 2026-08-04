@@ -184,6 +184,23 @@ namespace TrajectoryOracle
 		}
 		return Total;
 	}
+
+	/**
+	 * Sum over the float32 CELLS — the only conservation reduction that actually tests the deposition.
+	 *
+	 * A0/A8: every "Sum PersonMetres" assertion in this file used to read GetTotalPersonMetres(), which is
+	 * the implementation's OWN double counter, booked in DepositSegment from the clip result BEFORE the DDA
+	 * walk runs. Nothing reconciled it against the arrays, so those assertions passed unchanged with both
+	 * of DepositCell's `+=` lines deleted — i.e. with no mass deposited into any cell at all. That is the
+	 * defect class this whole run exists to prevent: a green test that cannot fail.
+	 *
+	 * TOLERANCES.md §1.3 also requires exactly this form: reduce in double while iterating the stored
+	 * float32 cells. Where a test still checks the counter, it must ALSO check counter == cell sum.
+	 */
+	static double SumCanonical(const FTrajectoryField& Field, ETrajectoryMapMode Mode)
+	{
+		return SumArray(Field.GetCanonical(Mode));
+	}
 }
 
 // =====================================================================================================
@@ -213,12 +230,25 @@ bool FTrajOracleConv12Test::RunTest(const FString& Parameters)
 	// "flag" (tight, catches a real regression -- "achievable at 3e-7; stated bound 3.4e3x loose"). Both
 	// are asserted: the flag level is the one that actually matters, the contract level documents the
 	// looser number a downstream consumer is allowed to assume.
-	TestTrue(TEXT("T-CONV-1: Sum PersonMetres == Sum L (contract level, REL 1e-3)"),
-		NearlyEqualRel(Field.GetTotalPersonMetres(), 2.4670907448, RelTol1e3Contract));
-	TestTrue(TEXT("T-CONV-1: Sum PersonMetres == Sum L (flag level, REL 1e-6)"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), 2.4670907448, RelTol1e6, Coeff(AbsCoeff2e7, 2.4670907448)));
-	TestTrue(TEXT("T-CONV-2: Sum PersonSeconds == Sum Δt (flag level, REL 1e-6)"),
-		NearlyEqualHybrid(Field.GetTotalPersonSeconds(), 2.85, RelTol1e6, Coeff(AbsCoeff2e7, 2.85)));
+	// A0/A8 fix: these reduce over the CELLS, not over the field's own counters. Summing
+	// GetTotalPersonMetres() tested nothing about deposition - see SumCanonical's note.
+	const double CellMetres = SumCanonical(Field, ETrajectoryMapMode::RouteUsage);
+	const double CellSeconds = SumCanonical(Field, ETrajectoryMapMode::RouteExposure);
+
+	TestTrue(TEXT("T-CONV-1: Sum PersonMetres CELLS == Sum L (contract level, REL 1e-3)"),
+		NearlyEqualRel(CellMetres, 2.4670907448, RelTol1e3Contract));
+	TestTrue(TEXT("T-CONV-1: Sum PersonMetres CELLS == Sum L (flag level, REL 1e-6)"),
+		NearlyEqualHybrid(CellMetres, 2.4670907448, RelTol1e6, Coeff(AbsCoeff2e7, 2.4670907448)));
+	TestTrue(TEXT("T-CONV-2: Sum PersonSeconds CELLS == Sum Δt (flag level, REL 1e-6)"),
+		NearlyEqualHybrid(CellSeconds, 2.85, RelTol1e6, Coeff(AbsCoeff2e7, 2.85)));
+
+	// The counters are still worth asserting - but as a SEPARATE claim, paired against the arrays, so a
+	// divergence between "what the field says it deposited" and "what is actually in the cells" fails
+	// loudly instead of being the only thing measured.
+	TestTrue(TEXT("counter GetTotalPersonMetres agrees with the cell sum"),
+		NearlyEqualHybrid(Field.GetTotalPersonMetres(), CellMetres, RelTol1e6, Coeff(AbsCoeff2e7, 2.4670907448)));
+	TestTrue(TEXT("counter GetTotalPersonSeconds agrees with the cell sum"),
+		NearlyEqualHybrid(Field.GetTotalPersonSeconds(), CellSeconds, RelTol1e6, Coeff(AbsCoeff2e7, 2.85)));
 
 	TestEqual(TEXT("nothing rejected (all speeds < 20 m/s)"), Field.GetRejectedSegmentCount(), 0);
 	TestTrue(TEXT("nothing dropped (grid comfortably contains all five)"),
@@ -249,7 +279,7 @@ bool FTrajOracleConv3Test::RunTest(const FString& Parameters)
 		FTrajectoryField Field = MakeField(1000.0, 1000.0, 10.0f);
 		Field.DepositSegment(FVector2D(302, 303), FVector2D(307, 308), 0.1f);
 
-		const double Canonical = Field.GetTotalPersonMetres(); // == 0.0707106781187 (T-DDA-3's L)
+		const double Canonical = SumCanonical(Field, ETrajectoryMapMode::RouteUsage); // == 0.0707106781187 (T-DDA-3's L)
 		TestTrue(TEXT("sanity: deposit landed with T-DDA-3's L"),
 			NearlyEqualHybrid(Canonical, 0.0707106781187, RelTol1e6, Coeff(AbsCoeff2e7, 0.0707106781187)));
 
@@ -265,7 +295,7 @@ bool FTrajOracleConv3Test::RunTest(const FString& Parameters)
 		FTrajectoryField Field = MakeField(100.0, 100.0, 10.0f, 20.0f);
 		Field.DepositSegment(FVector2D(2, 3), FVector2D(7, 8), 0.1f); // T-DDA-3, lands in corner cell (0,0)
 
-		const double M = Field.GetTotalPersonMetres();
+		const double M = SumCanonical(Field, ETrajectoryMapMode::RouteUsage);
 		const TArray<float>& Presentation = Field.GetPresentation(ETrajectoryMapMode::RouteUsage);
 		const FIntPoint Dims = Field.GetGridDims();
 		auto At = [&](int32 X, int32 Y) { return (double)Presentation[Y * Dims.X + X]; };
@@ -306,18 +336,25 @@ bool FTrajOracleConv4Test::RunTest(const FString& Parameters)
 		});
 
 	const double BalanceAbsTol = Coeff(AbsCoeff4e7, 1.0); // T-CONV-4's balance row: ABS 4e-7*L specifically
-	TestTrue(TEXT("deposited == 0.600 m"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), 0.6, RelTol1e6, Coeff(AbsCoeff2e7, 0.6)));
-	TestTrue(TEXT("deposited == 0.600 s"),
-		NearlyEqualHybrid(Field.GetTotalPersonSeconds(), 0.6, RelTol1e6, Coeff(AbsCoeff2e7, 0.6)));
+
+	// A0/A8 fix: "deposited" is measured from the CELLS. Read off the counters instead, the balance check
+	// below degenerates into the tautology  L*Retained + L*(1-Retained) == L , which is true for ANY value
+	// of Retained and cannot fail - including for a build that deposits nothing at all.
+	const double DepositedMetres = SumCanonical(Field, ETrajectoryMapMode::RouteUsage);
+	const double DepositedSeconds = SumCanonical(Field, ETrajectoryMapMode::RouteExposure);
+
+	TestTrue(TEXT("deposited == 0.600 m (cells)"),
+		NearlyEqualHybrid(DepositedMetres, 0.6, RelTol1e6, Coeff(AbsCoeff2e7, 0.6)));
+	TestTrue(TEXT("deposited == 0.600 s (cells)"),
+		NearlyEqualHybrid(DepositedSeconds, 0.6, RelTol1e6, Coeff(AbsCoeff2e7, 0.6)));
 	TestTrue(TEXT("dropped == 0.400 m"),
 		NearlyEqualHybrid(Field.GetDroppedPersonMetres(), 0.4, RelTol1e6, Coeff(AbsCoeff2e7, 0.4)));
 	TestTrue(TEXT("dropped == 0.400 s"),
 		NearlyEqualHybrid(Field.GetDroppedPersonSeconds(), 0.4, RelTol1e6, Coeff(AbsCoeff2e7, 0.4)));
-	TestTrue(TEXT("deposited + dropped == offered L (1.0 m)"),
-		NearlyEqualAbs(Field.GetTotalPersonMetres() + Field.GetDroppedPersonMetres(), 1.0, BalanceAbsTol));
-	TestTrue(TEXT("deposited + dropped == offered Δt (1.0 s)"),
-		NearlyEqualAbs(Field.GetTotalPersonSeconds() + Field.GetDroppedPersonSeconds(), 1.0, BalanceAbsTol));
+	TestTrue(TEXT("cells deposited + dropped == offered L (1.0 m)"),
+		NearlyEqualAbs(DepositedMetres + Field.GetDroppedPersonMetres(), 1.0, BalanceAbsTol));
+	TestTrue(TEXT("cells deposited + dropped == offered Δt (1.0 s)"),
+		NearlyEqualAbs(DepositedSeconds + Field.GetDroppedPersonSeconds(), 1.0, BalanceAbsTol));
 	TestEqual(TEXT("this is clipping, not rejection"), Field.GetRejectedSegmentCount(), 0);
 	return true;
 }
@@ -372,9 +409,9 @@ bool FTrajOracleDda1Test::RunTest(const FString& Parameters)
 	CheckCells(*this, Field, TEXT("T-DDA-1"), { {0, 0, 0.05, 0.1}, {1, 0, 0.1, 0.2}, {2, 0, 0.05, 0.1} },
 		RelTol1e6, Coeff(AbsCoeff2e7, 0.20), Coeff(AbsCoeff2e7, 0.4));
 	TestTrue(TEXT("Sum PersonMetres == L"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteUsage), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
 	TestTrue(TEXT("Sum PersonSeconds == Δt"),
-		NearlyEqualHybrid(Field.GetTotalPersonSeconds(), 0.4, RelTol1e6, Coeff(AbsCoeff2e7, 0.4)));
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteExposure), 0.4, RelTol1e6, Coeff(AbsCoeff2e7, 0.4)));
 	return true;
 }
 
@@ -403,7 +440,7 @@ bool FTrajOracleDda2Test::RunTest(const FString& Parameters)
 	// exact" per the master table, so this is CheckCellsExact, not a tolerance-bearing comparison.
 	CheckCellsExact(*this, Field, TEXT("T-DDA-2 off-diagonal untouched"), { {1, 0, 0.0, 0.0}, {0, 1, 0.0, 0.0} });
 	TestTrue(TEXT("Sum PersonMetres == L"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), 0.28284271247, RelTol1e6, Coeff(AbsCoeff2e7, 0.28284271247)));
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteUsage), 0.28284271247, RelTol1e6, Coeff(AbsCoeff2e7, 0.28284271247)));
 	return true;
 }
 
@@ -449,7 +486,7 @@ bool FTrajOracleDda4Test::RunTest(const FString& Parameters)
 	CheckCellsExact(*this, Field, TEXT("T-DDA-4 upper row untouched"),
 		{ {0, 1, 0.0, 0.0}, {1, 1, 0.0, 0.0}, {2, 1, 0.0, 0.0} });
 	TestTrue(TEXT("Sum PersonMetres == L (not doubled across rows)"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteUsage), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
 	return true;
 }
 
@@ -489,7 +526,7 @@ bool FTrajOracleDda5Test::RunTest(const FString& Parameters)
 		// demands genuine exactness, so the tolerance is passed explicitly as 0.0 here and everywhere
 		// else in this file a "TestEqual" is meant to be bitwise.
 		TestEqual(TEXT("5a: Sum PersonSeconds == Δt bitwise (no negligible-seconds bucket)"),
-			Field.GetTotalPersonSeconds(), 10.0, 0.0);
+			SumCanonical(Field, ETrajectoryMapMode::RouteExposure), 10.0, 0.0);
 		TestEqual(TEXT("5a: Negligible metres exact 0 (L was already exactly 0)"),
 			Field.GetNegligiblePersonMetres(), 0.0, 0.0);
 	}
@@ -506,7 +543,7 @@ bool FTrajOracleDda5Test::RunTest(const FString& Parameters)
 		Field.DepositSegment(FVector2D(37, 42), FVector2D(37.005, 42), 5.0f);
 		CheckCellsExact(*this, Field, TEXT("T-DDA-5b (AC8)"), { {3, 4, 0.0, 10.0} });
 		TestEqual(TEXT("5b: stationary count"), Field.GetStationarySegmentCount(), 2);
-		TestEqual(TEXT("5b: Sum PersonSeconds == Δt bitwise"), Field.GetTotalPersonSeconds(), 10.0, 0.0);
+		TestEqual(TEXT("5b: Sum PersonSeconds == Δt bitwise"), SumCanonical(Field, ETrajectoryMapMode::RouteExposure), 10.0, 0.0);
 		TestTrue(TEXT("5b: Negligible metres == 2 x 5e-5 m (sub-threshold L booked once per offered segment)"),
 			NearlyEqualAbs(Field.GetNegligiblePersonMetres(), 1.0e-4, 1.0e-9));
 	}
@@ -572,8 +609,8 @@ bool FTrajOracleDda7Test::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Rejected metres exact 40.0 m"), Field.GetRejectedPersonMetres(), 40.0, 0.0);
 	TestTrue(TEXT("Rejected seconds == 0.016 s (REL 1e-6)"),
 		NearlyEqualRel(Field.GetRejectedPersonSeconds(), 0.016, RelTol1e6));
-	TestEqual(TEXT("nothing deposited (Total metres exact 0)"), Field.GetTotalPersonMetres(), 0.0, 0.0);
-	TestEqual(TEXT("nothing deposited (Total seconds exact 0)"), Field.GetTotalPersonSeconds(), 0.0, 0.0);
+	TestEqual(TEXT("nothing deposited (Total metres exact 0)"), SumCanonical(Field, ETrajectoryMapMode::RouteUsage), 0.0, 0.0);
+	TestEqual(TEXT("nothing deposited (Total seconds exact 0)"), SumCanonical(Field, ETrajectoryMapMode::RouteExposure), 0.0, 0.0);
 	TestEqual(TEXT("Rejected, not Dropped (Dropped stays exact 0)"), Field.GetDroppedPersonMetres(), 0.0, 0.0);
 
 	// No cell along the false-corridor path -- either candidate row, the whole x-span -- receives mass.
@@ -622,9 +659,9 @@ bool FTrajOracleDda8Test::RunTest(const FString& Parameters)
 		RelTol1e6, Dda8AbsFloorMetres, Dda8AbsFloorSeconds);
 
 	TestTrue(TEXT("Sum PersonMetres == L (the three slivers must not be dropped)"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), 1.21655250606, RelTol1e6, Coeff(AbsCoeff2e7, 1.21655250606)));
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteUsage), 1.21655250606, RelTol1e6, Coeff(AbsCoeff2e7, 1.21655250606)));
 	TestTrue(TEXT("Sum PersonSeconds == Δt"),
-		NearlyEqualHybrid(Field.GetTotalPersonSeconds(), 0.6, RelTol1e6, Coeff(AbsCoeff2e7, 0.6)));
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteExposure), 0.6, RelTol1e6, Coeff(AbsCoeff2e7, 0.6)));
 	return true;
 }
 
@@ -668,11 +705,11 @@ bool FTrajOracleSem1Test::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Exposure ratio slow/fast == 2.0 exactly (dyadic operands, bitwise)"),
 		(double)SlowSeconds[InteriorIdx] / (double)FastSeconds[InteriorIdx], 2.0, 0.0);
 	TestTrue(TEXT("Sum PersonMetres == 4.0 m at BOTH speeds"),
-		NearlyEqualHybrid(Slow.GetTotalPersonMetres(), 4.0, RelTol1e6, Coeff(AbsCoeff2e7, 4.0))
-			&& NearlyEqualHybrid(Fast.GetTotalPersonMetres(), 4.0, RelTol1e6, Coeff(AbsCoeff2e7, 4.0)));
+		NearlyEqualHybrid(SumCanonical(Slow, ETrajectoryMapMode::RouteUsage), 4.0, RelTol1e6, Coeff(AbsCoeff2e7, 4.0))
+			&& NearlyEqualHybrid(SumCanonical(Fast, ETrajectoryMapMode::RouteUsage), 4.0, RelTol1e6, Coeff(AbsCoeff2e7, 4.0)));
 	TestTrue(TEXT("Sum PersonSeconds == Δt at each speed (5.0 / 2.5)"),
-		NearlyEqualHybrid(Slow.GetTotalPersonSeconds(), 5.0, RelTol1e6, Coeff(AbsCoeff2e7, 5.0))
-			&& NearlyEqualHybrid(Fast.GetTotalPersonSeconds(), 2.5, RelTol1e6, Coeff(AbsCoeff2e7, 2.5)));
+		NearlyEqualHybrid(SumCanonical(Slow, ETrajectoryMapMode::RouteExposure), 5.0, RelTol1e6, Coeff(AbsCoeff2e7, 5.0))
+			&& NearlyEqualHybrid(SumCanonical(Fast, ETrajectoryMapMode::RouteExposure), 2.5, RelTol1e6, Coeff(AbsCoeff2e7, 2.5)));
 	return true;
 }
 
@@ -697,13 +734,13 @@ bool FTrajOracleSem2Test::RunTest(const FString& Parameters)
 	Standing.DepositSegment(FVector2D(37, 42), FVector2D(37, 42), 5.0f);
 	Standing.DepositSegment(FVector2D(37, 42), FVector2D(37, 42), 5.0f);
 	CheckCellsExact(*this, Standing, TEXT("T-SEM-2 stand"), { {3, 4, 0.0, 10.0} });
-	const double StandingExposure = Standing.GetTotalPersonSeconds() / Standing.GetCellAreaSquareMetres();
+	const double StandingExposure = SumCanonical(Standing, ETrajectoryMapMode::RouteExposure) / Standing.GetCellAreaSquareMetres();
 	TestTrue(TEXT("standing Exposure == 1000.0 person*s/m^2"),
 		NearlyEqualRel(StandingExposure, 1000.0, RelTol1e6));
 
 	FTrajectoryField Walking = MakeField(1000.0, 1000.0, 10.0f);
 	Walking.DepositSegment(FVector2D(2, 3), FVector2D(7, 8), 0.1f); // T-DDA-3
-	const double WalkingExposure = Walking.GetTotalPersonSeconds() / Walking.GetCellAreaSquareMetres();
+	const double WalkingExposure = SumCanonical(Walking, ETrajectoryMapMode::RouteExposure) / Walking.GetCellAreaSquareMetres();
 	TestTrue(TEXT("walking-through Exposure == 10.0 person*s/m^2 (T-DDA-3's dwell)"),
 		NearlyEqualRel(WalkingExposure, 10.0, RelTol1e6));
 	TestTrue(TEXT("standing reads exactly 100x hotter than walking through (the AC8 signature)"),
@@ -821,9 +858,9 @@ bool FTrajOracleWidth1Test::RunTest(const FString& Parameters)
 	for (FTrajectoryField* F : { &F5, &F10, &F25 })
 	{
 		TestTrue(TEXT("Sum PersonMetres == 2.00 m at every resolution"),
-			NearlyEqualHybrid(F->GetTotalPersonMetres(), 2.0, RelTol1e6, Width1AbsFloor));
+			NearlyEqualHybrid(SumCanonical(*F, ETrajectoryMapMode::RouteUsage), 2.0, RelTol1e6, Width1AbsFloor));
 		TestTrue(TEXT("Sum PersonSeconds == 2.00 s at every resolution"),
-			NearlyEqualHybrid(F->GetTotalPersonSeconds(), 2.0, RelTol1e6, Width1AbsFloor));
+			NearlyEqualHybrid(SumCanonical(*F, ETrajectoryMapMode::RouteExposure), 2.0, RelTol1e6, Width1AbsFloor));
 	}
 
 	// Peak density (interior cell PersonMetres / CellArea): 20.0 / 10.0 / 4.0 person/m. Closed form
@@ -1079,7 +1116,9 @@ bool FTrajOracleKernelBorderTest::RunTest(const FString& Parameters)
 	FTrajectoryField Field = MakeField(100.0, 100.0, 10.0f, 20.0f);
 	Field.DepositSegment(FVector2D(2, 3), FVector2D(7, 8), 0.1f); // T-DDA-3, lands in corner cell (0,0)
 
-	const double M = Field.GetTotalPersonMetres(); // == 0.0707106781187
+	// A0/A8: cell sum, not the field's counter - the border-renormalisation claim is that the
+	// PRESENTATION redistributes exactly the mass the CELLS hold.
+	const double M = SumCanonical(Field, ETrajectoryMapMode::RouteUsage); // == 0.0707106781187
 	const TArray<float>& Presentation = Field.GetPresentation(ETrajectoryMapMode::RouteUsage);
 	const FIntPoint Dims = Field.GetGridDims();
 	auto At = [&](int32 X, int32 Y) { return (double)Presentation[Y * Dims.X + X]; };
@@ -1124,18 +1163,27 @@ bool FTrajOracleSat1Test::RunTest(const FString& Parameters)
 	for (int32 i = 0; i < Repeats; ++i)
 	{
 		Field.DepositSegment(FVector2D(2, 3), FVector2D(7, 8), 0.1f);
-		const double CurrentTotal = Field.GetTotalPersonMetres();
+		// A0/A8 fix: monotonicity must be observed on the CELL, not on the field's double counter. The
+		// counter rises no matter what the cell does, so the previous form passed even for a build that
+		// re-clamped PersonMetres[] to a uint8 range - which is the single thing T-SAT-1 exists to forbid.
+		// All 1000 deposits land in cell (0,0) (T-DDA-3's geometry), so cell 0 IS the accumulator here.
+		const double CurrentTotal = (double)Field.GetCanonical(ETrajectoryMapMode::RouteUsage)[0];
 		if (i > 0 && !(CurrentTotal > PreviousTotal))
 		{
 			bStrictlyMonotone = false;
 		}
 		PreviousTotal = CurrentTotal;
 	}
-	TestTrue(TEXT("strictly monotone: every deposit increases the canonical total, never clamps"), bStrictlyMonotone);
+	TestTrue(TEXT("strictly monotone: every deposit increases the CELL value, never clamps"), bStrictlyMonotone);
 
 	const double ExpectedTotal = (double)Repeats * PerDepositL; // this IS "k*L" from the master table's recipe
-	TestTrue(TEXT("canonical PersonMetres keeps growing linearly, no ceiling"),
-		NearlyEqualHybrid(Field.GetTotalPersonMetres(), ExpectedTotal, RelTol1e4Order, Coeff(AbsCoeff2e7, ExpectedTotal)));
+	TestTrue(TEXT("canonical PersonMetres CELL keeps growing linearly, no ceiling"),
+		NearlyEqualHybrid((double)Field.GetCanonical(ETrajectoryMapMode::RouteUsage)[0], ExpectedTotal,
+			RelTol1e4Order, Coeff(AbsCoeff2e7, ExpectedTotal)));
+	// Deliberately NOT asserted: "cell value > 255". The old ceiling was on the encoded BYTE (24 + hits),
+	// which clipped after ~77 passes; the canonical cell holds person-metres (1000 deposits = 70.71 m), so
+	// comparing it to 255 would be a units error. The linear k*L check above IS the no-saturation claim -
+	// the old path could not have reported 1000 distinct pass counts at all.
 
 	TArray<uint8> Buffer;
 	Field.EncodeToDisplay(ETrajectoryMapMode::RouteUsage, Buffer);
@@ -1159,7 +1207,9 @@ bool FTrajOracleClr1Test::RunTest(const FString& Parameters)
 	using namespace TrajectoryOracle;
 	FTrajectoryField Field = MakeField(1000.0, 1000.0, 10.0f);
 	Field.DepositSegment(FVector2D(5, 5), FVector2D(25, 5), 0.4f);
-	Field.DepositSegment(FVector2D(37, 42), FVector2D(37, 42), 10.0f);
+	Field.DepositSegment(FVector2D(37, 42), FVector2D(37, 42), 5.0f); // 5.0f not 10.0f: ruling A0-22,
+	// a single 10 s segment is rejected by the delta-t gate and this cell would never be populated,
+	// making every assertion about it vacuous.
 	TestTrue(TEXT("sanity: something accumulated before Clear"), Field.GetTotalPersonMetres() > 0.0);
 
 	const FIntPoint DimsBefore = Field.GetGridDims();
@@ -1207,7 +1257,9 @@ bool FTrajOracleDet1Test::RunTest(const FString& Parameters)
 		Field.DepositSegment(FVector2D(5, 5), FVector2D(25, 5), 0.4f);
 		Field.DepositSegment(FVector2D(5, 5), FVector2D(25, 25), 0.5f);
 		Field.DepositSegment(FVector2D(1, 2), FVector2D(121, 22), 0.6f);
-		Field.DepositSegment(FVector2D(37, 42), FVector2D(37, 42), 10.0f);
+		Field.DepositSegment(FVector2D(37, 42), FVector2D(37, 42), 5.0f); // 5.0f not 10.0f: ruling A0-22,
+	// a single 10 s segment is rejected by the delta-t gate and this cell would never be populated,
+	// making every assertion about it vacuous.
 	};
 
 	FTrajectoryField A = MakeField(1000.0, 1000.0, 10.0f);
@@ -1231,6 +1283,99 @@ bool FTrajOracleDet1Test::RunTest(const FString& Parameters)
 	B.EncodeToDisplay(ETrajectoryMapMode::RouteUsage, BufferB);
 	TestTrue(TEXT("identical deposit sequence -> bit-identical encoded display buffer"),
 		BufferA.Num() == BufferB.Num() && FMemory::Memcmp(BufferA.GetData(), BufferB.GetData(), BufferA.Num()) == 0);
+	return true;
+}
+
+// =====================================================================================================
+// REGRESSION GUARDS added by A0 from A8's adversarial review. Both cover defects that the 24 tests above
+// could not have caught, because every one of them uses a square grid, an origin of (0,0), and one of
+// only three kernel radii.
+// =====================================================================================================
+
+// Kernel half extent must be ceil(R - 0.5), not floor(R). The two formulas AGREE at every radius the
+// oracle tabulates -- R = 1.0 (20 cm @ 10), R = 2.5 (50 cm @ 10), R = 0.4 (20 cm @ 25) -- so the bug this
+// guards was invisible to the whole suite. R = 1.6 separates them: cells at |d| = 2 hold real disc area
+// (2 - 0.5 = 1.5 < 1.6), giving 21 non-zero taps, where floor(R) = 1 would build only 9. Mass stays
+// conserved either way (the border renormalisation absorbs the difference), so no conservation assertion
+// can see it -- it shows up only as a stroke narrower than DisplayPathWidthCm asks for, i.e. a silent FR3
+// violation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajKernelHalfExtentTest,
+	"ProjectMobius.Heatmap.Trajectory.Kernel.HalfExtentCoversPartialRing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajKernelHalfExtentTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+	// 32 cm display width at 10 cm/texel -> R = 32 / (2 * 10) = 1.6 texels.
+	FTrajectoryField Field = MakeField(1000.0, 1000.0, 10.0f, /*DisplayPathWidthCm*/ 32.0f);
+	TestTrue(TEXT("R == 1.6 texels"), NearlyEqualRel(Field.GetKernelRadiusTexels(), 1.6, 1.0e-6));
+
+	const TArray<FIntPoint>& Offsets = Field.GetKernelOffsets();
+	const TArray<float>& Weights = Field.GetKernelWeights();
+	TestEqual(TEXT("R = 1.6 builds 21 taps (floor(R) would build 9)"), Offsets.Num(), 21);
+
+	// The discriminating taps: the outer ring at |d| = 2 on an axis exists only under ceil(R - 0.5).
+	double OuterWeight = 0.0;
+	for (int32 i = 0; i < Offsets.Num(); ++i)
+	{
+		if (FMath::Abs(Offsets[i].X) == 2 || FMath::Abs(Offsets[i].Y) == 2)
+		{
+			OuterWeight += (double)Weights[i];
+		}
+	}
+	TestTrue(TEXT("the |d| = 2 partial-area ring carries real weight"), OuterWeight > 0.0);
+	TestTrue(TEXT("kernel weights still sum to 1.0"),
+		NearlyEqualAbs(SumArray(Weights), 1.0, 1.0e-6));
+	// The corners at (+-2,+-2) are genuinely outside: nearest corner (1.5,1.5) is at 2.121 > 1.6.
+	bool bHasDiagonalCorner = false;
+	for (const FIntPoint& O : Offsets)
+	{
+		bHasDiagonalCorner |= (FMath::Abs(O.X) == 2 && FMath::Abs(O.Y) == 2);
+	}
+	TestFalse(TEXT("(+-2,+-2) is excluded - it holds no disc area at R = 1.6"), bHasDiagonalCorner);
+	return true;
+}
+
+// Non-square grid, NEGATIVE origin. Every other test in this file uses a square field at origin (0,0), so
+// a transposed row stride (x and y swapped in the index), a dropped origin offset, or a sign error on
+// negative world coordinates would all pass the entire suite -- sums are blind to all three. The
+// construction is deliberately T-DDA-1's geometry shifted into a negative-origin frame, so the expected
+// per-cell numbers are the ones the oracle already derived and verified: 0.05 / 0.10 / 0.05 metres.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajNonSquareNegativeOriginTest,
+	"ProjectMobius.Heatmap.Trajectory.Resolution.NonSquareGridNegativeOrigin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajNonSquareNegativeOriginTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+	// 200 m x 40 m floor at 10 cm/texel, minimum corner at (-7000, -3000) cm.
+	FTrajectoryField Field = MakeField(20000.0, 4000.0, 10.0f, 20.0f, /*OriginX*/ -7000.0, /*OriginY*/ -3000.0);
+	const FIntPoint Dims = Field.GetGridDims();
+	TestEqual(TEXT("grid is 2000 wide"), Dims.X, 2000);
+	TestEqual(TEXT("grid is 400 tall (NOT square, and not transposed)"), Dims.Y, 400);
+
+	// World (-6995,-2995) -> grid (0.5, 0.5); world (-6975,-2995) -> grid (2.5, 0.5). 20 cm, 0.4 s.
+	Field.DepositSegment(FVector2D(-6995, -2995), FVector2D(-6975, -2995), 0.4f);
+	CheckCells(*this, Field, TEXT("non-square/neg-origin"),
+		{ {0, 0, 0.05, 0.1}, {1, 0, 0.1, 0.2}, {2, 0, 0.05, 0.1} });
+	TestTrue(TEXT("Sum PersonMetres CELLS == L (0.20 m)"),
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteUsage), 0.20, RelTol1e6,
+			Coeff(AbsCoeff2e7, 0.20)));
+
+	// Nothing may leak into the row above: a transposed stride would put mass at y = 1..2 instead of x.
+	const TArray<float>& Metres = Field.GetCanonical(ETrajectoryMapMode::RouteUsage);
+	TestTrue(TEXT("row 1 is untouched (a transposed index would have deposited there)"),
+		Metres[1 * Dims.X + 0] == 0.0f && Metres[2 * Dims.X + 0] == 0.0f);
+
+	// A point below the origin is OUTSIDE this grid and must be dropped, not folded onto the border.
+	FTrajectoryField Off = MakeField(20000.0, 4000.0, 10.0f, 20.0f, -7000.0, -3000.0);
+	Off.DepositSegment(FVector2D(-9000, -5000), FVector2D(-8980, -5000), 0.4f);
+	TestTrue(TEXT("a segment left of and below the origin deposits nothing"),
+		SumCanonical(Off, ETrajectoryMapMode::RouteUsage) == 0.0);
+	TestTrue(TEXT("and it is booked as DROPPED, not silently lost"),
+		NearlyEqualHybrid(Off.GetDroppedPersonMetres(), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
 	return true;
 }
 

@@ -261,6 +261,18 @@ public:
 	/** Segments whose retained interval was empty (entirely, or measure-zero, outside the grid). */
 	int32 GetFullyClippedSegmentCount() const { return FullyClippedSegmentCount; }
 
+	/**
+	 * Cell containing a world-cm point, or false if the point is outside the grid's closed box.
+	 *
+	 * Uses the SAME lower-index-owns rule the DDA deposits with, which is the whole reason this is public:
+	 * any caller that needs "which cell is this world point in" must not re-derive it with a bare
+	 * FloorToInt. Plain floor() disagrees in two places - a point exactly on a grid line resolves one cell
+	 * too high, and the grid's far edge is rejected instead of belonging to the last cell - so a caller
+	 * using floor() targets a different cell than the one the deposition wrote to, on exactly the boundary
+	 * coordinates a test is most likely to pick.
+	 */
+	bool WorldToCell(const FVector2D& WorldCm, FIntPoint& OutCell) const { return ContainingCell(WorldCm, OutCell); }
+
 	/** Row-major, index = Y * GridDims.X + X. Never altered by a mode switch or a width change. */
 	const TArray<float>& GetCanonical(ETrajectoryMapMode Mode) const;
 
