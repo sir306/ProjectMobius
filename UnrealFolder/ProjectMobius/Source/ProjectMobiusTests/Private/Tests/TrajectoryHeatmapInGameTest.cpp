@@ -13,12 +13,15 @@
 // with the uint8 accumulation path it measured.
 //
 // IDs from T5_TEST_REWRITE.md §5 and their status here:
-//   T-INV-1   IMPLEMENTED. Same dataset at 1x / 2x / 8x scrub cadence -> field agrees at 1% (1x/2x) or 3%
-//             (8x) -- RESTATED by A0 2026-08-04 over the flat "1e-2" TOLERANCES.md master-table entry:
-//             1% at 8x is unachievable by CORRECT code under per-frame emission (chord-vs-arc shortfall
-//             ~2.3e-2 at 8x); see the constants block for the full derivation. Compares Total-level sums
-//             only, per A0's ruling that NO T-INV case may compare per cell (a coarser chord can miss an
-//             edge cell entirely -- 100% per-cell error in an otherwise-correct run).
+//   T-INV-1   IMPLEMENTED at the PRD's original flat 1e-2 for 1x, 2x AND 8x. The 3%-at-8x restatement
+//             (ruling A0-17) is RETIRED: it was a consequence of emitting one segment per RENDERED FRAME,
+//             and AgentHeatmapProcessor now subdivides each frame's sim-time interval at the dataset's own
+//             sample boundaries, so the deposited polyline is the dataset's polyline at any playback speed.
+//             Compares Total-level sums only, per A0's ruling that NO T-INV case may compare per cell (a
+//             coarser chord can miss an edge cell entirely -- 100% per-cell error in an otherwise-correct
+//             run). Drives the CURVED fixture, not the straight one: a straight-line path has no corner to
+//             cut, so it cannot distinguish per-frame emission from sample-boundary emission and a 1% pass
+//             on it would prove nothing.
 //   T-INV-2   IMPLEMENTED, BEST-EFFORT, REL 1e-2. Uses t.MaxFPS to request 30 vs 120 fps. Automation runs
 //             are not guaranteed to honour real wall-clock frame timing the way a live session would, so
 //             this is an integration smoke check on the configuration path, not a rigorous proof.
@@ -79,17 +82,31 @@ namespace TrajectoryInvariance
 	constexpr float SampleInterval = 0.1f;          // matches UpdateHeatmapInterval's 0.1 s gate
 	constexpr int32 AgentCount = 1;
 	constexpr float DurationSeconds = 10.0f;        // 100 base steps at 1x; this IS "T_run" for T-INV-3 below
+
+	/**
+	 * The last sim time at which the dataset still HAS a sample: samples sit at steps 0 .. N-1, so the
+	 * final one is at DurationSeconds - SampleInterval, not at DurationSeconds.
+	 *
+	 * A pass driven to DurationSeconds itself lands one timestep past the data, where the movement
+	 * processor stops rendering agents and the heatmap emits nothing for that step. The step is therefore
+	 * lost, by an amount equal to the step size - which differs per pass, so it showed up as a
+	 * playback-speed dependence that had nothing to do with playback speed. Measured: 1x covered 9.9 s and
+	 * 8x covered 9.6 s, and the person-metres ratio between them was exactly 9.6/9.9.
+	 */
+	constexpr float LastSampleTimeSeconds = DurationSeconds - SampleInterval;
 	constexpr float HeatmapMetres = 50.0f;
 	constexpr int32 SettleFramesPerStep = 2;
 
-	// T-INV-1 row: RESTATED by A0 2026-08-04 over the master table's plain "1e-2": 1% at 1x/2x, 3% at 8x.
-	// The oracle derived that 1% at 8x is unachievable by CORRECT code under per-frame emission -- a
-	// per-frame straight-line chord under-covers the true (slightly curved) path by a relative shortfall
-	// of theta^2/24, where theta is the per-frame turn angle; at 8x the frame count drops 8x and theta
-	// grows 8x, so the shortfall grows like theta^2 -- 64x -- landing at ~2.3e-2, i.e. bigger than 1%. This
-	// is a property of correct discretisation, not a bug, so DO NOT "tighten" 3e-2 back to 1e-2 later.
-	constexpr double InvarianceRelTol1xAnd2x = 0.01;
-	constexpr double InvarianceRelTol8x = 0.03;
+	// T-INV-1 row: the master table's plain 1e-2, at 1x, 2x AND 8x.
+	//
+	// The 3%-at-8x restatement is gone. The oracle's derivation was right about the mechanism -- a chord
+	// under-measures the arc it replaces by theta^2/24, and per-RENDERED-FRAME emission makes theta scale
+	// with playback speed, so the shortfall grows like theta^2 (64x from 1x to 8x, ~2.3e-2). What changed
+	// is the emission: AgentHeatmapProcessor subdivides the frame's sim-time interval at the dataset's
+	// sample boundaries, so theta is fixed by the DATASET's sample rate and no longer depends on how fast
+	// it is being played back. The residual is then float noise plus the sub-sample remainder at each end
+	// of a pass, both far under 1%.
+	constexpr double InvarianceRelTol = 0.01;
 	// T-INV-2 row: 1e-2, "achievable, 28x margin".
 	constexpr double InvarianceRelTolFps = 0.01;
 	// T-INV-3 row: REL = max(1e-5, 0.2 / T_run). T_run == DurationSeconds == 10.0 s here, so
@@ -99,6 +116,31 @@ namespace TrajectoryInvariance
 	static FString FixturePath()
 	{
 		return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("TrajectoryInvariance"), TEXT("Invariance.json"));
+	}
+
+	static FString CurvedFixturePath()
+	{
+		return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("TrajectoryInvariance"), TEXT("InvarianceCurved.json"));
+	}
+
+	/** Shared JSON header: same metadata block and single-entity table for both fixtures. */
+	static FString FixtureHeader()
+	{
+		FString Json;
+		Json += FString::Printf(
+			TEXT("{\n\"metadata\": { \"duration\": %.1f, \"sampling_rate\": %.2f, \"max_num_entities\": %d, \"isSI\": true, \"isDeg\": true },\n"),
+			DurationSeconds, SampleInterval, AgentCount);
+		Json += FString::Printf(
+			TEXT("\"entities\": [\n{ \"id\": 0, \"name\": \"inv_0\", \"simTimeS\": %.1f, \"max_speed\": 1.5, \"m_plane\": \"floor_0\", \"map\": 0 }\n],\n\"simulation\": [\n"),
+			DurationSeconds);
+		return Json;
+	}
+
+	static FString FixtureSampleRow(double X, double Y, bool bLast)
+	{
+		return FString::Printf(
+			TEXT("{ \"samples\": [\n{ \"entity\": 0, \"rotation\": 0.0, \"speed\": 1.0, \"mode\": \"walk\", \"position\": { \"x\": %.4f, \"y\": %.4f, \"z\": 0.0 } }\n] }%s\n"),
+			X, Y, bLast ? TEXT("") : TEXT(","));
 	}
 
 	/** One agent, straight 40 m line, matching the old SingleRoute fixture's geometry. */
@@ -111,20 +153,53 @@ namespace TrajectoryInvariance
 
 		FString Json;
 		Json.Reserve(64 * 1024);
-		Json += FString::Printf(
-			TEXT("{\n\"metadata\": { \"duration\": %.1f, \"sampling_rate\": %.2f, \"max_num_entities\": %d, \"isSI\": true, \"isDeg\": true },\n"),
-			DurationSeconds, SampleInterval, AgentCount);
-		Json += FString::Printf(
-			TEXT("\"entities\": [\n{ \"id\": 0, \"name\": \"inv_0\", \"simTimeS\": %.1f, \"max_speed\": 1.5, \"m_plane\": \"floor_0\", \"map\": 0 }\n],\n\"simulation\": [\n"),
-			DurationSeconds);
-
+		Json += FixtureHeader();
 		for (int32 Ts = 0; Ts < Timesteps; ++Ts)
 		{
 			const double Alpha = static_cast<double>(Ts) / static_cast<double>(Timesteps - 1);
-			const double X = 5.0 + (40.0 * Alpha);
-			Json += FString::Printf(
-				TEXT("{ \"samples\": [\n{ \"entity\": 0, \"rotation\": 0.0, \"speed\": 1.0, \"mode\": \"walk\", \"position\": { \"x\": %.4f, \"y\": 25.0, \"z\": 0.0 } }\n] }%s\n"),
-				X, Ts + 1 < Timesteps ? TEXT(",") : TEXT(""));
+			Json += FixtureSampleRow(5.0 + (40.0 * Alpha), 25.0, Ts + 1 == Timesteps);
+		}
+		Json += TEXT("]\n}\n");
+		return FFileHelper::SaveStringToFile(Json, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	}
+
+	/**
+	 * One agent, TWO full revolutions of a 5 m circle centred on the floor, 100 samples over 10 s.
+	 *
+	 * T-INV-1 needs curvature or it measures nothing. The whole playback-speed question is whether a
+	 * coarser frame step cuts corners between dataset samples, and a straight line has no corner to cut:
+	 * on WriteFixture()'s 40 m line every emission scheme -- one chord per frame, one per sample, one for
+	 * the entire pass -- returns exactly 40 m, so a 1% pass would be vacuous.
+	 *
+	 * Numbers, so the discrimination is on record rather than assumed. Turn per sample interval is
+	 * theta = 4*pi/(N-1) = 0.12695 rad. The dataset polyline is (N-1) chords of 2R*sin(theta/2), i.e.
+	 * 62.7 m. A per-RENDERED-FRAME emitter at 8x spans 8 intervals per chord and measures
+	 * 2R*sin(8*theta/2) per 8 intervals -- a ratio of sin(4*theta)/(8*sin(theta/2)) = 0.9583, i.e. 4.2%
+	 * short, which fails 1e-2 by 4x and the retired 3e-2 restatement by 1.4x. Sample-boundary emission
+	 * reproduces the polyline exactly at every speed. So this fixture fails loudly if the subdivision is
+	 * ever removed, which the straight one could not.
+	 */
+	static bool WriteCurvedFixture()
+	{
+		const FString Path = CurvedFixturePath();
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree*/ true);
+
+		const int32 Timesteps = FMath::RoundToInt(DurationSeconds / SampleInterval);
+		constexpr double CentreMetres = 25.0;
+		constexpr double RadiusMetres = 5.0;
+		constexpr double Revolutions = 2.0;
+
+		FString Json;
+		Json.Reserve(64 * 1024);
+		Json += FixtureHeader();
+		for (int32 Ts = 0; Ts < Timesteps; ++Ts)
+		{
+			const double Alpha = static_cast<double>(Ts) / static_cast<double>(Timesteps - 1);
+			const double Phi = Revolutions * 2.0 * PI * Alpha;
+			Json += FixtureSampleRow(
+				CentreMetres + RadiusMetres * FMath::Cos(Phi),
+				CentreMetres + RadiusMetres * FMath::Sin(Phi),
+				Ts + 1 == Timesteps);
 		}
 		Json += TEXT("]\n}\n");
 		return FFileHelper::SaveStringToFile(Json, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
@@ -165,6 +240,24 @@ namespace TrajectoryInvariance
 		if (!Heatmap) { return nullptr; }
 
 		const float SizeCm = HeatmapMetres * 100.0f;
+
+		// The grid's MINIMUM corner is the mesh component's world location (EnsureTrajectoryFieldSized),
+		// and the importer NEGATES Y: a fixture sample at (25 m, 25 m) becomes world (+2500, -2500) cm.
+		// An actor left at the origin therefore covers [0,+5000] on BOTH axes, i.e. the wrong half of Y,
+		// and every segment was booked to DroppedPersonMetres while Total stayed 0 - which the ratio
+		// assertions below divided out to a perfect 1.0. So the whole T-INV-1/T-INV-2/T-REG-1 trio was
+		// green against an empty field.
+		//
+		// The Y sign was pinned by measurement, not assumed. Deposited fraction of the straight fixture
+		// (X 5..45 m, Y 25 m) and of the circular one (centred 25,25 m, r 5 m), at three grid placements:
+		//   grid [0,+5000] on both axes    -> 0%    and 0%
+		//   grid [-2500,+2500] both axes   -> 50%   and 25%
+		//   grid [-5000,0] both axes       -> 0%    and 0%
+		// Only world = (+100*x, -100*y) reproduces all six.
+		//
+		// Z stays 0: the subsystem's floor filter is a band of MaxAddHeight (10 cm) ABOVE the mesh's Z, so
+		// lowering the actor in Z would drop everything again.
+		Heatmap->SetActorLocation(FVector(0.0, -SizeCm, 0.0));
 		Heatmap->ActorName = TEXT("Heatmap_InvarianceCheck");
 		Heatmap->FloorID = 0;
 		Heatmap->InitializeHeatmap(2, true, FVector2D(SizeCm, SizeCm), 0.0f, false);
@@ -179,6 +272,21 @@ namespace TrajectoryInvariance
 		double TotalPersonMetres = 0.0;
 		double TotalPersonSeconds = 0.0;
 		int32 TouchedCells = 0;
+
+		// The other three conservation buckets, carried so a pass that deposited nothing says WHERE the
+		// mass went instead of just reading zero. A ratio of two zeros is 1.0, i.e. "invariant", so without
+		// these an empty field is indistinguishable from a perfectly invariant one.
+		double DroppedPersonMetres = 0.0;
+		double DroppedPersonSeconds = 0.0;
+		double RejectedPersonMetres = 0.0;
+		double RejectedPersonSeconds = 0.0;
+		int32 RejectedSegments = 0;
+		FIntPoint GridDims = FIntPoint::ZeroValue;
+
+		/** Where the heatmap actor actually ended up, and where four probe points land in its grid. */
+		FVector ActorLocation = FVector::ZeroVector;
+		FIntPoint ProbeCentreCm = FIntPoint(-1, -1);
+		FIntPoint ProbeCentreMetres = FIntPoint(-1, -1);
 	};
 
 	// --- latent commands ----------------------------------------------------------------------------
@@ -270,7 +378,7 @@ namespace TrajectoryInvariance
 				--FramesToSettle;
 				return false;
 			}
-			if (CurrentTime > DurationSeconds + KINDA_SMALL_NUMBER)
+			if (bReachedEnd)
 			{
 				AHeatmapPixelTextureVisualizer* Heatmap = FindTrajectoryHeatmap(World);
 				if (!Heatmap)
@@ -290,6 +398,18 @@ namespace TrajectoryInvariance
 				FPassResult Result;
 				Result.TotalPersonMetres = Field.GetTotalPersonMetres();
 				Result.TotalPersonSeconds = Field.GetTotalPersonSeconds();
+				Result.DroppedPersonMetres = Field.GetDroppedPersonMetres();
+				Result.DroppedPersonSeconds = Field.GetDroppedPersonSeconds();
+				Result.RejectedPersonMetres = Field.GetRejectedPersonMetres();
+				Result.RejectedPersonSeconds = Field.GetRejectedPersonSeconds();
+				Result.RejectedSegments = Field.GetRejectedSegmentCount();
+				Result.GridDims = Field.GetGridDims();
+				Result.ActorLocation = Heatmap->GetActorLocation();
+				// Two probes because the drop could be either a units error (the fixture writes metres and
+				// the importer scales to cm) or an origin error. Whichever probe lands on-grid names it.
+				// World images of the curved fixture's centre and of a point on the straight fixture.
+				Result.ProbeCentreCm = Heatmap->WorldToTexelForTesting(FVector(2500.0, -2500.0, 0.0));
+				Result.ProbeCentreMetres = Heatmap->WorldToTexelForTesting(FVector(500.0, -2500.0, 0.0));
 				for (const float V : Field.GetCanonical(ETrajectoryMapMode::RouteUsage))
 				{
 					if (V > 0.0f) { ++Result.TouchedCells; }
@@ -298,7 +418,17 @@ namespace TrajectoryInvariance
 				return true;
 			}
 
-			TimeDilation->OverrideCurrentTime(FMath::Min(CurrentTime, DurationSeconds), /*PreviouslyPaused*/ 0);
+			// Every pass must cover the SAME sim-time window [0, LastSampleTimeSeconds], whatever its step
+			// size, or the comparison is not an invariance measurement at all -- it is a coverage
+			// difference. The previous form exited on `CurrentTime > DurationSeconds` BEFORE applying the
+			// clamped target, so a step that does not divide the duration stopped short: at 8x (0.8 s) the
+			// last override landed on 9.6 s against 1x's 9.9 s, a built-in ~3% shortfall that no emission
+			// scheme could have removed. The end is now detected AFTER the clamped override has been
+			// applied, so the final step is short instead of missing, and it lands on the last real sample
+			// rather than one step past the data.
+			const float TargetTime = FMath::Min(CurrentTime, LastSampleTimeSeconds);
+			TimeDilation->OverrideCurrentTime(TargetTime, /*PreviouslyPaused*/ 0);
+			bReachedEnd = TargetTime >= LastSampleTimeSeconds - KINDA_SMALL_NUMBER;
 			CurrentTime += StepSeconds;
 			FramesToSettle = SettleFramesPerStep;
 			return false;
@@ -310,6 +440,7 @@ namespace TrajectoryInvariance
 		bool bRewindFirst;
 		TSharedRef<TArray<FPassResult>> Results;
 		bool bHasRewound = false;
+		bool bReachedEnd = false;
 		float CurrentTime = 0.0f;
 		int32 FramesToSettle = SettleFramesPerStep;
 	};
@@ -334,6 +465,42 @@ namespace TrajectoryInvariance
 			{
 				return true;
 			}
+			// Logged unconditionally, not only on failure. TestTrue prints its message only when it fails,
+			// so a green run left no record of WHAT the passes measured -- and diagnosing a future
+			// invariance drift starts with the three raw totals, not with the ratio.
+			for (int32 i = 0; i < Results->Num(); ++i)
+			{
+				const FPassResult& R = (*Results)[i];
+				Test.AddInfo(FString::Printf(
+					TEXT("pass %s: PersonMetres=%.6f PersonSeconds=%.6f TouchedCells=%d grid=%dx%d ")
+					TEXT("dropped=(%.6f m, %.6f s) rejected=(%.6f m, %.6f s, %d segs)"),
+					*Labels[i], R.TotalPersonMetres, R.TotalPersonSeconds, R.TouchedCells,
+					R.GridDims.X, R.GridDims.Y, R.DroppedPersonMetres, R.DroppedPersonSeconds,
+					R.RejectedPersonMetres, R.RejectedPersonSeconds, R.RejectedSegments));
+				Test.AddInfo(FString::Printf(
+					TEXT("pass %s: actor at (%.1f, %.1f, %.1f); texel of (2500,-2500)=(%d,%d); texel of (500,-2500)=(%d,%d)"),
+					*Labels[i], R.ActorLocation.X, R.ActorLocation.Y, R.ActorLocation.Z,
+					R.ProbeCentreCm.X, R.ProbeCentreCm.Y, R.ProbeCentreMetres.X, R.ProbeCentreMetres.Y));
+			}
+
+			// THE GATE THAT WAS MISSING. Every ratio below divides by the compared pass and falls back to
+			// 1.0 when the denominator is zero, so a run in which NOTHING was ever deposited scored a
+			// perfect 1.0 on every assertion -- "invariant" and "empty" were the same observation. Assert
+			// the baseline actually measured something before any ratio is believed.
+			for (int32 i = 0; i < Results->Num(); ++i)
+			{
+				const FPassResult& R = (*Results)[i];
+				Test.TestTrue(
+					FString::Printf(TEXT("pass %s deposited non-zero person-metres (an empty field cannot be compared)"), *Labels[i]),
+					R.TotalPersonMetres > 0.0);
+				Test.TestTrue(
+					FString::Printf(TEXT("pass %s deposited non-zero person-seconds"), *Labels[i]),
+					R.TotalPersonSeconds > 0.0);
+				Test.TestTrue(
+					FString::Printf(TEXT("pass %s touched at least one cell"), *Labels[i]),
+					R.TouchedCells > 0);
+			}
+
 			for (int32 i = 1; i < Results->Num(); ++i)
 			{
 				const FPassResult& A = (*Results)[0];
@@ -386,8 +553,9 @@ bool FTrajectoryInvariancePlaybackSpeedTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Mobius game instance"), GameInstance);
 	if (!GameInstance) { return false; }
 
-	TestTrue(TEXT("fixture written"), WriteFixture());
-	const FString Path = FixturePath();
+	// CURVED fixture: see WriteCurvedFixture() for why the straight one cannot measure this criterion.
+	TestTrue(TEXT("curved fixture written"), WriteCurvedFixture());
+	const FString Path = CurvedFixturePath();
 	const uint64 Hash = MobiusSimCache::ComputeSourceHash(Path);
 	IFileManager::Get().Delete(*MobiusSimCache::MakeCacheFilePath(Path, Hash), false, true);
 	GameInstance->SetPedestrianDataFilePath(Path);
@@ -399,11 +567,11 @@ bool FTrajectoryInvariancePlaybackSpeedTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 1.0f, /*bRewindFirst*/ false, Results));
 	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 2.0f, /*bRewindFirst*/ true, Results));
 	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 8.0f, /*bRewindFirst*/ true, Results));
-	// Index 0 (the 1x baseline itself) is unused; index 1 = "2x" pair tolerance, index 2 = "8x" pair
-	// tolerance -- 1%/1%/3% per T-INV-1's restated row (see the constants block for the derivation).
+	// Index 0 (the 1x baseline itself) is unused; index 1 = the "2x" pair, index 2 = the "8x" pair. One
+	// tolerance for both now that emission no longer depends on playback speed.
 	ADD_LATENT_AUTOMATION_COMMAND(FCompareInvarianceResultsCommand(*this, Results,
 		{ TEXT("1x"), TEXT("2x"), TEXT("8x") },
-		{ 0.0, InvarianceRelTol1xAnd2x, InvarianceRelTol8x }));
+		{ 0.0, InvarianceRelTol, InvarianceRelTol }));
 	return true;
 }
 
@@ -518,6 +686,13 @@ bool FTrajectoryRegressionDeterminismTest::RunTest(const FString& Parameters)
 			{
 				const FPassResult& A = (*Results)[0];
 				const FPassResult& B = (*Results)[1];
+				// Determinism over an empty field is trivially true: 0 == 0 twice. Same hole as T-INV-1's
+				// zero-denominator ratio, and it has to be closed in both places.
+				Test.AddInfo(FString::Printf(TEXT("run 1: PersonMetres=%.6f PersonSeconds=%.6f TouchedCells=%d; run 2: %.6f / %.6f / %d"),
+					A.TotalPersonMetres, A.TotalPersonSeconds, A.TouchedCells,
+					B.TotalPersonMetres, B.TotalPersonSeconds, B.TouchedCells));
+				Test.TestTrue(TEXT("both runs deposited a non-empty field (determinism over zeros is vacuous)"),
+					A.TotalPersonMetres > 0.0 && B.TotalPersonMetres > 0.0 && A.TouchedCells > 0);
 				Test.TestEqual(TEXT("Total PersonMetres bit-identical run to run"),
 					A.TotalPersonMetres, B.TotalPersonMetres);
 				Test.TestEqual(TEXT("Total PersonSeconds bit-identical run to run"),
