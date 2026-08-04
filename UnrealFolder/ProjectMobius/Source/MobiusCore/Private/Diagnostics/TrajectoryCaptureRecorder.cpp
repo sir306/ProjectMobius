@@ -97,7 +97,8 @@ FTrajectoryCaptureRecorder& FTrajectoryCaptureRecorder::Get()
 	return Instance;
 }
 
-FString FTrajectoryCaptureRecorder::Arm(UWorld* World, int32 InFloorID, float InDurationSeconds, int32 InMaxRowsPerStream)
+FString FTrajectoryCaptureRecorder::Arm(UWorld* World, int32 InFloorID, float InDurationSeconds, int32 InMaxRowsPerStream,
+                                       AHeatmapPixelTextureVisualizer* InTarget)
 {
 	// Every hook site is game-thread-only, which is what lets the armed flag be a plain bool.
 	check(IsInGameThread());
@@ -122,39 +123,56 @@ FString FTrajectoryCaptureRecorder::Arm(UWorld* World, int32 InFloorID, float In
 		return TEXT("no UTimeDilationSubSystem in this world");
 	}
 
-	// Prefer an exact FloorID match; otherwise fall back to the physically lowest heatmap, which is
-	// what "ground floor" means when the IDs do not start at zero.
-	AHeatmapPixelTextureVisualizer* Exact = nullptr;
-	AHeatmapPixelTextureVisualizer* Lowest = nullptr;
-	int32 HeatmapCount = 0;
-	for (TActorIterator<AHeatmapPixelTextureVisualizer> It(World); It; ++It)
-	{
-		AHeatmapPixelTextureVisualizer* Heatmap = *It;
-		if (!IsValid(Heatmap))
-		{
-			continue;
-		}
-		++HeatmapCount;
-		if (Heatmap->FloorID == InFloorID && !Exact)
-		{
-			Exact = Heatmap;
-		}
-		if (!Lowest || Heatmap->MeshOriginLocation.Z < Lowest->MeshOriginLocation.Z)
-		{
-			Lowest = Heatmap;
-		}
-	}
+	// An explicit target settles it. The FloorID search below is a heuristic, and a heuristic is only
+	// sound while the world holds one heatmap per floor. An automation session holds several, all on
+	// FloorID 0 and all with trajectory mode on, so the search returned whichever came first out of
+	// TActorIterator - and the capture then described the wrong heatmap without saying so. The summary
+	// still records the actor location and texture size, which is how that was eventually caught.
+	AHeatmapPixelTextureVisualizer* Target = InTarget;
 
-	AHeatmapPixelTextureVisualizer* Target = Exact ? Exact : Lowest;
-	if (!Target)
+	if (!IsValid(Target))
 	{
-		return FString::Printf(TEXT("no heatmap actors in this world (searched %d)"), HeatmapCount);
-	}
-	if (!Exact)
-	{
-		UE_LOG(LogMobiusTrajectoryCapture, Warning,
-			TEXT("No heatmap with FloorID %d; falling back to the lowest one (FloorID %d, origin Z %.2f)."),
-			InFloorID, Target->FloorID, Target->MeshOriginLocation.Z);
+		// Prefer an exact FloorID match; otherwise fall back to the physically lowest heatmap, which is
+		// what "ground floor" means when the IDs do not start at zero.
+		AHeatmapPixelTextureVisualizer* Exact = nullptr;
+		AHeatmapPixelTextureVisualizer* Lowest = nullptr;
+		int32 HeatmapCount = 0;
+		for (TActorIterator<AHeatmapPixelTextureVisualizer> It(World); It; ++It)
+		{
+			AHeatmapPixelTextureVisualizer* Heatmap = *It;
+			if (!IsValid(Heatmap))
+			{
+				continue;
+			}
+			++HeatmapCount;
+			if (Heatmap->FloorID == InFloorID && !Exact)
+			{
+				Exact = Heatmap;
+			}
+			if (!Lowest || Heatmap->MeshOriginLocation.Z < Lowest->MeshOriginLocation.Z)
+			{
+				Lowest = Heatmap;
+			}
+		}
+
+		Target = Exact ? Exact : Lowest;
+		if (!Target)
+		{
+			return FString::Printf(TEXT("no heatmap actors in this world (searched %d)"), HeatmapCount);
+		}
+		if (!Exact)
+		{
+			UE_LOG(LogMobiusTrajectoryCapture, Warning,
+				TEXT("No heatmap with FloorID %d; falling back to the lowest one (FloorID %d, origin Z %.2f)."),
+				InFloorID, Target->FloorID, Target->MeshOriginLocation.Z);
+		}
+		else if (HeatmapCount > 1)
+		{
+			UE_LOG(LogMobiusTrajectoryCapture, Warning,
+				TEXT("%d heatmap actors in this world and no explicit target; captured the first with ")
+				TEXT("FloorID %d (at %s). Pass a target if that is not the one you meant."),
+				HeatmapCount, InFloorID, *Target->GetActorLocation().ToCompactString());
+		}
 	}
 
 	// Trajectory mode is the thing being measured, so turn it on rather than failing. Enabling also

@@ -494,8 +494,12 @@ namespace TrajectoryRealData
 
 			// Arm AFTER the heatmap exists: Arm() resets the playhead and clears the accumulation, so the
 			// captured window lines up with the movement data with no time offset.
+			// Explicit target. FloorID alone does not identify a heatmap here: the invariance tests leave
+			// theirs in the world, also on FloorID 0, and the recorder captured that one instead - its
+			// summary read "actor location X=0 Y=-5000, texture 500x500", i.e. a 50 m synthetic circle
+			// where the technical school should have been.
 			const FString Error = FTrajectoryCaptureRecorder::Get().Arm(World, /*FloorID*/ 0, CaptureSeconds,
-				/*MaxRowsPerStream*/ 8'000'000);
+				/*MaxRowsPerStream*/ 8'000'000, Heatmap);
 			if (!Error.IsEmpty())
 			{
 				Test.AddError(FString::Printf(TEXT("could not arm the capture recorder: %s"), *Error));

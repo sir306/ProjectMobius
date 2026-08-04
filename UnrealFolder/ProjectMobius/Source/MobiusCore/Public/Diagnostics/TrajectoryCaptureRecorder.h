@@ -54,7 +54,16 @@ public:
 	 * Reset the playhead to zero, clear the accumulation and start capturing.
 	 * @return an empty string on success, otherwise the reason it could not start.
 	 */
-	FString Arm(UWorld* World, int32 InFloorID, float InDurationSeconds, int32 InMaxRowsPerStream);
+	/**
+	 * @param InTarget  Optional explicit heatmap to capture. When null the search below picks the first
+	 *                  actor whose FloorID matches, which is ambiguous the moment a session holds more
+	 *                  than one heatmap on the same floor - an automation run holds several, of different
+	 *                  sizes in different places, and silently captured whichever came first out of
+	 *                  TActorIterator. Pass the actor you spawned; the console command has no such
+	 *                  ambiguity and leaves this null.
+	 */
+	FString Arm(UWorld* World, int32 InFloorID, float InDurationSeconds, int32 InMaxRowsPerStream,
+	            AHeatmapPixelTextureVisualizer* InTarget = nullptr);
 
 	/** Frame heartbeat, driven from the heatmap processor. Ends the window and writes the CSVs. */
 	void Tick(float SimTime);
