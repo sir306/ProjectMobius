@@ -33,7 +33,9 @@
 enum class EPedestrianMovementBracket : uint8;
 class UMRS_RepresentationSubsystem;
 class UTimeDilationSubSystem;
+class UMassEntitySpawnSubsystem;
 struct FEntityInfoFragment;
+struct FSimMovementSample;
 /**
  * 
  */
@@ -70,8 +72,44 @@ private:
 	/** Process a single entity chunk */
 	void ProcessChunk(FMassExecutionContext& Context);
 
+	/**
+	 * Rebuilds the per-frame table of DATASET SAMPLE BOUNDARIES that fall strictly inside this frame's
+	 * sim-time interval, so EmitTrajectorySegments can lay down the dataset's own polyline instead of one
+	 * chord per rendered frame. Called on the first chunk of a frame only; chunks run sequentially
+	 * (ForEachEntityChunk, not the parallel variant), which is what makes this shared state safe.
+	 *
+	 * Leaves the table EMPTY - i.e. falls back to the single per-frame chord - whenever subdividing would
+	 * be wrong or unavailable: no trajectory heatmap active, no dataset provider, an unknown sample
+	 * interval, an implausible frame delta (see MaxSubdividableDeltaSeconds), or absurdly many boundaries.
+	 */
+	void BuildSampleBoundaries(FMassExecutionContext& Context);
+
+	/**
+	 * Appends this frame's trajectory segments for one agent, split at every dataset sample boundary the
+	 * frame spans. The durations sum to FrameDeltaSeconds, so each segment still carries the sim time it
+	 * actually represents and the field's four-bucket conservation identity closes unchanged.
+	 */
+	void EmitTrajectorySegments(int32 EntityID, const FVector& StartLocation, const FVector& EndLocation);
+
 	/** Apply the collected heatmap data */
 	void ApplyHeatmapUpdates();
+
+	/**
+	 * A frame delta above this is NOT subdivided; it is emitted as one oversized segment so that
+	 * FTrajectoryField's delta-t gate rejects it whole. Splitting a timeline skip into sub-cap pieces
+	 * would walk every piece PAST that gate and paint the entire skipped duration onto the floor, which is
+	 * precisely what the gate exists to prevent. Must stay <= FTrajectoryFieldConfig::MaxPlausibleDeltaSeconds
+	 * (Source\Visualization\Public\TrajectoryField.h, 5.0 s); duplicated rather than included because
+	 * ProjectMobius does not depend on the Visualization module.
+	 */
+	static constexpr float MaxSubdividableDeltaSeconds = 5.0f;
+
+	/**
+	 * Refuse to subdivide beyond this many boundaries in one frame. 5.0 s of a 0.1 s dataset is 49, so this
+	 * is only reachable on a pathologically fine sample grid; the fallback (one chord) is what the old
+	 * per-frame scheme always did, so exceeding it is a loss of accuracy, never of mass.
+	 */
+	static constexpr int32 MaxSampleBoundariesPerFrame = 128;
 
 	// Entity Query
 	UPROPERTY()
@@ -124,6 +162,43 @@ private:
 	 */
 	UPROPERTY()
 	float FrameDeltaSeconds = 0.0f;
+
+	/**
+	 * Sim time at the START of the interval FrameDeltaSeconds spans, i.e. the previous frame's sim time.
+	 * Captured before LastFrameSimTime is overwritten. Sample-boundary subdivision needs the interval, not
+	 * just its width - a boundary is at an ABSOLUTE sim time (Step * sample interval), so a duration alone
+	 * cannot locate it.
+	 */
+	UPROPERTY()
+	float FrameStartSimTime = 0.0f;
+
+	/**
+	 * Dataset sample interval in sim seconds, re-read per frame from the spawn subsystem (it changes on
+	 * every file load). 0 means unknown - no dataset, or a synthetic/unit-test world - and disables
+	 * subdivision, which restores the exact per-frame emission this replaced.
+	 */
+	UPROPERTY()
+	float SampleIntervalSeconds = 0.0f;
+
+	/** Source of the dataset sample interval. Cached once; stable for the world's lifetime. */
+	UPROPERTY()
+	TObjectPtr<UMassEntitySpawnSubsystem> AgentSpawnSubsystem;
+
+	/** False at the top of every Execute; the first ProcessChunk of the frame rebuilds the tables below. */
+	bool bSampleBoundariesBuilt = false;
+
+	/** Absolute sim times of the dataset sample boundaries strictly inside this frame's interval, ascending. */
+	TArray<float> SampleBoundaryTimes;
+
+	/** The provider's sample block for each boundary. Borrowed for the frame only - never cached across one. */
+	TArray<const TArray<FSimMovementSample>*> SampleBoundaryBlocks;
+
+	/**
+	 * EntityID -> index into the parallel entry of SampleBoundaryBlocks. Storage is kept (never shrunk)
+	 * across frames and only the contents reset, so a steady playback rate stops reallocating after the
+	 * first few frames.
+	 */
+	TArray<TMap<int32, int32>> SampleBoundaryIndexMaps;
 
 	/** Stores the locations of the agents so it can be sent to the heatmap subsystem */
 	UPROPERTY()
