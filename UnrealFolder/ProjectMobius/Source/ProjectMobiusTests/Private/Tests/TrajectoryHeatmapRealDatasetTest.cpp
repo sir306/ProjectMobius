@@ -64,6 +64,7 @@
 
 #include "CoreMinimal.h"
 #include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -887,16 +888,41 @@ namespace TrajectoryRealData
 			const float SizeCm = HeatmapMetres() * 100.0f;
 			const FVector Origin = Heatmap->GetActorLocation();
 			const FVector Centre(Origin.X + SizeCm * 0.5f, Origin.Y + SizeCm * 0.5f, Origin.Z);
-			// At the default 90 degree FOV a height of half the span exactly frames it; add margin so the
-			// edges are not clipped by aspect ratio.
+			// Height is not critical under an orthographic projection (below) - it only has to clear the
+			// geometry. Kept at the old framing distance so the view is unchanged in every other respect.
 			const FVector Eye(Centre.X, Centre.Y, Centre.Z + SizeCm * 0.75f);
 
-			Camera = World->SpawnActor<ACameraActor>(Eye, FRotator(-90.0f, 0.0f, 0.0f));
+			// YAW MUST BE -90, NOT 0. The capture has to align to WORLD XY, because that is what the
+			// exported PNG is: px_x = cell_x = world X, and px_y = cell_y = world Y increasing DOWN the
+			// image. With pitch -90 (straight down), UE gives:
+			//     yaw   0  ->  camera right = world +Y, camera up = world +X   (transposed 90 deg)
+			//     yaw -90  ->  camera right = world +X, camera up = world -Y   (matches the PNG)
+			// The old yaw of 0 therefore rendered the heatmap rotated a quarter turn against its own
+			// export, which the owner spotted by eye on 2026-08-05. It is NOT a data defect: the field's
+			// orientation was measured correct against the building's world extents on both axes
+			// independently (ruling A0-51). A non-square site makes a 90 deg camera yaw and a transposed
+			// buffer look identical, so verify this by projection, never by eye.
+			Camera = World->SpawnActor<ACameraActor>(Eye, FRotator(-90.0f, -90.0f, 0.0f));
 			if (!Camera)
 			{
 				Test.AddError(TEXT("failed to spawn the capture camera"));
 				return false;
 			}
+
+			// ORTHOGRAPHIC, not perspective. Under perspective the world->screen scale falls off with
+			// distance from the view axis, so a texel near the edge covers fewer pixels than one at the
+			// centre and no pixel comparison against a uniform-scale export can ever be exact. Ortho makes
+			// world XY map linearly onto screen XY, which is the whole point of an overhead capture.
+			if (UCameraComponent* CameraComponent = Camera->GetCameraComponent())
+			{
+				CameraComponent->SetProjectionMode(ECameraProjectionMode::Orthographic);
+				// The heatmap span is square and the capture frame is wider than it is tall, so the
+				// VERTICAL axis is the binding one: OrthoWidth is a width, so scale it up by the aspect
+				// ratio or the top and bottom of the span are cropped.
+				const float AspectRatio = CameraComponent->AspectRatio > 0.0f ? CameraComponent->AspectRatio : (4.0f / 3.0f);
+				CameraComponent->SetOrthoWidth(SizeCm * AspectRatio);
+			}
+
 			Controller->SetViewTargetWithBlend(Camera, 0.0f);
 			return true;
 		}
