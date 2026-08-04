@@ -449,15 +449,22 @@ public:
 	 * the stored byte by 255. Pushing the identical struct to both is what keeps the export and the
 	 * in-world render in step; see ApplyTrajectoryLOSBands.
 	 *
-	 * PROVISIONAL. The values still carried here were calibrated against the deleted seed-and-brush
-	 * rasteriser (bytes 24.5/46.5/71.5/110.5/175.5 ~ crossing counts), and the encode is now linear
-	 * auto-exposure over cell DENSITY, so a band boundary is relative to the current maximum cell rather
-	 * than to an absolute person/m figure. Left untouched deliberately: re-fitting them against canonical
-	 * data is A0's call, and the export sidecar records both the edges and their provenance so no reader
-	 * has to guess.
+	 * PROVISIONAL under D9, but no longer meaningless: REFIT 2026-08-04 against the first real canonical
+	 * export, and the encode now uses a FIXED reference density instead of per-capture auto-exposure, so a
+	 * normalised edge maps to a stated person/m figure rather than to "some fraction of this frame's
+	 * brightest cell". See FHeatmapLOSBands::Trajectory() for the numbers and their provenance.
+	 *
+	 * ONE SET PER MODE. Route Usage and Route Exposure are different quantities with different reference
+	 * densities (100 person/m vs 200 person*s/m^2), so a single normalised set cannot serve both — reusing
+	 * Usage's edges for Exposure mis-bands it by the ratio of the references. ApplyTrajectoryLOSBands picks
+	 * whichever matches the active mode.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
 	FHeatmapLOSBands TrajectoryLOSBands = FHeatmapLOSBands::Trajectory();
+
+	/** Route Exposure's own edges. See TrajectoryLOSBands for why the two cannot be one set. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
+	FHeatmapLOSBands TrajectoryExposureLOSBands = FHeatmapLOSBands::TrajectoryExposure();
 
 	/**
 	 * Is this a Standard Heatmap or a Voronoi Map:

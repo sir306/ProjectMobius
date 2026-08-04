@@ -364,20 +364,27 @@ void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands() const
 	// auto-exposure scale that relates the two is recorded alongside them.
 	//
 	// The parameter names still read LOS_*; see TrajectoryLOSBands for why they cannot be renamed yet.
+	//
+	// MODE-SELECTED since 2026-08-04: Usage and Exposure have different reference densities, so they need
+	// different normalised edges. Pushing one set for both mis-bands whichever mode it was not fitted to.
+	const FHeatmapLOSBands& Bands = (TrajectoryMapMode == ETrajectoryMapMode::RouteExposure)
+		? TrajectoryExposureLOSBands
+		: TrajectoryLOSBands;
+
 	if (TrajectoryMaterialInstance)
 	{
-		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_A_Band"), TrajectoryLOSBands.BandA);
-		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_B_Band"), TrajectoryLOSBands.BandB);
-		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_C_Band"), TrajectoryLOSBands.BandC);
-		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_D_Band"), TrajectoryLOSBands.BandD);
-		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_E_Band"), TrajectoryLOSBands.BandE);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_A_Band"), Bands.BandA);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_B_Band"), Bands.BandB);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_C_Band"), Bands.BandC);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_D_Band"), Bands.BandD);
+		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_E_Band"), Bands.BandE);
 	}
 
 	// The PNG export colourises on the CPU. Give it the same edges or the saved image and the in-world
 	// render disagree — which is exactly the discrepancy that hid this bug in the first place.
 	if (TrajectoryAccumulationTexture)
 	{
-		TrajectoryAccumulationTexture->SetLOSBands(TrajectoryLOSBands);
+		TrajectoryAccumulationTexture->SetLOSBands(Bands);
 	}
 }
 
@@ -391,8 +398,11 @@ void AHeatmapPixelTextureVisualizer::SetTrajectoryMapMode(ETrajectoryMapMode New
 	TrajectoryMapMode = NewMode;
 	TrajectoryField.SetPresentationMode(NewMode);
 	// The canonical arrays are untouched — only the presentation cache is rebuilt. Force a full texture
-	// rewrite: every byte can change, since the new mode has its own auto-exposure maximum.
+	// rewrite: every byte can change, since the new mode has its own reference density.
 	TrajectoryPreviousRed.Reset();
+	// The two modes carry different band edges (different reference densities), so the edges must be
+	// re-pushed on every switch or the new mode renders against the old mode's thresholds.
+	ApplyTrajectoryLOSBands();
 	RefreshTrajectoryDisplay();
 }
 
@@ -1388,10 +1398,16 @@ void AHeatmapPixelTextureVisualizer::WriteTrajectoryCanonicalExport(const FStrin
 	// (encode_scale_bytes_per_display_unit) — burying a load-bearing float in this string would put it
 	// beyond field_stats.py and band_fit.py, which parse the sidecar rather than read it.
 	const FString BandProvenance = FString::Printf(
-		TEXT("provisional: legacy normalised red-channel edges from FHeatmapLOSBands::Trajectory(), ")
-		TEXT("calibrated by replay against a 30 s ground-floor capture of the REMOVED seed-and-brush ")
-		TEXT("rasteriser (median 13 hits per crossing); converted to canonical units for this export. ")
-		TEXT("NOT fitted to canonical data - re-fit via band_fit.py, %s"),
+		TEXT("provisional (D9): quantile fit (p50/p75/p90/p97 of occupied cells) of the TechSchool ")
+		TEXT("1000-agent 30 s canonical capture 20260804_212520 (28,822 occupied cells), via ")
+		TEXT("MobiusPerf/analysis/band_fit.py QUANTILE proposal; first edge is a half-byte no-data ")
+		TEXT("threshold, not a fitted value. Normalised against a FIXED reference density of %.9g %s ")
+		TEXT("(byte 255), so these edges are absolute and comparable across captures - divide by ")
+		TEXT("encode_scale_bytes_per_display_unit to recover bytes. Superseded the pre-2026-08-04 set, ")
+		TEXT("which was replay-calibrated against the deleted seed-and-brush rasteriser and therefore ")
+		TEXT("bore no relation to person-metres. One building, one dataset - re-fit on more. %s"),
+		TrajectoryField.GetLastEncodeReferenceDensity(),
+		bUsage ? TEXT("person/m") : TEXT("person*s/m^2"),
 		*FDateTime::Now().ToString(TEXT("%Y-%m-%d")));
 
 	FString Meta;
@@ -1423,10 +1439,13 @@ void AHeatmapPixelTextureVisualizer::WriteTrajectoryCanonicalExport(const FStrin
 	// Per-export auto-exposure maximum, NOT a fixed reference: two exports with different values here are
 	// on different byte scales and their PNGs must not be compared pixel-for-pixel.
 	Meta.Appendf(TEXT("  \"encode_max_display_unit\": %.9g,\n"), TrajectoryField.GetLastEncodeMaxDensity());
+	// Mode-selected, like ApplyTrajectoryLOSBands: exporting an Exposure field with Usage's edges would
+	// put a wrong-by-the-reference-ratio band set in the sidecar and silently mislead the refit.
+	const FHeatmapLOSBands& ExportBands = bUsage ? TrajectoryLOSBands : TrajectoryExposureLOSBands;
 	Meta.Appendf(TEXT("  \"band_edges\": [%.9g, %.9g, %.9g, %.9g, %.9g],\n"),
-		CanonicalBandEdge(TrajectoryLOSBands.BandA), CanonicalBandEdge(TrajectoryLOSBands.BandB),
-		CanonicalBandEdge(TrajectoryLOSBands.BandC), CanonicalBandEdge(TrajectoryLOSBands.BandD),
-		CanonicalBandEdge(TrajectoryLOSBands.BandE));
+		CanonicalBandEdge(ExportBands.BandA), CanonicalBandEdge(ExportBands.BandB),
+		CanonicalBandEdge(ExportBands.BandC), CanonicalBandEdge(ExportBands.BandD),
+		CanonicalBandEdge(ExportBands.BandE));
 	Meta.Appendf(TEXT("  \"band_provenance\": \"%s\",\n"), *BandProvenance);
 	Meta.Appendf(TEXT("  \"total_person_metres\": %.9g,\n"), TrajectoryField.GetTotalPersonMetres());
 	Meta.Appendf(TEXT("  \"total_person_seconds\": %.9g,\n"), TrajectoryField.GetTotalPersonSeconds());
