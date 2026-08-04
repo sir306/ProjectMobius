@@ -89,6 +89,13 @@ void UAgentHeatmapProcessor::Execute(FMassEntityManager& EntityManager, FMassExe
 	// determine if heatmaps should be updated this frame
 	UpdateHeatmapInterval();
 
+	// Per-frame sim-time delta for trajectory segments (RULING A0-5: per-frame, not the flush interval
+	// computed inside UpdateHeatmapInterval()). That call resets LastFrameSimTime to the current sim
+	// time on a dataset-tracking reset or a rewind, so FrameDeltaSeconds reads 0 on those frames.
+	const float FrameSimTime = TimeDilationSubSystem->GetCurrentSimTime();
+	FrameDeltaSeconds = FMath::Max(FrameSimTime - LastFrameSimTime, 0.0f);
+	LastFrameSimTime = FrameSimTime;
+
 #if !UE_BUILD_SHIPPING
 	// Diagnostic capture heartbeat. Called before this frame is processed, so the window is half-open:
 	// the frame that crosses the deadline ends the capture and is itself excluded, which keeps the
@@ -190,6 +197,8 @@ void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 	//TRACE_CPUPROFILER_EVENT_SCOPE(UAgentHeatmapProcessor_UpdateHeatmapInterval);
 	if (!TimeDilationSubSystem) return;
 
+	const float CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
+
 	// A new dataset recycles entity IDs, so a position remembered from the previous simulation would be
 	// joined to whichever agent inherited that ID and drawn as one long streak across the floor. Drop
 	// them before anything else this frame. Distinct from the rewind path below, which keeps them on
@@ -198,21 +207,22 @@ void UAgentHeatmapProcessor::UpdateHeatmapInterval()
 	{
 		LastTrajectoryLocations.Reset();
 		TrajectorySegments.Reset();
+		LastFrameSimTime = CurrentSimTime; // per-frame delta must not span the dataset swap
 	}
-
-	const float CurrentSimTime = TimeDilationSubSystem->GetCurrentSimTime();
 
 	if (CurrentSimTime < LastUpdatedCurrentTime)
 	{
 		if (HeatmapSubsystem && HeatmapSubsystem->AnyTrajectoryHeatmapsActive())
 		{
-			// Discard the old rendered history, but keep the latest sampled positions. ProcessChunk
-			// will join those positions to the scrubbed state this frame, making the rewind/skip
-			// transition visible instead of leaving a temporal hole.
+			// Discard the old rendered history, but keep the latest sampled positions. LastFrameSimTime
+			// is reset below, so FrameDeltaSeconds is 0 this frame and ProcessChunk emits no join
+			// segment for the scrub itself; normal per-frame segments resume from the scrubbed
+			// position on the very next frame.
 			TrajectorySegments.Reset();
 			HeatmapSubsystem->ClearTrajectoryHeatmaps();
 		}
 		LastUpdatedCurrentTime = CurrentSimTime;
+		LastFrameSimTime = CurrentSimTime; // per-frame delta must not span the rewind
 		bUpdateHeatmap = true;
 		return;
 	}
@@ -304,9 +314,16 @@ void UAgentHeatmapProcessor::ProcessChunk(FMassExecutionContext& Context)
 			{
 				bHasPrevious = true;
 				bPositionChanged = !PreviousLocation->Equals(EntityMovement.CurrentLocation, KINDA_SMALL_NUMBER);
-				if (bPositionChanged)
+				// A stationary agent must still emit: the old `bPositionChanged &&` guard here is why
+				// Route Exposure read zero at every queue, since the agents whose occupancy the map
+				// exists to show are exactly the ones that did not move. DepositSegment handles the
+				// zero-length case (Delta-t into the containing cell, zero person-metres, length booked
+				// to the negligible bucket so the conservation identity still closes).
+				// FrameDeltaSeconds <= 0 still skips: paused, the same sim time sampled twice, or the
+				// frame a dataset reset/rewind lands on (RULING A0-5).
+				if (FrameDeltaSeconds > 0.0f)
 				{
-					TrajectorySegments.Add({ *PreviousLocation, EntityMovement.CurrentLocation });
+					TrajectorySegments.Add({ *PreviousLocation, EntityMovement.CurrentLocation, FrameDeltaSeconds });
 					bSegmentEmitted = true;
 				}
 			}

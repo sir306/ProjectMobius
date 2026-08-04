@@ -38,6 +38,15 @@ struct FHeatmapTrajectorySegment
 {
 	FVector Start = FVector::ZeroVector;
 	FVector End = FVector::ZeroVector;
+	/** Simulation seconds this segment represents. One frame's sim-time delta, not the flush interval. */
+	float DeltaSeconds = 0.0f;
+};
+
+/** Length (cm) and sim-seconds of trajectory segments the floor filter has dropped for one heatmap (D7). */
+struct FHeatmapTrajectoryDroppedMass
+{
+	double DroppedLengthCm = 0.0;
+	double DroppedSeconds = 0.0;
 };
 
 // Delegates used to broadcast events
@@ -147,6 +156,13 @@ public:
 
 	/** Clears the trajectory render targets after a rewind, seek, or new playback session. */
 	void ClearTrajectoryHeatmaps();
+
+	/**
+	 * Length (cm) and sim-seconds of trajectory segments dropped by the floor filter in
+	 * UpdateHeatmapsWithTrajectorySegments (D7) for one heatmap since its last ClearTrajectoryHeatmaps().
+	 * For conservation checks: deposited + dropped should equal offered.
+	 */
+	void GetDroppedTrajectoryMass(const AHeatmapPixelTextureVisualizer* Heatmap, double& OutDroppedLengthCm, double& OutDroppedSeconds) const;
 
 	/**
 	 * Ask the heatmap processor to forget every agent's last sampled trajectory position.
@@ -271,6 +287,12 @@ protected:
 private:
 	/** Set by RequestTrajectoryTrackingReset, cleared by ConsumeTrajectoryTrackingReset. Game thread only. */
 	bool bTrajectoryTrackingResetPending = false;
+
+	/**
+	 * Trajectory mass dropped by the floor filter per heatmap (D7); the entry for a heatmap is zeroed
+	 * when ClearTrajectoryHeatmaps() clears it. Raw pointer keys match the existing Heatmaps array.
+	 */
+	TMap<const AHeatmapPixelTextureVisualizer*, FHeatmapTrajectoryDroppedMass> TrajectoryDroppedMassByHeatmap;
 
 	/** The XY spawn point for the heatmaps */
 	UPROPERTY()

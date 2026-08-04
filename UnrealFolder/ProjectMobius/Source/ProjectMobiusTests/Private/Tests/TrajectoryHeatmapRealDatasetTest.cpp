@@ -11,10 +11,20 @@
 //
 //   Baseline1000        TechnicalSchool_1000.json           - the repeatable case. Sane distribution,
 //                                                             most texels crossed a handful of times.
-//   Oversaturation5000  TechnicalSchool5000DefaultExits.json - deliberately past the accumulator's
-//                                                             ceiling. Expected to clip hard and render
-//                                                             largely red; that IS the finding, and it
-//                                                             bounds how much dynamic range is left.
+//   Oversaturation5000  TechnicalSchool5000DefaultExits.json - deliberately past the OLD uint8
+//                                                             accumulator's ceiling.
+//
+// UPDATED FOR THE TRAJECTORY REBUILD (T5, 2026-08-04). Oversaturation5000's point used to be "clips hard
+// and renders largely red" -- that was true of the old fixed-scale uint8 buffer this rebuild removed. The
+// canonical field (FTrajectoryField, float32 with no ceiling) does not clip; only the presentation encode
+// does, and it does so via linear auto-exposure against the current maximum cell DENSITY
+// (EncodeToDisplay, see TrajectoryField.h), so a hot cell alone reaching byte 255 does not mean the map
+// renders "largely red" the way the old fixed increments did. See the Oversaturation5000 case below for
+// what is actually asserted now, and its comments for what is NOT verifiable at this tier (canonical
+// access is via AHeatmapPixelTextureVisualizer::GetTrajectoryFieldForTesting(), added by A4 -- confirmed
+// available by A0 2026-08-04 -- but proving "provably unbounded" rigorously is Tier A's T_SAT_1 job, done
+// in TrajectoryHeatmapCalibrationTest.cpp against a synthetic overload; this file's job is to confirm the
+// REAL pipeline agrees with that isolated finding, not to re-derive it).
 //
 // Each run arms FTrajectoryCaptureRecorder, so the artifacts are the full capture set under
 // Saved/TrajectoryCapture/<stamp>/ -- raster.csv, texture.csv, accumulation_los.png and
@@ -27,6 +37,14 @@
 // green on a machine that does not have it. Point them somewhere else with:
 //
 //     -MobiusTechSchoolDir="D:\...\Packaged\Development\Windows\ProjectMobius\UnitTestSampleData\TechSchoolTest"
+//
+// A SKIP IS NOT A PASS. RunTests.ps1 keys off $t.state, and AddWarning alone does not fail a test, so an
+// absent dataset currently reads green exactly like a real pass. The skip path below now logs a
+// maximally-distinctive "SKIPPED-NOT-A-PASS" marker for both these reasons; A0 must grep the run log for
+// that literal string (or otherwise confirm the dataset was present) before treating a green run of this
+// file as evidence the real-dataset scenarios actually executed. This file cannot fix that on its own --
+// RunTests.ps1's pass/fail semantics are A0's file, not this agent's (T5_TEST_REWRITE.md §6 / AGENTS.md
+// §4 file-ownership matrix).
 //
 // Run: MobiusPerf\RunTests.ps1 -InGame     (or -ExecCmds="Automation RunTests Mobius.InGame.TrajectoryRealData")
 //
@@ -63,6 +81,7 @@
 #include "Subsystems/HeatmapSubsystem.h"
 #include "Diagnostics/TrajectoryCaptureRecorder.h"
 #include "DynamicPixelRenderingTexture.h"
+#include "TrajectoryField.h"
 
 namespace TrajectoryRealData
 {
@@ -134,6 +153,10 @@ namespace TrajectoryRealData
 		return FPaths::FileExists(Canonical) ? Canonical : FString();
 	}
 
+	// PROVISIONAL (see file header: TOLERANCES.md does not exist yet, A1b is writing it). Named here, in
+	// one block, rather than inlined at any call site below.
+	constexpr float OversaturationMaxSaturatedFraction = 0.05f; // "saturates gracefully" == a FEW hot cells
+
 	/** Summary of one accumulation buffer. Mirrors the Tier B struct so the two runs read alike. */
 	struct FRealDataStats
 	{
@@ -143,6 +166,13 @@ namespace TrajectoryRealData
 		int32 SaturatedTexels = 0;   // byte == 255, i.e. counts already lost
 		int32 EdgeTexels = 0;        // touched texels on the outermost row/column
 		int32 NoDataCollisions = 0;  // touched texels that still colourise as "no data"
+
+		// Canonical-field companions to the byte-level stats above, read through
+		// GetTrajectoryFieldForTesting() rather than the encoded display buffer. Zero/invalid if the
+		// field was not available (older builds, or the accessor not yet wired for this actor).
+		bool bCanonicalFieldAvailable = false;
+		double CanonicalTotalPersonMetres = 0.0;
+		float CanonicalPeakDensity = 0.0f; // max(PersonMetres[cell]) / CellArea, i.e. peak Route Usage
 
 		float SaturatedFraction() const
 		{
@@ -430,16 +460,51 @@ namespace TrajectoryRealData
 				return true;
 			}
 
-			const FRealDataStats Stats = Measure(*Texture);
+			FRealDataStats Stats = Measure(*Texture);
+
+			// Canonical companions to the byte stats, read through the field itself rather than the
+			// encoded display buffer -- GetTrajectoryFieldForTesting() (A4, confirmed available by A0
+			// 2026-08-04). Kept best-effort: if the accessor or field is unavailable for any reason, the
+			// byte-level measurement above still stands on its own and this file does not fail on that
+			// account, it just logs/asserts less.
+			// A0 (integration): the accessor returns a const reference, not a pointer. The field is a value
+			// member and cannot be null, so "unavailable" means IsValid() is false - no grid sized yet.
+			const FTrajectoryField& Field = Heatmap->GetTrajectoryFieldForTesting();
+			if (Field.IsValid())
+			{
+				Stats.bCanonicalFieldAvailable = true;
+				Stats.CanonicalTotalPersonMetres = Field.GetTotalPersonMetres();
+				const TArray<float>& Metres = Field.GetCanonical(ETrajectoryMapMode::RouteUsage);
+				float MaxCellMetres = 0.0f;
+				for (const float V : Metres)
+				{
+					MaxCellMetres = FMath::Max(MaxCellMetres, V);
+				}
+				const float CellArea = Field.GetCellAreaSquareMetres();
+				Stats.CanonicalPeakDensity = (CellArea > 0.0f) ? (MaxCellMetres / CellArea) : 0.0f;
+			}
 
 			// The measurement is the product. Reported unconditionally, pass or fail.
 			UE_LOG(LogTemp, Display,
 				TEXT("[TrajectoryRealData] %s: touched=%d peak=%d modal=%d saturated=%d (%.1f%%) edge=%d"),
 				NameFor(Dataset), Stats.TouchedTexels, Stats.PeakByte, Stats.ModalByte,
 				Stats.SaturatedTexels, Stats.SaturatedFraction() * 100.0f, Stats.EdgeTexels);
+			if (Stats.bCanonicalFieldAvailable)
+			{
+				UE_LOG(LogTemp, Display,
+					TEXT("[TrajectoryRealData] %s canonical: TotalPersonMetres=%.3f peakDensity=%.3f person/m"),
+					NameFor(Dataset), Stats.CanonicalTotalPersonMetres, Stats.CanonicalPeakDensity);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Display,
+					TEXT("[TrajectoryRealData] %s: field has no grid (IsValid() false), byte-level stats only"),
+					NameFor(Dataset));
+			}
 			UE_LOG(LogTemp, Display,
 				TEXT("[TrajectoryRealData] capture written under Saved/TrajectoryCapture/ - run ")
-				TEXT("MobiusPerf\\analysis\\crossings_vs_byte.py against it to refit the band edges"));
+				TEXT("MobiusPerf\\analysis\\field_stats.py then band_fit.py against the exported ")
+				TEXT(".csv + .meta.json pair to refit the band edges"));
 
 			Test.TestTrue(TEXT("the dataset put something on the heatmap"), Stats.TouchedTexels > 0);
 
@@ -455,7 +520,10 @@ namespace TrajectoryRealData
 			case EDataset::Baseline1000:
 				// The usable case: most of the map should still have headroom. If a 1000-agent run is
 				// already clipping heavily then the accumulator ceiling, not the band edges, is what needs
-				// attention first.
+				// attention first. (Canonical units: TotalPersonMetres/peak density are logged above for
+				// whoever refits the bands; no threshold is asserted on them here since this is a REAL
+				// dataset with no oracle-derived expected value -- see T5_TEST_REWRITE.md's own rule
+				// against inventing one.)
 				Test.TestTrue(*FString::Printf(
 						TEXT("a 1000-agent run keeps most texels below saturation (%.1f%% clipped)"),
 						Stats.SaturatedFraction() * 100.0f),
@@ -463,18 +531,39 @@ namespace TrajectoryRealData
 				break;
 
 			case EDataset::Oversaturation5000:
-				// Expected to clip. Asserting only that it produced a hotter map than a bare seed, so the
-				// test still fails if the run silently did nothing. The clipped fraction is the number to
-				// read, not a threshold to pass.
+				// UPDATED FOR THE REBUILD (see file header). The finding is no longer "clips hard and
+				// renders largely red" -- that was the OLD fixed-scale uint8 buffer. Two things are now
+				// asserted instead:
+				//   (1) something clearly got hot (peak byte > 100), same regression guard as before --
+				//       the test must still fail if the run silently did nothing;
+				//   (2) presentation "saturates gracefully": auto-exposure means only the TRUE peak cell(s)
+				//       should pin at byte 255, not a large swath of the map, so SaturatedFraction should
+				//       stay small. This is the observable, byte-level half of "no hard clip".
+				// The canonical-field half ("the raw value keeps rising, unbounded") is Tier A's job --
+				// TrajectoryHeatmapCalibrationTest.cpp's T_SAT_1 proves it directly against a synthetic
+				// overload with a known repeat count. This test can only log the real canonical total
+				// (above) as a cross-check that the accessor path agrees there IS a large, non-clamped
+				// number behind the encode, not re-derive the unbounded-growth proof from a real dataset
+				// whose true expected total is not known in advance.
 				Test.TestTrue(*FString::Printf(
 						TEXT("a 5000-agent run drives the accumulator well past a single pass (peak %d)"),
 						Stats.PeakByte),
 					Stats.PeakByte > 100);
+				Test.TestTrue(*FString::Printf(
+						TEXT("presentation saturates gracefully: only a few cells pin at 255 (%.1f%% clipped, ceiling %.0f%%)"),
+						Stats.SaturatedFraction() * 100.0f, OversaturationMaxSaturatedFraction * 100.0f),
+					Stats.SaturatedFraction() < OversaturationMaxSaturatedFraction);
+				if (Stats.bCanonicalFieldAvailable)
+				{
+					Test.TestTrue(TEXT("canonical total is a large, finite, non-zero number behind the encode"),
+						Stats.CanonicalTotalPersonMetres > 0.0 && FMath::IsFinite(Stats.CanonicalTotalPersonMetres));
+				}
 				UE_LOG(LogTemp, Display,
-					TEXT("[TrajectoryRealData] OVERSATURATION: %.1f%% of touched texels are clipped at 255. ")
-					TEXT("Counts above that are lost, so any per-crossing reading in those areas is a floor, ")
-					TEXT("not a measurement."),
-					Stats.SaturatedFraction() * 100.0f);
+					TEXT("[TrajectoryRealData] OVERSATURATION: %.1f%% of touched texels are clipped at 255 ")
+					TEXT("(ceiling %.0f%% -- above that means auto-exposure regressed toward the old hard-clip ")
+					TEXT("behaviour). Counts above 255 are still lost to the 8-bit display encode, so any ")
+					TEXT("per-crossing reading there is a floor on the DISPLAY, not on the canonical field."),
+					Stats.SaturatedFraction() * 100.0f, OversaturationMaxSaturatedFraction * 100.0f);
 				break;
 			}
 			return true;
@@ -635,10 +724,16 @@ namespace TrajectoryRealData
 		if (DatasetPath.IsEmpty())
 		{
 			// Skip, do not fail. The dataset is ~760 MB and excluded from git on purpose, so its absence
-			// is the normal state on most machines and must not red-light the suite.
+			// is the normal state on most machines and must not red-light the suite. A SKIP IS NOT A PASS
+			// though (RunTests.ps1 keys off $t.state, and AddWarning alone does not fail a test) -- the
+			// literal marker below is maximally distinctive so A0 (or anyone grepping the run log) can
+			// tell a skip from a real green run at a glance, since this file cannot change that pass/fail
+			// semantics itself (RunTests.ps1 is A0's file, not this agent's).
 			Test.AddWarning(FString::Printf(
-				TEXT("SKIPPED %s: %s not found. Expected under <Project>/UnitTestSampleData/TechSchoolTest/ ")
-				TEXT("(gitignored, ~760 MB) or via -MobiusTechSchoolDir=<dir>."),
+				TEXT("SKIPPED-NOT-A-PASS %s: %s not found. Expected under ")
+				TEXT("<Project>/UnitTestSampleData/TechSchoolTest/ (gitignored, ~760 MB) or via ")
+				TEXT("-MobiusTechSchoolDir=<dir>. This test reports GREEN below, but it verified NOTHING -- ")
+				TEXT("confirm the dataset was actually present before trusting a passing run of this file."),
 				NameFor(Dataset), FileNameFor(Dataset)));
 			return true;
 		}
@@ -718,7 +813,7 @@ bool FTrajectoryRealDataRenderedComparisonTest::RunTest(const FString& Parameter
 	{
 		// Skip rather than fail: the default harness is headless on purpose, and a rendered comparison
 		// is a diagnostic a human looks at, not something that should gate a headless suite.
-		AddWarning(TEXT("SKIPPED RenderedComparison: no RHI (running under -nullrhi). ")
+		AddWarning(TEXT("SKIPPED-NOT-A-PASS RenderedComparison: no RHI (running under -nullrhi). ")
 			TEXT("Run MobiusPerf\\RunTests.ps1 -InGame -Rendered to produce the rendered view."));
 		return true;
 	}

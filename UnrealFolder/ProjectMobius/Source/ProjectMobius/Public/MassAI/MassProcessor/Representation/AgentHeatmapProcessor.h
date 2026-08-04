@@ -109,6 +109,22 @@ private:
 	UPROPERTY()
 	float LastUpdatedCurrentTime = 0.0f;
 
+	/**
+	 * Sim time as of the previous Execute() call. Used only to derive FrameDeltaSeconds below; reset
+	 * (to the current sim time) alongside the trajectory-tracking reset and the rewind branch inside
+	 * UpdateHeatmapInterval(), so the delta spanning a dataset swap or a rewind reads as zero.
+	 */
+	UPROPERTY()
+	float LastFrameSimTime = 0.0f;
+
+	/**
+	 * Per-frame sim-time delta (RULING A0-5: per-frame, never the ~0.1s flush interval), attached to any
+	 * trajectory segment emitted this frame. Never negative or NaN. Zero on the first tracked frame and
+	 * on the frame a dataset reset or rewind lands on -- ProcessChunk emits no segment in that case.
+	 */
+	UPROPERTY()
+	float FrameDeltaSeconds = 0.0f;
+
 	/** Stores the locations of the agents so it can be sent to the heatmap subsystem */
 	UPROPERTY()
 	TArray<FVector> HeatmapLocations;

@@ -338,6 +338,13 @@ void UHeatmapSubsystem::UpdateHeatmapsWithTrajectorySegments(const TArray<FHeatm
 			{
 				FloorSegments.Add(Segment);
 			}
+			else
+			{
+				// D7: make the loss visible rather than changing the filter's accept/reject behaviour.
+				FHeatmapTrajectoryDroppedMass& Dropped = TrajectoryDroppedMassByHeatmap.FindOrAdd(Heatmap);
+				Dropped.DroppedLengthCm += FVector::Dist(Segment.Start, Segment.End);
+				Dropped.DroppedSeconds += Segment.DeltaSeconds;
+			}
 #if !UE_BUILD_SHIPPING
 			// Rejections are the point: a segment dropped here never reaches the rasteriser, and
 			// because only Segment.End is tested, a straddling segment loses its in-band portion too.
@@ -370,7 +377,26 @@ void UHeatmapSubsystem::ClearTrajectoryHeatmaps()
 		{
 			Heatmap->ClearTexture();
 			Heatmap->UpdateHeatmapTextureRender();
+			// D8: dropped-mass accounting must not survive the render targets it was measured against.
+			if (FHeatmapTrajectoryDroppedMass* Dropped = TrajectoryDroppedMassByHeatmap.Find(Heatmap))
+			{
+				*Dropped = FHeatmapTrajectoryDroppedMass();
+			}
 		}
+	}
+}
+
+void UHeatmapSubsystem::GetDroppedTrajectoryMass(const AHeatmapPixelTextureVisualizer* Heatmap, double& OutDroppedLengthCm, double& OutDroppedSeconds) const
+{
+	if (const FHeatmapTrajectoryDroppedMass* Dropped = TrajectoryDroppedMassByHeatmap.Find(Heatmap))
+	{
+		OutDroppedLengthCm = Dropped->DroppedLengthCm;
+		OutDroppedSeconds = Dropped->DroppedSeconds;
+	}
+	else
+	{
+		OutDroppedLengthCm = 0.0;
+		OutDroppedSeconds = 0.0;
 	}
 }
 

@@ -40,6 +40,8 @@
 #include "Diagnostics/TrajectoryCaptureRecorder.h"
 #include "Engine/Engine.h"
 #include "HAL/PlatformTime.h"
+#include "Misc/FileHelper.h"   // trajectory canonical CSV + metadata sidecar
+#include "Misc/Paths.h"
 
 
 // Sets default values
@@ -224,6 +226,11 @@ void AHeatmapPixelTextureVisualizer::InitializeHeatmap(int32 InHeatmapType, bool
 	//TextureWidth = FMath::RoundUpToPowerOfTwo(MeshSize.X * 2);
 	//TextureHeight = FMath::RoundUpToPowerOfTwo(MeshSize.Y * 2);
 
+	// DENSITY render-target size only. The trajectory surface no longer derives its resolution from
+	// these: FTrajectoryField fixes cm/texel (D2) and the accumulation texture is sized from the
+	// resulting grid in EnsureTrajectoryFieldSized. Deliberately left at 1024 rather than driven from
+	// the grid, because UVScale — and through it ScaledCircleSize, the density agent disc — is computed
+	// from TextureWidth/TextureHeight, so changing them here would silently retune the density surface.
 	TextureWidth = 1024;
 	//TextureWidth = 256;
 	TextureHeight = 1024;
@@ -342,8 +349,21 @@ void AHeatmapPixelTextureVisualizer::CreateMaterialInstances()
 	ApplyTrajectoryLOSBands();
 }
 
-void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands()
+void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands() const
 {
+	// D9 — NORMALISATION. The band edges are pushed in normalised red-channel units (byte/255) and both
+	// consumers compare in exactly that space: the material samples the red channel, and the PNG
+	// colouriser divides the stored byte by 255 (UpdateTextureToLOSColour). So the two are symmetric
+	// because they receive the identical struct, not because two conversions were matched by hand.
+	//
+	// The alternative — keeping the edges in canonical person/m and pushing the encode's normalisation
+	// scale to the material as a sixth parameter — was rejected: FHeatmapLOSBands clamps its fields to
+	// [0,1] so canonical edges cannot even be stored, and a new scalar parameter means editing
+	// M_HeatmapRT_Trajectory, which this change is not allowed to do. The canonical equivalents are
+	// reconstructed for the export sidecar instead (WriteTrajectoryCanonicalExport), where the
+	// auto-exposure scale that relates the two is recorded alongside them.
+	//
+	// The parameter names still read LOS_*; see TrajectoryLOSBands for why they cannot be renamed yet.
 	if (TrajectoryMaterialInstance)
 	{
 		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_A_Band"), TrajectoryLOSBands.BandA);
@@ -359,6 +379,198 @@ void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands()
 	{
 		TrajectoryAccumulationTexture->SetLOSBands(TrajectoryLOSBands);
 	}
+}
+
+void AHeatmapPixelTextureVisualizer::SetTrajectoryMapMode(ETrajectoryMapMode NewMode)
+{
+	if (TrajectoryMapMode == NewMode)
+	{
+		return;
+	}
+
+	TrajectoryMapMode = NewMode;
+	TrajectoryField.SetPresentationMode(NewMode);
+	// The canonical arrays are untouched — only the presentation cache is rebuilt. Force a full texture
+	// rewrite: every byte can change, since the new mode has its own auto-exposure maximum.
+	TrajectoryPreviousRed.Reset();
+	RefreshTrajectoryDisplay();
+}
+
+void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
+{
+	if (!RuntimeHeatmapMeshComponent || HeatmapMeshSize2D.X <= 0.0 || HeatmapMeshSize2D.Y <= 0.0)
+	{
+		return;
+	}
+
+	// The mesh's verts run from the component origin in +X/+Y (see BuildTileBuffers), so the component
+	// location is the grid's MINIMUM corner — which is what FTrajectoryField::Initialise wants. Passing
+	// the centre here would shift the whole field by half a floor and nothing would flag it.
+	const FVector MeshWorldOrigin = RuntimeHeatmapMeshComponent->GetComponentTransform().GetLocation();
+	const FVector2D OriginCm(MeshWorldOrigin.X, MeshWorldOrigin.Y);
+
+	const bool bAlreadySized = TrajectoryField.IsValid()
+		&& TrajectoryFieldExtentCm.Equals(HeatmapMeshSize2D, 0.01)
+		&& TrajectoryFieldOriginCm.Equals(OriginCm, 0.01)
+		&& FMath::IsNearlyEqual(TrajectoryFieldSizedCmPerTexel, TrajectoryWorldCmPerTexel)
+		&& TrajectoryFieldSizedMaxGridDim == TrajectoryMaxGridDim;
+	if (bAlreadySized)
+	{
+		// Initialise() resets every accumulator, so re-running it on an unchanged floor would erase the
+		// accumulated surface. Only the display width is cheap to re-apply.
+		TrajectoryField.SetDisplayPathWidthCm(TrajectoryDisplayPathWidthCm);
+		return;
+	}
+
+	FTrajectoryFieldConfig Config;
+	Config.WorldCmPerTexel = TrajectoryWorldCmPerTexel;
+	Config.DisplayPathWidthCm = TrajectoryDisplayPathWidthCm;
+	Config.MaxGridDim = TrajectoryMaxGridDim;
+
+	TrajectoryField.Initialise(HeatmapMeshSize2D, OriginCm, Config);
+	// Initialise resets the presentation selection, so re-assert the actor's mode: it decides which
+	// quantity the incremental splat maintains, and a mismatch would cost a full rebuild on first encode.
+	TrajectoryField.SetPresentationMode(TrajectoryMapMode);
+	TrajectoryFieldExtentCm = HeatmapMeshSize2D;
+	TrajectoryFieldOriginCm = OriginCm;
+	TrajectoryFieldSizedCmPerTexel = TrajectoryWorldCmPerTexel;
+	TrajectoryFieldSizedMaxGridDim = TrajectoryMaxGridDim;
+	TrajectoryPreviousRed.Reset();
+
+	if (!TrajectoryField.IsValid())
+	{
+		return;
+	}
+
+	// Square + centred: the mesh UVs letterbox the minor axis, so the field must sit in the middle of a
+	// max(W,H) texture. See TrajectoryTextureSize for the derivation.
+	const FIntPoint Dims = TrajectoryField.GetGridDims();
+	const int32 SquareSide = FMath::Max(Dims.X, Dims.Y);
+	TrajectoryTexelOffset = FIntPoint((SquareSide - Dims.X) / 2, (SquareSide - Dims.Y) / 2);
+
+	if (TrajectoryTextureSize == SquareSide && TrajectoryAccumulationTexture
+		&& FMath::RoundToInt32(TrajectoryAccumulationTexture->GetDynamicTextureSize().X) == SquareSide)
+	{
+		return;
+	}
+	TrajectoryTextureSize = SquareSide;
+
+	if (!TrajectoryAccumulationTexture)
+	{
+		return; // SetupDynamicTexture creates it and calls back through UpdateHeatmapMeshBounds.
+	}
+
+	TrajectoryAccumulationTexture->InitializeTexture(SquareSide, SquareSide, InitialColorValue);
+	ApplyTrajectoryLOSBands();
+
+	// InitializeTexture builds a brand new UTexture2D, so every material instance still pointing at the
+	// old one would sample a dead resource. Only rebind while the trajectory surface is the one on show;
+	// otherwise SetTrajectoryHeatmapEnabled does it on entry.
+	if (bTrajectoryHeatmap)
+	{
+		UTexture2D* Rebound = TrajectoryAccumulationTexture->GetDynamicTexture();
+		if (HeatmapMaterialInstance)
+		{
+			HeatmapMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), Rebound);
+		}
+		if (VoronoiMaterialInstance)
+		{
+			VoronoiMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), Rebound);
+		}
+		if (TrajectoryMaterialInstance)
+		{
+			TrajectoryMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), Rebound);
+		}
+	}
+}
+
+void AHeatmapPixelTextureVisualizer::RefreshTrajectoryDisplay() const
+{
+	if (!TrajectoryAccumulationTexture || !TrajectoryField.IsValid() || TrajectoryTextureSize <= 0)
+	{
+		return;
+	}
+	if (FMath::RoundToInt32(TrajectoryAccumulationTexture->GetDynamicTextureSize().X) != TrajectoryTextureSize)
+	{
+		return; // texture not yet resized to the grid; the next EnsureTrajectoryFieldSized fixes it
+	}
+
+	const FIntPoint Dims = TrajectoryField.GetGridDims();
+	const int32 CellCount = Dims.X * Dims.Y;
+
+	TrajectoryField.EncodeToDisplay(TrajectoryMapMode, TrajectoryEncodedBGRA);
+	if (TrajectoryEncodedBGRA.Num() < CellCount * FTrajectoryField::BytesPerPixel)
+	{
+		return;
+	}
+
+	const bool bFullRewrite = TrajectoryPreviousRed.Num() != CellCount;
+	if (bFullRewrite)
+	{
+		// The previous encode is unknown (first refresh, a resize, a mode switch, or a D8 clear), and on a
+		// mode switch a cell that had a value may now be zero. Memset the carrier once and then write only
+		// the cells that carry a value, rather than pushing several million zero writes through
+		// SetPixelColor.
+		TrajectoryAccumulationTexture->ClearTexture();
+		TrajectoryPreviousRed.Reset();
+		TrajectoryPreviousRed.AddZeroed(CellCount);
+	}
+
+	for (int32 CellY = 0; CellY < Dims.Y; ++CellY)
+	{
+		for (int32 CellX = 0; CellX < Dims.X; ++CellX)
+		{
+			const int32 CellIndex = CellY * Dims.X + CellX;
+			const uint8 Red = TrajectoryEncodedBGRA[CellIndex * FTrajectoryField::BytesPerPixel
+				+ FTrajectoryField::ChannelOffsetR];
+			// After the memset above, "unchanged" for a full rewrite means "still zero".
+			if (bFullRewrite ? Red == 0 : TrajectoryPreviousRed[CellIndex] == Red)
+			{
+				continue;
+			}
+			TrajectoryPreviousRed[CellIndex] = Red;
+
+			// +0.5/255 defeats COLOR_TO_BYTE's truncating cast: Red/255.0f can land a hair under the
+			// integer and store Red-1, which would put a cell one route-intensity band too low.
+			const FLinearColor CellColour((static_cast<float>(Red) + 0.5f) / 255.0f, 0.0f, 0.0f, 1.0f);
+			TrajectoryAccumulationTexture->SetPixelColor(CellX + TrajectoryTexelOffset.X,
+				CellY + TrajectoryTexelOffset.Y, CellColour, /*bAddColourToExisting*/ false);
+		}
+	}
+
+	// Auto-exposure rescales as the maximum cell grows, so the band edges are only meaningful next to the
+	// scale that produced them. Re-push them every refresh; five scalar writes at flush rate is free.
+	ApplyTrajectoryLOSBands();
+
+	// The trajectory material binds directly to this raw texture while the mode is active.
+	// No copy, blur, or other post-process can alter the sampled values.
+	TrajectoryAccumulationTexture->UpdateTextureRender();
+}
+
+bool AHeatmapPixelTextureVisualizer::TrajectoryWorldToCell(const FVector& WorldLocation, FIntPoint& OutCell) const
+{
+	OutCell = FIntPoint(-1, -1);
+	if (!TrajectoryField.IsValid())
+	{
+		return false;
+	}
+
+	const float CmPerTexel = TrajectoryField.GetEffectiveCmPerTexel();
+	if (CmPerTexel <= 0.0f)
+	{
+		return false;
+	}
+
+	const FIntPoint Dims = TrajectoryField.GetGridDims();
+	const int32 CellX = FMath::FloorToInt32((WorldLocation.X - TrajectoryFieldOriginCm.X) / CmPerTexel);
+	const int32 CellY = FMath::FloorToInt32((WorldLocation.Y - TrajectoryFieldOriginCm.Y) / CmPerTexel);
+	if (CellX < 0 || CellX >= Dims.X || CellY < 0 || CellY >= Dims.Y)
+	{
+		return false;
+	}
+
+	OutCell = FIntPoint(CellX, CellY);
+	return true;
 }
 
 void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
@@ -409,7 +621,15 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 	{
 		TrajectoryAccumulationTexture = NewObject<UDynamicPixelRenderingTexture>(this, TEXT("TrajectoryAccumulationTexture"));
 	}
-	TrajectoryAccumulationTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue);
+	// The trajectory carrier is square and sized from the canonical grid, not from TextureWidth. Sizing
+	// runs here only when the field is already known; InitializeHeatmap calls SetupDynamicTexture before
+	// UpdateHeatmapMeshBounds, so on the first pass this falls back to the density size and
+	// EnsureTrajectoryFieldSized re-creates it a moment later.
+	{
+		const int32 TrajectorySide = TrajectoryTextureSize > 0 ? TrajectoryTextureSize : TextureWidth;
+		TrajectoryAccumulationTexture->InitializeTexture(TrajectorySide, TrajectorySide, InitialColorValue);
+		TrajectoryPreviousRed.Reset();
+	}
 	ApplyTrajectoryLOSBands();
 
 	// Only update and clear if we are in game mode
@@ -585,12 +805,21 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithMultipleAgents(const TArra
 
 void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments)
 {
-	if (!DynamicTexture || !TrajectoryAccumulationTexture || !bTrajectoryHeatmap || Segments.IsEmpty())
+	if (!TrajectoryAccumulationTexture || !bTrajectoryHeatmap || Segments.IsEmpty())
 	{
 		return;
 	}
 
-	FLinearColor PathColor = AgentColorValue * TrajectorySampleWeight;
+	// Lazily size on first use: a floor can start receiving segments before anything else has asked for
+	// the mesh bounds. Cheap — EnsureTrajectoryFieldSized no-ops once the extent and origin match.
+	if (!TrajectoryField.IsValid())
+	{
+		EnsureTrajectoryFieldSized();
+		if (!TrajectoryField.IsValid())
+		{
+			return;
+		}
+	}
 
 #if !UE_BUILD_SHIPPING
 	FTrajectoryCaptureRecorder& Capture = FTrajectoryCaptureRecorder::Get();
@@ -610,64 +839,57 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapWithTrajectorySegments(const T
 
 	for (const FHeatmapTrajectorySegment& Segment : Segments)
 	{
-		const float Length = FVector::Dist(Segment.Start, Segment.End);
-		if (Length <= KINDA_SMALL_NUMBER)
-		{
+		// Z is dropped, not projected: the field is a plan-view surface and the floor filter in
+		// UHeatmapSubsystem::UpdateHeatmapsWithTrajectorySegments has already decided this segment
+		// belongs to this storey.
+		const FVector2D StartCm(Segment.Start.X, Segment.Start.Y);
+		const FVector2D EndCm(Segment.End.X, Segment.End.Y);
+
 #if !UE_BUILD_SHIPPING
-			// Degenerate segments are recorded as not-drawn so the raster stream reconciles 1:1 with
-			// the filter stream; an unexplained row count difference would otherwise look like loss.
-			if (bCapturing)
-			{
-				Capture.RecordRaster(CaptureSimTime, FloorID, Segment.Start, Segment.End,
-					FIntPoint(-1, -1), FIntPoint(-1, -1), /*bDrawn*/ false);
-			}
+		// Only sampled while a capture is armed, so the disarmed cost stays at one branch.
+		const double MetresBefore = bCapturing ? TrajectoryField.GetTotalPersonMetres() : 0.0;
+		const double SecondsBefore = bCapturing ? TrajectoryField.GetTotalPersonSeconds() : 0.0;
 #endif
-			continue;
-		}
 
-		const FVector2D StartTexturePoint = ActorWorldToUV(Segment.Start);
-		const FVector2D EndTexturePoint = ActorWorldToUV(Segment.End);
-		const int32 StartX = FMath::Clamp(FMath::RoundToInt(StartTexturePoint.X), 0, TextureWidth - 1);
-		const int32 StartY = FMath::Clamp(FMath::RoundToInt(StartTexturePoint.Y), 0, TextureHeight - 1);
-		const int32 EndX = FMath::Clamp(FMath::RoundToInt(EndTexturePoint.X), 0, TextureWidth - 1);
-		const int32 EndY = FMath::Clamp(FMath::RoundToInt(EndTexturePoint.Y), 0, TextureHeight - 1);
-
-		// A raster line has no sampling gaps: every pixel traversed by an agent segment receives
-		// one additive count. The first visit is seeded at the palette's visible floor because the
-		// material derives its output alpha from the red channel and otherwise hides low values.
-		//
-		// The brush radius comes from TrajectoryCircleRadius in world centimetres, resolved to texels in
-		// UpdateHeatmapMeshBounds, exactly as the density surface sizes its agent disc. A radius fixed in
-		// texels cannot work here: a texel is max(MeshSize.X, MeshSize.Y)/1024 across, so the same footprint
-		// spanned 5.9 cm on a 20 m floor and 73 cm on a 250 m one.
-		TrajectoryAccumulationTexture->DrawLineWithMinimumRed(StartX, EndX, StartY, EndY, PathColor,
-			TrajectoryMinimumVisibleValue, FMath::Max(1, ScaledTrajectoryCircleSize));
+		// Every segment is offered, including zero-length ones. A stationary agent deposits its
+		// Delta-t into the containing cell and no person-metres, which is the whole point of Route
+		// Exposure: the old degenerate-length early-out is why every queue read zero.
+		TrajectoryField.DepositSegment(StartCm, EndCm, Segment.DeltaSeconds);
 
 #if !UE_BUILD_SHIPPING
 		if (bCapturing)
 		{
-			// Post-clamp texels: if a segment's world position falls outside the mesh, this is where
-			// it silently collapses onto the texture edge, and only the recorded texels reveal it.
+			// Grid cells, never clamped: an off-floor sample records (-1,-1) instead of being welded onto
+			// the border row, which is how the old clamp hid edge pile-up. bDrawn now means "some mass
+			// actually landed in the grid", read off the accumulators rather than assumed.
+			FIntPoint StartCell(-1, -1);
+			FIntPoint EndCell(-1, -1);
+			TrajectoryWorldToCell(Segment.Start, StartCell);
+			TrajectoryWorldToCell(Segment.End, EndCell);
+			const bool bDeposited = TrajectoryField.GetTotalPersonMetres() != MetresBefore
+				|| TrajectoryField.GetTotalPersonSeconds() != SecondsBefore;
 			Capture.RecordRaster(CaptureSimTime, FloorID, Segment.Start, Segment.End,
-				FIntPoint(StartX, StartY), FIntPoint(EndX, EndY), /*bDrawn*/ true);
+				StartCell, EndCell, bDeposited);
 		}
 #endif
 	}
 
-	// The trajectory material binds directly to this raw texture while the mode is active.
-	// No copy, blur, or other post-process can alter the sampled path values.
-	TrajectoryAccumulationTexture->UpdateTextureRender();
+	RefreshTrajectoryDisplay();
 }
 
 #if !UE_BUILD_SHIPPING
 FIntPoint AHeatmapPixelTextureVisualizer::WorldToTexelForTesting(const FVector& WorldLocation) const
 {
-	// Deliberately duplicates the coordinate maths in UpdateHeatmapWithTrajectorySegments so a test
-	// asserts against the same texel the rasteriser wrote. If that conversion changes, this must too.
-	const FVector2D TexturePoint = ActorWorldToUV(WorldLocation);
-	return FIntPoint(
-		FMath::Clamp(FMath::RoundToInt(TexturePoint.X), 0, TextureWidth - 1),
-		FMath::Clamp(FMath::RoundToInt(TexturePoint.Y), 0, TextureHeight - 1));
+	// Returns the ACCUMULATION-TEXTURE texel, i.e. the grid cell plus the letterbox offset, so a test can
+	// feed it straight to GetRawPixelRed. (-1,-1) for anything off-grid: GetRawPixelChannel reads an
+	// out-of-bounds coordinate as 0, so a mistaken location shows up as "untouched" rather than as a
+	// neighbouring cell's value.
+	FIntPoint Cell;
+	if (!TrajectoryWorldToCell(WorldLocation, Cell))
+	{
+		return FIntPoint(-1, -1);
+	}
+	return Cell + TrajectoryTexelOffset;
 }
 #endif
 
@@ -836,6 +1058,13 @@ void AHeatmapPixelTextureVisualizer::ClearTexture()
 	{
 		TrajectoryAccumulationTexture->ClearTexture();
 	}
+
+	// D8 — the canonical field is the accumulation, so zeroing only the render target would leave the
+	// mass behind and the next flush would repaint it. Clear() keeps the dims, config and mode, and also
+	// zeroes the audit counters so post-rewind dropped mass is not attributed to pre-rewind geometry.
+	TrajectoryField.Clear();
+	// Empty forces the next refresh to rewrite every cell rather than diff against a stale encode.
+	TrajectoryPreviousRed.Reset();
 }
 
 void AHeatmapPixelTextureVisualizer::UpdateMeshSize(const FVector2D& NewMeshSize)
@@ -938,6 +1167,9 @@ void AHeatmapPixelTextureVisualizer::SetTrajectoryHeatmapEnabled(bool bEnabled)
 
 		// Entering trajectory mode starts a visibly empty, new played-session history.
 		ClearTexture();
+		// Size the field and its carrier before the material is pointed at the texture, or the MID binds
+		// the pre-resize UTexture2D and the surface renders as whatever the density path last left.
+		EnsureTrajectoryFieldSized();
 		if (TrajectoryAccumulationTexture)
 		{
 			HeatmapMaterialInstance->SetTextureParameterValue(FName("DynamicTexture"), TrajectoryAccumulationTexture->GetDynamicTexture());
@@ -991,11 +1223,12 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapMeshBounds()
 	
 	// Using the UV scale, calculate the circle size
 	ScaledCircleSize = CircleRadius * FMath::Min(UVScale.X, UVScale.Y);
-	// Large floor meshes can convert a 10 cm path footprint to a fractional texel. Keep one
-	// texel minimum so a trajectory remains visible without inflating its world-space radius.
-	ScaledTrajectoryCircleSize = FMath::Max(1, FMath::RoundToInt(TrajectoryCircleRadius * FMath::Min(UVScale.X, UVScale.Y)));
 	UE_LOG(LogTemp, Log, TEXT("UVScale: (%f, %f), ScaledCircleSize: %d"), UVScale.X, UVScale.Y, ScaledCircleSize);
 
+	// The trajectory surface deliberately does NOT go through UVScale. UVScale maps the floor onto a
+	// fixed 1024 texture, so its texel world size floats with building size — the D2 defect. The field
+	// owns its own addressing at a fixed cm/texel and sizes its carrier texture from that.
+	EnsureTrajectoryFieldSized();
 }
 
 void AHeatmapPixelTextureVisualizer::BuildGridMeshPlane(const FVector2D& MeshSize, bool bIsStandardHeatmap)
@@ -1067,8 +1300,173 @@ void AHeatmapPixelTextureVisualizer::UpdateHeatmapCVDSettings(EColorVisionDefici
 	DynamicTexture->UpdateHeatmapCVDSettings(ColourDeficiency, DeficiencyLevel, bCorrectDeficiency, bSimulateColourCorrectionWithDeficiency);
 }
 
+void AHeatmapPixelTextureVisualizer::ExportTrajectorySurface(const FString& RelativeBaseName) const
+{
+	if (!TrajectoryAccumulationTexture || !TrajectoryField.IsValid())
+	{
+		return;
+	}
+
+	// Re-encode first: the buffer may hold a previous mode, and the sidecar's normalisation figure has to
+	// be the one that produced the PNG that ships beside it.
+	RefreshTrajectoryDisplay();
+
+	// SaveDynamicTextureToPNG colourises a COPY of the stored buffer with the band edges pushed by
+	// ApplyTrajectoryLOSBands, so the saved image bands exactly as the material does (D3 / AC12).
+	TrajectoryAccumulationTexture->SaveDynamicTextureToPNG(RelativeBaseName + TEXT(".png"));
+
+	WriteTrajectoryCanonicalExport(RelativeBaseName);
+}
+
+void AHeatmapPixelTextureVisualizer::WriteTrajectoryCanonicalExport(const FString& RelativeBaseName) const
+{
+	if (!TrajectoryField.IsValid())
+	{
+		return;
+	}
+
+	const FIntPoint Dims = TrajectoryField.GetGridDims();
+	const TArray<float>& CellPersonMetres = TrajectoryField.GetCanonical(ETrajectoryMapMode::RouteUsage);
+	const TArray<float>& CellPersonSeconds = TrajectoryField.GetCanonical(ETrajectoryMapMode::RouteExposure);
+	if (CellPersonMetres.Num() != Dims.X * Dims.Y || CellPersonSeconds.Num() != Dims.X * Dims.Y)
+	{
+		return;
+	}
+
+	// ---- canonical CSV: one row per cell carrying any mass at all ------------------------------------
+	FString Csv = TEXT("cell_x,cell_y,person_metres,person_seconds\n");
+	Csv.Reserve(1 << 20);
+	int32 NonZeroCells = 0;
+	for (int32 CellY = 0; CellY < Dims.Y; ++CellY)
+	{
+		for (int32 CellX = 0; CellX < Dims.X; ++CellX)
+		{
+			const int32 CellIndex = CellY * Dims.X + CellX;
+			const float Metres = CellPersonMetres[CellIndex];
+			const float Seconds = CellPersonSeconds[CellIndex];
+			// Either quantity qualifies: a stationary agent has seconds and no metres, and dropping those
+			// rows would delete exactly the queues Route Exposure exists to show.
+			if (Metres == 0.0f && Seconds == 0.0f)
+			{
+				continue;
+			}
+			++NonZeroCells;
+			Csv.Appendf(TEXT("%d,%d,%.9g,%.9g\n"), CellX, CellY, Metres, Seconds);
+		}
+	}
+
+	const FString SavedDir = FPaths::ProjectSavedDir();
+	FFileHelper::SaveStringToFile(Csv, *(SavedDir / RelativeBaseName + TEXT(".csv")));
+
+	// ---- metadata sidecar (MobiusPerf/analysis/METADATA_SCHEMA.md, schema_version 1) -----------------
+	const float CmPerTexel = TrajectoryField.GetEffectiveCmPerTexel();
+	const float CellAreaM2 = TrajectoryField.GetCellAreaSquareMetres();
+	const float EncodeScale = TrajectoryField.GetLastEncodeScale();
+	const bool bUsage = TrajectoryMapMode == ETrajectoryMapMode::RouteUsage;
+
+	// Grid clipping (D7, counted by the field) plus the floor filter upstream in the subsystem. Both are
+	// geometry, so both belong in dropped_*; leaving the subsystem's share out would make the four-bucket
+	// identity fail for a reason that has nothing to do with this class.
+	double FloorFilteredCm = 0.0;
+	double FloorFilteredSeconds = 0.0;
+	if (const UWorld* CurrentWorld = GetWorld())
+	{
+		if (const UHeatmapSubsystem* HeatmapSubsystem = CurrentWorld->GetSubsystem<UHeatmapSubsystem>())
+		{
+			HeatmapSubsystem->GetDroppedTrajectoryMass(this, FloorFilteredCm, FloorFilteredSeconds);
+		}
+	}
+	const double DroppedMetres = TrajectoryField.GetDroppedPersonMetres() + FloorFilteredCm / 100.0;
+	const double DroppedSeconds = TrajectoryField.GetDroppedPersonSeconds() + FloorFilteredSeconds;
+
+	// Band edges are stored normalised to the red channel, so canonical equivalents are reconstructed
+	// through the encode: byte = Density * EncodeScale and canonical = Density * cell area, hence
+	// canonical_edge = edge * 255 * cell_area / EncodeScale. Zero scale means nothing was deposited yet,
+	// in which case there is no defensible canonical edge and 0 is emitted rather than a fabricated one.
+	auto CanonicalBandEdge = [EncodeScale, CellAreaM2](float NormalisedEdge) -> double
+	{
+		if (EncodeScale <= 0.0f)
+		{
+			return 0.0;
+		}
+		return static_cast<double>(NormalisedEdge) * 255.0 * static_cast<double>(CellAreaM2)
+			/ static_cast<double>(EncodeScale);
+	};
+
+	// Prose only. The scale that converts these edges back to bytes is a machine-readable field
+	// (encode_scale_bytes_per_display_unit) — burying a load-bearing float in this string would put it
+	// beyond field_stats.py and band_fit.py, which parse the sidecar rather than read it.
+	const FString BandProvenance = FString::Printf(
+		TEXT("provisional: legacy normalised red-channel edges from FHeatmapLOSBands::Trajectory(), ")
+		TEXT("calibrated by replay against a 30 s ground-floor capture of the REMOVED seed-and-brush ")
+		TEXT("rasteriser (median 13 hits per crossing); converted to canonical units for this export. ")
+		TEXT("NOT fitted to canonical data - re-fit via band_fit.py, %s"),
+		*FDateTime::Now().ToString(TEXT("%Y-%m-%d")));
+
+	FString Meta;
+	Meta.Reserve(2048);
+	Meta += TEXT("{\n");
+	Meta += TEXT("  \"schema_version\": 1,\n");
+	Meta.Appendf(TEXT("  \"mode\": \"%s\",\n"), bUsage ? TEXT("RouteUsage") : TEXT("RouteExposure"));
+	Meta.Appendf(TEXT("  \"quantity\": \"%s\",\n"), bUsage ? TEXT("person-metres") : TEXT("person-seconds"));
+	// person-seconds per square metre; written as UTF-8 middle dot + superscript two by the file writer.
+	Meta.Appendf(TEXT("  \"display_unit\": \"%s\",\n"), bUsage ? TEXT("person/m") : TEXT("person·s/m²"));
+	Meta.Appendf(TEXT("  \"effective_cm_per_texel\": %.9g,\n"), CmPerTexel);
+	Meta.Appendf(TEXT("  \"grid_dims\": [%d, %d],\n"), Dims.X, Dims.Y);
+	Meta.Appendf(TEXT("  \"floor_origin_cm\": [%.9g, %.9g],\n"),
+		TrajectoryFieldOriginCm.X, TrajectoryFieldOriginCm.Y);
+	// Schema keeps this as grid_dims * effective_cm_per_texel rather than the mesh extent: the grid is
+	// ceil()ed up to whole cells, so the two differ by up to one cell and only this one addresses a cell.
+	Meta.Appendf(TEXT("  \"floor_extent_cm\": [%.9g, %.9g],\n"),
+		static_cast<double>(Dims.X) * CmPerTexel, static_cast<double>(Dims.Y) * CmPerTexel);
+	Meta.Appendf(TEXT("  \"cell_area_m2\": %.9g,\n"), CellAreaM2);
+	// The actor property, not GetConfig()'s copy: SetDisplayPathWidthCm can move the kernel after
+	// Initialise, and this is the value that was last pushed to it.
+	Meta.Appendf(TEXT("  \"display_path_width_cm\": %.9g,\n"), TrajectoryDisplayPathWidthCm);
+	// Two DIFFERENT scales, and a reader needs both to invert a PNG byte back to a canonical value:
+	//   normalisation_scale                  canonical (person-m / person-s) -> display unit, = 1/cell area
+	//   encode_scale_bytes_per_display_unit  display unit -> the 0-255 red channel
+	Meta.Appendf(TEXT("  \"normalisation_scale\": %.9g,\n"),
+		CellAreaM2 > 0.0f ? 1.0 / static_cast<double>(CellAreaM2) : 0.0);
+	Meta.Appendf(TEXT("  \"encode_scale_bytes_per_display_unit\": %.9g,\n"), EncodeScale);
+	// Per-export auto-exposure maximum, NOT a fixed reference: two exports with different values here are
+	// on different byte scales and their PNGs must not be compared pixel-for-pixel.
+	Meta.Appendf(TEXT("  \"encode_max_display_unit\": %.9g,\n"), TrajectoryField.GetLastEncodeMaxDensity());
+	Meta.Appendf(TEXT("  \"band_edges\": [%.9g, %.9g, %.9g, %.9g, %.9g],\n"),
+		CanonicalBandEdge(TrajectoryLOSBands.BandA), CanonicalBandEdge(TrajectoryLOSBands.BandB),
+		CanonicalBandEdge(TrajectoryLOSBands.BandC), CanonicalBandEdge(TrajectoryLOSBands.BandD),
+		CanonicalBandEdge(TrajectoryLOSBands.BandE));
+	Meta.Appendf(TEXT("  \"band_provenance\": \"%s\",\n"), *BandProvenance);
+	Meta.Appendf(TEXT("  \"total_person_metres\": %.9g,\n"), TrajectoryField.GetTotalPersonMetres());
+	Meta.Appendf(TEXT("  \"total_person_seconds\": %.9g,\n"), TrajectoryField.GetTotalPersonSeconds());
+	Meta.Appendf(TEXT("  \"dropped_person_metres\": %.9g,\n"), DroppedMetres);
+	Meta.Appendf(TEXT("  \"dropped_person_seconds\": %.9g,\n"), DroppedSeconds);
+	Meta.Appendf(TEXT("  \"rejected_person_metres\": %.9g,\n"), TrajectoryField.GetRejectedPersonMetres());
+	Meta.Appendf(TEXT("  \"rejected_person_seconds\": %.9g,\n"), TrajectoryField.GetRejectedPersonSeconds());
+	// No negligible_person_seconds by design: a stationary segment's seconds ARE deposited, so they show
+	// up in total_person_seconds (or dropped_person_seconds if the cell was off-grid).
+	Meta.Appendf(TEXT("  \"negligible_person_metres\": %.9g\n"), TrajectoryField.GetNegligiblePersonMetres());
+	Meta += TEXT("}\n");
+
+	FFileHelper::SaveStringToFile(Meta, *(SavedDir / RelativeBaseName + TEXT(".meta.json")),
+		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+
+	UE_LOG(LogTemp, Log, TEXT("Trajectory export %s: %d/%d cells, %.6g person-m, %.6g person-s"),
+		*RelativeBaseName, NonZeroCells, Dims.X * Dims.Y,
+		TrajectoryField.GetTotalPersonMetres(), TrajectoryField.GetTotalPersonSeconds());
+}
+
 void AHeatmapPixelTextureVisualizer::SaveHeatmapToPNG() const
 {
+	// Trajectory mode exports the field, not the density render target: same presentation on disk as on
+	// screen, plus the canonical CSV and its sidecar.
+	if (bTrajectoryHeatmap && TrajectoryField.IsValid() && TrajectoryAccumulationTexture)
+	{
+		ExportTrajectorySurface(FString::Printf(TEXT("Heatmap/%s_Trajectory_%s"),
+			*ActorName, *FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S"))));
+		return;
+	}
+
 	if (!DynamicTexture)
 	{
 		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
@@ -1089,6 +1487,13 @@ void AHeatmapPixelTextureVisualizer::SaveHeatmapToPNG() const
 
 void AHeatmapPixelTextureVisualizer::SaveHeatmapToPNG(const FString& CurrentTimeString) const
 {
+	if (bTrajectoryHeatmap && TrajectoryField.IsValid() && TrajectoryAccumulationTexture)
+	{
+		ExportTrajectorySurface(FString::Printf(TEXT("Heatmap/%s_Trajectory_SimTime_%s_Created_%s"),
+			*ActorName, *CurrentTimeString, *FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S"))));
+		return;
+	}
+
 	if (!DynamicTexture)
 	{
 		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))

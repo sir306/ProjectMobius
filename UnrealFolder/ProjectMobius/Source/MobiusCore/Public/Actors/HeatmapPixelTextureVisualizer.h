@@ -27,6 +27,7 @@
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"         // FTSTicker for staggered tile emit
 #include "HeatmapLOSBands.h"            // FHeatmapLOSBands is a by-value UPROPERTY below
+#include "TrajectoryField.h"            // FTrajectoryField member + ETrajectoryMapMode UPROPERTY
 #include "GameFramework/Actor.h"
 #include "HeatmapPixelTextureVisualizer.generated.h"
 
@@ -143,8 +144,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
 	void UpdateHeatmapWithMultipleAgents_NoCheck(const TArray<FVector>& AgentLocations);
 
-	/** Rasterises travelled agent-path segments with a small radius and no per-update blur. */
+	/**
+	 * Deposits travelled agent-path segments into the canonical trajectory field and refreshes the
+	 * display encode. No brush, no minimum-visible seed, no clamping into texture bounds — see
+	 * FTrajectoryField for the deposition contract.
+	 */
 	void UpdateHeatmapWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments);
+
+	/**
+	 * Switches which canonical quantity the surface presents. Purely a display operation: the two
+	 * canonical accumulators are both maintained unconditionally, so this re-encodes and never re-walks
+	 * or discards a segment. Safe to call mid-playback.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Heatmap|Trajectory")
+	void SetTrajectoryMapMode(ETrajectoryMapMode NewMode);
+
+	UFUNCTION(BlueprintPure, Category = "Heatmap|Trajectory")
+	ETrajectoryMapMode GetTrajectoryMapMode() const { return TrajectoryMapMode; }
 
 	/**
 	 * As statical widgets require updated agent floor counts, we can quickly itterate
@@ -221,7 +237,14 @@ public:
 	void UpdateHeatmapCVDSettings(EColorVisionDeficiency ColourDeficiency, float DeficiencyLevel = 10.0f, bool bCorrectDeficiency = true, bool bSimulateColourCorrectionWithDeficiency = true);
 
 	/**
-	 * Save Heatmap to PNG
+	 * Save Heatmap to PNG.
+	 *
+	 * In trajectory mode this exports a THREE-file set under Saved/Heatmap/, per the sidecar convention
+	 * in MobiusPerf/analysis/METADATA_SCHEMA.md:
+	 *   <base>.png        presentation field, CPU-colourised with the same band edges as the material
+	 *   <base>.csv        canonical field: cell_x, cell_y, person_metres, person_seconds
+	 *   <base>.meta.json  schema_version 1 sidecar, including the four-bucket audit totals
+	 * The PNG is display-only; every number that can be checked lives in the CSV + sidecar pair.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
 	void SaveHeatmapToPNG() const;
@@ -246,8 +269,15 @@ public:
 	 */
 	class UDynamicPixelRenderingTexture* GetTrajectoryAccumulationTextureMutableForTesting() const { return TrajectoryAccumulationTexture; }
 
-	/** Maps a world location to the texel the trajectory rasteriser would write, for test assertions. */
+	/**
+	 * Maps a world location to the texel the trajectory pipeline would write, for test assertions.
+	 * Returns (-1,-1) for a location outside the grid — it deliberately does NOT clamp, because clamping
+	 * is the bug the field replaced and a clamped answer would hide an off-floor sample.
+	 */
 	FIntPoint WorldToTexelForTesting(const FVector& WorldLocation) const;
+
+	/** Canonical field read-only, so a conservation test can assert against the accumulators directly. */
+	const FTrajectoryField& GetTrajectoryFieldForTesting() const { return TrajectoryField; }
 #endif
 
 #pragma endregion PUBLIC_METHODS
@@ -345,59 +375,86 @@ public:
 	int32 CircleRadius = 110; // 110 = 1.1m for our scaled data - TODO: SORT THIS OUT FOR BETTER SCALING
 
 	/**
-	 * Path footprint RADIUS in world centimetres, so the default 10 draws a 20 cm wide route. Matches how
-	 * CircleRadius is used by the density surface. Resolved to texels in UpdateHeatmapMeshBounds, which is
-	 * what keeps a route the same real-world width regardless of how large the floor is.
-	 *
-	 * Halved from 20 on 2026-08-03 after a visual check: at 20 (a 40 cm route) the trail read as wide as
-	 * the agent walking it, which is a body footprint, not a path. A trajectory marks where someone went,
-	 * so it should be narrower than the person.
-	 *
-	 * Note this stops mattering on large floors, and halving moved that boundary. The texel radius has a
-	 * floor of 1, so once a texel is wider than this value the route is 3 texels across whatever is set
-	 * here. At 10 cm that bites from roughly 60 m up, where 20 cm held out to about 120 m:
-	 *
-	 *     20 m -> r=5, 21.5 cm      73 m -> r=1, 21.4 cm (floored)
-	 *     40 m -> r=3, 27.3 cm     150 m -> r=1, 43.9 cm (floored)
-	 *     60 m -> r=2, 29.3 cm     250 m -> r=1, 73.2 cm (floored)
-	 *
-	 * Two things follow. Widths are jumpier between floors than they were, because rounding a radius of
-	 * one or two texels quantises coarsely — that is the 21/27/29 cm wobble above, not a bug. And above
-	 * ~60 m the parameter is no longer in control; only render-target resolution is. Both are arguments
-	 * for sizing the texture to the floor rather than hardcoding 1024 (see UpdateHeatmapMeshBounds).
+	 * Which canonical quantity the trajectory surface presents. Display-only: both accumulators are always
+	 * maintained, so switching costs one presentation rebuild and loses nothing.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))
-	int32 TrajectoryCircleRadius = 10;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
+	ETrajectoryMapMode TrajectoryMapMode = ETrajectoryMapMode::RouteUsage;
 
-	/** World-space spacing of rasterised path samples. Smaller values give continuous paths at higher cost. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "1"))
+	/**
+	 * D2 — world centimetres per canonical grid cell. THIS, not a texture size, is what makes a route the
+	 * same real-world width on every floor: the grid dimensions vary with the building, the cell does not.
+	 * The old path pinned the render target to 1024x1024 and let cm/texel float with floor size, which is
+	 * why one walk measured 5.9 cm wide on a 20 m floor and 73 cm on a 250 m one.
+	 *
+	 * May be RAISED by the field to honour TrajectoryMaxGridDim; read the result back from the field's
+	 * GetEffectiveCmPerTexel(), which is also what the export sidecar records.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
+	float TrajectoryWorldCmPerTexel = 10.0f;
+
+	/**
+	 * Presentation stroke WIDTH in world centimetres (replaces the old TrajectoryCircleRadius, which was a
+	 * radius and doubled as a deposition brush). It feeds only the splat kernel: canonical person-metres
+	 * and person-seconds are unchanged by it, and Sum(presentation) == Sum(canonical) is the invariant that
+	 * proves so. 20 cm is a path width, not a body footprint.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
+	float TrajectoryDisplayPathWidthCm = 20.0f;
+
+	/**
+	 * D2b — hard ceiling on either grid axis. Exceeding it coarsens cm/texel rather than stretching the
+	 * grid, so cell area stays uniform within an export. 2048 keeps the square render target at 16 MiB.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "16", ClampMax = "8192"))
+	int32 TrajectoryMaxGridDim = 2048;
+
+	/**
+	 * Dead under the field pipeline — kept only because they are BlueprintReadWrite and may be referenced
+	 * by existing Blueprints. Nothing in C++ reads them: sample spacing is no longer a thing (the DDA
+	 * visits every crossed cell exactly once), per-sample weight is replaced by physical person-metres,
+	 * and the minimum-visible seed was removed outright because it is what made band A meaningless.
+	 * Delete these together with their Blueprint references in a follow-up.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory|Deprecated", meta = (ClampMin = "1"))
 	float TrajectorySampleSpacing = 20.0f;
 
-	/** Per-sample path contribution. Each pass adds one texture red-channel increment, preserving route frequency. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0001"))
+	/** Dead — see TrajectorySampleSpacing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory|Deprecated", meta = (ClampMin = "0.0001"))
 	float TrajectorySampleWeight = 0.05f;
 
-	/** Minimum texture red value for a newly visited trajectory texel. It stays in the lowest palette band so a single route remains light blue. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	/** Dead — see TrajectorySampleSpacing. The seed is gone; an untouched cell now encodes to byte 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory|Deprecated", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float TrajectoryMinimumVisibleValue = 0.10f;
 
-	// A TrajectoryLineBrushRadius fixed in texels lived here. Removed 2026-08-03: texel world size is
-	// max(MeshSize.X, MeshSize.Y)/1024, so a constant texel count rendered the same walk 5.9 cm wide on a
-	// 20 m floor and 73 cm wide on a 250 m one, and made the byte a crossing deposits scale with building
-	// size too. TrajectoryCircleRadius above is the replacement and is expressed in world centimetres.
+	// A TrajectoryLineBrushRadius fixed in texels lived here, then a TrajectoryCircleRadius in world
+	// centimetres. Both were deposition brushes, and a brush cannot be a measurement: a wider brush
+	// multiplied the mass a crossing deposited. TrajectoryWorldCmPerTexel now fixes the cell size, so a
+	// texel means the same on every floor, and TrajectoryDisplayPathWidthCm only widens the presentation
+	// splat, whose weights sum to 1 and so conserve the canonical total exactly.
 
 	/** Legacy trajectory blur setting. Trajectory rendering currently uses no blur. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "3", ClampMax = "15"))
 	int32 TrajectoryBlurKernelSize = 5;
 
 	/**
-	 * Colour band edges for the trajectory surface, pushed to both the trajectory material and the
-	 * accumulation texture's PNG colouriser so the two stay in step.
+	 * ROUTE-INTENSITY BAND EDGES (D9). Not Fruin Level of Service — LOS is a density concept and stays
+	 * with the density surface. The type and the material parameter names still say "LOS" because
+	 * renaming FHeatmapLOSBands' fields and the LOS_A_Band..LOS_E_Band scalars requires editing
+	 * M_HeatmapRT_Trajectory, which is out of scope this week. Read every "LOS" on this surface as
+	 * "route-intensity band".
 	 *
-	 * These are deliberately NOT the Fruin density edges. The density edges put empty floor and the
-	 * first few passes in the same band, which made a correctly accumulated route render as background.
-	 * BandA sits below the first-visit seed instead, so LOS_A means "no data" and the remaining five
-	 * bands carry passage count. See FHeatmapLOSBands::Trajectory.
+	 * Units: normalised red-channel (stored byte / 255), which is what the struct's [0,1] clamp permits
+	 * and what both consumers compare against — the material samples red, and the PNG colouriser divides
+	 * the stored byte by 255. Pushing the identical struct to both is what keeps the export and the
+	 * in-world render in step; see ApplyTrajectoryLOSBands.
+	 *
+	 * PROVISIONAL. The values still carried here were calibrated against the deleted seed-and-brush
+	 * rasteriser (bytes 24.5/46.5/71.5/110.5/175.5 ~ crossing counts), and the encode is now linear
+	 * auto-exposure over cell DENSITY, so a band boundary is relative to the current maximum cell rather
+	 * than to an absolute person/m figure. Left untouched deliberately: re-fitting them against canonical
+	 * data is A0's call, and the export sidecar records both the edges and their provenance so no reader
+	 * has to guess.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
 	FHeatmapLOSBands TrajectoryLOSBands = FHeatmapLOSBands::Trajectory();
@@ -442,10 +499,47 @@ private:
 #pragma region PRIVATE_METHODS
 	/**
 	 * Push TrajectoryLOSBands to the trajectory material instance and to the accumulation texture's
-	 * colouriser. Both consume the same edges: the material bands what is on screen, the texture bands
-	 * what SaveDynamicTextureToPNG writes. Called whenever the bands or the trajectory MID change.
+	 * colouriser. Both consume the same edges in the same units, so the saved PNG and the in-world render
+	 * band identically by construction rather than by two hand-matched conversions. Called whenever the
+	 * bands or the trajectory MID change.
+	 *
+	 * const: it writes only through the MID and the texture object, never to this actor.
 	 */
-	void ApplyTrajectoryLOSBands();
+	void ApplyTrajectoryLOSBands() const;
+
+	/**
+	 * Sizes/allocates the canonical field from the mesh's world extent and origin, and resizes the
+	 * accumulation texture to match. Idempotent: re-initialising only happens when the extent, origin or
+	 * sizing policy actually changed, because FTrajectoryField::Initialise resets every accumulator and a
+	 * gratuitous call would silently erase accumulated mass.
+	 */
+	void EnsureTrajectoryFieldSized();
+
+	/**
+	 * Encodes the field's presentation copy into the accumulation texture and pushes it to the GPU.
+	 * Only cells whose byte changed since the last refresh are written, so a flush costs a W*H byte
+	 * compare plus the actual changes rather than a full texture rewrite. Auto-exposure means a rising
+	 * maximum can LOWER an unrelated cell's byte, which is why the comparison is against the previous
+	 * encode and not against "is this cell non-zero".
+	 */
+	void RefreshTrajectoryDisplay() const;
+
+	/**
+	 * Grid cell containing a world location, or false when it falls outside the grid. Diagnostic use
+	 * only: it takes plain floor() and so differs from the field's lower-index-owns rule for a point
+	 * lying exactly on a grid line. Never clamps.
+	 */
+	bool TrajectoryWorldToCell(const FVector& WorldLocation, FIntPoint& OutCell) const;
+
+	/**
+	 * Writes the three-file export set for one basename (relative to Saved/): presentation PNG, canonical
+	 * CSV, metadata sidecar. The PNG comes from the same encode that is on screen — exporting the raw
+	 * canonical field instead is what made the saved image a hairline while the screen showed a route.
+	 */
+	void ExportTrajectorySurface(const FString& RelativeBaseName) const;
+
+	/** Canonical CSV + .meta.json sidecar for one export basename (relative to Saved/). */
+	void WriteTrajectoryCanonicalExport(const FString& RelativeBaseName) const;
 
 	/**
 	 * Method to generate a square cell size that 2 triangles will be within
@@ -545,11 +639,39 @@ private:
 	int32 ScaledCircleSize; // TODO: This should be a float value for more precise locations and scale to texture and mesh size
 
 	/**
-	 * TrajectoryCircleRadius converted to render-target texels by UpdateHeatmapMeshBounds.
-	 * Defaults to one texel so a segment drawn before the mesh bounds resolve still marks the path.
+	 * The canonical trajectory surface. Plain C++ (no UPROPERTY): it holds only float/double arrays and no
+	 * UObject reference, so there is nothing for the GC to see and nothing to serialise.
 	 */
-	UPROPERTY()
-	int32 ScaledTrajectoryCircleSize = 1;
+	FTrajectoryField TrajectoryField;
+
+	/**
+	 * Side of the SQUARE accumulation texture, = max(GridDims.X, GridDims.Y).
+	 *
+	 * The field grid is non-square (it matches the floor), but the procedural mesh's UVs letterbox the
+	 * minor axis into the centre of a square texture — BuildTileBuffers applies exactly the same
+	 * aspect correction ActorWorldToUV does. Copying the W*H field into the centre of a
+	 * max(W,H) square therefore lands cell (i,j) under the mesh point above world cell (i,j) with no
+	 * further correction. Fixing the mesh UVs instead would change where the DENSITY surface samples.
+	 *
+	 * Kept separate from TextureWidth/TextureHeight, which stay at 1024 for the density render target:
+	 * driving those from the grid would move ScaledCircleSize, i.e. silently retune density.
+	 */
+	int32 TrajectoryTextureSize = 0;
+
+	/** Texel offset of grid cell (0,0) inside the square texture — the letterbox margin, ((S-W)/2, (S-H)/2). */
+	FIntPoint TrajectoryTexelOffset = FIntPoint::ZeroValue;
+
+	/** Extent/origin the field was last sized against, so EnsureTrajectoryFieldSized can no-op. */
+	FVector2D TrajectoryFieldExtentCm = FVector2D::ZeroVector;
+	FVector2D TrajectoryFieldOriginCm = FVector2D::ZeroVector;
+	float TrajectoryFieldSizedCmPerTexel = 0.0f;
+	int32 TrajectoryFieldSizedMaxGridDim = 0;
+
+	/** Scratch for EncodeToDisplay, reused so a 10 Hz flush does not churn a multi-MB allocation. */
+	mutable TArray<uint8> TrajectoryEncodedBGRA;
+
+	/** Red byte written per grid cell by the previous refresh; empty forces a full rewrite. */
+	mutable TArray<uint8> TrajectoryPreviousRed;
 
 #pragma endregion PRIVATE_PROPERTIES_AND_COMPONENTS
 	
