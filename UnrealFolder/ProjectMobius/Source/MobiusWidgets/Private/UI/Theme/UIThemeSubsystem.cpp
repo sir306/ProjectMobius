@@ -1805,7 +1805,21 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 				const FString TextAssetName = AssetData.AssetName.ToString();
 				if (TextAssetName == TEXT("SWS_FlowRemoveButtonTextStyle"))
 				{
-					// Danger red — theme-independent, leave the authored colour alone.
+					// A10 (2026-08-04): this skip is load-bearing, but NOT for the reason it used to claim
+					// ("danger red — theme-independent"). The authored value (0.7836, 0.0409, 0.0252 =
+					// #E7392D) is a DETECTOR, not a rendered colour.
+					//
+					// UButtonWithText::RefreshThemedLabelStyle reads THIS asset's ColorAndOpacity and treats a
+					// saturated value (max channel - min channel > 0.05) as "the label is a deliberate SIGNAL,
+					// not chrome", then paints the label from EMobiusPaletteRole::DangerText. So what reaches
+					// the screen is the palette pair in both themes and never #E7392D — which measures only
+					// 2.1:1 on the dark ButtonBg and is the accessibility bug DangerText exists to fix
+					// (measurements in MobiusThemePalette.h, owner ruling 2026-07-28).
+					//
+					// Sole consumer: WBP_RemoveFlowCounterToWorld.RemoveFC_Button, a UButtonWithText whose
+					// bFollowThemePalette is defaulted true and bIsRibbonButton unset, so that path does run.
+					// Let it fall through to the Contains("Button") branch below and the greyscale test would
+					// instead see a grey ButtonText, silently demoting the Remove label to chrome.
 				}
 				else if (TextAssetName == TEXT("SWS_FlowCounterTextStyle"))
 				{

@@ -1040,6 +1040,21 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 		const FString AbsoluteZonePath =
 			FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, RelativeZonePath));
 
+		// Absent and unreadable are different faults and must not share an outcome. The .smv is
+		// written when the model is authored, so it names its results file whether or not B-Risk has
+		// been run - an absent CSV is the normal state of a model waiting to be simulated, and
+		// refusing to load it would throw away rooms, vents and fires that parsed perfectly well.
+		// A CSV that IS present and fails to parse is a corrupted run, and still stops the import,
+		// so it can never be mistaken for one that was simply never produced.
+		if (!FPaths::FileExists(AbsoluteZonePath))
+		{
+			OutData.MissingResultFiles.AddUnique(AbsoluteZonePath);
+			UE_LOG(LogBRiskDataImporter, Warning,
+				TEXT("B-Risk zone CSV not found: %s. Importing geometry only - this model has no results yet."),
+				*AbsoluteZonePath);
+			continue;
+		}
+
 		FBRiskZoneTable ZoneTable;
 		if (!ParseZoneCsv(AbsoluteZonePath, ZoneTable, OutError))
 		{
@@ -1092,6 +1107,12 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	{
 		OutData.ReferencedFiles.AddUnique(OutputXmlPath);
 	}
+	else if (!FPaths::FileExists(OutputXmlPath))
+	{
+		// Already non-fatal, but it belongs in the same list: it is a results file, and a user told
+		// only about the missing CSV would fix that and still have no tenability.
+		OutData.MissingResultFiles.AddUnique(OutputXmlPath);
+	}
 
 	// Analysis endpoints (monitor height, endpoint_FED, ...) live in input1.xml.
 	const FString InputXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("input1.xml")));
@@ -1100,6 +1121,19 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	if (FPaths::FileExists(InputXmlPath))
 	{
 		OutData.ReferencedFiles.AddUnique(InputXmlPath);
+	}
+
+	// Presence of time samples, not merely of a table: a zone CSV that parsed to zero rows answers
+	// no question about what happened over time, and callers gate real work on this.
+	OutData.bHasResultsData = OutData.ZoneTables.ContainsByPredicate(
+		[](const FBRiskZoneTable& Table) { return Table.TimeSeconds.Num() > 0; });
+
+	if (!OutData.bHasResultsData)
+	{
+		UE_LOG(LogBRiskDataImporter, Warning,
+			TEXT("B-Risk scenario imported WITHOUT results (%d file(s) missing): %s"),
+			OutData.MissingResultFiles.Num(),
+			*FString::Join(OutData.MissingResultFiles, TEXT(", ")));
 	}
 
 	int32 RoomsWithFootprint = 0;

@@ -290,6 +290,37 @@ void UBRiskDataSubsystem::LoadScenarioFromSmv(const FString& SmvFilePath)
 				{
 					Self->GenerateAndLoadHazardVisuals();
 				}
+
+				// Geometry-only load. The building is on screen and the generators above all ran -
+				// they gate on rooms/fires/vents, none of which need a time series - but every
+				// results-driven feature (smoke density, tenability bars, agent dose) stays blank,
+				// and nothing else on screen says why. Name the files: the fix is to run B-Risk.
+				//
+				// Warning, not Error: a model imported before it has been simulated is a normal
+				// step in the authoring loop, not a fault. The import genuinely succeeded.
+				if (!Self->ScenarioData.bHasResultsData)
+				{
+					UE_LOG(LogBRiskDataSubsystem, Warning,
+						TEXT("B-Risk scenario loaded WITHOUT results: %d file(s) missing."),
+						Self->ScenarioData.MissingResultFiles.Num());
+
+					if (IMobiusErrorReporter* Reporter = IMobiusErrorReporter::Get(Self))
+					{
+						Reporter->ReportError(
+							NSLOCTEXT("MobiusBRisk", "BRiskNoResultsTitleBar", "B-Risk Results Missing"),
+							NSLOCTEXT("MobiusBRisk", "BRiskNoResultsTitle",
+								"Scenario loaded, but it has no simulation results"),
+							FText::Format(
+								NSLOCTEXT("MobiusBRisk", "BRiskNoResultsBody",
+									"The building geometry imported successfully, but this model has not been run "
+									"through B-Risk yet, so there is no smoke, tenability or dose data to show.\n\n"
+									"The following simulation output is missing:\n{0}"),
+								FText::FromString(FString::Join(
+									Self->ScenarioData.MissingResultFiles, LINE_TERMINATOR))),
+							NSLOCTEXT("MobiusBRisk", "BRiskImportSource", "BRiskDataSubsystem"),
+							EMobiusErrorSeverity::Warning);
+					}
+				}
 			}
 			else
 			{

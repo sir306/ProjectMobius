@@ -694,6 +694,28 @@ struct MOBIUSDATAIMPORTER_API FBRiskScenarioData
 	TArray<FString> ReferencedFiles;
 
 	/**
+	 * Absolute paths of RESULTS files the scenario expected but that are not on disk, in the order
+	 * they were looked for. Non-empty means B-Risk has not been run for this model yet: the .smv and
+	 * its geometry companions describe the building fine, but nothing simulated it.
+	 *
+	 * Deliberately distinct from a parse failure. A results file that is PRESENT and unreadable is
+	 * still a hard error, because a corrupted run must not be able to present itself as a model that
+	 * was simply never run.
+	 */
+	TArray<FString> MissingResultFiles;
+
+	/**
+	 * True when at least one zone table carrying time samples was loaded, i.e. this scenario can
+	 * answer questions about what happened over time.
+	 *
+	 * False is a legitimate, fully-imported state - geometry only. Rooms, footprints, vents, fires
+	 * and sprinklers are all populated; ZoneTables and TenabilityTables are empty. Consumers that
+	 * need a time series must gate on this (or on UBRiskDataSubsystem::HasScenarioData, which is the
+	 * same condition) rather than assuming a successful import implies results.
+	 */
+	bool bHasResultsData = false;
+
+	/**
 	 * Which XY mapping every consumer of this scenario's geometry must use. Decided ONCE here by
 	 * the importer - Revit when Zones-data.json supplied footprints, SmokeviewSwap otherwise - and
 	 * passed to BRiskCoord::MakeRoomFootprint and the vent solver.
@@ -766,10 +788,16 @@ public:
 	 *  3. Resolves each ZONE CSV path relative to the .smv directory and parses it.
 	 *  4. Populates OutData with rooms, fire geometry, and zone time-series tables.
 	 *
+	 * Succeeds with GEOMETRY ONLY when the results files are absent rather than broken - a model
+	 * that has not been run through B-Risk yet still describes a building worth showing. Those paths
+	 * are listed in OutData.MissingResultFiles and OutData.bHasResultsData is false; callers should
+	 * surface that to the user rather than treating it as a silent success. A results file that
+	 * exists but does not parse remains a hard failure.
+	 *
 	 * @param SmvFilePath   Absolute (or engine-relative) path to the .smv manifest.
-	 * @param OutData       Receives the fully parsed scenario on success.
+	 * @param OutData       Receives the parsed scenario on success, results or not.
 	 * @param OutError      Optional; receives a human-readable error message on failure.
-	 * @return true on success with OutData fully populated; false on any parse error.
+	 * @return true on success; false on a malformed .smv or an unparseable companion file.
 	 */
 	static bool ImportScenarioFromSmv(const FString& SmvFilePath, FBRiskScenarioData& OutData, FString* OutError = nullptr);
 };

@@ -1118,11 +1118,10 @@ bool FBRiskDataImporterFailureTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("SMV without ZONE should fail"),
 		FBRiskDataImporter::ImportScenarioFromSmv(NoZoneSmv, Data, &Error));
 
-	const FString MissingCsvDir = MakeBRiskTestDir();
-	const FString MissingCsvSmv = FPaths::Combine(MissingCsvDir, TEXT("missing_csv.smv"));
-	TestTrue(TEXT("Missing-CSV SMV should be written"), WriteTextFile(MissingCsvSmv, MakeSmv()));
-	TestFalse(TEXT("Missing referenced CSV should fail"),
-		FBRiskDataImporter::ImportScenarioFromSmv(MissingCsvSmv, Data, &Error));
+	// A referenced-but-ABSENT zone CSV used to be asserted here as a failure. It is now a
+	// supported geometry-only import - see ProjectMobius.BRisk.Importer.GeometryOnlyWhenResultsMissing.
+	// The two cases below keep the other half of that contract: a CSV that is PRESENT and does not
+	// parse must still fail, so a corrupted run cannot pass itself off as one that never ran.
 
 	const FString MissingTimeDir = MakeBRiskTestDir();
 	const FString MissingTimeSmv = FPaths::Combine(MissingTimeDir, TEXT("missing_time.smv"));
@@ -1141,6 +1140,118 @@ bool FBRiskDataImporterFailureTest::RunTest(const FString& Parameters)
 		WriteTextFile(MalformedCsv, TEXT("s,C\nTime,ULT_1\n0,not-a-number\n")));
 	TestFalse(TEXT("Malformed numeric cell should fail"),
 		FBRiskDataImporter::ImportScenarioFromSmv(MalformedSmv, Data, &Error));
+
+	return true;
+}
+
+// --- Geometry-only import when the model has not been simulated yet -----------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskGeometryOnlyWhenResultsMissingTest,
+	"ProjectMobius.BRisk.Importer.GeometryOnlyWhenResultsMissing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters)
+{
+	// A B-Risk model exported but not yet run: the .smv names its results file because the .smv is
+	// written at authoring time, but nothing has produced it. Real instance of this shape:
+	// D:\NickWork\Mobius_InternalData\12-room-test-vents\basemodel_default.
+	const FString TestDir = MakeBRiskTestDir();
+	const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+	if (!TestTrue(TEXT("SMV without results should be written"), WriteTextFile(SmvPath, MakeSmv())))
+	{
+		return false;
+	}
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("A model with no results should still import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	// The whole point of degrading: the building survives. Asserting each of these separately
+	// because dropping any one of them would still leave a "successful" import that shows nothing.
+	TestEqual(TEXT("Rooms should survive a missing zone CSV"), Data.Rooms.Num(), 1);
+	TestEqual(TEXT("Fires should survive a missing zone CSV"), Data.Fires.Num(), 1);
+	TestEqual(TEXT("Vents should survive a missing zone CSV"), Data.Vents.Num(), 1);
+
+	TestFalse(TEXT("bHasResultsData should be false"), Data.bHasResultsData);
+	TestEqual(TEXT("No zone tables should have been produced"), Data.ZoneTables.Num(), 0);
+
+	// The prompt is built from these paths, so an empty list would give the user a dialog that
+	// names nothing to go and fix.
+	const FString ExpectedCsv = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(TestDir, TEXT("basemodel_testBox_zone.csv")));
+	const FString ExpectedOutputXml = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(TestDir, TEXT("output1.xml")));
+	TestTrue(TEXT("Missing zone CSV should be listed"), Data.MissingResultFiles.Contains(ExpectedCsv));
+	TestTrue(TEXT("Missing output1.xml should be listed"), Data.MissingResultFiles.Contains(ExpectedOutputXml));
+
+	// The boundary that makes the degrade safe: a results file that EXISTS and carries no samples is
+	// a broken run, not an unrun model, and must still stop the import. Without this, the natural
+	// "make empty results degrade too" follow-up would let a corrupted B-Risk run present as a
+	// building nobody has simulated - the one confusion this whole change exists to prevent.
+	const FString EmptyDir = MakeBRiskTestDir();
+	const FString EmptySmv = FPaths::Combine(EmptyDir, TEXT("basemodel_testBox.smv"));
+	const FString EmptyCsv = FPaths::Combine(EmptyDir, TEXT("basemodel_testBox_zone.csv"));
+	if (TestTrue(TEXT("Header-only scenario should be written"),
+		WriteTextFile(EmptySmv, MakeSmv()) && WriteTextFile(EmptyCsv, TEXT("s,C\nTime,ULT_1\n"))))
+	{
+		FBRiskScenarioData EmptyData;
+		FString EmptyError;
+		TestFalse(TEXT("A present zone CSV with no data rows should still fail"),
+			FBRiskDataImporter::ImportScenarioFromSmv(EmptySmv, EmptyData, &EmptyError));
+	}
+	IFileManager::Get().DeleteDirectory(*EmptyDir, false, true);
+	IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+
+	// The synthetic .smv above is one block of each kind. The real export is 34 VENTGEOM blocks, two
+	// ROOMs, LABEL pairs and a THCP the parser does not handle - so it exercises the degrade on a
+	// shape the fixture cannot reproduce. Skips when the fixture is not on this machine, matching
+	// Hdf5ImportMatrixTest / MobiusTimingTests; the drive letter moved between boxes, so try both.
+	const TCHAR* InternalRoots[] =
+	{
+		TEXT("D:/NickWork/Mobius_InternalData"),
+		TEXT("E:/00_Work/Mobius_InternalData"),
+		TEXT("F:/Mobius_InternalData"),
+	};
+	FString RealSmv;
+	for (const TCHAR* Root : InternalRoots)
+	{
+		const FString Candidate = FPaths::Combine(
+			FString(Root), TEXT("12-room-test-vents"), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
+		if (FPaths::FileExists(Candidate))
+		{
+			RealSmv = Candidate;
+			break;
+		}
+	}
+
+	if (RealSmv.IsEmpty())
+	{
+		AddInfo(TEXT("real-dataset check SKIPPED: 12-room-test-vents fixture not present on this machine"));
+		return true;
+	}
+
+	FBRiskScenarioData RealData;
+	FString RealError;
+	if (!TestTrue(TEXT("The unsimulated 12-room export should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(RealSmv, RealData, &RealError)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *RealError));
+		return false;
+	}
+	TestFalse(TEXT("The unsimulated export should report no results"), RealData.bHasResultsData);
+	TestEqual(TEXT("Both modelled spaces should survive"), RealData.Rooms.Num(), 2);
+	TestEqual(TEXT("All 34 VENTGEOM records should survive"), RealData.Vents.Num(), 34);
+	TestTrue(TEXT("Both footprints should still be applied"),
+		RealData.Rooms[0].FootprintPolygon.Num() >= 3 && RealData.Rooms[1].FootprintPolygon.Num() >= 3);
+	TestTrue(TEXT("The missing zone CSV should be named"),
+		RealData.MissingResultFiles.ContainsByPredicate([](const FString& Path)
+			{ return Path.EndsWith(TEXT("basemodel_default_zone.csv")); }));
 
 	return true;
 }
