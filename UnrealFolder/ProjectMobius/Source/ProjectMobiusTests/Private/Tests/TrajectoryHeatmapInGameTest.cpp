@@ -579,7 +579,13 @@ bool FTrajectoryInvariancePlaybackSpeedTest::RunTest(const FString& Parameters)
 
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForLoadCommand(*this, 60.0));
 	ADD_LATENT_AUTOMATION_COMMAND(FSpawnHeatmapCommand(*this));
-	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 1.0f, /*bRewindFirst*/ false, Results));
+	// EVERY pass rewinds, including the first. The window is pinned to [0, LastSampleTimeSeconds] inside
+	// the command, but a pass that does not rewind begins wherever FSpawnHeatmapCommand and its settle
+	// frames left the clock, so it integrates a SHORTER window than its rewound siblings and reads low.
+	// Measured 2026-08-05: 1x reported 9.808334 person-seconds against 2x/8x's 9.900000 -- a deficit of
+	// 0.091666 s -- which put 1x vs 2x at 1.010% and failed the 1% gate, while 2x and 8x agreed to 1e-6
+	// across a 4x step-size difference. Same root cause as T_REG_1's one-frame delta.
+	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 1.0f, /*bRewindFirst*/ true, Results));
 	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 2.0f, /*bRewindFirst*/ true, Results));
 	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval * 8.0f, /*bRewindFirst*/ true, Results));
 	// Index 0 (the 1x baseline itself) is unused; index 1 = the "2x" pair, index 2 = the "8x" pair. One
@@ -632,7 +638,10 @@ bool FTrajectoryInvarianceFpsTest::RunTest(const FString& Parameters)
 
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForLoadCommand(*this, 60.0));
 	ADD_LATENT_AUTOMATION_COMMAND(FSpawnHeatmapCommand(*this));
-	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval, /*bRewindFirst*/ false, Results));
+	// Rewind the first pass too -- see the note in T_INV_1. An unrewound pass starts mid-window and reads
+	// low, which here would masquerade as frame-rate leakage, i.e. exactly the defect this test exists to
+	// detect.
+	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval, /*bRewindFirst*/ true, Results));
 	if (MaxFpsCVar)
 	{
 		MaxFpsCVar->Set(120.0f, ECVF_SetByCode);
@@ -684,7 +693,11 @@ bool FTrajectoryRegressionDeterminismTest::RunTest(const FString& Parameters)
 
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForLoadCommand(*this, 60.0));
 	ADD_LATENT_AUTOMATION_COMMAND(FSpawnHeatmapCommand(*this));
-	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval, /*bRewindFirst*/ false, Results));
+	// Both passes rewind -- see the note in T_INV_1. This test compares EXACTLY, so it is the most
+	// sensitive of the three: an unrewound first pass shifted it by a single frame (1/120 s) and produced
+	// the intermittent failure previously recorded as a flake. Pinning both windows is the honest fix; a
+	// tolerance on the totals would have hidden real frame-rate leakage, which T_INV_2 exists to catch.
+	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval, /*bRewindFirst*/ true, Results));
 	ADD_LATENT_AUTOMATION_COMMAND(FRunInvariancePassCommand(*this, SampleInterval, /*bRewindFirst*/ true, Results));
 
 	// Exact (not 1%-tolerant) comparison: same cadence twice must match to the byte / bit, not just
