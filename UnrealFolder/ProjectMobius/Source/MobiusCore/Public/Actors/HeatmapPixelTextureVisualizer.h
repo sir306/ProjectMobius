@@ -278,6 +278,13 @@ public:
 
 	/** Canonical field read-only, so a conservation test can assert against the accumulators directly. */
 	const FTrajectoryField& GetTrajectoryFieldForTesting() const { return TrajectoryField; }
+
+	/**
+	 * The trajectory material instance, so a test can read back the band scalars ACTUALLY pushed to the
+	 * GPU and compare them against the ones handed to the CPU colouriser. Those two silently diverging is
+	 * the whole reason the exported PNG and the in-world render can disagree.
+	 */
+	const class UMaterialInstanceDynamic* GetTrajectoryMaterialForTesting() const { return TrajectoryMaterialInstance; }
 #endif
 
 #pragma endregion PUBLIC_METHODS

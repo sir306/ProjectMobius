@@ -75,6 +75,10 @@
 #include "Actors/HeatmapPixelTextureVisualizer.h"
 #include "Subsystems/HeatmapSubsystem.h"
 #include "TrajectoryField.h"
+// T-PIX-2 reads the band edges back off both consumers: the CPU colouriser lives on the texture, the GPU
+// copy on the material instance.
+#include "DynamicPixelRenderingTexture.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace TrajectoryInvariance
 {
@@ -770,6 +774,143 @@ bool FTrajectoryOffGridNeverClampsTest::RunTest(const FString& Parameters)
 	const FIntPoint AlsoOffGrid = Heatmap->WorldToTexelForTesting(FVector(999999.0, 5.0, 0.0));
 	TestTrue(TEXT("off-grid on a single axis also sentinels rather than clamping"),
 		AlsoOffGrid.X == -1 && AlsoOffGrid.Y == -1);
+	return true;
+}
+
+// -------------------------------------------------------------------------------------------------
+// T-PIX-2, the automatable half of AC12. The visual half still needs eyes; this covers the part that
+// fails SILENTLY.
+//
+// AC12 asks whether the exported PNG and the on-screen render show the same field. Those two are drawn by
+// different code from the same buffer -- the material samples the red channel on the GPU, the PNG
+// colouriser divides the stored byte on the CPU -- so they agree only if they were handed the SAME band
+// edges and the same texture. A desync there is invisible to every numeric test in this suite and shows up
+// only as "the viewport and the export disagree", which is exactly the state this surface was found in.
+//
+// It also pins the two things just fixed, both of which were silent:
+//   * the edges are re-pushed on a mode switch (Exposure used to render against Usage's thresholds);
+//   * the encode uses the FIXED reference density, not per-capture auto-exposure.
+// A pixel-level comparison is deliberately NOT attempted here: the render samples through a shared
+// world-group sampler that ignores the texture's TF_Nearest, so the GPU bilinear-filters before banding
+// and boundary pixels legitimately differ. Once that sampler is given its own nearest filter, a band
+// histogram comparison becomes meaningful and belongs here too.
+// -------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajectoryExportRenderShareInputsTest,
+	"Mobius.InGame.TrajectoryHeatmap.T_PIX_2_ExportAndRenderShareInputs",
+	EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajectoryExportRenderShareInputsTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryInvariance;
+
+	UWorld* World = GetActiveGameWorld();
+	if (!World)
+	{
+		AddError(TEXT("no game world - run via RunTests.ps1 -InGame (UnrealEditor-Cmd -game)"));
+		return false;
+	}
+	AHeatmapPixelTextureVisualizer* Heatmap = SpawnTrajectoryHeatmap(World);
+	if (!TestNotNull(TEXT("heatmap spawned"), Heatmap))
+	{
+		return false;
+	}
+
+	struct FModeCase
+	{
+		ETrajectoryMapMode Mode;
+		const TCHAR* Name;
+		float ExpectedReference;
+	};
+	const FModeCase Cases[] = {
+		{ ETrajectoryMapMode::RouteUsage,    TEXT("RouteUsage"),    100.0f },
+		{ ETrajectoryMapMode::RouteExposure, TEXT("RouteExposure"), 200.0f },
+	};
+
+	float FirstModeEdges[5] = { 0, 0, 0, 0, 0 };
+	for (int32 CaseIndex = 0; CaseIndex < UE_ARRAY_COUNT(Cases); ++CaseIndex)
+	{
+		const FModeCase& Case = Cases[CaseIndex];
+		Heatmap->SetTrajectoryMapMode(Case.Mode);
+
+		const UDynamicPixelRenderingTexture* Texture = Heatmap->GetTrajectoryAccumulationTextureForTesting();
+		const UMaterialInstanceDynamic* Material = Heatmap->GetTrajectoryMaterialForTesting();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: accumulation texture exists"), Case.Name), Texture))
+		{
+			continue;
+		}
+		if (!TestNotNull(*FString::Printf(TEXT("%s: trajectory material instance exists"), Case.Name), Material))
+		{
+			continue;
+		}
+
+		// The CPU colouriser's copy of the edges, i.e. what the exported PNG will be banded with.
+		const FHeatmapLOSBands& CpuBands = Texture->GetLOSBands();
+		const float CpuEdges[5] = { CpuBands.BandA, CpuBands.BandB, CpuBands.BandC, CpuBands.BandD,
+			CpuBands.BandE };
+		static const TCHAR* ParamNames[5] = { TEXT("LOS_A_Band"), TEXT("LOS_B_Band"), TEXT("LOS_C_Band"),
+			TEXT("LOS_D_Band"), TEXT("LOS_E_Band") };
+
+		for (int32 Edge = 0; Edge < 5; ++Edge)
+		{
+			float GpuEdge = -1.0f;
+			const bool bRead = Material->GetScalarParameterValue(FName(ParamNames[Edge]), GpuEdge);
+			TestTrue(*FString::Printf(TEXT("%s: material exposes %s"), Case.Name, ParamNames[Edge]), bRead);
+			// Exact: both sides receive the identical struct, so anything but equality means one of them
+			// was pushed a different set, or was not re-pushed at all.
+			TestEqual(*FString::Printf(TEXT("%s: %s matches the CPU colouriser's edge"), Case.Name,
+				ParamNames[Edge]), GpuEdge, CpuEdges[Edge], 0.0f);
+			if (CaseIndex == 0)
+			{
+				FirstModeEdges[Edge] = CpuEdges[Edge];
+			}
+		}
+
+		// The no-data threshold must sit below one byte, or every faint-but-real texel is painted as
+		// untouched ground - the defect the pre-refit edge set shipped with (it sat at byte 24.5).
+		TestTrue(*FString::Printf(TEXT("%s: no-data edge is below byte 1 (%.6f < %.6f)"), Case.Name,
+			CpuBands.BandA, 1.0f / 255.0f), CpuBands.BandA < (1.0f / 255.0f));
+
+		// Fixed reference, not auto-exposure. Guards the display's comparability across captures.
+		//
+		// The encode is driven EXPLICITLY here. A freshly spawned heatmap has never displayed anything, so
+		// reading GetLastEncodeReferenceDensity() straight after the spawn returns the 0 default and both of
+		// these assertions would pass against a pipeline that had not run - the same "cannot fail" shape
+		// that the conservation tests were fixed for. Encoding first makes them mean something.
+		const FTrajectoryField& Field = Heatmap->GetTrajectoryFieldForTesting();
+		if (!Field.IsValid())
+		{
+			AddError(*FString::Printf(TEXT("%s: field has no grid, so the encode assertions below would be "
+				"vacuous - the heatmap was not sized"), Case.Name));
+			continue;
+		}
+
+		TArray<uint8> Encoded;
+		Field.EncodeToDisplay(Case.Mode, Encoded);
+		TestTrue(*FString::Printf(TEXT("%s: encode produced a buffer"), Case.Name), Encoded.Num() > 0);
+		TestFalse(*FString::Printf(TEXT("%s: encode is NOT auto-exposed by default"), Case.Name),
+			Field.WasLastEncodeAutoExposed());
+		TestEqual(*FString::Printf(TEXT("%s: byte 255 maps to the configured reference density"), Case.Name),
+			Field.GetLastEncodeReferenceDensity(), Case.ExpectedReference, 0.01f);
+	}
+
+	// The two modes are different quantities against different references, so their edge sets MUST differ.
+	// Identical sets here means the mode switch never re-pushed them, which is how Exposure came to render
+	// against Usage's thresholds.
+	const UDynamicPixelRenderingTexture* FinalTexture = Heatmap->GetTrajectoryAccumulationTextureForTesting();
+	if (FinalTexture)
+	{
+		const FHeatmapLOSBands& ExposureBands = FinalTexture->GetLOSBands();
+		const float ExposureEdges[5] = { ExposureBands.BandA, ExposureBands.BandB, ExposureBands.BandC,
+			ExposureBands.BandD, ExposureBands.BandE };
+		bool bAnyInteriorEdgeDiffers = false;
+		for (int32 Edge = 1; Edge < 5; ++Edge) // edge 0 is the shared no-data threshold, by design
+		{
+			bAnyInteriorEdgeDiffers |= (ExposureEdges[Edge] != FirstModeEdges[Edge]);
+		}
+		TestTrue(TEXT("switching mode re-pushes a DIFFERENT band set (Exposure is not banded as Usage)"),
+			bAnyInteriorEdgeDiffers);
+	}
 	return true;
 }
 
