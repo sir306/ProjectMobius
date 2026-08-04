@@ -667,10 +667,27 @@ namespace TrajectoryRealData
 					TEXT("[TrajectoryRealData] %s: field has no grid (IsValid() false), byte-level stats only"),
 					NameFor(Dataset));
 			}
-			UE_LOG(LogTemp, Display,
-				TEXT("[TrajectoryRealData] capture written under Saved/TrajectoryCapture/ - run ")
-				TEXT("MobiusPerf\\analysis\\field_stats.py then band_fit.py against the exported ")
-				TEXT(".csv + .meta.json pair to refit the band edges"));
+			// A0: actually WRITE the canonical export, rather than telling the reader to go and find one.
+			//
+			// The recorder capture under Saved/TrajectoryCapture/ is NOT what the analysis scripts consume -
+			// they read the canonical <base>.csv + <base>.meta.json pair, and until now nothing in an
+			// automated run produced it. SaveHeatmapToPNG() was reachable only through
+			// UHeatmapSubsystem::SaveSelectedHeatmapsToPNG, i.e. off a UI button, so Saved/Heatmap/ did not
+			// exist on any machine and the band refit had no input. mobius.Heatmap.DumpTrajectoryCsv is a
+			// different, older artefact: texel BYTES from the accumulation texture, no sidecar.
+			//
+			// This is the run that has the real dataset loaded and the field populated, so this is where the
+			// export belongs. Cheap (one pass over occupied cells) and it makes the capture self-sufficient.
+			if (Heatmap)
+			{
+				Heatmap->SaveHeatmapToPNG();
+				UE_LOG(LogTemp, Display,
+					TEXT("[TrajectoryRealData] %s: canonical export written to Saved/Heatmap/ ")
+					TEXT("(<name>_Trajectory_<stamp>.csv + .meta.json + .png). Run ")
+					TEXT("MobiusPerf\\analysis\\field_stats.py then band_fit.py against that PAIR - not ")
+					TEXT("against the Saved/TrajectoryCapture/ recorder output - to refit the band edges."),
+					NameFor(Dataset));
+			}
 
 			Test.TestTrue(TEXT("the dataset put something on the heatmap"), Stats.TouchedTexels > 0);
 
