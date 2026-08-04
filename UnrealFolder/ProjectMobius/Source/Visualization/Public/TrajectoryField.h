@@ -82,6 +82,31 @@ struct FTrajectoryFieldConfig
 	int32 MaxGridDim = 2048;
 
 	/**
+	 * Display density that maps to byte 255, per mode. THIS IS WHAT MAKES A BYTE MEAN SOMETHING.
+	 *
+	 * The encode used to auto-expose against the current maximum cell, so a byte meant "this fraction of
+	 * the brightest cell in THIS capture" - which moves between captures and between buildings. Band edges
+	 * expressed against it therefore could not transfer, which is the same defect this rebuild removed
+	 * from the stored value, surviving at the display layer. With a fixed reference, byte 255 means a
+	 * stated physical density and nothing else, so bands are comparable across captures and a saturated
+	 * texel is a real statement ("at or above the reference") rather than an artefact of the frame.
+	 *
+	 * Defaults are the p99 of the first real TechSchool export, rounded: 99.79 person/m -> 100, and
+	 * 194.91 person*s/m^2 -> 200. That puts the busiest 1% of occupied cells at or above full scale.
+	 * Cells above the reference clamp to 255 - deliberately: the canonical float field keeps rising and
+	 * is what analysis reads (AC9), while the display is allowed to top out.
+	 */
+	float ReferenceUsageDensity = 100.0f;    // person/m
+	float ReferenceExposureDensity = 200.0f; // person*s/m^2
+
+	/**
+	 * Legacy per-capture auto-exposure, opt-in. Useful for eyeballing a sparse capture where everything
+	 * would otherwise sit in the bottom band; never use it for anything that will be compared to another
+	 * capture, or for fitting band edges.
+	 */
+	bool bAutoExposeDisplay = false;
+
+	/**
 	 * Teleport rejection. 2000 cm/s = 20 m/s. Set from human performance rather than from egress gait:
 	 * the gate exists to catch discontinuities (agent recycling, dataset swap, floor change), which land
 	 * in the thousands of cm/s, and a threshold set just above the fastest human (10.44 m/s over 100 m)
@@ -301,9 +326,20 @@ public:
 	const TArray<FIntPoint>& GetKernelOffsets() const { return KernelOffsets; }
 	const TArray<float>& GetKernelWeights() const { return KernelWeights; }
 
-	/** Bytes per unit density applied by the last EncodeToDisplay, and the density that mapped to 255. */
+	/** Bytes per unit density applied by the last EncodeToDisplay, and the maximum density present. */
 	float GetLastEncodeScale() const { return LastEncodeScale; }
 	float GetLastEncodeMaxDensity() const { return LastEncodeMaxDensity; }
+
+	/**
+	 * The density that mapped to byte 255 in the last encode. Under the default fixed reference this is
+	 * the configured reference; under auto-exposure it is whatever the frame's maximum happened to be,
+	 * which is exactly why the two must be distinguishable from the outside.
+	 */
+	float GetLastEncodeReferenceDensity() const { return LastEncodeReferenceDensity; }
+	bool WasLastEncodeAutoExposed() const { return bLastEncodeWasAutoExposed; }
+
+	/** Cells that hit 255 in the last encode - i.e. at or above the reference density. */
+	int32 GetLastEncodeSaturatedCells() const { return LastEncodeSaturatedCells; }
 
 private:
 	/**
@@ -379,6 +415,9 @@ private:
 	mutable bool bPresentationDirty = false;
 	mutable float LastEncodeScale = 0.0f;
 	mutable float LastEncodeMaxDensity = 0.0f;
+	mutable float LastEncodeReferenceDensity = 0.0f;
+	mutable bool bLastEncodeWasAutoExposed = false;
+	mutable int32 LastEncodeSaturatedCells = 0;
 
 	double TotalPersonMetres = 0.0;
 	double TotalPersonSeconds = 0.0;

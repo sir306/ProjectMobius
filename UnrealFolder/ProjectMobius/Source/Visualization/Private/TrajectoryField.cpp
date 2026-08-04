@@ -185,6 +185,10 @@ void FTrajectoryField::Initialise(const FVector2D& FloorExtentCm, const FVector2
 	Config.MaxGridDim = FMath::Clamp(Config.MaxGridDim, 1, AbsoluteMaxGridDim);
 	Config.MaxPlausibleSpeedCmPerSec = FMath::Max(Config.MaxPlausibleSpeedCmPerSec, 0.0f);
 	Config.MaxPlausibleDeltaSeconds = FMath::Max(Config.MaxPlausibleDeltaSeconds, 0.0f);
+	// A non-positive reference is treated as "auto-expose" by the encode rather than producing an
+	// infinity, so clamping at zero is enough here.
+	Config.ReferenceUsageDensity = FMath::Max(Config.ReferenceUsageDensity, 0.0f);
+	Config.ReferenceExposureDensity = FMath::Max(Config.ReferenceExposureDensity, 0.0f);
 
 	OriginCm = FloorOriginCm;
 
@@ -361,6 +365,9 @@ void FTrajectoryField::Clear()
 	bPresentationDirty = false;
 	LastEncodeScale = 0.0f;
 	LastEncodeMaxDensity = 0.0f;
+	LastEncodeReferenceDensity = 0.0f;
+	bLastEncodeWasAutoExposed = false;
+	LastEncodeSaturatedCells = 0;
 
 	TotalPersonMetres = 0.0;
 	TotalPersonSeconds = 0.0;
@@ -814,10 +821,25 @@ void FTrajectoryField::EncodeToDisplay(ETrajectoryMapMode Mode, TArray<uint8>& O
 	const double MaxDensity = static_cast<double>(MaxRaw) * InvCellArea;
 	LastEncodeMaxDensity = static_cast<float>(MaxDensity);
 
-	// Linear auto-exposure. No minimum-visible seed: the old seed-then-increment scheme is exactly why
-	// the trajectory surface's first LOS band meant nothing.
-	const double Scale = (MaxDensity > 0.0) ? (255.0 / MaxDensity) : 0.0;
+	// FIXED REFERENCE normalisation by default; auto-exposure only on request.
+	//
+	// Auto-exposure makes byte 255 mean "the brightest cell in this capture", so every band edge silently
+	// re-scales per capture and none of them transfer between buildings - the display-layer survival of the
+	// very defect this rebuild removed from the stored value. A fixed reference makes a byte a stated
+	// physical density, which is the precondition for band edges meaning anything at all.
+	const double Reference = static_cast<double>((Mode == ETrajectoryMapMode::RouteUsage)
+		? Config.ReferenceUsageDensity
+		: Config.ReferenceExposureDensity);
+
+	const bool bAutoExpose = Config.bAutoExposeDisplay || !(Reference > 0.0);
+	const double Scale = bAutoExpose
+		? ((MaxDensity > 0.0) ? (255.0 / MaxDensity) : 0.0)
+		: (255.0 / Reference);
+
 	LastEncodeScale = static_cast<float>(Scale);
+	LastEncodeReferenceDensity = static_cast<float>(bAutoExpose ? MaxDensity : Reference);
+	bLastEncodeWasAutoExposed = bAutoExpose;
+	LastEncodeSaturatedCells = 0;
 
 	// An empty field still has to produce an opaque buffer, so alpha is written on both branches.
 	uint8* RESTRICT Bytes = OutBGRA8.GetData();
@@ -841,6 +863,13 @@ void FTrajectoryField::EncodeToDisplay(ETrajectoryMapMode Mode, TArray<uint8>& O
 			if (Quantised == 0 && Presentation[Index] > 0.0f)
 			{
 				Quantised = 1;
+			}
+			if (Quantised >= 255)
+			{
+				// Counted, not hidden: under a fixed reference, saturation is a real statement about the
+				// data ("at or above the reference density"), and how much of the field is making it is
+				// the number that tells you whether the reference is set sensibly.
+				++LastEncodeSaturatedCells;
 			}
 		}
 
