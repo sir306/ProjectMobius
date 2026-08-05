@@ -803,10 +803,42 @@ namespace TrajectoryRealData
 	 * beside the CPU-colourised PNG the recorder writes.
 	 *
 	 * EXPECT THE TWO TO DIFFER, and know where. The PNG is per-texel exact. The render samples the same
-	 * buffer through a shared world-group sampler, which IGNORES the texture's TF_Nearest, so the GPU
-	 * bilinear-filters it before the material bands it. They should agree on which band a texel lands in
-	 * and disagree along band boundaries, where interpolation smears one into the next. A difference
-	 * anywhere else is a real finding; a soft edge is not.
+	 * buffer through a shared world-group sampler that discarded the texture's TF_Nearest. THAT WAS WRONG
+	 * and is retracted: `Material.SamplesWithTextureOwnSampler` reads the deserialised property and passes,
+	 * so every sample already honours the texture's own sampler. Point sampling was never the problem.
+	 *
+	 * ⚠️ THIS IS A SMOKE TEST, NOT A DEFECT DETECTOR. READ THIS BEFORE ACTING ON ITS OUTPUT.
+	 *
+	 * The capture reproduces roughly ONE TEXEL IN TEN of the field (ruling A0-70). The export draws
+	 * continuous lines; this capture shows scattered dots sitting on them. **That is a property of the
+	 * capture, not of the app** -- the owner confirmed on 2026-08-05 that the editor viewport renders
+	 * continuous coloured lines matching the export, which is what closed AC12. So a "missing" band or a
+	 * broken-looking stroke in this PNG is almost certainly this harness, and anyone who treats it as a
+	 * heatmap bug will chase something that is not there.
+	 *
+	 * What it is still good for: proving the capture path runs, that the camera frames the heatmap, and
+	 * that registration is exact -- the heatmap square was located by searching offsets and landed on the
+	 * predicted origin with 92x contrast between export-occupied cells and the rest (A0-66).
+	 *
+	 * What is known about the loss, so nobody re-derives it:
+	 *   - The field is 2000x2000 texels rendered into an ~810x810 square: 6.1 texels per pixel, sampled
+	 *     NEAREST with AA off, so a 1-texel stroke survives in about 1 pixel in 6. Measured on the export
+	 *     alone that costs 44% -- REAL, but under half the loss (A0-70).
+	 *   - The export is raw linear x255 with no sRGB encode (COLOR_TO_BYTE) while the render is exposed
+	 *     and tone-curved, so exact RGB equality is impossible BY CONSTRUCTION (A0-68). Do not re-open it.
+	 *   - The heatmap surface has no detectable edge at its own boundary, so band A renders as nothing
+	 *     rather than as a crushed blue (A0-69). Unexplained, and deliberately not pursued.
+	 * Three suspects were measured and refuted: the tonemapper, AEM_Manual, and undersampling as
+	 * sufficient cause. Do not re-run those experiments; the numbers are in STATUS.md A0-66 to A0-70.
+	 *
+	 * If a real pixel comparison is ever wanted, do NOT extend this: use USceneCaptureComponent2D with
+	 * SCS_SceneColorHDR into a render target sized exactly to the field dims and camera aspect 1.0. That
+	 * makes texel-to-pixel 1:1, which removes the undersampling by construction, and skips exposure and
+	 * the tone curve entirely. Compare against a LINEAR reference, not the sRGB PNG.
+	 *
+	 * Compare by BAND ASSIGNMENT over the occupied region, never by pixel equality: a soft edge is not a
+	 * finding, a wrong band is. Never judge on exact palette matches -- A0-43 retired them as a criterion
+	 * and A0-68 showed they are unachievable anyway.
 	 */
 	class FCaptureRenderedViewCommand : public IAutomationLatentCommand
 	{
@@ -829,7 +861,15 @@ namespace TrajectoryRealData
 				{
 					return true;
 				}
-				// A frame or two for the view target switch to take effect before grabbing the buffer.
+				if (!bSuppressed)
+				{
+					SuppressPostProcessing(World->GetFirstPlayerController(), Camera);
+					bSuppressed = true;
+					FramesToSettle = 4;
+					return false;
+				}
+				// Show-flag console changes land on a LATER frame, so settle before grabbing the buffer or
+				// the capture records the state from before they applied.
 				if (FramesToSettle-- > 0)
 				{
 					return false;
@@ -840,17 +880,30 @@ namespace TrajectoryRealData
 				IFileManager::Get().Delete(*OutputPath, false, true);
 				FScreenshotRequest::RequestScreenshot(OutputPath, /*bShowUI*/ false, /*bAddFilenameSuffix*/ false);
 				bRequested = true;
+				LastSize = -1;
 				Deadline = FPlatformTime::Seconds() + 30.0;
 				return false;
 			}
 
 			if (FPaths::FileExists(OutputPath))
 			{
-				UE_LOG(LogTemp, Display, TEXT("[TrajectoryRealData] rendered view written to %s"), *OutputPath);
+				// A screenshot appears on disk while it is still being written, so require the size to hold
+				// steady across two ticks before declaring it landed. A half-written PNG read by the
+				// analysis scripts is a silent data error, not a visible failure.
+				const int64 Size = IFileManager::Get().FileSize(*OutputPath);
+				if (Size <= 0 || Size != LastSize)
+				{
+					LastSize = Size;
+					return false;
+				}
+
+				UE_LOG(LogTemp, Display, TEXT("[TrajectoryRealData] rendered view written to %s (%lld bytes)"),
+					*OutputPath, Size);
 				UE_LOG(LogTemp, Display,
-					TEXT("[TrajectoryRealData] compare against accumulation_los.png in the newest ")
-					TEXT("Saved/TrajectoryCapture/<stamp>/ - they should agree on band assignment and ")
-					TEXT("differ only along band edges (the render bilinear-filters, the PNG does not)"));
+					TEXT("[TrajectoryRealData] SMOKE TEST ONLY - this capture reproduces about one texel in ")
+					TEXT("ten (A0-70). It shows dots where the export shows lines, and that is the harness, ")
+					TEXT("NOT the app. Do not raise a heatmap defect from it. Compare band assignment with ")
+					TEXT("_CurrentHandoff/trajectoryFix/analysis/ab_compare.py if you need the numbers."));
 				return true;
 			}
 			if (FPlatformTime::Seconds() > Deadline)
@@ -924,14 +977,92 @@ namespace TrajectoryRealData
 			}
 
 			Controller->SetViewTargetWithBlend(Camera, 0.0f);
+
+			// Clear the A/B artefacts. The A0-68 run wrote one PNG per variant; those configurations no
+			// longer exist, so leaving them beside this capture would invite a stale file being read as
+			// fresh output. The originals are preserved in _CurrentHandoff/trajectoryFix/analysis/evidence/.
+			static const TCHAR* RetiredVariants[] = {
+				TEXT("A_notonemap_pinnedexposure"),
+				TEXT("B_tonemap_pinnedexposure"),
+				TEXT("C_tonemap_freeexposure"),
+			};
+			for (const TCHAR* Retired : RetiredVariants)
+			{
+				IFileManager::Get().Delete(*FPaths::Combine(FPaths::ProjectSavedDir(),
+					TEXT("TrajectoryCapture"),
+					FString::Printf(TEXT("rendered_%s_%s.png"), NameFor(Dataset), Retired)), false, true);
+			}
 			return true;
+		}
+
+		/**
+		 * Quiet the stages that blur or recolour the capture, WITHOUT changing the pipeline the owner
+		 * actually views the app through. This is the A/B's winning configuration (variant C, A0-68):
+		 * tonemapper left ON, no exposure override.
+		 *
+		 * Two levers were tried here and both are deliberately absent, so nobody re-adds them:
+		 *   - `ShowFlag.Tonemapper 0` -- MEASURED WORSE. Turning the tonemapper off made the image DARKER
+		 *     (background #000102 -> #090B10 is the other direction; off was the #090B10 one) and HALVED
+		 *     the rank correlation against the export, +0.245 -> +0.119. The filmic toe was not the
+		 *     problem. It also renders through a pipeline no user sees, which makes the capture answer a
+		 *     question nobody asked.
+		 *   - `AEM_Manual` exposure pin -- MEASURED IRRELEVANT. With it and without it the capture differed
+		 *     by ONE distinct colour and 0.0016 of correlation. `ShowFlag.EyeAdaptation 0` below already
+		 *     fixes exposure, so the override was dead weight. It is also not the "pin to 1.0" it was
+		 *     written as: manual mode applies photographic exposure from shutter/ISO/aperture, ~1/500 at
+		 *     defaults.
+		 *
+		 * What stays off, and why none of it is contentious: temporal AA blends neighbouring texels
+		 * together, and fog, bloom, colour grading, vignette, motion blur and DoF are all transforms
+		 * applied after the value being read. None of them can darken a surface.
+		 *
+		 * This is capture-view only. Nothing here changes the material, the asset, or what a user sees.
+		 */
+		static void SuppressPostProcessing(APlayerController* Controller, ACameraActor* Camera)
+		{
+			if (!Controller)
+			{
+				return;
+			}
+
+			// Show flags and AA are per-view and only reachable by console in a -game client.
+			static const TCHAR* Commands[] = {
+				TEXT("r.AntiAliasingMethod 0"),   // no TSR/TAA: it blends neighbouring texels together
+				TEXT("ShowFlag.Fog 0"),
+				TEXT("ShowFlag.AtmosphericFog 0"),
+				TEXT("ShowFlag.VolumetricFog 0"),
+				TEXT("ShowFlag.Bloom 0"),
+				TEXT("ShowFlag.EyeAdaptation 0"), // no auto-exposure: it rescales by scene content
+				TEXT("ShowFlag.ColorGrading 0"),
+				TEXT("ShowFlag.Vignette 0"),
+				TEXT("ShowFlag.MotionBlur 0"),
+				TEXT("ShowFlag.DepthOfField 0"),
+				TEXT("ShowFlag.ScreenPercentage 0"),
+			};
+			for (const TCHAR* Command : Commands)
+			{
+				Controller->ConsoleCommand(Command, /*bWriteToLog*/ false);
+			}
+
+			// Bloom and vignette are pinned off on the camera as well, so the result does not depend on
+			// whether a given engine version honours the show flags on an offscreen capture.
+			if (UCameraComponent* CameraComponent = Camera ? Camera->GetCameraComponent() : nullptr)
+			{
+				FPostProcessSettings& Post = CameraComponent->PostProcessSettings;
+				Post.bOverride_BloomIntensity = true;
+				Post.BloomIntensity = 0.0f;
+				Post.bOverride_VignetteIntensity = true;
+				Post.VignetteIntensity = 0.0f;
+			}
 		}
 
 		FAutomationTestBase& Test;
 		EDataset Dataset;
 		ACameraActor* Camera = nullptr;
 		FString OutputPath;
-		int32 FramesToSettle = 3;
+		int32 FramesToSettle = 4;
+		int64 LastSize = -1;
+		bool bSuppressed = false;
 		bool bRequested = false;
 		double Deadline = 0.0;
 	};
