@@ -1664,14 +1664,23 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	Tiles.Reset();
 	PendingTileEmitIndex = 0;
 
-	// Number of required triangles
-	FIntPoint NumTriangles = FIntPoint(MeshSize.X / 250, MeshSize.Y / 250);
-
-	if(bIs3DHeatmap)
-	{
-		// Calculate the number of triangles
-		NumTriangles = FIntPoint(MeshSize.X / 25, MeshSize.Y / 25);
-	}
+	// ALWAYS build at the 3D-capable density, whatever bIs3DHeatmap says.
+	//
+	// The 3D toggle is a REALTIME switch and deliberately does NOT regenerate the mesh or the texture --
+	// regenerating either would cost far too much. So the geometry has to be able to carry displacement
+	// from the moment it is built. This previously chose the density AT GENERATION TIME from a setting the
+	// user can change afterwards: a mesh built with bIs3DHeatmap false got /250, which is 10x fewer
+	// vertices per axis, and toggling 3D on later left almost nothing to displace with nothing to fix it.
+	// 2D still renders flat -- displacement is a material concern, not a geometry one. Owner ruling A0-64.
+	//
+	// Side benefit: /250 truncates to fewer than 2 vertices per axis for any extent below 500 cm, which
+	// collapses the mesh span to zero (or to no vertices at all below 250 cm). /25 stays >= 2 vertices
+	// from 50 cm up, so every plausible floor is safe.
+	//
+	// bIs3DHeatmap stays on the signature because callers pass it and it still describes intent, but it
+	// must NOT influence vertex count -- that independence is exactly what makes the toggle free.
+	(void)bIs3DHeatmap;
+	FIntPoint NumTriangles = FIntPoint(MeshSize.X / 25, MeshSize.Y / 25);
 	// Generate the square cell size
 	FVector2D CellSize = GenerateSquareCellSize(NumTriangles, MeshSize);
 
