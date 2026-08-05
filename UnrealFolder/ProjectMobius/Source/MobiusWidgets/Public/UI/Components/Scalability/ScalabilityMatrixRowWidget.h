@@ -39,7 +39,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnScalabilityRowLevelStaged,
  * One row of the Custom Display Settings matrix: a label plus five checkbox cells (Low / Medium / High /
  * Ultra / Cinematic) behaving as an exclusive group.
  *
- * WHY checkboxes and not the five UButtonWithText of UScalabilitySettingWidget: the panel rebuild
+ * WHY checkboxes and not the five UButtonWithText of the old tier row: the panel rebuild
  * (2026-08-04) prints the quality names ONCE across the top of a 9x5 matrix, so a row is five cells wide
  * with no per-cell label. UMG has no radio widget, so the cells are standard UCheckBox with exclusivity
  * enforced here — exactly one is always checked, and unticking the checked cell re-ticks it rather than
@@ -50,8 +50,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnScalabilityRowLevelStaged,
  * owning UScalabilityPanelWidget, which batches all nine rows plus the resolution into one apply step.
  * That is also what makes Reset possible (revert to last confirmed).
  *
- * UScalabilitySettingWidget (the 5-button row) is deliberately left untouched — it still drives
- * WBP_ScalabilitySettingBase and WBP_CustomScalabilitySettingsRef.
+ * UScalabilitySettingWidget (the 5-button row) was left untouched by the rebuild and then RETIRED
+ * 2026-08-05: the only Blueprints it drove, WBP_ScalabilitySettingBase and
+ * WBP_CustomScalabilitySettingsRef, are in /Game/99_Old/, so the class went with them.
  */
 UCLASS()
 class MOBIUSWIDGETS_API UScalabilityMatrixRowWidget : public UMobiusThemedUserWidget

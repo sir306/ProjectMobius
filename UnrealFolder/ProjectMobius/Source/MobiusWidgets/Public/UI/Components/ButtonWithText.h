@@ -146,8 +146,9 @@ public:
 
 	/** Slate style used as the SButton's construction-time style (RebuildWidget), distinct from
 	 *  UBaseButton::SlateButtonStyle which is re-applied on every SynchronizeProperties.
-	 *  NOTE (audited 2026-07-27): not set in ANY WidgetBlueprint - the only writer is
-	 *  UScalabilitySettingWidget in C++. Prefer SlateButtonStyle in the designer. */
+	 *  NOTE (audited 2026-07-27, re-checked 2026-08-05): not set in ANY WidgetBlueprint, and it now has
+	 *  NO writer at all — its only one was UScalabilitySettingWidget, deleted with its retired Blueprints.
+	 *  Prefer SlateButtonStyle in the designer; treat this as a retirement candidate in its own right. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Mobius|Style")
 	TObjectPtr<USlateWidgetStyleAsset> ButtonStyleDefault;
 

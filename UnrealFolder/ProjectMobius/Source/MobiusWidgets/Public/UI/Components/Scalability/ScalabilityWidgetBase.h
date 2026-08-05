@@ -11,17 +11,22 @@
 class UButtonWithText;
 /**
  * A6b (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget. Pure C++ base insertion — the
- * WBPs still parent to the same classes, so no .uasset changes. One reparent here covers all three
- * scalability widget families at once: UScalabilitySettingWidget (WBP_ScalabilitySettingBase),
- * UResolutionScalabilityWidget (WBP_AdjustResolution) and WBP_ScalabilitySettingGlobal, which parents
- * straight to this class.
+ * WBPs still parent to the same classes, so no .uasset changes.
  *
- * WHY it was needed before the walker died (A6b-6, 2026-07-31): the active-tier "current setting" chip is
- * signalled by a 2px accent RING, and UBaseButton::RefreshThemedButtonStyle deliberately early-returns on
- * any outline wider than 1.5px (A4 — a thick outline is a meaning-carrying accent, not chrome). So nothing
- * in the A4 event path re-lands that chip, and the deleted walk was the only thing doing it. The chip is now
- * re-landed by UScalabilitySettingWidget::ApplyMobiusTheme_Implementation, which calls
- * ApplyMobiusButtonStyle on all five tier buttons — do not remove that without restoring a writer here.
+ * 2026-08-05: the family is down to ONE live subclass, UGlobalQualitySegmentWidget
+ * (WBP_ScalabilitySettingGlobal). The two others this comment used to name — UScalabilitySettingWidget
+ * (WBP_ScalabilitySettingBase) and UResolutionScalabilityWidget (WBP_AdjustResolution) — were deleted
+ * along with their now-retired Blueprints, because the panel rebuild replaced the five-button tier row
+ * with a segmented control and a checkbox matrix.
+ *
+ * The A6b-6 note that used to sit here is GONE with them, and deliberately: it warned that the
+ * active-tier 2px accent RING had no writer except UScalabilitySettingWidget::ApplyMobiusTheme_
+ * Implementation, because UBaseButton::RefreshThemedButtonStyle early-returns on outlines wider than
+ * 1.5px (A4 — a thick outline is a meaning-carrying accent, not chrome). That ring no longer exists:
+ * the segmented control marks the active tier with an Accent FILL, styled by
+ * UGlobalQualitySegmentWidget::RestyleSegments, and its segments clear bFollowThemePalette so
+ * RefreshThemedButtonStyle cannot repaint the meaning away. The A4 early-return still stands as written;
+ * it simply has nothing to protect here any more.
  */
 UCLASS()
 class MOBIUSWIDGETS_API UScalabilityWidgetBase : public UMobiusThemedUserWidget
