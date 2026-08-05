@@ -31,10 +31,8 @@
 class UButtonWithText;
 class UMobiusThemedBorder;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomQualityRequested);
-
 /**
- * The "Global Quality" control in the Settings panel: five segments — Low | Medium | High | Ultra | Custom.
+ * The "Global Quality" control in the Settings panel: five segments — Low | Medium | High | Ultra | Cinematic.
  *
  * Parent for WBP_ScalabilitySettingGlobal, whose five UButtonWithText already carry the names bound below,
  * so the rebuild reparents that asset rather than re-authoring it. It replaces the widget's BP graph
@@ -51,13 +49,16 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomQualityRequested);
  *     A mixed set therefore reads as its weakest link, which is the honest answer to "what quality am I
  *     actually getting". Nothing here ever selects Custom on the user's behalf.
  *
- *  2. Custom is a segment that OPENS THE CUSTOM DISPLAY WINDOW, not a selectable state. It is styled as
- *     the mockup draws it — inactive fill with an Accent label, i.e. a link — and broadcasts
- *     OnCustomQualityRequested.
+ *  2. All five segments are real TIERS (owner ruling 2026-08-05). The fifth used to be a "Custom" link
+ *     that opened the Custom Display window and broadcast OnCustomQualityRequested; it is Cinematic now,
+ *     and opening that window belongs to its own control below the bar. The delegate went with it —
+ *     UMobiusSettingsWindowWidget binds that button's OnClicked directly.
  *
- * Clicking a real tier calls UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting, which applies that
- * level to all nine categories. That is applied IMMEDIATELY: the Confirm-batching ruling scopes to the
- * Custom Display window's own Reset/Confirm footer, and this control has neither.
+ * Clicking a tier calls UPerformanceUtilSubsystem::UpdateGlobalScalabilitySetting, which applies that level
+ * to all nine categories. Cinematic is the exception: EGlobalScalabilitySettings stops at Epic, so it goes
+ * through ApplyScalabilityLevelToAll — see HandleCustomClicked for why the global bookkeeping still has to
+ * be moved to Custom first. Either way it applies IMMEDIATELY: the Confirm-batching ruling scopes to the
+ * Custom Display window's own Reset/Confirm footer, not to this control.
  */
 UCLASS()
 class MOBIUSWIDGETS_API UGlobalQualitySegmentWidget : public UScalabilityWidgetBase
@@ -65,10 +66,6 @@ class MOBIUSWIDGETS_API UGlobalQualitySegmentWidget : public UScalabilityWidgetB
 	GENERATED_BODY()
 
 public:
-	/** Fires when the Custom segment is clicked. The Settings panel shows the Custom Display window. */
-	UPROPERTY(BlueprintAssignable, Category = "Scalability Settings")
-	FOnCustomQualityRequested OnCustomQualityRequested;
-
 	/**
 	 * Re-derives the active segment from applied engine state. Call after anything that could have changed
 	 * a per-feature level — notably UScalabilityPanelWidget::OnSettingsConfirmed.

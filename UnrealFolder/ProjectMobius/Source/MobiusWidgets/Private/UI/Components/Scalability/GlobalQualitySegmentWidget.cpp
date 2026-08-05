@@ -99,7 +99,10 @@ void UGlobalQualitySegmentWidget::NativePreConstruct()
 	}
 	if (CustomSetting_Button)
 	{
-		CustomSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierCustom", "Custom"));
+		// Owner ruling 2026-08-05: the fifth segment is a real Cinematic TIER now, not a link to the
+		// Custom window — that moved out to its own control under the bar. The BindWidget property keeps its
+		// CustomSetting_Button name because that is the widget name in the .uasset.
+		CustomSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierCinematic", "Cinematic"));
 	}
 }
 
@@ -277,8 +280,24 @@ void UGlobalQualitySegmentWidget::HandleUltraClicked()
 
 void UGlobalQualitySegmentWidget::HandleCustomClicked()
 {
-	// Custom is not a tier — it opens the Custom Display window and changes nothing on its own.
-	OnCustomQualityRequested.Broadcast();
+	// Cinematic cannot go through UpdateGlobalScalabilitySetting: EGlobalScalabilitySettings stops at
+	// Epic (Low/Medium/High/Epic/Custom/Default) and adding a value to a serialized UENUM to express one
+	// tier is not worth it. ApplyScalabilityLevelToAll writes the same nine categories directly.
+	UWorld* World = IsDesignTime() ? nullptr : GetWorld();
+	if (UPerformanceUtilSubsystem* Performance = (World && World->IsGameWorld())
+		? World->GetSubsystem<UPerformanceUtilSubsystem>()
+		: nullptr)
+	{
+		// Move the subsystem's global bookkeeping to Custom FIRST. UpdateGlobalScalabilitySetting
+		// early-returns when the requested tier equals the stored one, so without this an
+		// Ultra -> Cinematic -> Ultra sequence would silently fail to re-apply Ultra: the stored value
+		// would still read Epic. EGss_Custom is the honest label for "a set the global enum cannot name"
+		// and its own switch case deliberately applies nothing, so it cannot fight the call below.
+		Performance->UpdateGlobalScalabilitySetting(EGlobalScalabilitySettings::EGss_Custom);
+		Performance->ApplyScalabilityLevelToAll(EScalabilitySettings::ESsl_Cinematic);
+	}
+
+	RefreshActiveSegment();
 }
 
 void UGlobalQualitySegmentWidget::ApplyGlobalTier(const TEnumAsByte<EGlobalScalabilitySettings> Tier)
@@ -303,12 +322,12 @@ void UGlobalQualitySegmentWidget::RestyleSegments() const
 		false, false, false);
 	StyleSegment(HighSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_High,
 		false, false, false);
-	// Cinematic has no segment of its own in the Settings panel (the brief's five are Low..Ultra + Custom),
-	// so a Cinematic set of per-feature values shows on Ultra — the nearest tier the control can express.
-	StyleSegment(EpicSetting_Button,
-		DisplayedLevel == EScalabilitySettings::ESsl_Epic || DisplayedLevel == EScalabilitySettings::ESsl_Cinematic,
+	StyleSegment(EpicSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_Epic,
 		false, false, false);
-	StyleSegment(CustomSetting_Button, /*bActive*/false, false, /*bLast*/true, /*bAccentLabel*/true);
+	// Cinematic now has its own segment, so the Ultra fold is gone and this one takes a normal tier label
+	// rather than the Accent "link" colouring it wore as the old Custom entry.
+	StyleSegment(CustomSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_Cinematic,
+		false, /*bLast*/true, /*bAccentLabel*/false);
 }
 
 void UGlobalQualitySegmentWidget::StyleSegment(UButtonWithText* Segment, const bool bActive,

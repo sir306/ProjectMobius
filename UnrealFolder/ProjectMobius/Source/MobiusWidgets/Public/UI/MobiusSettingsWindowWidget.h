@@ -202,10 +202,34 @@ private:
 	void HandleOpenCustomSettingsClicked();
 
 	UFUNCTION()
-	void HandleCustomQualityRequested();
-
-	UFUNCTION()
 	void HandleCustomSettingsConfirmed();
+
+	/**
+	 * Structural fixes the .uasset does not carry, applied once before the theme pass (owner, 2026-08-05).
+	 * Done in C++ rather than the designer for the same reason the rest of this panel's layout repairs are:
+	 * the Blueprint binds the leaves, and reaching their containers means walking GetParent() at runtime.
+	 *
+	 *  - Moves OpenCustomSettingsButton from the footer to directly under the Global Quality bar, and
+	 *    styles it as a LINK (Accent label + outline) so it reads as clickable rather than as a caption.
+	 *  - Re-parents each logging checkbox's label INTO the checkbox, so clicking the text toggles it. A
+	 *    UCheckBox is a UContentWidget, so its single content slot is exactly the right home for the label
+	 *    and Slate then treats the pair as one hit target. NOT applied to the Custom Display matrix, whose
+	 *    cells are deliberately label-less (owner).
+	 *  - Lifts the width cap: the panel's SizeBox pins MaxDesiredWidth to 600, which is what clipped
+	 *    "Medium" to "Mediu:" and "Cinematic" once the fifth segment stopped being a short word.
+	 */
+	void RestructureSettingsLayout();
+
+	/** Puts Label inside CheckBox's content slot so the text is part of the checkbox's hit area. */
+	static void NestCheckBoxLabel(UCheckBox* CheckBox);
+
+	/**
+	 * Paints OpenCustomSettingsButton as a LINK: Accent label, hairline Accent outline, card-coloured fill
+	 * so it does not compete with the segment bar above it. Called from RestructureSettingsLayout and again
+	 * from ApplyMobiusTheme_Implementation, because the button clears bFollowThemePalette and therefore owns
+	 * its own colours across a theme switch.
+	 */
+	void StyleCustomDisplayLink();
 
 	/** The phase-2 host window. Not a UPROPERTY — Slate shared pointers are not GC-tracked. */
 	TSharedPtr<SMoveableWindow> PanelWindow;

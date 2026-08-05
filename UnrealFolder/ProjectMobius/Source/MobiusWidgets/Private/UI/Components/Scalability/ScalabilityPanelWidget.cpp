@@ -31,6 +31,8 @@
 #include "Components/TextBlock.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/SlateBrush.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
 #include "UI/MobiusPanelWindowHost.h"
 #include "UI/Components/ButtonWithText.h"
@@ -214,7 +216,13 @@ void UScalabilityPanelWidget::SyncFromAppliedSettings()
 		ConfirmedLevels.Add(Category, Applied);
 	}
 
-	StagedResolution = Performance ? Performance->GetCurrentScreenResolution() : FIntPoint::ZeroValue;
+	// Presets FIRST. PopulatePresetOptions also runs in NativeConstruct, but the subsystem is not
+	// necessarily up then, and an empty option list makes the match below fail and leave the combo blank —
+	// which is exactly what the owner reported. Re-populating here guarantees options exist before we try
+	// to select one, and RHIGetAvailableResolutions can legitimately change between opens.
+	PopulatePresetOptions();
+
+	StagedResolution = ResolveCurrentResolution(Performance);
 	ConfirmedResolution = StagedResolution;
 
 	RefreshMatrixRows();
@@ -371,6 +379,27 @@ void UScalabilityPanelWidget::PopulatePresetOptions()
 		ResolutionPresetComboBox->AddOption(FormatResolution(Resolution));
 	}
 	bSuppressPresetCallback = false;
+}
+
+FIntPoint UScalabilityPanelWidget::ResolveCurrentResolution(UPerformanceUtilSubsystem* Performance) const
+{
+	// Prefer what is ON SCREEN. UPerformanceUtilSubsystem::GetCurrentScreenResolution returns
+	// GameUserSettings::GetScreenResolution, i.e. the SAVED value, which is why the field could open
+	// reading 1280 while the window was a different size (owner, 2026-08-05). The viewport is the actual
+	// current resolution and is also what a relaunch reproduces, since the saved value is applied on start.
+	if (GEngine && GEngine->GameViewport)
+	{
+		FVector2D ViewportSize = FVector2D::ZeroVector;
+		GEngine->GameViewport->GetViewportSize(ViewportSize);
+		const FIntPoint Live(FMath::RoundToInt(ViewportSize.X), FMath::RoundToInt(ViewportSize.Y));
+		if (Live.X >= GMinimumResolutionAxis && Live.Y >= GMinimumResolutionAxis)
+		{
+			return Live;
+		}
+	}
+
+	// No viewport (design time, or a headless/automation world): the saved value is the best answer left.
+	return Performance ? Performance->GetCurrentScreenResolution() : FIntPoint::ZeroValue;
 }
 
 void UScalabilityPanelWidget::RefreshResolutionControls()

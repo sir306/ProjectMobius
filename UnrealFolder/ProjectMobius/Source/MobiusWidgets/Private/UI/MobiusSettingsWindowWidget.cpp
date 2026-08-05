@@ -26,7 +26,10 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/CheckBox.h"
+#include "Components/HorizontalBox.h"
 #include "Components/Image.h"
+#include "Components/PanelWidget.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/Engine.h"
 #include "Slate/Components/SMoveableWindow.h"
@@ -40,6 +43,13 @@
 
 namespace
 {
+	/**
+	 * Card width. The brief said 420 and the .uasset pins MaxDesiredWidth to 600, but 600 clipped "Medium"
+	 * to "Mediu:" and could not fit "Cinematic" once the fifth segment stopped being a link. Measured
+	 * against the widest row, which is the five-segment bar, not the two logging columns.
+	 */
+	constexpr float GSettingsCardWidth = 700.0f;
+
 	/** The logger's file name, single-sourced from MobiusCustomLoggerSubsystem::Initialize. */
 	const FString GMobiusLogFileName = TEXT("MobiusCustomLog.txt");
 
@@ -127,11 +137,10 @@ void UMobiusSettingsWindowWidget::NativeConstruct()
 		OpenCustomSettingsButton->OnClicked.AddUniqueDynamic(
 			this, &UMobiusSettingsWindowWidget::HandleOpenCustomSettingsClicked);
 	}
-	if (GlobalQualityWidget)
-	{
-		GlobalQualityWidget->OnCustomQualityRequested.AddUniqueDynamic(
-			this, &UMobiusSettingsWindowWidget::HandleCustomQualityRequested);
-	}
+
+	// Before Super, like the binds above: Super sweeps the tree and then calls ApplyMobiusTheme, so any
+	// widget this moves or creates has to be in place first or it paints unthemed until a theme toggle.
+	RestructureSettingsLayout();
 	if (CustomSettingsPanel)
 	{
 		CustomSettingsPanel->OnSettingsConfirmed.AddUniqueDynamic(
@@ -212,6 +221,9 @@ void UMobiusSettingsWindowWidget::ToggleWindow()
 void UMobiusSettingsWindowWidget::ApplyMobiusTheme_Implementation()
 {
 	Super::ApplyMobiusTheme_Implementation();
+
+	// The link owns its own colours (bFollowThemePalette is off), so it needs re-landing per theme.
+	StyleCustomDisplayLink();
 
 	if (PanelBackgroundImage)
 	{
@@ -395,15 +407,159 @@ void UMobiusSettingsWindowWidget::HandleStartupLogWindowToggled(const bool bIsCh
 	}
 }
 
+void UMobiusSettingsWindowWidget::NestCheckBoxLabel(UCheckBox* CheckBox)
+{
+	if (!CheckBox || CheckBox->GetContent() != nullptr)
+	{
+		return; // no checkbox, or its label was already nested on a previous construct
+	}
+
+	UPanelWidget* Row = CheckBox->GetParent();
+	if (!Row)
+	{
+		return;
+	}
+
+	// The label is the checkbox's TextBlock sibling. Take the FIRST one only: a row is authored as
+	// [checkbox][label], and grabbing more would swallow a helper caption that belongs to the column.
+	UTextBlock* Label = nullptr;
+	for (UWidget* Sibling : Row->GetAllChildren())
+	{
+		if (Sibling == CheckBox)
+		{
+			continue;
+		}
+		if (UTextBlock* AsText = Cast<UTextBlock>(Sibling))
+		{
+			Label = AsText;
+			break;
+		}
+	}
+	if (!Label)
+	{
+		return;
+	}
+
+	Label->RemoveFromParent();
+	CheckBox->SetContent(Label);
+}
+
+void UMobiusSettingsWindowWidget::RestructureSettingsLayout()
+{
+	// ---- 1. the four logging toggles: label becomes part of the checkbox ----
+	NestCheckBoxLabel(SessionLoggingCheckBox);
+	NestCheckBoxLabel(SessionLogWindowCheckBox);
+	NestCheckBoxLabel(StartupLoggingCheckBox);
+	NestCheckBoxLabel(StartupLogWindowCheckBox);
+
+	// ---- 2. lift the width cap that clipped the segment labels ----
+	// Walk up from the quality control to the first SizeBox: that is the one sizing the card, and the
+	// window is Autosized so its width follows. MaxDesiredWidth is the cap that mattered (600); Min moves
+	// with it so the card does not shrink below the new width when content is narrow.
+	// EVERY SizeBox on the way up, not just the first: the asset has two (one wrapping the card, one
+	// wrapping the body) and only one of them carried the MaxDesiredWidth 600 that did the clipping.
+	// Widening all of them is safe because each is an ANCESTOR of the segment bar, so each already has to
+	// be at least as wide as it.
+	if (GlobalQualityWidget)
+	{
+		UWidget* Ancestor = GlobalQualityWidget;
+		for (int32 Depth = 0; Depth < 10 && Ancestor; ++Depth)
+		{
+			Ancestor = Ancestor->GetParent();
+			if (USizeBox* CardSizer = Cast<USizeBox>(Ancestor))
+			{
+				CardSizer->SetMinDesiredWidth(GSettingsCardWidth);
+				CardSizer->SetMaxDesiredWidth(GSettingsCardWidth);
+				// WidthOverride wins over both when set, and the asset pins one of these to 420.
+				CardSizer->SetWidthOverride(GSettingsCardWidth);
+			}
+		}
+	}
+
+	// ---- 3. move the Custom Display link under the Global Quality bar and make it look clickable ----
+	if (!OpenCustomSettingsButton || !GlobalQualityWidget)
+	{
+		return;
+	}
+	UPanelWidget* QualityParent = GlobalQualityWidget->GetParent();
+	if (!QualityParent)
+	{
+		return;
+	}
+
+	// Only move it if it is not already there — NativeConstruct can run more than once per widget.
+	if (OpenCustomSettingsButton->GetParent() != QualityParent)
+	{
+		const int32 QualityIndex = QualityParent->GetChildIndex(GlobalQualityWidget);
+		OpenCustomSettingsButton->RemoveFromParent();
+		QualityParent->AddChild(OpenCustomSettingsButton);
+		if (QualityIndex != INDEX_NONE)
+		{
+			// Directly BELOW the bar, hence +1. AddChild appended it, so shift it back up into place.
+			QualityParent->ShiftChild(QualityIndex + 1, OpenCustomSettingsButton);
+		}
+	}
+
+	// The button owns its own colours from here on: without this, UBaseButton re-stamps flat
+	// ButtonBg/ButtonText on construct and on every theme change, which is what made it read as a caption.
+	OpenCustomSettingsButton->bFollowThemePalette = false;
+	StyleCustomDisplayLink();
+	// Deliberately NOT rewriting the label: the ellipsis already in the .uasset is correct, and a narrow
+	// non-ASCII literal here would ship as tofu (the source-encoding trap).
+}
+
+void UMobiusSettingsWindowWidget::StyleCustomDisplayLink()
+{
+	if (!OpenCustomSettingsButton)
+	{
+		return;
+	}
+
+	// A link, not a caption: Accent label with a hairline Accent outline so it has a visible hit area.
+	// Fill stays the card colour so it does not read as a solid button competing with the segment bar.
+	const FLinearColor Accent = GetThemeColor(EMobiusPaletteRole::Accent);
+	const FLinearColor Fill = GetThemeColor(EMobiusPaletteRole::RibbonBg);
+	const FLinearColor Hover = GetThemeColor(EMobiusPaletteRole::ButtonHoverBg);
+
+	auto MakeBrush = [](const FLinearColor& InFill, const FLinearColor& Outline)
+	{
+		FSlateBrush Brush;
+		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Brush.SetResourceObject(nullptr);
+		Brush.TintColor = FSlateColor(InFill);
+		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Brush.OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+		Brush.OutlineSettings.Width = 1.0f;
+		Brush.OutlineSettings.Color = FSlateColor(Outline);
+		return Brush;
+	};
+
+	FButtonStyle Style = OpenCustomSettingsButton->GetStyle();
+	Style.SetNormal(MakeBrush(Fill, Accent));
+	Style.SetHovered(MakeBrush(Hover, Accent));
+	Style.SetPressed(MakeBrush(Hover, Accent));
+	Style.SetDisabled(MakeBrush(Fill, Accent));
+	const FSlateColor AccentText(Accent);
+	Style.NormalForeground = AccentText;
+	Style.HoveredForeground = AccentText;
+	Style.PressedForeground = AccentText;
+	Style.DisabledForeground = AccentText;
+	// Equal totals: a smaller pressed padding shrinks the hit rect mid-press and Slate discards the click.
+	Style.NormalPadding = FMargin(10.0f, 4.0f);
+	Style.PressedPadding = FMargin(10.0f, 5.0f, 10.0f, 3.0f);
+	OpenCustomSettingsButton->SetStyle(Style);
+
+	// SetStyle bypasses SynchronizeProperties, so re-land the label colour on the STextBlock itself —
+	// the style foregrounds above only reach text that resolves through UseForeground.
+	OpenCustomSettingsButton->ApplyThemedLabelColor(Accent);
+}
+
 void UMobiusSettingsWindowWidget::HandleOpenCustomSettingsClicked()
 {
 	SetCustomPanelVisible(true);
 }
 
-void UMobiusSettingsWindowWidget::HandleCustomQualityRequested()
-{
-	SetCustomPanelVisible(true);
-}
+
 
 void UMobiusSettingsWindowWidget::HandleCustomSettingsConfirmed()
 {

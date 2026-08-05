@@ -171,6 +171,14 @@ private:
 	void PopulatePresetOptions();
 
 	/** Pushes StagedResolution into the X/Y fields and the combo selection. */
+	/**
+	 * The resolution the user is actually looking at. Prefers the live viewport size over
+	 * GetCurrentScreenResolution, which reads the SAVED GameUserSettings value and so could show a
+	 * resolution the window did not have (owner, 2026-08-05). Falls back to the saved value when there is
+	 * no viewport, e.g. design time.
+	 */
+	FIntPoint ResolveCurrentResolution(class UPerformanceUtilSubsystem* Performance) const;
+
 	void RefreshResolutionControls();
 
 	/** Pushes StagedLevels into the rows. */

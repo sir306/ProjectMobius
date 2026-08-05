@@ -29,6 +29,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/PanelWidget.h"
+#include "Components/TextBlock.h"
 #include "Style/MobiusStyle.h"
 #include "Styling/SlateTypes.h"
 #include "TimerManager.h"
@@ -116,6 +117,19 @@ void UThemeToggleWidget::BuildSegmentedControl()
 	if (!Row)
 	{
 		return;
+	}
+
+	// Owner, 2026-08-05: the control showed TWO titles — the Settings panel's "UI Theme" group header and
+	// this row's own "UI theme" label. Collapse the inner one; the group header is the consistent form,
+	// matching Global Quality / Pedestrian Models / Logging. Collapsed rather than removed so the row's
+	// slot layout is untouched and the label survives for anyone reading the asset.
+	for (UWidget* RowChild : Row->GetAllChildren())
+	{
+		if (UTextBlock* InnerTitle = Cast<UTextBlock>(RowChild))
+		{
+			InnerTitle->SetVisibility(ESlateVisibility::Collapsed);
+			break; // first TextBlock only — the segments carry their own labels below
+		}
 	}
 
 	// A20: the pill is gone. Nothing binds or styles the checkbox any more, so take it off screen.
