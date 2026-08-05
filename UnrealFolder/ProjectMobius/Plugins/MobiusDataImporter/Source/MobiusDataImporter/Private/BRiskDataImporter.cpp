@@ -475,7 +475,152 @@ namespace
 	 * Joined on spaces[].roomNumber == FBRiskRoomGeometry::RoomId. Non-fatal throughout: a
 	 * missing or malformed file leaves every room on the legacy Origin/Size rectangle.
 	 */
-	void ParseZonesDataJson(const FString& JsonPath, TArray<FBRiskRoomGeometry>& InOutRooms)
+	/**
+	 * Replace the VENTGEOM-derived vent list with the openings[] array when the Revit add-in emitted
+	 * one. REPLACE, not merge, and deliberately so.
+	 *
+	 * The .smv gives connectivity and modelled sizes but places openings by (face, offset) inside
+	 * B-Risk's equivalent rectangle, and both halves of that pair are unusable against a real floor
+	 * plan: every VENTGEOM record in both test scenarios carries offset 0, so all vents on a wall
+	 * stack at one point, and face is not a wall id at all (face 2 and face 3 each map to three
+	 * different normals across these 34 openings). openings[] carries a real centre per vent, so it
+	 * is strictly better information about the same set of openings - keeping both and joining them
+	 * would only add an ambiguous float match over records that are otherwise identical.
+	 *
+	 * A count disagreement between the two is reported but does NOT stop the replacement. It is worth
+	 * knowing about - the real export is exactly 1:1 - but the alternative is falling back to
+	 * placement that is known to be wrong, and if the two files really described different models
+	 * the spaces[] room join would already have failed and said so.
+	 */
+	void ParseZonesDataOpenings(
+		const TSharedPtr<FJsonObject>& Root,
+		const FString& JsonPath,
+		const TArray<FBRiskRoomGeometry>& Rooms,
+		TArray<FBRiskVentGeometry>& InOutVents)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Openings = nullptr;
+		if (!Root->TryGetArrayField(TEXT("openings"), Openings) || !Openings || Openings->Num() == 0)
+		{
+			// Pre-openings export. Every earlier scenario is this shape; not worth a warning.
+			return;
+		}
+
+		if (InOutVents.Num() > 0 && Openings->Num() != InOutVents.Num())
+		{
+			UE_LOG(LogBRiskDataImporter, Warning,
+				TEXT("B-Risk zones JSON declares %d openings but the .smv has %d VENTGEOM records (%s). ")
+				TEXT("Using the openings anyway - they are the only real placement - but the two files ")
+				TEXT("should agree, so check the export."),
+				Openings->Num(), InOutVents.Num(), *JsonPath);
+		}
+
+		// B-Risk numbers the outside as one past the last room, which is what VENTGEOM's toRoom
+		// carries for an exterior opening. Matching it keeps FindRoomById returning null for the
+		// outside exactly as before, so adjacency and flow behave identically.
+		const int32 ExteriorRoomId = Rooms.Num() + 1;
+
+		TArray<FBRiskVentGeometry> Parsed;
+		Parsed.Reserve(Openings->Num());
+
+		for (const TSharedPtr<FJsonValue>& OpeningValue : *Openings)
+		{
+			const TSharedPtr<FJsonObject> Opening = OpeningValue.IsValid() ? OpeningValue->AsObject() : nullptr;
+			if (!Opening.IsValid())
+			{
+				continue;
+			}
+
+			int32 RoomA = INDEX_NONE;
+			if (!Opening->TryGetNumberField(TEXT("roomA"), RoomA))
+			{
+				UE_LOG(LogBRiskDataImporter, Warning, TEXT("B-Risk opening has no 'roomA'; skipped."));
+				continue;
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* Centre = nullptr;
+			if (!Opening->TryGetArrayField(TEXT("centre"), Centre) || !Centre || Centre->Num() < 3)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk opening in room %d has no usable 'centre'; skipped."), RoomA);
+				continue;
+			}
+
+			FBRiskVentGeometry Vent;
+			Vent.FromRoomId = RoomA;
+			Vent.CentreMetres = FVector(
+				(*Centre)[0]->AsNumber(), (*Centre)[1]->AsNumber(), (*Centre)[2]->AsNumber());
+			Vent.bHasPlacement = true;
+
+			int32 RoomB = INDEX_NONE;
+			Opening->TryGetBoolField(TEXT("exterior"), Vent.bExterior);
+			Vent.ToRoomId = Opening->TryGetNumberField(TEXT("roomB"), RoomB) ? RoomB : ExteriorRoomId;
+
+			Opening->TryGetNumberField(TEXT("ventId"), Vent.VentId);
+			Opening->TryGetNumberField(TEXT("sillHeight"), Vent.SillHeight);
+			Opening->TryGetNumberField(TEXT("height"), Vent.Height);
+			Opening->TryGetNumberField(TEXT("width"), Vent.PhysicalWidth);
+			Opening->TryGetNumberField(TEXT("openTimeS"), Vent.OpenTimeSeconds);
+			Opening->TryGetNumberField(TEXT("closeTimeS"), Vent.CloseTimeSeconds);
+
+			// Width keeps meaning "what B-Risk simulated" so anything reasoning about flow area is
+			// unaffected by this file appearing. modelledWidth is that figure; fall back to the true
+			// width only when the add-in omitted it, so Width is never left at zero and silently
+			// culled by the renderer's own width check.
+			if (!Opening->TryGetNumberField(TEXT("modelledWidth"), Vent.Width))
+			{
+				Vent.Width = Vent.PhysicalWidth;
+			}
+
+			FString TypeName;
+			if (Opening->TryGetStringField(TEXT("type"), TypeName))
+			{
+				if (TypeName.Equals(TEXT("door"), ESearchCase::IgnoreCase))          Vent.Kind = EBRiskVentKind::Door;
+				else if (TypeName.Equals(TEXT("window"), ESearchCase::IgnoreCase))   Vent.Kind = EBRiskVentKind::Window;
+				else if (TypeName.Equals(TEXT("leakage"), ESearchCase::IgnoreCase))  Vent.Kind = EBRiskVentKind::Leakage;
+				else
+				{
+					UE_LOG(LogBRiskDataImporter, Warning,
+						TEXT("B-Risk opening %d has unrecognised type '%s'; treated as unclassified."),
+						Vent.VentId, *TypeName);
+				}
+			}
+
+			// Face is meaningless once a centre exists, and leaving a stale value would invite a
+			// future reader to treat it as a fallback. Offset likewise.
+			Vent.Face = INDEX_NONE;
+			Vent.Offset = 0.0;
+
+			Parsed.Add(MoveTemp(Vent));
+		}
+
+		if (Parsed.Num() == 0)
+		{
+			UE_LOG(LogBRiskDataImporter, Warning,
+				TEXT("B-Risk zones JSON had %d openings but none were usable (%s); keeping the .smv vents."),
+				Openings->Num(), *JsonPath);
+			return;
+		}
+
+		int32 Doors = 0, Windows = 0, Leakage = 0;
+		for (const FBRiskVentGeometry& Vent : Parsed)
+		{
+			Doors   += (Vent.Kind == EBRiskVentKind::Door)    ? 1 : 0;
+			Windows += (Vent.Kind == EBRiskVentKind::Window)  ? 1 : 0;
+			Leakage += (Vent.Kind == EBRiskVentKind::Leakage) ? 1 : 0;
+		}
+
+		UE_LOG(LogBRiskDataImporter, Log,
+			TEXT("Applied %d B-Risk openings from %s (%d doors, %d windows, %d leakage), replacing %d ")
+			TEXT("VENTGEOM records: real centres supersede the equivalent-rectangle face/offset."),
+			Parsed.Num(), *JsonPath, Doors, Windows, Leakage, InOutVents.Num());
+
+		InOutVents = MoveTemp(Parsed);
+	}
+
+	void ParseZonesDataJson(
+		const FString& JsonPath,
+		TArray<FBRiskRoomGeometry>& InOutRooms,
+		TArray<FBRiskVentGeometry>& InOutVents)
 	{
 		if (!FPaths::FileExists(JsonPath))
 		{
@@ -649,6 +794,8 @@ namespace
 		UE_LOG(LogBRiskDataImporter, Log,
 			TEXT("Applied B-Risk zone footprints from %s (%d of %d rooms matched)."),
 			*JsonPath, MatchedRooms, InOutRooms.Num());
+
+		ParseZonesDataOpenings(Root, JsonPath, InOutRooms, InOutVents);
 	}
 
 	void ParseSprinklersXml(const FString& XmlPath, const TArray<FBRiskRoomGeometry>& Rooms, TArray<FBRiskSprinklerGeometry>& OutSprinklers)
@@ -1067,7 +1214,7 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	// Must run before anything that consumes room geometry: it is the only source of the
 	// real plan shape, since the .smv rectangle is area/perimeter-equivalent only.
 	const FString ZonesDataJsonPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("Zones-data.json")));
-	ParseZonesDataJson(ZonesDataJsonPath, OutData.Rooms);
+	ParseZonesDataJson(ZonesDataJsonPath, OutData.Rooms, OutData.Vents);
 	if (FPaths::FileExists(ZonesDataJsonPath))
 	{
 		OutData.ReferencedFiles.AddUnique(ZonesDataJsonPath);

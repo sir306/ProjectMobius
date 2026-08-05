@@ -118,14 +118,20 @@ namespace
 	void BuildVentOutlineEdges(
 		const FVector& CenterCm,
 		const FVector& SizeCm,
+		int32 NormalAxis,
 		float WireThicknessCm,
 		TArray<FVector>& OutCenters,
 		TArray<FVector>& OutSizes)
 	{
-		// Wall normal = thinnest axis (the slab thickness).
-		int32 NormalAxis = 0;
-		if (SizeCm[1] < SizeCm[NormalAxis]) { NormalAxis = 1; }
-		if (SizeCm[2] < SizeCm[NormalAxis]) { NormalAxis = 2; }
+		// The wall normal is PASSED IN, not inferred from the box.
+		//
+		// It used to be taken as the thinnest axis, which is true only while the opening is wider
+		// than the slab is thick. Every leakage vent breaks that: a 10 mm gap round a door leaf is
+		// (1, 8, 213) cm, so the 1 cm OPENING is thinner than the 8 cm slab, the width axis was
+		// mistaken for the wall normal, and the outline came out in the wrong plane - an 8 x 213 cm
+		// rectangle lying across the wall instead of a sliver in it. Visually that turned each
+		// hairline leakage path into a second door-sized ghost overlapping its parent door, which is
+		// exactly how it looked on screen. 18 of the 34 openings in the 12-room test are that shape.
 		const int32 UAxis = (NormalAxis + 1) % 3;
 		const int32 VAxis = (NormalAxis + 2) % 3;
 
@@ -203,6 +209,17 @@ ABRiskHazardVisualizer::ABRiskHazardVisualizer()
 	}
 }
 
+FLinearColor ABRiskHazardVisualizer::VentColourForKind(EBRiskVentKind Kind) const
+{
+	switch (Kind)
+	{
+	case EBRiskVentKind::Door:    return DoorVentColour;
+	case EBRiskVentKind::Window:  return WindowVentColour;
+	case EBRiskVentKind::Leakage: return LeakageVentColour;
+	default:                      return UnclassifiedVentColour;
+	}
+}
+
 bool ABRiskHazardVisualizer::ComputeVentSlab(
 	const FBRiskVentGeometry& Vent,
 	const FBRiskRoomGeometry* FromRoom,
@@ -211,17 +228,30 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	BRiskCoord::ERoomFrame Frame,
 	float ThicknessCm,
 	FVector& OutCenterCm,
-	FVector& OutSizeCm)
+	FVector& OutSizeCm,
+	int32* OutNormalAxis)
 {
 	if (!FromRoom || Vent.Width <= 0.0 || Vent.Height <= 0.0 || Scale <= 0.0f)
 	{
 		return false;
 	}
 
+	// Which axis the wall's normal runs along. Reported rather than left for the caller to infer
+	// from OutSizeCm - "the thinnest axis" is only the normal while the opening is wider than the
+	// slab is thick, which no leakage vent is.
+	const auto SetNormalAxis = [OutNormalAxis](int32 Axis)
+	{
+		if (OutNormalAxis)
+		{
+			*OutNormalAxis = Axis;
+		}
+	};
+
 	// Same source of truth as the smoke volumes and egress bounds, so a vent cannot end up in a
 	// different frame from the room it is cut into. Under SmokeviewSwap this returns exactly what
 	// ToUnrealBox used to.
-	const FBox FromBoxCm = BRiskCoord::MakeRoomFootprint(*FromRoom, Scale, Frame).Bounds;
+	const BRiskCoord::FRoomFootprintCm FromFootprint = BRiskCoord::MakeRoomFootprint(*FromRoom, Scale, Frame);
+	const FBox FromBoxCm = FromFootprint.Bounds;
 	const FVector MinCm = FromBoxCm.Min;
 	const FVector MaxCm = FromBoxCm.Max;
 
@@ -237,8 +267,96 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	}
 	const double CenterZ = (Sill + Head) * 0.5;
 	const double HeightCm = Head - Sill;
-	const double WidthCm = Vent.Width * Scale;
+	// The TRUE opening when the add-in gave us one. Vent.Width is what B-Risk simulated, commonly
+	// half the real leaf, so drawing it would show every door at half size.
+	const double WidthCm = (Vent.PhysicalWidth > 0.0 ? Vent.PhysicalWidth : Vent.Width) * Scale;
 	const double OffsetCm = Vent.Offset * Scale;
+
+	// --- Real placement, when Zones-data.json openings[] supplied a centre ----------------------
+	//
+	// Everything below this block derives a wall from face/offset against the room's BOUNDING BOX.
+	// That is a fallback for scenarios with no openings[], and it is wrong in three separate ways
+	// for a non-rectangular room: the bbox walls are not the room's walls (Corridor 15's bbox is
+	// 17.8 x 6.2 m around a 1 m-wide L), every .smv offset is 0 so vents stack, and face does not
+	// identify a wall. A centre replaces all three at once.
+	//
+	// The centre is used VERBATIM. It sits on the wall centreline, about half a wall thickness
+	// outside the room's footprint polygon, and projecting it onto the polygon would be wrong: for a
+	// shared wall the centreline is the only point both rooms agree on. The polygon is consulted
+	// solely to read off which way the opening runs.
+	if (Vent.bHasPlacement)
+	{
+		const FVector CentreCm = BRiskCoord::FootprintToUnreal(Vent.CentreMetres, Scale);
+		const FVector2D CentrePlan(CentreCm.X, CentreCm.Y);
+		const TArray<FVector2D>& Ring = FromFootprint.Polygon;
+
+		// No polygon means no wall to take an axis from - the room is an equivalent rectangle whose
+		// orientation is already unreliable, so guessing an axis would place the opening confidently
+		// wrong. Fall through to the legacy path rather than invent one.
+		if (Ring.Num() >= 3)
+		{
+			// Nearest edge wins, with the full opening width having to fit as the tie-break. Ties are
+			// real: a vent in a room corner is equidistant from two edges (measured: two of the 34
+			// openings in the 12-room test sit exactly on a corner at 0.100 m from both). Without the
+			// fit test the winner would be whichever edge came first in winding order.
+			// Distances, not squared distances. A tolerance on squared centimetres is not a
+			// tolerance on centimetres - at the measured 10 cm stand-off, two candidate edges a
+			// visible 0.5 mm apart differ by ~1 cm^2, so a squared comparison would sort near-ties
+			// by an amount nobody chose. TieToleranceCm is a deliberate 0.1 mm.
+			constexpr double TieToleranceCm = 0.01;
+
+			int32 BestEdge = INDEX_NONE;
+			double BestDistanceCm = TNumericLimits<double>::Max();
+			bool bBestFits = false;
+
+			for (int32 EdgeIndex = 0; EdgeIndex < Ring.Num(); ++EdgeIndex)
+			{
+				const FVector2D& A = Ring[EdgeIndex];
+				const FVector2D& B = Ring[(EdgeIndex + 1) % Ring.Num()];
+				const FVector2D Along = B - A;
+				const double LengthSq = Along.SizeSquared();
+				if (LengthSq <= 0.0)
+				{
+					continue;
+				}
+
+				const double T = FMath::Clamp(FVector2D::DotProduct(CentrePlan - A, Along) / LengthSq, 0.0, 1.0);
+				const FVector2D Closest = A + Along * T;
+				const double DistanceCm = FVector2D::Distance(CentrePlan, Closest);
+
+				const double Length = FMath::Sqrt(LengthSq);
+				const double AlongCm = T * Length;
+				const bool bFits = (AlongCm - WidthCm * 0.5 >= -TieToleranceCm)
+					&& (AlongCm + WidthCm * 0.5 <= Length + TieToleranceCm);
+
+				// Strictly nearer always wins; an equal-distance edge only takes the place of the
+				// incumbent by being one the opening actually fits on.
+				const bool bNearer = DistanceCm < BestDistanceCm - TieToleranceCm;
+				const bool bTiedAndBetter = FMath::Abs(DistanceCm - BestDistanceCm) <= TieToleranceCm
+					&& bFits && !bBestFits;
+
+				if (BestEdge == INDEX_NONE || bNearer || bTiedAndBetter)
+				{
+					BestEdge = EdgeIndex;
+					BestDistanceCm = DistanceCm;
+					bBestFits = bFits;
+				}
+			}
+
+			if (BestEdge != INDEX_NONE)
+			{
+				const FVector2D EdgeDirection = Ring[(BestEdge + 1) % Ring.Num()] - Ring[BestEdge];
+				const bool bRunsAlongX = FMath::Abs(EdgeDirection.X) >= FMath::Abs(EdgeDirection.Y);
+
+				OutCenterCm = FVector(CentrePlan.X, CentrePlan.Y, CenterZ);
+				OutSizeCm = bRunsAlongX
+					? FVector(WidthCm, ThicknessCm, HeightCm)
+					: FVector(ThicknessCm, WidthCm, HeightCm);
+				SetNormalAxis(bRunsAlongX ? 1 : 0);
+				return true;
+			}
+		}
+	}
 
 	enum EVentWall { WallNegX, WallPosX, WallNegY, WallPosY };
 	EVentWall Wall = WallNegY;
@@ -318,6 +436,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		const double WallX = (Wall == WallPosX) ? MaxCm.X : MinCm.X;
 		OutCenterCm = FVector(WallX, (OpenStart + OpenEnd) * 0.5, CenterZ);
 		OutSizeCm = FVector(ThicknessCm, OpenEnd - OpenStart, HeightCm);
+		SetNormalAxis(0);
 		return true;
 	}
 
@@ -337,6 +456,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	const double WallY = (Wall == WallPosY) ? MaxCm.Y : MinCm.Y;
 	OutCenterCm = FVector((OpenStart + OpenEnd) * 0.5, WallY, CenterZ);
 	OutSizeCm = FVector(OpenEnd - OpenStart, ThicknessCm, HeightCm);
+	SetNormalAxis(1);
 	return true;
 }
 
@@ -521,20 +641,40 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 
 		FVector CenterCm = FVector::ZeroVector;
 		FVector SizeCm = FVector::ZeroVector;
-		if (!CubeMesh || !ComputeVentSlab(Vent, FromRoom, ToRoom, Scale, Frame, VentSlabThicknessCm, CenterCm, SizeCm))
+		int32 NormalAxis = 1;
+		if (!CubeMesh || !ComputeVentSlab(
+			Vent, FromRoom, ToRoom, Scale, Frame, VentSlabThicknessCm, CenterCm, SizeCm, &NormalAxis))
 		{
+			// Says which of the causes it was. The old text blamed "no FromRoom geometry or zero
+			// opening" for every case, including the commonest one by far - a face id outside 1-4,
+			// which real .smv files emit constantly (8 of 34 in the 12-room test) and which this
+			// function rejects outright.
+			const TCHAR* Reason =
+				!CubeMesh                          ? TEXT("no cube mesh") :
+				!FromRoom                          ? TEXT("no FromRoom geometry") :
+				(Vent.Width <= 0.0 || Vent.Height <= 0.0) ? TEXT("zero-size opening") :
+				(!Vent.bHasPlacement && (Vent.Face < 1 || Vent.Face > 4))
+					? TEXT("unhandled .smv face id and no openings[] centre to place it from")
+					: TEXT("degenerate after clamping to the room bounds");
+
 			UE_LOG(LogBRiskHazardVisualizer, Warning,
-				TEXT("Skipping B-Risk vent %d (fromRoom=%d toRoom=%d face=%d width=%g height=%g): no FromRoom geometry or zero opening."),
-				VentIndex, Vent.FromRoomId, Vent.ToRoomId, Vent.Face, Vent.Width, Vent.Height);
+				TEXT("Skipping B-Risk vent %d (fromRoom=%d toRoom=%d face=%d width=%g height=%g): %s."),
+				VentIndex, Vent.FromRoomId, Vent.ToRoomId, Vent.Face, Vent.Width, Vent.Height, Reason);
 			continue;
 		}
 
 		// Render the opening as a 4-edge wireframe rectangle to match the room zone outline
 		// style, rather than a solid slab.
-		constexpr float VentWireThicknessCm = 6.0f;
+		// Matches SmokeOutlineThicknessCm in BRiskSmokeVisualizer.cpp, which draws the cyan room zone
+		// outline: the two are read together and a vent wire three times heavier than the room it
+		// sits in reads as a different class of object. It was 6 cm, which also swallowed the
+		// openings it was drawing - a leakage path is 1-40 mm wide, so its whole outline fitted
+		// inside its own wire. Openings are drawn TRUE TO SCALE; nothing here widens them.
+		constexpr float VentWireThicknessCm = 2.0f;
+
 		TArray<FVector> EdgeCenters;
 		TArray<FVector> EdgeSizes;
-		BuildVentOutlineEdges(CenterCm, SizeCm, VentWireThicknessCm, EdgeCenters, EdgeSizes);
+		BuildVentOutlineEdges(CenterCm, SizeCm, NormalAxis, VentWireThicknessCm, EdgeCenters, EdgeSizes);
 
 		for (int32 EdgeIndex = 0; EdgeIndex < EdgeCenters.Num(); ++EdgeIndex)
 		{
@@ -558,10 +698,11 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 
 			// Smokeview VENTCOLOR default (1,0,1) — magenta is the standard vent/door colour
 			// fire engineers recognise (SR282 Fig.19 shows magenta vent outlines in Smokeview).
+			// Leakage vents have no such convention and take their own colour; see VentColourForKind.
 			UMaterialInstanceDynamic* VentMaterial = MakeColoredMaterial(
 				BasicShapeMaterial,
 				this,
-				FLinearColor(1.0f, 0.0f, 1.0f, 1.0f));
+				VentColourForKind(Vent.Kind));
 			if (VentMaterial)
 			{
 				VentEdge->SetMaterial(0, VentMaterial);
@@ -578,11 +719,18 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		// FromRoom.
 		if (PlaneMesh && VentFlowMaterial)
 		{
-			const FBox FromBoxCm = BRiskCoord::ToUnrealBox(FromRoom->Origin, FromRoom->Size, Scale);
+			// Both of these were independently wrong, in the same two ways the outline was.
+			//
+			// ToUnrealBox ignores the scenario's room frame, unlike everything else in this
+			// function (see MakeRoomFootprint at the top of ComputeVentSlab) - and this box's
+			// centre is what decides which way the flow band faces, so under the Revit frame it
+			// could point the band out of the opposite wall.
+			//
+			// The axis was re-derived here as "thinnest", the same inference that put every leakage
+			// vent's outline in the wrong plane. ComputeVentSlab now reports the real wall normal,
+			// so use it rather than guessing again.
+			const FBox FromBoxCm = BRiskCoord::MakeRoomFootprint(*FromRoom, Scale, Frame).Bounds;
 			const FVector FromCenterCm = FromBoxCm.GetCenter();
-			int32 NormalAxis = 0;
-			if (SizeCm[1] < SizeCm[NormalAxis]) { NormalAxis = 1; }
-			if (SizeCm[2] < SizeCm[NormalAxis]) { NormalAxis = 2; }
 			FVector OutwardNormal = FVector::ZeroVector;
 			OutwardNormal[NormalAxis] = (CenterCm[NormalAxis] >= FromCenterCm[NormalAxis]) ? 1.0 : -1.0;
 

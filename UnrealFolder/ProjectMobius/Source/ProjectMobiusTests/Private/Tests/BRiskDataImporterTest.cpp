@@ -116,17 +116,25 @@ namespace
 			TEXT("basemodel_testBox_zone.csv\n");
 	}
 
-	/** Zones-data.json carrying the true L-shaped footprint for room 1, wound clockwise. */
-	FString MakeZonesDataJson()
+	/**
+	 * The single spaces[] entry: room 1 as the true L-shaped corridor, wound clockwise.
+	 *
+	 * Deliberately CW (negative shoelace) so the importer's winding normalisation is exercised
+	 * rather than assumed - the exporter guarantees no particular winding.
+	 *
+	 * Edges, in the order written, for anything placing openings against them:
+	 *   spur west  x = -8.7635, y -16.0189..-10.8329, along Y, 5.186 m
+	 *   spur north y = -10.8329, x -8.7635..-7.7635,  along X, 1.000 m
+	 *   spur east  x = -7.7635, y -10.8329..-16.0189, along Y, 5.186 m
+	 *   leg north  y = -16.0189, x -7.7635..3.0505,   along X, 10.814 m
+	 *   leg east   x =  3.0505, y -16.0189..-17.0189, along Y, 1.000 m
+	 *   leg south  y = -17.0189, x 3.0505..-14.7495,  along X, 17.800 m
+	 *   leg west   x = -14.7495, y -17.0189..-16.0189, along Y, 1.000 m
+	 *   stub north y = -16.0189, x -14.7495..-8.7635, along X, 5.986 m
+	 */
+	FString MakeZonesDataSpaceObject()
 	{
-		// Deliberately CW (negative shoelace) so the importer's winding normalisation is
-		// exercised rather than assumed - the exporter guarantees no particular winding.
 		return
-			TEXT("{\n")
-			TEXT("  \"format\": \"simulex-zones-data\",\n")
-			TEXT("  \"version\": 1,\n")
-			TEXT("  \"source\": { \"coordinateSystem\": \"revit-internal\", \"iteration\": 1 },\n")
-			TEXT("  \"spaces\": [\n")
 			TEXT("    {\n")
 			TEXT("      \"roomNumber\": 1,\n")
 			TEXT("      \"name\": \"Corridor 15\",\n")
@@ -138,9 +146,20 @@ namespace
 			TEXT("        [-7.7635, -16.0189], [3.0505, -16.0189], [3.0505, -17.0189],\n")
 			TEXT("        [-14.7495, -17.0189], [-14.7495, -16.0189]\n")
 			TEXT("      ] } ]\n")
-			TEXT("    }\n")
-			TEXT("  ]\n")
-			TEXT("}\n");
+			TEXT("    }\n");
+	}
+
+	/** Zones-data.json carrying the true L-shaped footprint for room 1, and no openings[]. */
+	FString MakeZonesDataJson()
+	{
+		return FString::Printf(
+			TEXT("{\n")
+			TEXT("  \"format\": \"simulex-zones-data\",\n")
+			TEXT("  \"version\": 1,\n")
+			TEXT("  \"source\": { \"coordinateSystem\": \"revit-internal\", \"iteration\": 1 },\n")
+			TEXT("  \"spaces\": [\n%s  ]\n")
+			TEXT("}\n"),
+			*MakeZonesDataSpaceObject());
 	}
 
 	bool WriteLShapedScenario(const FString& TestDir, FString& OutSmvPath, bool bIncludeZonesJson)
@@ -1140,6 +1159,308 @@ bool FBRiskDataImporterFailureTest::RunTest(const FString& Parameters)
 		WriteTextFile(MalformedCsv, TEXT("s,C\nTime,ULT_1\n0,not-a-number\n")));
 	TestFalse(TEXT("Malformed numeric cell should fail"),
 		FBRiskDataImporter::ImportScenarioFromSmv(MalformedSmv, Data, &Error));
+
+	return true;
+}
+
+// --- Openings[]: real vent placement from the Revit add-in --------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskOpeningsPlacementTest,
+	"ProjectMobius.BRisk.Importer.OpeningsPlacement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
+{
+	// One L-shaped room, and a Zones-data.json carrying BOTH the footprint and an openings array.
+	// The .smv deliberately disagrees: its single VENTGEOM sits on face 3 at offset 0 - the shape
+	// that stacks every vent on one bounding-box wall. openings[] must win.
+	const FString TestDir = MakeBRiskTestDir();
+	const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+	const FString CsvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox_zone.csv"));
+	const FString JsonPath = FPaths::Combine(TestDir, TEXT("Zones-data.json"));
+
+	// Three openings on the L described by MakeZonesDataSpaceObject, each on the wall CENTRELINE -
+	// 0.1 m outside the footprint polygon, exactly as the real add-in emits them:
+	//   door + leakage on "leg south" (y = -17.0189, runs along X) -> centre y = -17.1189
+	//   window on "spur east"         (x =  -7.7635, runs along Y) -> centre x =  -7.6635
+	// The two axes are both covered on purpose: a hard-coded or bounding-box-derived axis would
+	// place the window identically to the door and still pass a single-axis test.
+	const FString ZonesJson = FString::Printf(
+		TEXT("{\n")
+		TEXT("  \"format\": \"simulex-zones-data\", \"version\": 1,\n")
+		TEXT("  \"source\": { \"coordinateSystem\": \"revit-internal\", \"iteration\": 1 },\n")
+		TEXT("  \"spaces\": [\n%s  ],\n")
+		TEXT("  \"openings\": [\n")
+		TEXT("    { \"ventId\": 1, \"type\": \"door\", \"roomA\": 1, \"exterior\": true,\n")
+		TEXT("      \"centre\": [-10.75, -17.1189, 1.067], \"normal\": [0, -1],\n")
+		TEXT("      \"width\": 0.9, \"modelledWidth\": 0.45, \"height\": 2.134, \"sillHeight\": 0.0,\n")
+		TEXT("      \"openTimeS\": 10, \"closeTimeS\": 60 },\n")
+		TEXT("    { \"ventId\": 2, \"type\": \"leakage\", \"roomA\": 1, \"exterior\": true,\n")
+		TEXT("      \"leakageOf\": \"door\",\n")
+		TEXT("      \"centre\": [-10.2, -17.1189, 1.067], \"normal\": [0, -1],\n")
+		TEXT("      \"width\": 0.01, \"modelledWidth\": 0.01, \"height\": 2.134, \"sillHeight\": 0.0,\n")
+		TEXT("      \"openTimeS\": 0, \"closeTimeS\": 0 },\n")
+		TEXT("    { \"ventId\": 3, \"type\": \"window\", \"roomA\": 1, \"exterior\": true,\n")
+		TEXT("      \"centre\": [-7.6635, -13.5, 1.575], \"normal\": [1, 0],\n")
+		TEXT("      \"width\": 1.05, \"modelledWidth\": 1.05, \"height\": 1.35, \"sillHeight\": 0.9,\n")
+		TEXT("      \"openTimeS\": 0, \"closeTimeS\": 0 }\n")
+		TEXT("  ]\n")
+		TEXT("}\n"),
+		*MakeZonesDataSpaceObject());
+
+	if (!TestTrue(TEXT("Openings scenario should be written"),
+		WriteTextFile(SmvPath, MakeLShapedSmv())
+			&& WriteTextFile(CsvPath, MakeZoneCsv())
+			&& WriteTextFile(JsonPath, ZonesJson)))
+	{
+		return false;
+	}
+
+	FBRiskScenarioData Data;
+	FString Error;
+	if (!TestTrue(TEXT("Scenario with openings should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *Error));
+		return false;
+	}
+
+	// openings[] REPLACES the VENTGEOM list rather than merging with it. The .smv declares one vent;
+	// three come back, all from the JSON.
+	if (!TestEqual(TEXT("Openings should replace the VENTGEOM vents"), Data.Vents.Num(), 3))
+	{
+		return false;
+	}
+
+	const FBRiskVentGeometry& Door = Data.Vents[0];
+	const FBRiskVentGeometry& Leak = Data.Vents[1];
+	const FBRiskVentGeometry& Window = Data.Vents[2];
+
+	TestEqual(TEXT("Door kind"), static_cast<int32>(Door.Kind), static_cast<int32>(EBRiskVentKind::Door));
+	TestEqual(TEXT("Leakage kind"), static_cast<int32>(Leak.Kind), static_cast<int32>(EBRiskVentKind::Leakage));
+	TestEqual(TEXT("Window kind"), static_cast<int32>(Window.Kind), static_cast<int32>(EBRiskVentKind::Window));
+	TestTrue(TEXT("Placement should be flagged"), Door.bHasPlacement && Leak.bHasPlacement && Window.bHasPlacement);
+
+	// Width keeps meaning "what B-Risk simulated" so flow-area consumers are untouched by the JSON
+	// appearing; PhysicalWidth is the real leaf. Getting these the wrong way round draws every door
+	// at half size, which looks plausible and is wrong.
+	TestEqual(TEXT("Door Width should stay the MODELLED width"), Door.Width, 0.45, 1.0e-9);
+	TestEqual(TEXT("Door PhysicalWidth should be the real width"), Door.PhysicalWidth, 0.9, 1.0e-9);
+
+	// Exterior openings must keep landing on B-Risk's outside-room id (rooms + 1) so FindRoomById
+	// still returns null for them and adjacency behaves exactly as it did.
+	TestEqual(TEXT("Exterior vent should point at the outside room id"), Door.ToRoomId, Data.Rooms.Num() + 1);
+	TestTrue(TEXT("Exterior flag should survive"), Door.bExterior);
+	TestEqual(TEXT("Open time should survive"), Door.OpenTimeSeconds, 10.0, 1.0e-9);
+	TestEqual(TEXT("Close time should survive"), Door.CloseTimeSeconds, 60.0, 1.0e-9);
+
+	// Face and Offset are cleared, not left stale: a future reader must not be able to treat them as
+	// a fallback, because both are coordinates in B-Risk's equivalent rectangle.
+	TestEqual(TEXT("Face should be cleared once a centre exists"), Door.Face, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("Offset should be cleared once a centre exists"), Door.Offset, 0.0, 1.0e-9);
+
+	// --- Placement: the centre is used verbatim and the polygon supplies only the axis -----------
+	constexpr float Scale = 100.0f;
+	constexpr float ThicknessCm = 8.0f;
+	const FBRiskRoomGeometry& Room = Data.Rooms[0];
+
+	FVector CentreCm = FVector::ZeroVector;
+	FVector SizeCm = FVector::ZeroVector;
+	if (!TestTrue(TEXT("Door should place from its centre"),
+		ABRiskHazardVisualizer::ComputeVentSlab(
+			Door, &Room, nullptr, Scale, Data.RoomFrame, ThicknessCm, CentreCm, SizeCm)))
+	{
+		return false;
+	}
+
+	// Verbatim: FootprintToUnreal is (x, -y, z) * Scale, so -10.75, -17.1189 -> -1075, +1711.89 cm.
+	// NOT projected onto the polygon - the 0.1 m stand-off is half a wall thickness and is the only
+	// position a shared wall's two rooms agree on.
+	TestEqual(TEXT("Door X should be the centre, untouched"), CentreCm.X, -1075.0, 1.0e-3);
+	TestEqual(TEXT("Door Y should be the centre, untouched"), CentreCm.Y, 1711.89, 1.0e-3);
+	TestEqual(TEXT("Door Z should come from sill and height, not centre z"), CentreCm.Z, 106.7, 1.0e-3);
+
+	// "leg south" runs along X, so the opening runs along X and the slab is thin in Y.
+	TestEqual(TEXT("Door should run along X at its real width"), SizeCm.X, 90.0, 1.0e-3);
+	TestEqual(TEXT("Door should be thin across the wall"), SizeCm.Y, static_cast<double>(ThicknessCm), 1.0e-3);
+	TestEqual(TEXT("Door height"), SizeCm.Z, 213.4, 1.0e-3);
+
+	// The window sits on "spur east", which runs along Y - the other axis. If the axis were
+	// hard-coded or taken from the bounding box this would come out identical to the door.
+	if (TestTrue(TEXT("Window should place from its centre"),
+		ABRiskHazardVisualizer::ComputeVentSlab(
+			Window, &Room, nullptr, Scale, Data.RoomFrame, ThicknessCm, CentreCm, SizeCm)))
+	{
+		TestEqual(TEXT("Window X should be the centre, untouched"), CentreCm.X, -766.35, 1.0e-3);
+		TestEqual(TEXT("Window should run along Y"), SizeCm.Y, 105.0, 1.0e-3);
+		TestEqual(TEXT("Window should be thin across the wall"), SizeCm.X, static_cast<double>(ThicknessCm), 1.0e-3);
+		// Sill 0.9 head 2.25 -> centre 1.575 m. Proves Z ignores the JSON centre z entirely.
+		TestEqual(TEXT("Window Z from sill+height"), CentreCm.Z, 157.5, 1.0e-3);
+	}
+
+	// Two vents 0.55 m apart must NOT land on top of each other - the failure the zero .smv offset
+	// caused, where 26 markers collapsed onto six positions.
+	FVector LeakCentreCm = FVector::ZeroVector;
+	FVector LeakSizeCm = FVector::ZeroVector;
+	int32 LeakNormalAxis = INDEX_NONE;
+	if (TestTrue(TEXT("Leakage vent should place from its centre"),
+		ABRiskHazardVisualizer::ComputeVentSlab(
+			Leak, &Room, nullptr, Scale, Data.RoomFrame, ThicknessCm, LeakCentreCm, LeakSizeCm,
+			&LeakNormalAxis)))
+	{
+		TestEqual(TEXT("Leakage should sit 0.55 m from the door"), LeakCentreCm.X, -1020.0, 1.0e-3);
+		TestEqual(TEXT("Leakage keeps its hairline width"), LeakSizeCm.X, 1.0, 1.0e-3);
+
+		// The reported wall normal must be the WALL's, not the box's thinnest axis. This opening is
+		// 1 cm wide in an 8 cm slab, so "thinnest axis" would answer X and build the outline in the
+		// wrong plane - a door-sized ghost lying across the wall. It has to answer Y, the same as
+		// the door beside it on the same wall.
+		TestEqual(TEXT("Leakage normal axis must be the wall's, not the thinnest axis"), LeakNormalAxis, 1);
+		TestTrue(TEXT("Leakage is narrower than the slab is thick - the case that broke it"),
+			LeakSizeCm.X < LeakSizeCm.Y);
+	}
+
+	int32 DoorNormalAxis = INDEX_NONE;
+	if (ABRiskHazardVisualizer::ComputeVentSlab(
+		Door, &Room, nullptr, Scale, Data.RoomFrame, ThicknessCm, CentreCm, SizeCm, &DoorNormalAxis))
+	{
+		TestEqual(TEXT("Door on the same wall reports the same normal axis"), DoorNormalAxis, LeakNormalAxis);
+	}
+
+	IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+
+	// --- The real 34-opening export ---------------------------------------------------------
+	//
+	// The synthetic fixture above pins the arithmetic. It cannot catch the two failures the owner
+	// actually saw, because both are properties of the whole SET: markers landing off the building
+	// (bounding-box walls), and 26 markers collapsing onto six positions (every .smv offset is 0).
+	// Assert those directly. Skips when the fixture is not on this machine.
+	const TCHAR* InternalRoots[] =
+	{
+		TEXT("D:/NickWork/Mobius_InternalData"),
+		TEXT("E:/00_Work/Mobius_InternalData"),
+		TEXT("F:/Mobius_InternalData"),
+	};
+	FString RealSmv;
+	for (const TCHAR* Root : InternalRoots)
+	{
+		const FString Candidate = FPaths::Combine(
+			FString(Root), TEXT("12-room-test-vents"), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
+		if (FPaths::FileExists(Candidate))
+		{
+			RealSmv = Candidate;
+			break;
+		}
+	}
+	if (RealSmv.IsEmpty())
+	{
+		AddInfo(TEXT("real-dataset placement check SKIPPED: 12-room-test-vents fixture not present"));
+		return true;
+	}
+
+	FBRiskScenarioData RealData;
+	FString RealError;
+	if (!TestTrue(TEXT("The 34-opening export should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(RealSmv, RealData, &RealError)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *RealError));
+		return false;
+	}
+	TestEqual(TEXT("All 34 openings should be present"), RealData.Vents.Num(), 34);
+
+	int32 Placed = 0;
+	int32 OffWall = 0;
+	double WorstStandOffCm = 0.0;
+	TArray<FVector> Centres;
+
+	for (int32 VentIndex = 0; VentIndex < RealData.Vents.Num(); ++VentIndex)
+	{
+		const FBRiskVentGeometry& Vent = RealData.Vents[VentIndex];
+		const FBRiskRoomGeometry* VentRoom = RealData.Rooms.FindByPredicate(
+			[&Vent](const FBRiskRoomGeometry& Candidate) { return Candidate.RoomId == Vent.FromRoomId; });
+		if (!VentRoom)
+		{
+			continue;
+		}
+
+		FVector MarkerCm = FVector::ZeroVector;
+		FVector MarkerSizeCm = FVector::ZeroVector;
+		int32 MarkerNormalAxis = INDEX_NONE;
+		if (!ABRiskHazardVisualizer::ComputeVentSlab(
+			Vent, VentRoom, nullptr, Scale, RealData.RoomFrame, ThicknessCm, MarkerCm, MarkerSizeCm,
+			&MarkerNormalAxis))
+		{
+			continue;
+		}
+		++Placed;
+		Centres.Add(MarkerCm);
+
+		// Every marker must be thin along the WALL normal. 18 of these 34 are leakage paths narrower
+		// than the 8 cm slab, so an outline built on "thinnest axis" would lie across the wall.
+		if (MarkerNormalAxis != 0 && MarkerNormalAxis != 1)
+		{
+			AddError(FString::Printf(TEXT("Vent %d reported normal axis %d."), Vent.VentId, MarkerNormalAxis));
+		}
+		else if (!FMath::IsNearlyEqual(MarkerSizeCm[MarkerNormalAxis], static_cast<double>(ThicknessCm), 1.0e-3))
+		{
+			AddError(FString::Printf(
+				TEXT("Vent %d is %.2f cm along its reported normal axis, expected the %.2f cm slab."),
+				Vent.VentId, MarkerSizeCm[MarkerNormalAxis], ThicknessCm));
+		}
+
+		// On a real wall: the centre is the wall centreline, so it stands off the footprint polygon
+		// by half a wall thickness - a measured, constant 10 cm here. Allow 15 cm and no more; the
+		// bounding-box placement this replaces put markers metres out into open space.
+		const BRiskCoord::FRoomFootprintCm VentRoomFootprint =
+			BRiskCoord::MakeRoomFootprint(*VentRoom, Scale, RealData.RoomFrame);
+		const TArray<FVector2D>& Ring = VentRoomFootprint.Polygon;
+		double NearestCm = TNumericLimits<double>::Max();
+		for (int32 EdgeIndex = 0; EdgeIndex < Ring.Num(); ++EdgeIndex)
+		{
+			const FVector2D& A = Ring[EdgeIndex];
+			const FVector2D& B = Ring[(EdgeIndex + 1) % Ring.Num()];
+			const FVector2D Along = B - A;
+			const double LengthSq = Along.SizeSquared();
+			if (LengthSq <= 0.0)
+			{
+				continue;
+			}
+			const FVector2D Point(MarkerCm.X, MarkerCm.Y);
+			const double T = FMath::Clamp(FVector2D::DotProduct(Point - A, Along) / LengthSq, 0.0, 1.0);
+			NearestCm = FMath::Min(NearestCm, FVector2D::Distance(Point, A + Along * T));
+		}
+		WorstStandOffCm = FMath::Max(WorstStandOffCm, NearestCm);
+		if (NearestCm > 15.0)
+		{
+			++OffWall;
+			AddError(FString::Printf(
+				TEXT("Vent %d (room %d) sits %.1f cm from the nearest wall of its own room."),
+				Vent.VentId, Vent.FromRoomId, NearestCm));
+		}
+	}
+
+	// Face 5 used to drop 8 of the 34, including the only interior door. With a centre per opening
+	// there is no face left to be unhandled, so every one must place.
+	TestEqual(TEXT("Every opening should place - no face-id drops left"), Placed, 34);
+	TestEqual(TEXT("No opening should sit off its own room's walls"), OffWall, 0);
+	AddInfo(FString::Printf(TEXT("worst wall stand-off %.2f cm across %d placed openings"),
+		WorstStandOffCm, Placed));
+
+	// The stacking check. 26 markers previously collapsed onto six positions because every .smv
+	// offset is 0; distinct openings must now occupy distinct places.
+	int32 Coincident = 0;
+	for (int32 i = 0; i < Centres.Num(); ++i)
+	{
+		for (int32 j = i + 1; j < Centres.Num(); ++j)
+		{
+			if (Centres[i].Equals(Centres[j], 1.0))
+			{
+				++Coincident;
+			}
+		}
+	}
+	TestEqual(TEXT("No two openings should render at the same point"), Coincident, 0);
 
 	return true;
 }

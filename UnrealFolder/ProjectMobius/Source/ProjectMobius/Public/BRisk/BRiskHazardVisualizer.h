@@ -100,7 +100,39 @@ public:
 		BRiskCoord::ERoomFrame Frame,
 		float ThicknessCm,
 		FVector& OutCenterCm,
-		FVector& OutSizeCm);
+		FVector& OutSizeCm,
+		int32* OutNormalAxis = nullptr);
+
+	/**
+	 * Marker colour per opening kind.
+	 *
+	 * Exposed rather than written as literals at the call site - unlike the fire cone, the sprinkler
+	 * cone and the vent outline, which are hard-coded because they are Smokeview's own documented
+	 * defaults (FIRECOLOR 255,128,0; SPRINKONCOLOR 0,1,0; VENTCOLOR 1,0,1) and an engineer reads them
+	 * without a legend. Leakage has no Smokeview convention to inherit, so it is a project choice and
+	 * belongs where a future colour-customisation UI can reach it.
+	 *
+	 * Defaults keep doors and windows on Smokeview magenta. Leakage is red-violet - the same family,
+	 * pushed toward red in linear space. It started at (1, 0, 0.5) and was moved to (1, 0, 0.2)
+	 * because at 0.5 it was not separable from magenta on screen against the sky, and separability is
+	 * the entire point: this is a DEBUGGING aid, expected to revert to magenta once vent placement is
+	 * trusted. The per-kind mapping is the part that stays.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "B-Risk|Colours")
+	FLinearColor DoorVentColour = FLinearColor(1.0f, 0.0f, 1.0f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "B-Risk|Colours")
+	FLinearColor WindowVentColour = FLinearColor(1.0f, 0.0f, 1.0f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "B-Risk|Colours")
+	FLinearColor LeakageVentColour = FLinearColor(1.0f, 0.0f, 0.2f, 1.0f);
+
+	/** Colour for an opening whose kind is unknown - i.e. every vent from a .smv-only scenario. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "B-Risk|Colours")
+	FLinearColor UnclassifiedVentColour = FLinearColor(1.0f, 0.0f, 1.0f, 1.0f);
+
+	/** Resolve the marker colour for an opening kind. */
+	FLinearColor VentColourForKind(EBRiskVentKind Kind) const;
 
 private:
 	UPROPERTY()

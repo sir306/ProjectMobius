@@ -526,6 +526,25 @@ struct MOBIUSDATAIMPORTER_API FBRiskSprinklerGeometry
 	double ActuationTemperatureC = 0.0;
 };
 
+/**
+ * What kind of opening a vent is, from Zones-data.json openings[].type.
+ *
+ * Unknown is what every vent parsed from a .smv VENTGEOM block gets: the .smv records geometry and
+ * connectivity but never says what the opening IS, so this cannot be inferred there. Leakage vents
+ * are a real modelling device, not noise - a fire engineer adds them to represent smoke passing
+ * non-fire-rated construction, and the ones marked leakageOf="door" are the gap round a closed leaf,
+ * i.e. the path that still exists after the door shuts.
+ *
+ * Plain enum class, not UENUM: MobiusDataImporter has no UHT and does not need it for this.
+ */
+enum class EBRiskVentKind : uint8
+{
+	Unknown,
+	Door,
+	Window,
+	Leakage
+};
+
 /** Horizontal vent/opening geometry parsed from a B-Risk VENTGEOM block. */
 struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 {
@@ -560,6 +579,59 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	 * its name says; consumers may safely compute head as SillHeight + Height.
 	 */
 	double Height = 0.0;
+
+	// --- From Zones-data.json openings[]. Absent (bHasPlacement false) for a .smv-only scenario. ---
+
+	/** openings[].ventId, matching the <id> in the companion vents.xml. INDEX_NONE when unknown. */
+	int32 VentId = INDEX_NONE;
+
+	/** Door / window / leakage. Unknown for anything that came from a VENTGEOM block. */
+	EBRiskVentKind Kind = EBRiskVentKind::Unknown;
+
+	/**
+	 * True when CentreMetres is real. This is the ONLY trustworthy placement Mobius has.
+	 *
+	 * Face and Offset cannot substitute for it and are not a fallback. Both are coordinates in
+	 * B-Risk's area/perimeter-equivalent rectangle (SR282 eq. 1-2), which for a non-rectangular room
+	 * is a shape that does not exist: Corridor 15's real walls are 17.8 m and 5.2 m, and vents.xml
+	 * reports offsets up to 22.3 m along a "23 m wall" that is those two unrolled end to end. It is
+	 * not even a per-wall id - measured over all 34 openings in the 12-room test, .smv face 2 and
+	 * face 3 each map to three different wall normals.
+	 */
+	bool bHasPlacement = false;
+
+	/**
+	 * Opening centre in the Revit frame, metres - the same frame and units as
+	 * FBRiskRoomGeometry::FootprintPolygon, so BRiskCoord::FootprintToUnreal converts it.
+	 *
+	 * Sits on the WALL CENTRELINE, roughly half a wall thickness outside the room's footprint
+	 * polygon (a constant 0.100 m across all 34 openings in the 12-room test, for a 200 mm wall).
+	 * That is correct and must not be projected onto the polygon: for a wall shared by two rooms it
+	 * is the only position both agree on. Measured - the Lobby/Corridor door sits at x 3.1365,
+	 * exactly midway between Corridor's face at 3.0365 and Lobby's at 3.2365.
+	 *
+	 * Z is NOT used for placement. SillHeight/Height are floor-relative and already say where the
+	 * opening sits vertically; centre z would need to be resolved against floorElevation, which is
+	 * 0 for every room in the only sample available, so absolute and floor-relative are
+	 * indistinguishable there. Deriving Z the existing way keeps one code path and guesses nothing.
+	 */
+	FVector CentreMetres = FVector::ZeroVector;
+
+	/**
+	 * True physical opening width in metres, from openings[].width - what a person would measure.
+	 *
+	 * Distinct from Width, which for an opening that came from a .smv is the MODELLED width B-Risk
+	 * simulated: a 0.9 m door is commonly modelled at 0.45 m. Renderers want this one; anything
+	 * reasoning about flow area wants Width. 0 when unknown.
+	 */
+	double PhysicalWidth = 0.0;
+
+	/** openings[].openTimeS / closeTimeS. Negative when unknown. Both 0 means no scheduled change. */
+	double OpenTimeSeconds = -1.0;
+	double CloseTimeSeconds = -1.0;
+
+	/** True when openings[] marked this opening as giving onto the outside rather than another room. */
+	bool bExterior = false;
 };
 
 /**
