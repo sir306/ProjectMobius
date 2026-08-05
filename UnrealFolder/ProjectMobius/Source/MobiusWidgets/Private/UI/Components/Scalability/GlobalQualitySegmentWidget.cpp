@@ -24,10 +24,13 @@
 
 #include "UI/Components/Scalability/GlobalQualitySegmentWidget.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
 #include "Style/MobiusStyle.h"
 #include "Styling/SlateTypes.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
 #include "UI/Components/ButtonWithText.h"
+#include "UI/Components/MobiusThemedBorder.h"
 #include "UI/Theme/UIThemeSubsystem.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -142,7 +145,69 @@ void UGlobalQualitySegmentWidget::NativeConstruct()
 
 	DisplayedLevel = DeriveLowestAppliedLevel();
 
+	// Before Super for the same reason the palette clear is: Super themes the tree, so the container has
+	// to EXIST by then or it paints unthemed until the first theme toggle.
+	EnsureSegmentContainer();
+
 	Super::NativeConstruct();
+}
+
+void UGlobalQualitySegmentWidget::EnsureSegmentContainer()
+{
+	if (SegmentContainer || !LowSetting_Button || !WidgetTree)
+	{
+		return; // already wrapped, or nothing to wrap
+	}
+
+	UPanelWidget* SegmentGrid = LowSetting_Button->GetParent();
+	if (!SegmentGrid)
+	{
+		return;
+	}
+	UPanelWidget* OuterPanel = SegmentGrid->GetParent();
+	if (!OuterPanel)
+	{
+		return; // the grid is the root; wrapping it would need a root swap, which is out of scope here
+	}
+
+	// Where the grid sits among its siblings, so the container can take exactly that place. Without this
+	// the wrapped control jumps to the bottom of the VerticalBox, under Pedestrian Models and Logging.
+	const int32 GridIndex = OuterPanel->GetChildIndex(SegmentGrid);
+
+	SegmentContainer = WidgetTree->ConstructWidget<UMobiusThemedBorder>(
+		UMobiusThemedBorder::StaticClass(), TEXT("QualitySegmentContainer"));
+	if (!SegmentContainer)
+	{
+		return;
+	}
+	{
+		FSlateBrush Background;
+		Background.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Background.SetResourceObject(nullptr);
+		// White TINT with the colour supplied via FillRole: SBorder paints TintColor * BrushColor, and two
+		// non-white values multiply into near-black (the UBorder double-tint trap).
+		Background.TintColor = FSlateColor(FLinearColor::White);
+		Background.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Background.OutlineSettings.CornerRadii = FVector4(GQualityContainerRadius, GQualityContainerRadius,
+			GQualityContainerRadius, GQualityContainerRadius);
+		Background.OutlineSettings.Width = 1.0f;
+		SegmentContainer->SetBrush(Background);
+	}
+	SegmentContainer->bThemeFill = true;
+	SegmentContainer->FillRole = EMobiusPaletteRole::InputBg;
+	SegmentContainer->bThemeOutline = true;
+	SegmentContainer->OutlineRole = EMobiusPaletteRole::ButtonBorder;
+	// 1px inset so an active segment's fill cannot paint over the hairline it sits inside.
+	SegmentContainer->SetPadding(FMargin(1.0f));
+
+	SegmentGrid->RemoveFromParent();
+	SegmentContainer->AddChild(SegmentGrid);
+
+	OuterPanel->AddChild(SegmentContainer);
+	if (GridIndex != INDEX_NONE)
+	{
+		OuterPanel->ShiftChild(GridIndex, SegmentContainer);
+	}
 }
 
 void UGlobalQualitySegmentWidget::ApplyMobiusTheme_Implementation()

@@ -29,6 +29,7 @@
 #include "GlobalQualitySegmentWidget.generated.h"
 
 class UButtonWithText;
+class UMobiusThemedBorder;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomQualityRequested);
 
@@ -112,7 +113,30 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scalability Settings", meta = (BindWidget))
 	TObjectPtr<UButtonWithText> CustomSetting_Button;
 
+	/**
+	 * The hairline pill the five segments sit inside — built in C++ at construct, because the Blueprint
+	 * binds only the buttons. Not a BindWidget: it does not exist in the .uasset.
+	 *
+	 * This class's header promised "one hairline container" from the start but never built one, so the
+	 * transparent inactive segments showed the CARD instead of InputBg and the control read as bare text
+	 * next to the UI Theme toggle two rows below it. Same construction as
+	 * UThemeToggleWidget::SegmentContainer, deliberately — that is the A20 visual language this control
+	 * is supposed to speak.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UMobiusThemedBorder> SegmentContainer;
+
 private:
+	/**
+	 * Wrap the segments' existing GridPanel in SegmentContainer, once, before the theme pass runs.
+	 *
+	 * Wraps the PANEL rather than moving the five buttons into a new box: measured live, they sit in a
+	 * single-row GridPanel (row 0, columns 0-4) that holds nothing else, so re-parenting the panel keeps
+	 * every GridSlot — and therefore the column widths and the H_ALIGN_FILL that stops unequal pressed
+	 * padding from eating clicks — exactly as authored.
+	 */
+	void EnsureSegmentContainer();
+
 	UFUNCTION()
 	void HandleLowClicked();
 	UFUNCTION()
