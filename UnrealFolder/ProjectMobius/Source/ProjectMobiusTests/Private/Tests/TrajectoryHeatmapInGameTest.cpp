@@ -803,10 +803,15 @@ bool FTrajectoryOffGridNeverClampsTest::RunTest(const FString& Parameters)
 // It also pins the two things just fixed, both of which were silent:
 //   * the edges are re-pushed on a mode switch (Exposure used to render against Usage's thresholds);
 //   * the encode uses the FIXED reference density, not per-capture auto-exposure.
-// A pixel-level comparison is deliberately NOT attempted here: the render samples through a shared
-// world-group sampler that ignores the texture's TF_Nearest, so the GPU bilinear-filters before banding
-// and boundary pixels legitimately differ. Once that sampler is given its own nearest filter, a band
-// histogram comparison becomes meaningful and belongs here too.
+// A pixel-level comparison is deliberately NOT attempted here, and the reason has changed twice - read this
+// before trying again. The original claim was that the render samples through a shared world-group sampler
+// that ignores the texture's filter; that was WRONG and is retracted, because
+// Material.SamplesWithTextureOwnSampler passes on every heatmap material. The current reason is stronger:
+// as of 2026-08-05 the textures are TF_BILINEAR by owner ruling, so the GPU interpolates the scalar between
+// texel centres BY DESIGN and boundary pixels are meant to differ from the per-texel-exact PNG. A pixel
+// comparison would now be asserting that a deliberate feature is absent. A band-HISTOGRAM comparison over
+// the occupied region is still meaningful and would belong here - band membership survives interpolation,
+// which is the whole reason bilinear was safe to turn on (see the InitializeTexture comments).
 // -------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FTrajectoryExportRenderShareInputsTest,
@@ -923,6 +928,87 @@ bool FTrajectoryExportRenderShareInputsTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("switching mode re-pushes a DIFFERENT band set (Exposure is not banded as Usage)"),
 			bAnyInteriorEdgeDiffers);
+	}
+	return true;
+}
+
+// -------------------------------------------------------------------------------------------------
+// THE FILTER GATE. Owner ruling 2026-08-05: both heatmap surfaces render with smooth LOS band edges, so
+// both textures are created TF_Bilinear rather than taking InitializeTexture's TF_Nearest default.
+//
+// Why this needs a gate at all: the two textures are created at THREE separate call sites in
+// HeatmapPixelTextureVisualizer.cpp (the density one, and the trajectory one twice - once in
+// EnsureTrajectoryFieldSized and once in SetupDynamicTexture). Passing the filter at two of the three
+// leaves one surface blocky beside a smooth sibling, and nothing else in the suite looks at a sampler
+// setting, so it would ship. Reverting to the default is a silent one-token edit.
+//
+// This asserts the FILTER only. Whether the filter is honoured at all depends on the MATERIAL's Sampler
+// Source, which is an asset property and is gated separately by
+// ProjectMobius.Heatmap.*.Material.SamplesWithTextureOwnSampler in TrajectoryHeatmapCalibrationTest.cpp.
+// Both gates are required: a bilinear texture sampled through a shared world-group sampler ignores this
+// setting entirely, and a FromTextureAsset material sampling a TF_Nearest texture renders blocky. Neither
+// test can see the other's half.
+// -------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajectoryTextureFiltersBilinearTest,
+	"Mobius.InGame.TrajectoryHeatmap.Texture.FiltersBilinear",
+	EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajectoryTextureFiltersBilinearTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryInvariance;
+
+	UWorld* World = GetActiveGameWorld();
+	if (!World)
+	{
+		AddError(TEXT("no game world - run via RunTests.ps1 -InGame (UnrealEditor-Cmd -game)"));
+		return false;
+	}
+	AHeatmapPixelTextureVisualizer* Heatmap = SpawnTrajectoryHeatmap(World);
+	if (!TestNotNull(TEXT("heatmap spawned"), Heatmap))
+	{
+		return false;
+	}
+
+	struct FSurface
+	{
+		const TCHAR* Name;
+		const UDynamicPixelRenderingTexture* Texture;
+	};
+	const FSurface Surfaces[] = {
+		{ TEXT("trajectory accumulation"), Heatmap->GetTrajectoryAccumulationTextureForTesting() },
+		{ TEXT("density"),                 Heatmap->GetDensityDynamicTextureForTesting() },
+	};
+
+	for (const FSurface& Surface : Surfaces)
+	{
+		if (!TestNotNull(*FString::Printf(TEXT("%s texture exists"), Surface.Name), Surface.Texture))
+		{
+			continue;
+		}
+		const UTexture2D* Texture2D = Surface.Texture->GetDynamicTexture();
+		if (!TestNotNull(*FString::Printf(TEXT("%s UTexture2D exists"), Surface.Name), Texture2D))
+		{
+			continue;
+		}
+		if (Texture2D->Filter != TF_Bilinear)
+		{
+			AddError(FString::Printf(
+				TEXT("the %s texture is Filter = %d, expected TF_Bilinear (%d). Point sampling draws every ")
+				TEXT("texel as a hard square, which is what made the density heatmap look pixelated ")
+				TEXT("(A0-72) - the Gaussian blur was never the cause. FIX: pass TF_Bilinear at the ")
+				TEXT("InitializeTexture call in HeatmapPixelTextureVisualizer.cpp for this surface. There ")
+				TEXT("are THREE such call sites; check all of them."),
+				Surface.Name, static_cast<int32>(Texture2D->Filter), static_cast<int32>(TF_Bilinear)));
+		}
+
+		// TA_Clamp matters more once filtering is on, not less: a transient texture defaults to TA_Wrap, so
+		// without the clamp a bilinear sample at the texture edge blends in the OPPOSITE edge's texels.
+		// Under TF_Nearest that was a one-texel curiosity; under TF_Bilinear it is a visible wrap seam.
+		TestEqual(*FString::Printf(TEXT("%s texture clamps rather than wraps"), Surface.Name),
+			static_cast<int32>(Texture2D->AddressX), static_cast<int32>(TA_Clamp));
+		TestEqual(*FString::Printf(TEXT("%s texture clamps rather than wraps (Y)"), Surface.Name),
+			static_cast<int32>(Texture2D->AddressY), static_cast<int32>(TA_Clamp));
 	}
 	return true;
 }

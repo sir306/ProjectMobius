@@ -802,10 +802,13 @@ namespace TrajectoryRealData
 	 * Point the view straight down at the heatmap and screenshot it, so the in-level render can be put
 	 * beside the CPU-colourised PNG the recorder writes.
 	 *
-	 * EXPECT THE TWO TO DIFFER, and know where. The PNG is per-texel exact. The render samples the same
-	 * buffer through a shared world-group sampler that discarded the texture's TF_Nearest. THAT WAS WRONG
-	 * and is retracted: `Material.SamplesWithTextureOwnSampler` reads the deserialised property and passes,
-	 * so every sample already honours the texture's own sampler. Point sampling was never the problem.
+	 * EXPECT THE TWO TO DIFFER, and know where. The PNG is per-texel exact. An earlier claim that the render
+	 * samples through a shared world-group sampler was WRONG and is retracted:
+	 * `Material.SamplesWithTextureOwnSampler` reads the deserialised property and passes, so every sample
+	 * honours the texture's own sampler. Since 2026-08-05 that sampler is TF_BILINEAR by owner ruling, so
+	 * the render interpolates between texel centres DELIBERATELY and boundary pixels are supposed to differ
+	 * from the export. Band membership still survives, which is why bilinear was safe: the material bands
+	 * the scalar after sampling, so an interpolated value lands in a band, never between two colours.
 	 *
 	 * ⚠️ THIS IS A SMOKE TEST, NOT A DEFECT DETECTOR. READ THIS BEFORE ACTING ON ITS OUTPUT.
 	 *

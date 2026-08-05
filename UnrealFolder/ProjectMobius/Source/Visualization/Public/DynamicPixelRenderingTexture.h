@@ -81,6 +81,18 @@ public:
 	 * blurred despite TF_Nearest being set here. A transient texture defaults to TA_Wrap, so the clamp
 	 * default below exists to make the "From Texture Asset" path safe: without it, honouring the texture's
 	 * sampler would swap a blur for edge bleeding.
+	 *
+	 * THE DEFAULT IS NO LONGER WHAT THE HEATMAPS USE. Every heatmap call site passes TF_Bilinear explicitly
+	 * (owner ruling 2026-08-05, smooth LOS band edges on both surfaces) - see the three
+	 * InitializeTexture calls in HeatmapPixelTextureVisualizer.cpp, gated by
+	 * `ProjectMobius.Heatmap.Texture.FiltersBilinear`. The default is left at TF_Nearest so that a NEW caller
+	 * gets the conservative, per-texel-exact behaviour and has to opt in to interpolation.
+	 *
+	 * Bilinear is safe for these textures specifically because they carry a SCALAR in the red channel and
+	 * the material bands it after sampling: interpolating the scalar moves each band boundary onto a smooth
+	 * sub-texel iso-contour while the output stays one of the discrete band colours. Do NOT reason from that
+	 * to an already-colourised RGB texture, where interpolation blends band colours into shades that mean
+	 * nothing.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Methods")
 	void InitializeTexture(int32 InWidth, int32 InHeight, FLinearColor InitialColor, TextureFilter InFilter = TF_Nearest,

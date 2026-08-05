@@ -1663,23 +1663,72 @@ bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
 }
 
 // =====================================================================================================
-// THE BLUR GATE. Asserts an ASSET setting, on purpose, because that is the only place this can be fixed
-// and the only place a collaborator can silently un-fix it.
+// THE SAMPLER-SOURCE GATE. Asserts an ASSET setting, on purpose, because that is the only place this can be
+// fixed and the only place a collaborator can silently un-fix it.
 //
-// The accumulation texture is created with Filter = TF_Nearest and TA_Clamp addressing, but a material only
-// consults a texture's own sampler state when its Texture Sample node has Sampler Source set to
-// "From Texture Asset". With either *_WorldGroupSettings option the node samples through a shared, pooled
-// sampler and BOTH of those settings are discarded - filtering comes from texture-group settings instead.
-// The GPU then bilinear-interpolates the accumulation buffer BEFORE the custom node bands it, so banding is
-// applied to interpolated values and every band boundary smears. That is the difference between the
-// per-texel-exact exported PNG and a blurred viewport.
+// Both heatmap textures are created with an explicit Filter (TF_Bilinear since 2026-08-05) and TA_Clamp
+// addressing, but a material only consults a texture's own sampler state when its Texture Sample node has
+// Sampler Source set to "From Texture Asset". With either *_WorldGroupSettings option the node samples
+// through a shared, pooled sampler and BOTH of those settings are DISCARDED - filtering comes from
+// texture-group settings instead.
+//
+// That makes this gate the precondition for the filter meaning anything at all. A texture set TF_Bilinear
+// and sampled through a shared sampler is filtered by the texture group, not by us: the C++ setting becomes
+// a dead parameter, and someone reading only the code would report a smoothing fix that never shipped. It
+// cuts the other way too - a FromTextureAsset material sampling a TF_Nearest texture renders blocky. The
+// runtime half is gated by Mobius.InGame.TrajectoryHeatmap.Texture.FiltersBilinear; neither test can see
+// the other's half.
 //
 // It cannot be fixed from C++ (sampler source is a property of the node, not of the texture) and it cannot
 // be fixed by a script anybody has to remember to run - the asset is committed, so the asset is the fix.
-// This test is what stops it regressing: regenerate the material from M_HeatmapRT_V2, or open it and change
-// the dropdown back, and the suite says so.
+// This test is what stops it regressing: regenerate a material, or open it and change the dropdown back,
+// and the suite says so.
 // =====================================================================================================
 #if WITH_EDITOR
+namespace TrajectorySamplerGate
+{
+	/** Shared body: every Texture Sample node in one material must use the texture's own sampler state. */
+	static void CheckMaterialUsesOwnSampler(FAutomationTestBase& Test, const TCHAR* MaterialPath,
+	                                        const TCHAR* FriendlyName)
+	{
+		UMaterial* Material = LoadObject<UMaterial>(nullptr, MaterialPath);
+		if (!Test.TestNotNull(*FString::Printf(TEXT("%s loads"), FriendlyName), Material))
+		{
+			return;
+		}
+
+		int32 SampleCount = 0;
+		int32 SharedSamplerCount = 0;
+		for (UMaterialExpression* Expression : Material->GetExpressions())
+		{
+			UMaterialExpressionTextureSample* TextureExpression = Cast<UMaterialExpressionTextureSample>(Expression);
+			if (!TextureExpression)
+			{
+				continue;
+			}
+			++SampleCount;
+			if (TextureExpression->SamplerSource != SSM_FromTextureAsset)
+			{
+				++SharedSamplerCount;
+				Test.AddError(FString::Printf(
+					TEXT("%s in %s samples through a SHARED sampler (SamplerSource = %d), which discards the ")
+					TEXT("texture's Filter and AddressX/Y. The texture-group settings then decide filtering, ")
+					TEXT("so the TF_Bilinear passed at InitializeTexture is a DEAD PARAMETER for this ")
+					TEXT("surface and any smoothing fix in C++ will not ship. FIX: open %s, select the ")
+					TEXT("Texture Sample node, set Sampler Source to 'From Texture Asset', save, and COMMIT ")
+					TEXT("the .uasset."),
+					*Expression->GetName(), FriendlyName,
+					static_cast<int32>(TextureExpression->SamplerSource), MaterialPath));
+			}
+		}
+
+		Test.TestTrue(*FString::Printf(TEXT("%s samples at least one texture (graph has not been gutted)"),
+			FriendlyName), SampleCount > 0);
+		Test.TestEqual(*FString::Printf(TEXT("%s: every texture sample honours the texture's own sampler"),
+			FriendlyName), SharedSamplerCount, 0);
+	}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FTrajMaterialHonoursTextureSamplerTest,
 	"ProjectMobius.Heatmap.Trajectory.Material.SamplesWithTextureOwnSampler",
@@ -1687,39 +1736,30 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FTrajMaterialHonoursTextureSamplerTest::RunTest(const FString& Parameters)
 {
-	const TCHAR* MaterialPath =
-		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_Trajectory.M_HeatmapRT_Trajectory");
-	UMaterial* Material = LoadObject<UMaterial>(nullptr, MaterialPath);
-	if (!TestNotNull(TEXT("M_HeatmapRT_Trajectory loads"), Material))
-	{
-		return false;
-	}
+	TrajectorySamplerGate::CheckMaterialUsesOwnSampler(*this,
+		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_Trajectory.M_HeatmapRT_Trajectory"),
+		TEXT("M_HeatmapRT_Trajectory"));
+	return true;
+}
 
-	int32 SampleCount = 0;
-	int32 SharedSamplerCount = 0;
-	for (UMaterialExpression* Expression : Material->GetExpressions())
-	{
-		UMaterialExpressionTextureSample* TextureExpression = Cast<UMaterialExpressionTextureSample>(Expression);
-		if (!TextureExpression)
-		{
-			continue;
-		}
-		++SampleCount;
-		if (TextureExpression->SamplerSource != SSM_FromTextureAsset)
-		{
-			++SharedSamplerCount;
-			AddError(FString::Printf(
-				TEXT("%s samples through a SHARED sampler (SamplerSource = %d), which discards the ")
-				TEXT("accumulation texture's TF_Nearest and TA_Clamp. The GPU therefore interpolates the ")
-				TEXT("buffer before the bands are applied and the render blurs, disagreeing with the ")
-				TEXT("exported PNG. FIX: open %s, select the Texture Sample node, set Sampler Source to ")
-				TEXT("'From Texture Asset', save, and COMMIT the .uasset."),
-				*Expression->GetName(), static_cast<int32>(TextureExpression->SamplerSource), MaterialPath));
-		}
-	}
+// The DENSITY surfaces, added 2026-08-05 with the bilinear change. Not a speculative extension: the owner's
+// pixelated density heatmap was traced to point sampling (A0-72), and the C++ fix only takes effect if
+// THESE materials honour the texture's sampler - which nothing had ever checked. M_VoronoiMap is included
+// because the actor binds the same texture to it (SetupDynamicTexture) and it is selected by HeatmapType,
+// so a divergence there shows up only in Voronoi mode, which nobody tests by eye.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FDensityMaterialHonoursTextureSamplerTest,
+	"ProjectMobius.Heatmap.Density.Material.SamplesWithTextureOwnSampler",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-	TestTrue(TEXT("the material samples at least one texture (graph has not been gutted)"), SampleCount > 0);
-	TestEqual(TEXT("every texture sample honours the texture's own sampler state"), SharedSamplerCount, 0);
+bool FDensityMaterialHonoursTextureSamplerTest::RunTest(const FString& Parameters)
+{
+	TrajectorySamplerGate::CheckMaterialUsesOwnSampler(*this,
+		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_V2.M_HeatmapRT_V2"),
+		TEXT("M_HeatmapRT_V2"));
+	TrajectorySamplerGate::CheckMaterialUsesOwnSampler(*this,
+		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_VoronoiMap.M_VoronoiMap"),
+		TEXT("M_VoronoiMap"));
 	return true;
 }
 

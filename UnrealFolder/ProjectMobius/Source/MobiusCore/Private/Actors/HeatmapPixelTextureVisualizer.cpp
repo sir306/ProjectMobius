@@ -470,7 +470,15 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 		return; // SetupDynamicTexture creates it and calls back through UpdateHeatmapMeshBounds.
 	}
 
-	TrajectoryAccumulationTexture->InitializeTexture(SquareSide, SquareSide, InitialColorValue);
+	// TF_BILINEAR, NOT the TF_Nearest default. Owner ruling 2026-08-05: smooth LOS band edges on both
+	// surfaces. This is safe here in a way it would NOT be for a colourised texture, and the reason is the
+	// channel layout: this texture carries the accumulated value in RED (plus alpha), and the material bands
+	// it with a `RVal < BAND` comparison chain AFTER sampling. So bilinear interpolates the SCALAR, and the
+	// band lookup still returns one of the discrete band colours -- no blended colours, no mush. What changes
+	// is that each band boundary becomes a smooth sub-texel iso-contour instead of a texel-aligned staircase.
+	// Interpolating an already-colourised RGB texture would smear band colours together; that is the exported
+	// PNG's job and it stays per-texel exact on the CPU, untouched by this.
+	TrajectoryAccumulationTexture->InitializeTexture(SquareSide, SquareSide, InitialColorValue, TF_Bilinear);
 	ApplyTrajectoryLOSBands();
 
 	// InitializeTexture builds a brand new UTexture2D, so every material instance still pointing at the
@@ -617,7 +625,12 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 		return;
 	}
 	
-	DynamicTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue);
+	// TF_Bilinear for the same reason as the trajectory texture above: the density surface also carries its
+	// value in RED and bands it in-material, so interpolating the scalar smooths the band edges without
+	// inventing colours. This is the fix for the pixelated density heatmap (ruling A0-72) -- the Gaussian
+	// blur was never the problem, it runs on every populated frame; point sampling was drawing every texel
+	// as a hard square regardless of how smooth the underlying values were.
+	DynamicTexture->InitializeTexture(TextureWidth, TextureHeight, InitialColorValue, TF_Bilinear);
 	if (!TrajectoryAccumulationTexture)
 	{
 		TrajectoryAccumulationTexture = NewObject<UDynamicPixelRenderingTexture>(this, TEXT("TrajectoryAccumulationTexture"));
@@ -628,7 +641,10 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 	// EnsureTrajectoryFieldSized re-creates it a moment later.
 	{
 		const int32 TrajectorySide = TrajectoryTextureSize > 0 ? TrajectoryTextureSize : TextureWidth;
-		TrajectoryAccumulationTexture->InitializeTexture(TrajectorySide, TrajectorySide, InitialColorValue);
+		// Keep this in step with the other two call sites: every heatmap texture is TF_Bilinear. A texture
+		// created here with the TF_Nearest default would render blocky while its sibling rendered smooth,
+		// which is a difference nobody would think to look for. Texture.FiltersBilinear gates all of them.
+		TrajectoryAccumulationTexture->InitializeTexture(TrajectorySide, TrajectorySide, InitialColorValue, TF_Bilinear);
 		TrajectoryPreviousRed.Reset();
 	}
 	ApplyTrajectoryLOSBands();

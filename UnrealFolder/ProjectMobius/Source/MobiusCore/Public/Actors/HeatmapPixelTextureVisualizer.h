@@ -270,6 +270,15 @@ public:
 	class UDynamicPixelRenderingTexture* GetTrajectoryAccumulationTextureMutableForTesting() const { return TrajectoryAccumulationTexture; }
 
 	/**
+	 * The DENSITY texture, read-only, so the sampler-filter gate can assert both surfaces rather than only
+	 * the trajectory one. Added because the two textures are created at three separate call sites and a
+	 * filter set on one but not the others renders blocky beside smooth, which nobody would think to check.
+	 *
+	 * @return The density texture, or nullptr before SetupDynamicTexture has run.
+	 */
+	const class UDynamicPixelRenderingTexture* GetDensityDynamicTextureForTesting() const { return DynamicTexture; }
+
+	/**
 	 * Maps a world location to the texel the trajectory pipeline would write, for test assertions.
 	 * Returns (-1,-1) for a location outside the grid — it deliberately does NOT clamp, because clamping
 	 * is the bug the field replaced and a clamped answer would hide an off-floor sample.
