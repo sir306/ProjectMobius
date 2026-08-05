@@ -575,8 +575,16 @@ private:
 	 * @param[FVector2D&] MeshSize The size of the mesh in the X and Y direction
 	 * @return[FVector2D] The size of the square cell
 	 */
+	// PUBLIC deliberately, and only these two. Both are pure static maths over their arguments with no
+	// actor state, and together they define the mesh's world span:
+	//     span = (CalculateNumberOfTriangles(..) - 1) * GenerateSquareCellSize(..)
+	// That span MUST equal the heatmap's world extent, or the texture is stretched across the wrong
+	// distance and the whole image shifts. It was wrong by exactly one cell until 2026-08-05 (A0-60), and
+	// no test could see it because the suite only ever measured sums, which are position-blind. Exposing
+	// them is what makes that invariant assertable from ProjectMobiusTests without spawning a world.
+public:
 	static FVector2d GenerateSquareCellSize(const FIntPoint& NumberOfTriangles, const FVector2D& MeshSize);
-	
+
 	/**
 	 * Method to calculate the number of triangles needed for the mesh when using 3D heatmaps - TODO: this may be needed for all heatmap types due to the cost asscoiated with the mesh generation
 	 *
@@ -585,6 +593,8 @@ private:
 	 * @return[FIntPoint] The number of triangles needed for the mesh in the X and Y direction
 	 */
 	static FIntPoint CalculateNumberOfTriangles(const FVector2D& MeshSize, const FIntPoint& TextureSize);
+
+private:
 	/**
 	 * Build a single tile's verts / tris / UVs for the cell range [TileX0, TileX1) x [TileY0, TileY1).
 	 * Only verts referenced by kept quads are added to the tile; empty tiles return with Tris.Num()==0.

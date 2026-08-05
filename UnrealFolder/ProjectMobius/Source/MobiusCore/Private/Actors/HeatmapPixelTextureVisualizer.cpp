@@ -1528,8 +1528,19 @@ FVector2d AHeatmapPixelTextureVisualizer::GenerateSquareCellSize(const FIntPoint
 {
 	FVector2D CellSize(0, 0);
 
-	CellSize.X = MeshSize.X / NumberOfTriangles.X;
-	CellSize.Y = MeshSize.Y / NumberOfTriangles.Y;
+	// Divide by (count - 1), NOT count. NumberOfTriangles is the VERTEX grid size (see the comment in
+	// GenerateMeshVerticesUVsAndTriangles), and BuildTileBuffers places vertex gx at gx * CellSize for
+	// gx = 0 .. count-1. So the mesh spans (count - 1) cells, and dividing by count made it exactly one
+	// CellSize SHORTER than MeshSize while its UVs still spanned the whole texture 0..1. The texture
+	// covering the full field extent was therefore compressed onto a slightly smaller mesh, displacing the
+	// image by `fraction_across_mesh * CellSize`: zero at the origin corner, growing to a full cell at the
+	// far corner. On a 200 m carrier that is up to 25 cm, i.e. 2.5 texels at 10 cm/texel -- the owner's
+	// "about two pixels", world-fixed and position-dependent, reported 2026-08-05 (rulings A0-56/A0-60).
+	//
+	// No conservation test could catch it: sums are position-blind, the same blind spot that hid the row
+	// orientation question. The field itself was measured correct (A0-51, A0-58).
+	CellSize.X = MeshSize.X / FMath::Max(1, NumberOfTriangles.X - 1);
+	CellSize.Y = MeshSize.Y / FMath::Max(1, NumberOfTriangles.Y - 1);
 
 	return CellSize;
 }

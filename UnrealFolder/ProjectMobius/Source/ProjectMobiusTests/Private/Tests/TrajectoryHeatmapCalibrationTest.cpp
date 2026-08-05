@@ -50,6 +50,9 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "TrajectoryField.h"
+// For the two public static mesh-sizing helpers that T-OFFSET-2 asserts against. Header only -- this
+// test never spawns the actor, so it stays a Tier A case with no world.
+#include "Actors/HeatmapPixelTextureVisualizer.h"
 #if WITH_EDITOR
 // The blur gate inspects the material graph, which is editor-only data.
 #include "Materials/Material.h"
@@ -1441,6 +1444,221 @@ bool FTrajNonSquareNegativeOriginTest::RunTest(const FString& Parameters)
 		SumCanonical(Off, ETrajectoryMapMode::RouteUsage) == 0.0);
 	TestTrue(TEXT("and it is booked as DROPPED, not silently lost"),
 		NearlyEqualHybrid(Off.GetDroppedPersonMetres(), 0.20, RelTol1e6, Coeff(AbsCoeff2e7, 0.20)));
+	return true;
+}
+
+// =====================================================================================================
+// T-OFFSET-2 -- THE MESH MUST SPAN EXACTLY THE HEATMAP'S WORLD EXTENT.
+//
+// `BuildTileBuffers` places vertex gx at `gx * CellSize` for gx = 0 .. NumTriangles-1, and gives it
+// `UV = gx / (NumTriangles - 1)`, so UV 0..1 covers the WHOLE texture across a mesh spanning
+// `(NumTriangles - 1) * CellSize`. The texture in turn covers the whole field extent. So unless
+//
+//     (NumTriangles - 1) * CellSize == MeshSize
+//
+// the texture is stretched across the wrong distance and the image shifts by
+// `fraction_across_mesh * error` -- zero at the origin corner, worst at the far one.
+//
+// `GenerateSquareCellSize` divided by `NumberOfTriangles` rather than `NumberOfTriangles - 1` until
+// 2026-08-05, making the mesh exactly ONE CELL short. On a 200 m carrier that is 25 cm at the far edge,
+// 2.5 texels at 10 cm/texel, and it was visible on screen (A0-56 / A0-60).
+//
+// Nothing in the suite could see it. Every conservation criterion sums the field, and sums are
+// POSITION-BLIND -- the same blind spot that left the row-orientation question open for weeks. This test
+// exists so a one-character change to that divisor fails loudly instead of quietly skewing every heatmap.
+//
+// Deliberately swept over many extents, including non-square and deliberately awkward ones, because
+// `CalculateNumberOfTriangles` CEILS (MeshSize/25) and the interesting cases are the ones where 25 does
+// not divide the extent.
+// =====================================================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajMeshSpanMatchesExtentTest,
+	"ProjectMobius.Heatmap.Trajectory.Offset.MeshSpanMatchesExtent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajMeshSpanMatchesExtentTest::RunTest(const FString& Parameters)
+{
+	// Extents in cm. Square, non-square, and several that 25 does not divide evenly.
+	const TArray<FVector2D> Extents = {
+		FVector2D(20000.0, 20000.0),   // the 200 m capture carrier
+		FVector2D(7300.0, 7300.0),     // PRD's 73 m reference floor
+		FVector2D(6720.0, 5300.0),     // the technical school's real extent, non-square
+		FVector2D(2000.0, 2000.0),     // small floor
+		FVector2D(10000.0, 2500.0),    // extreme aspect ratio
+		FVector2D(1013.0, 787.0),      // primes: 25 divides neither
+		FVector2D(137.0, 26.0),        // degenerate-ish, exercises the Max(1, n-1) guard
+	};
+
+	const FIntPoint TextureSize(1024, 1024); // only CalculateNumberOfTriangles' signature needs this
+
+	for (const FVector2D& Extent : Extents)
+	{
+		const FIntPoint NumTriangles =
+			AHeatmapPixelTextureVisualizer::CalculateNumberOfTriangles(Extent, TextureSize);
+		const FVector2D CellSize =
+			AHeatmapPixelTextureVisualizer::GenerateSquareCellSize(NumTriangles, Extent);
+
+		// Must mirror BuildTileBuffers exactly: gx runs 0..NumTriangles-1, vertex at gx * CellSize.
+		const double SpanX = static_cast<double>(NumTriangles.X - 1) * CellSize.X;
+		const double SpanY = static_cast<double>(NumTriangles.Y - 1) * CellSize.Y;
+		const double ErrX = SpanX - Extent.X;
+		const double ErrY = SpanY - Extent.Y;
+
+		AddInfo(FString::Printf(
+			TEXT("extent %.0f x %.0f cm -> verts %d x %d, cell %.6f x %.6f, span %.4f x %.4f, ")
+			TEXT("error %+.4f x %+.4f cm"),
+			Extent.X, Extent.Y, NumTriangles.X, NumTriangles.Y,
+			CellSize.X, CellSize.Y, SpanX, SpanY, ErrX, ErrY));
+
+		// 0.01 cm = 0.1 mm: float accumulation noise only. A divisor mistake is a whole cell (~25 cm),
+		// four orders larger, so this tolerance cannot hide one.
+		TestTrue(FString::Printf(
+			TEXT("mesh X span equals the extent for %.0f cm (error %+.4f cm, tolerance 0.01)"),
+			Extent.X, ErrX), FMath::Abs(ErrX) < 0.01);
+		TestTrue(FString::Printf(
+			TEXT("mesh Y span equals the extent for %.0f cm (error %+.4f cm, tolerance 0.01)"),
+			Extent.Y, ErrY), FMath::Abs(ErrY) < 0.01);
+
+		// Guard the assumption the span formula rests on. One vertex means no span at all, and the
+		// Max(1, n-1) guard in GenerateSquareCellSize would silently return the full extent as the cell.
+		TestTrue(FString::Printf(TEXT("extent %.0f cm yields at least 2 vertices per axis"), Extent.X),
+			NumTriangles.X >= 2 && NumTriangles.Y >= 2);
+	}
+
+	return true;
+}
+
+// =====================================================================================================
+// T-OFFSET-1 -- IS THE DEPOSITED STROKE LATERALLY BIASED AGAINST THE TRUE PATH?
+//
+// Owner observed 2026-08-05 that the stroke width looks right but sits off-centre from the agent, to one
+// side (ruling A0-56). Three stages could introduce that, and they need different fixes:
+//
+//   A. the FIELD          -- WorldToCell / DepositSegment placing mass half a texel off  <- THIS TEST
+//   B. the RENDER         -- texel -> UV -> mesh mapping putting cell 0 at a texel EDGE rather than its
+//                            CENTRE (`UVy = gy/(N-1)` is the suspect form). Not reachable from here.
+//   C. the PRODUCER       -- the deposited point not being the agent's visual centre (entity transform
+//                            vs mesh pivot). Not reachable from here either.
+//
+// This test settles A definitively, so a failure localises the bug and a pass EXONERATES the field and
+// sends the search to B or C. That is its whole purpose: none of the conservation criteria can fail on a
+// lateral shift, because depositing the right length along a shifted path conserves person-metres exactly.
+//
+// METHOD, and the reason it is not simply "deposit one path and look":
+// a single path cannot distinguish a real bias from ordinary quantisation. With a one-texel stroke the
+// drawn centre is the CELL centre, so a path anywhere inside that cell reads up to half a texel off, which
+// is correct behaviour. So sweep the path across one full texel in sub-texel phases and take the MEAN
+// signed offset. Symmetric quantisation averages to ~0. A half-texel convention error averages to +/-5 cm
+// at 10 cm/texel and is unmissable. Max |offset| is reported separately and is allowed to reach half a
+// texel -- that number is the accuracy limit of a one-texel stroke, not a defect.
+// =====================================================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajStrokeCentroidBiasTest,
+	"ProjectMobius.Heatmap.Trajectory.Offset.StrokeCentroidBias",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+
+	constexpr float CmPerTexel = 10.0f;   // shipping default
+	constexpr float WidthCm    = 10.0f;   // shipping default after A0-47: one texel, one kernel tap
+	constexpr int32 Phases     = 20;      // sub-texel phases across one whole texel
+	constexpr double HalfTexel = CmPerTexel * 0.5;
+
+	// Returns { mean signed offset, max abs offset } in cm for a path running along one axis.
+	auto MeasureAxis = [this](bool bAlongX) -> TPair<double, double>
+	{
+		double SumOffset = 0.0;
+		double MaxAbsOffset = 0.0;
+		for (int32 Phase = 0; Phase < Phases; ++Phase)
+		{
+			// Lateral coordinate of the true path, swept across exactly one texel.
+			const double TrueLateral = 500.0 + (static_cast<double>(CmPerTexel) * Phase) / Phases;
+			FTrajectoryField Field = MakeField(1000.0, 1000.0, CmPerTexel, WidthCm);
+			if (bAlongX)
+			{
+				Field.DepositSegment(FVector2D(100.0, TrueLateral), FVector2D(900.0, TrueLateral), 1.0f);
+			}
+			else
+			{
+				Field.DepositSegment(FVector2D(TrueLateral, 100.0), FVector2D(TrueLateral, 900.0), 1.0f);
+			}
+
+			const TArray<float>& Values = Field.GetCanonical(ETrajectoryMapMode::RouteUsage);
+			const FIntPoint Dims = Field.GetGridDims();
+			double Mass = 0.0;
+			double Moment = 0.0;
+			for (int32 J = 0; J < Dims.Y; ++J)
+			{
+				for (int32 I = 0; I < Dims.X; ++I)
+				{
+					const double Weight = Values[J * Dims.X + I];
+					if (Weight > 0.0)
+					{
+						// Cell centre in cm: a cell spans [i, i+1) texels, so its centre is (i + 0.5).
+						const double LateralCentre = bAlongX
+							? (static_cast<double>(J) + 0.5) * CmPerTexel
+							: (static_cast<double>(I) + 0.5) * CmPerTexel;
+						Mass += Weight;
+						Moment += Weight * LateralCentre;
+					}
+				}
+			}
+			if (Mass <= 0.0)
+			{
+				AddError(FString::Printf(TEXT("phase %d deposited no mass at all"), Phase));
+				return TPair<double, double>(TNumericLimits<double>::Max(), TNumericLimits<double>::Max());
+			}
+			const double Offset = (Moment / Mass) - TrueLateral;
+			SumOffset += Offset;
+			MaxAbsOffset = FMath::Max(MaxAbsOffset, FMath::Abs(Offset));
+		}
+		return TPair<double, double>(SumOffset / Phases, MaxAbsOffset);
+	};
+
+	const TPair<double, double> AlongX = MeasureAxis(/*bAlongX*/ true);   // measures the Y offset
+	const TPair<double, double> AlongY = MeasureAxis(/*bAlongX*/ false);  // measures the X offset
+
+	AddInfo(FString::Printf(
+		TEXT("lateral offset over %d sub-texel phases at %.1f cm/texel, stroke %.1f cm: ")
+		TEXT("Y mean=%+.4f cm max=%.4f cm | X mean=%+.4f cm max=%.4f cm (half texel = %.1f cm)"),
+		Phases, CmPerTexel, WidthCm, AlongX.Key, AlongX.Value, AlongY.Key, AlongY.Value, HalfTexel));
+
+	// The real assertion. 0.5 cm is a twentieth of a texel: far below the sweep's own resolution of
+	// CmPerTexel/Phases, and two orders below the 5 cm a half-texel error would produce.
+	TestTrue(FString::Printf(TEXT("stroke is not laterally biased along Y (mean %+.4f cm, tolerance 0.5)"),
+		AlongX.Key), FMath::Abs(AlongX.Key) < 0.5);
+	TestTrue(FString::Printf(TEXT("stroke is not laterally biased along X (mean %+.4f cm, tolerance 0.5)"),
+		AlongY.Key), FMath::Abs(AlongY.Key) < 0.5);
+
+	// Quantisation bound. Exceeding half a texel means mass landed in a cell that does not contain the
+	// path at all, which is a placement bug rather than a rounding limit.
+	TestTrue(FString::Printf(TEXT("worst-case Y offset within half a texel (%.4f <= %.1f)"),
+		AlongX.Value, HalfTexel), AlongX.Value <= HalfTexel + KINDA_SMALL_NUMBER);
+	TestTrue(FString::Printf(TEXT("worst-case X offset within half a texel (%.4f <= %.1f)"),
+		AlongY.Value, HalfTexel), AlongY.Value <= HalfTexel + KINDA_SMALL_NUMBER);
+
+	// Pin the cell-centre convention outright, so a future change to WorldToCell cannot quietly move it.
+	// A stationary agent at an exact cell centre must land in that cell; at an exact boundary the
+	// lower-index cell owns it (the ratified rule).
+	{
+		FTrajectoryField Field = MakeField(1000.0, 1000.0, CmPerTexel, WidthCm);
+		Field.DepositSegment(FVector2D(455.0, 455.0), FVector2D(455.0, 455.0), 1.0f); // centre of cell (45,45)
+		const TArray<float>& Values = Field.GetCanonical(ETrajectoryMapMode::RouteExposure);
+		const FIntPoint Dims = Field.GetGridDims();
+		TestTrue(TEXT("a point at the exact centre of cell (45,45) deposits into cell (45,45)"),
+			Values.IsValidIndex(45 * Dims.X + 45) && Values[45 * Dims.X + 45] > 0.0f);
+	}
+	{
+		FTrajectoryField Field = MakeField(1000.0, 1000.0, CmPerTexel, WidthCm);
+		Field.DepositSegment(FVector2D(450.0, 450.0), FVector2D(450.0, 450.0), 1.0f); // exact boundary
+		const TArray<float>& Values = Field.GetCanonical(ETrajectoryMapMode::RouteExposure);
+		const FIntPoint Dims = Field.GetGridDims();
+		TestTrue(TEXT("a point on the exact boundary is owned by the LOWER-index cell (44,44)"),
+			Values.IsValidIndex(44 * Dims.X + 44) && Values[44 * Dims.X + 44] > 0.0f);
+	}
+
 	return true;
 }
 
