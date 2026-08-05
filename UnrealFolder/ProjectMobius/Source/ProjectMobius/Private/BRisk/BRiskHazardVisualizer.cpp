@@ -229,23 +229,37 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	float ThicknessCm,
 	FVector& OutCenterCm,
 	FVector& OutSizeCm,
-	int32* OutNormalAxis)
+	int32* OutNormalAxis,
+	FVector* OutOutwardNormal)
 {
 	if (!FromRoom || Vent.Width <= 0.0 || Vent.Height <= 0.0 || Scale <= 0.0f)
 	{
 		return false;
 	}
 
-	// Which axis the wall's normal runs along. Reported rather than left for the caller to infer
-	// from OutSizeCm - "the thinnest axis" is only the normal while the opening is wider than the
-	// slab is thick, which no leakage vent is.
-	const auto SetNormalAxis = [OutNormalAxis](int32 Axis)
+	// Which axis the wall's normal runs along, and which way along it points OUT of FromRoom.
+	//
+	// Both are reported rather than left for the caller to work out, because both were previously
+	// re-derived downstream from the opening's bounding box and both were wrong for the same reason.
+	// "Thinnest axis" is only the wall normal while the opening is wider than the slab is thick,
+	// which no leakage vent is; and "is the opening beyond the room's bounding-box centre" is only
+	// the outward direction while the room fills its own bounding box, which no L-shaped room does.
+	// Corridor 15 is the worked example: its box spans UE Y 10.82..17.02 so the centre is 13.92,
+	// but the corridor LEG only occupies 16.02..17.02, so both of its long walls test as "beyond
+	// the centre" and every door along both of them faced the same way.
+	const auto SetWallDirection = [OutNormalAxis, OutOutwardNormal](int32 Axis, double Sign)
 	{
 		if (OutNormalAxis)
 		{
 			*OutNormalAxis = Axis;
 		}
+		if (OutOutwardNormal)
+		{
+			*OutOutwardNormal = FVector::ZeroVector;
+			(*OutOutwardNormal)[Axis] = Sign;
+		}
 	};
+	const auto SetNormalAxis = [&SetWallDirection](int32 Axis) { SetWallDirection(Axis, 1.0); };
 
 	// Same source of truth as the smoke volumes and egress bounds, so a vent cannot end up in a
 	// different frame from the room it is cut into. Under SmokeviewSwap this returns exactly what
@@ -348,11 +362,20 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 				const FVector2D EdgeDirection = Ring[(BestEdge + 1) % Ring.Num()] - Ring[BestEdge];
 				const bool bRunsAlongX = FMath::Abs(EdgeDirection.X) >= FMath::Abs(EdgeDirection.Y);
 
+				// Outward from the WALL, not from the room's bounding box. MakeRoomFootprint
+				// normalises the ring counter-clockwise AFTER converting to Unreal space, so the
+				// interior lies to the left of each directed edge and (dy, -dx) points out. That is
+				// exact for any room shape, where the bounding-box-centre test this replaces is only
+				// right for a room that fills its own box.
+				const FVector2D OutwardPlan(EdgeDirection.Y, -EdgeDirection.X);
+				const int32 Axis = bRunsAlongX ? 1 : 0;
+				const double OutwardSign = (OutwardPlan[Axis] >= 0.0) ? 1.0 : -1.0;
+
 				OutCenterCm = FVector(CentrePlan.X, CentrePlan.Y, CenterZ);
 				OutSizeCm = bRunsAlongX
 					? FVector(WidthCm, ThicknessCm, HeightCm)
 					: FVector(ThicknessCm, WidthCm, HeightCm);
-				SetNormalAxis(bRunsAlongX ? 1 : 0);
+				SetWallDirection(Axis, OutwardSign);
 				return true;
 			}
 		}
@@ -436,7 +459,9 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		const double WallX = (Wall == WallPosX) ? MaxCm.X : MinCm.X;
 		OutCenterCm = FVector(WallX, (OpenStart + OpenEnd) * 0.5, CenterZ);
 		OutSizeCm = FVector(ThicknessCm, OpenEnd - OpenStart, HeightCm);
-		SetNormalAxis(0);
+		// This path places on a bounding-box face, so the face IS the outward direction - no centre
+		// test needed, and unlike that test this stays right for a room that does not fill its box.
+		SetWallDirection(0, (Wall == WallPosX) ? 1.0 : -1.0);
 		return true;
 	}
 
@@ -456,7 +481,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	const double WallY = (Wall == WallPosY) ? MaxCm.Y : MinCm.Y;
 	OutCenterCm = FVector((OpenStart + OpenEnd) * 0.5, WallY, CenterZ);
 	OutSizeCm = FVector(OpenEnd - OpenStart, ThicknessCm, HeightCm);
-	SetNormalAxis(1);
+	SetWallDirection(1, (Wall == WallPosY) ? 1.0 : -1.0);
 	return true;
 }
 
@@ -642,8 +667,10 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		FVector CenterCm = FVector::ZeroVector;
 		FVector SizeCm = FVector::ZeroVector;
 		int32 NormalAxis = 1;
+		FVector WallOutwardNormal = FVector(0.0, 1.0, 0.0);
 		if (!CubeMesh || !ComputeVentSlab(
-			Vent, FromRoom, ToRoom, Scale, Frame, VentSlabThicknessCm, CenterCm, SizeCm, &NormalAxis))
+			Vent, FromRoom, ToRoom, Scale, Frame, VentSlabThicknessCm, CenterCm, SizeCm,
+			&NormalAxis, &WallOutwardNormal))
 		{
 			// Says which of the causes it was. The old text blamed "no FromRoom geometry or zero
 			// opening" for every case, including the commonest one by far - a face id outside 1-4,
@@ -719,20 +746,19 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 		// FromRoom.
 		if (PlaneMesh && VentFlowMaterial)
 		{
-			// Both of these were independently wrong, in the same two ways the outline was.
+			// Everything this block used to derive for itself was wrong, in three ways.
 			//
-			// ToUnrealBox ignores the scenario's room frame, unlike everything else in this
-			// function (see MakeRoomFootprint at the top of ComputeVentSlab) - and this box's
-			// centre is what decides which way the flow band faces, so under the Revit frame it
-			// could point the band out of the opposite wall.
+			// It called ToUnrealBox, ignoring the scenario's room frame, unlike the rest of this
+			// function. It re-derived the wall axis as the opening's thinnest, which is not the
+			// normal for any leakage vent. And it decided which way "out" is by asking whether the
+			// opening lies beyond the room's bounding-box CENTRE - true only for a room that fills
+			// its own box. Corridor 15 does not: the spur drags its box centre to UE Y 13.92 while
+			// the corridor leg occupies 16.02..17.02, so BOTH of its long walls tested as "beyond
+			// the centre" and all twelve doors along them pointed the same way. Owner-reported.
 			//
-			// The axis was re-derived here as "thinnest", the same inference that put every leakage
-			// vent's outline in the wrong plane. ComputeVentSlab now reports the real wall normal,
-			// so use it rather than guessing again.
-			const FBox FromBoxCm = BRiskCoord::MakeRoomFootprint(*FromRoom, Scale, Frame).Bounds;
-			const FVector FromCenterCm = FromBoxCm.GetCenter();
-			FVector OutwardNormal = FVector::ZeroVector;
-			OutwardNormal[NormalAxis] = (CenterCm[NormalAxis] >= FromCenterCm[NormalAxis]) ? 1.0 : -1.0;
+			// ComputeVentSlab now reports the wall it actually placed against, taking the outward
+			// direction from the footprint edge's winding. Use it rather than guessing again.
+			const FVector OutwardNormal = WallOutwardNormal;
 
 			FVentFlowGeom& Geom = VentFlowGeometry[VentIndex];
 			Geom.bValid = true;

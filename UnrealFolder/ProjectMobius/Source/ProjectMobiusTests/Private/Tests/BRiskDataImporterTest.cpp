@@ -1373,6 +1373,8 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	int32 OffWall = 0;
 	double WorstStandOffCm = 0.0;
 	TArray<FVector> Centres;
+	// (wall normal axis, wall coordinate) -> the outward sign every door on that wall reported.
+	TMap<TPair<int32, double>, TArray<double>> DoorWallOutward;
 
 	for (int32 VentIndex = 0; VentIndex < RealData.Vents.Num(); ++VentIndex)
 	{
@@ -1387,14 +1389,23 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 		FVector MarkerCm = FVector::ZeroVector;
 		FVector MarkerSizeCm = FVector::ZeroVector;
 		int32 MarkerNormalAxis = INDEX_NONE;
+		FVector MarkerOutward = FVector::ZeroVector;
 		if (!ABRiskHazardVisualizer::ComputeVentSlab(
 			Vent, VentRoom, nullptr, Scale, RealData.RoomFrame, ThicknessCm, MarkerCm, MarkerSizeCm,
-			&MarkerNormalAxis))
+			&MarkerNormalAxis, &MarkerOutward))
 		{
 			continue;
 		}
 		++Placed;
 		Centres.Add(MarkerCm);
+
+		// Group by the wall each opening landed on, to check flow directions across the set below.
+		if (Vent.Kind == EBRiskVentKind::Door && MarkerNormalAxis >= 0 && MarkerNormalAxis <= 1)
+		{
+			const double WallCoord = FMath::RoundToDouble(MarkerCm[MarkerNormalAxis] * 10.0) / 10.0;
+			DoorWallOutward.FindOrAdd(TPair<int32, double>(MarkerNormalAxis, WallCoord))
+				.Add(MarkerOutward[MarkerNormalAxis]);
+		}
 
 		// Every marker must be thin along the WALL normal. 18 of these 34 are leakage paths narrower
 		// than the 8 cm slab, so an outline built on "thinnest axis" would lie across the wall.
@@ -1461,6 +1472,35 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("No two openings should render at the same point"), Coincident, 0);
+
+	// Owner-reported: every door along the corridor showed its flow pointing the same way. The
+	// outward direction was decided by "is the opening beyond the room's bounding-box centre", and
+	// Corridor 15's spur drags that centre to UE Y 13.92 while the leg occupies 16.02..17.02 - so
+	// both long walls answered +Y. Two facts pin it: every door on ONE wall must agree with itself,
+	// and the corridor's two opposing walls must disagree with each other.
+	TArray<double> CorridorLongWallSigns;
+	for (const TPair<TPair<int32, double>, TArray<double>>& Wall : DoorWallOutward)
+	{
+		const TArray<double>& Signs = Wall.Value;
+		for (const double Sign : Signs)
+		{
+			TestEqual(FString::Printf(TEXT("doors on the wall at axis %d / %.1f cm all face the same way"),
+				Wall.Key.Key, Wall.Key.Value), Sign, Signs[0], 1.0e-9);
+		}
+
+		// The two long corridor walls: normal along Y, six doors each.
+		if (Wall.Key.Key == 1 && Signs.Num() == 6)
+		{
+			CorridorLongWallSigns.Add(Signs[0]);
+		}
+	}
+
+	if (TestEqual(TEXT("the corridor's two six-door walls should both be found"),
+		CorridorLongWallSigns.Num(), 2))
+	{
+		TestNotEqual(TEXT("facing walls of the corridor must point in OPPOSITE directions"),
+			CorridorLongWallSigns[0], CorridorLongWallSigns[1]);
+	}
 
 	return true;
 }

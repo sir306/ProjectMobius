@@ -101,7 +101,8 @@ public:
 		float ThicknessCm,
 		FVector& OutCenterCm,
 		FVector& OutSizeCm,
-		int32* OutNormalAxis = nullptr);
+		int32* OutNormalAxis = nullptr,
+		FVector* OutOutwardNormal = nullptr);
 
 	/**
 	 * Marker colour per opening kind.
