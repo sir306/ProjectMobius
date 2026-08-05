@@ -1026,6 +1026,48 @@ bool FBRiskRoomMeshFootprintTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Failed build should emit no geometry"), Vertices.Num(), 0);
 	}
 
+	// --- A room WITHOUT a footprint must honour the scenario frame ---------------------------
+	//
+	// The rectangle path used to convert with ToUnrealBox regardless of the Frame it was passed,
+	// so in a Revit-frame scenario a polygon-less room came out rotated 90 degrees about the world
+	// origin from every room that did have a footprint. Every other test here happens to feed rooms
+	// that have polygons, or passes SmokeviewSwap, so none of them could see it.
+	//
+	// Same room, same numbers, both frames - only the frame differs, so a single expectation cannot
+	// be satisfied by both and the assertion cannot be quietly weakened into agreement.
+	{
+		FBRiskRoomGeometry RectangleOnly = MakeLobby14Room();
+		RectangleOnly.FootprintPolygon.Reset();
+		RectangleOnly.bHasFootprintExtents = false;
+		const TArray<FBRiskRoomGeometry> Rooms = { RectangleOnly };
+
+		// Revit: (x, -y, z). Origin x 3.2505 + size x 5.0 -> X [325.05, 825.05];
+		// origin y -19.0189 + size y 2.786 -> negated and ordered -> Y [1623.29, 1901.89].
+		if (TestTrue(TEXT("Rectangle-only room should build in the Revit frame"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, NoVents, 100.0f, BRiskCoord::ERoomFrame::Revit, Vertices, Triangles, Normals, &Error)))
+		{
+			const FBox Bounds(Vertices);
+			TestEqual(TEXT("Revit frame min X"), Bounds.Min.X, 325.05, 0.01);
+			TestEqual(TEXT("Revit frame max X"), Bounds.Max.X, 825.05, 0.01);
+			TestEqual(TEXT("Revit frame min Y"), Bounds.Min.Y, 1623.29, 0.01);
+			TestEqual(TEXT("Revit frame max Y"), Bounds.Max.Y, 1901.89, 0.01);
+		}
+
+		// Legacy X<->Y swap, byte-identical to the old ToUnrealBox call. Pinning this is the point:
+		// the fix must not disturb a scenario that has no Zones-data.json at all.
+		if (TestTrue(TEXT("Rectangle-only room should build in the legacy frame"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, NoVents, 100.0f, BRiskCoord::ERoomFrame::SmokeviewSwap, Vertices, Triangles, Normals, &Error)))
+		{
+			const FBox Bounds(Vertices);
+			TestEqual(TEXT("Legacy frame min X"), Bounds.Min.X, -1901.89, 0.01);
+			TestEqual(TEXT("Legacy frame max X"), Bounds.Max.X, -1623.29, 0.01);
+			TestEqual(TEXT("Legacy frame min Y"), Bounds.Min.Y, 325.05, 0.01);
+			TestEqual(TEXT("Legacy frame max Y"), Bounds.Max.Y, 825.05, 0.01);
+		}
+	}
+
 	return true;
 }
 

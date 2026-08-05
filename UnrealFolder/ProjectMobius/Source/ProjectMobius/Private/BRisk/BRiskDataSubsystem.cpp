@@ -1422,9 +1422,20 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 			return false;
 		}
 
-		// B-Risk metres -> Unreal cm with the X<->Y swap (see BRiskCoord), matching the
-		// smoke/hazard visualizers and egress bounds so generated walls aren't mirrored.
-		const FBox RoomBoxCm = BRiskCoord::ToUnrealBox(Room.Origin, Room.Size, Scale);
+		// Same source of truth as the smoke volumes, the hazard markers and the egress bounds, so a
+		// room without a footprint lands in the SAME frame as the rooms that have one.
+		//
+		// This used to call ToUnrealBox directly, which is the legacy X<->Y swap regardless of the
+		// Frame this function was handed. A scenario where any room has a Zones-data.json footprint
+		// resolves to Frame::Revit, so a polygon-less room in that scenario came out rotated 90
+		// degrees about the world origin from every other room - the exact fault the warning above
+		// this loop describes but did not prevent. Under Frame::SmokeviewSwap MakeRoomFootprint
+		// returns byte-identical output to ToUnrealBox, so the no-JSON case is unchanged.
+		//
+		// Still only a placement fix: the rectangle is area/perimeter-equivalent (SR282 eq. 1-2) and
+		// L is by definition the larger root, so a room longer in Y arrives transposed. That is a
+		// B-Risk limitation and needs a footprint to solve, not a frame.
+		const FBox RoomBoxCm = BRiskCoord::MakeRoomFootprint(Room, Scale, Frame).Bounds;
 		const FVector Min = RoomBoxCm.Min;
 		const FVector Max = RoomBoxCm.Max;
 
@@ -1443,6 +1454,15 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 			// B-Risk face id matches. (One opening per wall; multiple vents sharing a wall is
 			// not yet supported.) The caller passes the B-Risk face for this UE wall under the
 			// X<->Y swap.
+			//
+			// KNOWN GAP - this matches NOTHING in a scenario that has Zones-data.json openings[].
+			// Those vents carry a real centre and their Face is deliberately cleared to INDEX_NONE,
+			// because the .smv face column does not identify a wall (measured: face 2 and face 3
+			// each map to three different wall normals across the 12-room model). So the walls come
+			// out solid rather than wrongly-holed. Only reachable for a room with no footprint, and
+			// only when the generated-room-geometry toggle is on. Cutting real openings needs the
+			// polygon path below to support holes, which openings[] now makes possible for the
+			// first time - see _CurrentHandoff\BRISK_VENTS_HANDOFF.md.
 			const FBRiskVentGeometry* WallVent = nullptr;
 			for (const FBRiskVentGeometry& Vent : Vents)
 			{
