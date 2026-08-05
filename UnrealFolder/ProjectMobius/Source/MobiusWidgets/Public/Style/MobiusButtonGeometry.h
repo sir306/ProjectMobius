@@ -74,10 +74,16 @@ namespace MobiusButtonGeometry
 	 * CHIP — the standard Mobius button: a 4px rounded box with a 1px ring.
 	 *
 	 * Measured from `SWS_PanelButtonStyle` (CornerRadii 4, OutlineSettings.Width 1, NormalPadding
-	 * 8,4,8,4), which is what Browse, the flow-counter buttons and all 55 scalability tier buttons
-	 * already paint. Its authored PressedPadding is 6,2,6,2 — deliberately NOT copied here; that is the
-	 * unequal-totals value StabilisePressedPadding exists to repair, and transcribing it into a named
-	 * struct would make the click-eating padding look intentional.
+	 * 8,4,8,4), which is what Browse and the flow-counter buttons already paint. Its authored
+	 * PressedPadding is 6,2,6,2 — deliberately NOT copied here; that is the unequal-totals value
+	 * StabilisePressedPadding exists to repair, and transcribing it into a named struct would make the
+	 * click-eating padding look intentional.
+	 *
+	 * NOTE (2026-08-05): this currently has NO caller, and that is expected, not an oversight. Its one
+	 * call site was the `SWS_ScaleabilityButtonCurrentSet` branch of `ApplySharedStyles`, retired the
+	 * same day along with the asset (see `/Game/99_Old/`). Kept because it is the named home the three
+	 * families in the header note above would otherwise each re-derive — reach for it the next time a
+	 * chip's shape has to be set from C++, rather than typing radius 4 / outline 1 into a fourth file.
 	 */
 	extern MOBIUSWIDGETS_API const FMobiusButtonGeometry Chip;
 }

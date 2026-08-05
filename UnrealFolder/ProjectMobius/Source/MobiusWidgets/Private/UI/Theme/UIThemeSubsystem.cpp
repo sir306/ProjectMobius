@@ -54,7 +54,6 @@
 #include "Engine/Engine.h"
 #include "Slate/SlateBrushAsset.h"
 #include "UserConfig/UserProjectSettings.h"
-#include "Style/MobiusButtonGeometry.h"
 #include "Style/MobiusStyle.h"
 #include "Styling/SlateTypes.h"
 #include "Styling/SlateWidgetStyleAsset.h"
@@ -1798,30 +1797,14 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 					}
 					bChanged = true;
 				}
-				// The "current tier" chip: replace the baked black material with a flat rounded box
-				// carrying an accent ring — readable in both themes with the shared dark/light labels.
+				// A10 (2026-08-05): the "current tier" chip branch that used to sit here — matching
+				// SWS_ScaleabilityButtonCurrentSet and rebuilding it as a flat rounded box with an accent
+				// ring — is GONE, because the asset is. The panel rebuild replaced the five tier buttons
+				// with a segmented control that styles itself in C++ (UGlobalQualitySegmentWidget), which
+				// left the asset with no consumer; it now lives in /Game/99_Old/. This sweep only walks
+				// /Game/01_Dev/Widgets, so the branch could never have matched again. Retiring it is what
+				// finally makes this whole function's remaining behaviour asset-colour-only.
 				//
-				// A10 item 2 (2026-08-05, owner ruling "the accent ring colour is enough"): the SHAPE now
-				// comes from the shared MobiusButtonGeometry::Chip, so the active tier is geometrically
-				// IDENTICAL to the four inactive siblings beside it and differs only in ring colour. It
-				// used to invent its own CornerRadii 2 / Width 2 here, a signature that exists nowhere on
-				// disk and nowhere else in the app — two corner radii inside one row of buttons. Only the
-				// two COLOURS below are this function's business now.
-				else if (AssetData.AssetName == TEXT("SWS_ScaleabilityButtonCurrentSet"))
-				{
-					const FLinearColor ChipFill = bLight ? FLinearColor(0.964f, 0.964f, 0.964f) : FLinearColor(0.0452f, 0.0452f, 0.0452f);
-					const FLinearColor Accent = bLight ? FLinearColor(0.0f, 0.1356f, 0.5271f) : FLinearColor(0.100f, 0.330f, 0.661f);
-					// Paddings come along with the shape: the SAME physical button paints through this
-					// asset when active and through SWS_PanelButtonStyle when not, so leaving this one at
-					// the authored 0,0,0,0 made the label inset jump 8px the moment a tier was selected.
-					MobiusButtonGeometry::Chip.ApplyToButtonStyle(*ButtonStyle);
-					for (FSlateBrush* Brush : Brushes)
-					{
-						Brush->TintColor = FSlateColor(ChipFill);
-						Brush->OutlineSettings.Color = FSlateColor(Accent);
-					}
-					bChanged = true;
-				}
 				// Bottom-bar play/pause (§3.6 round-53 accent ring): the play/pause glyph is a MATERIAL brush
 				// (MI_PlayButton/MI_PauseButton). Slate's RoundedBox draw type routes materials through the
 				// material shader and does not apply the rounded-corner mask/outline, so converting DrawAs
