@@ -54,6 +54,7 @@
 #include "Engine/Engine.h"
 #include "Slate/SlateBrushAsset.h"
 #include "UserConfig/UserProjectSettings.h"
+#include "Style/MobiusButtonGeometry.h"
 #include "Style/MobiusStyle.h"
 #include "Styling/SlateTypes.h"
 #include "Styling/SlateWidgetStyleAsset.h"
@@ -1799,19 +1800,25 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 				}
 				// The "current tier" chip: replace the baked black material with a flat rounded box
 				// carrying an accent ring — readable in both themes with the shared dark/light labels.
+				//
+				// A10 item 2 (2026-08-05, owner ruling "the accent ring colour is enough"): the SHAPE now
+				// comes from the shared MobiusButtonGeometry::Chip, so the active tier is geometrically
+				// IDENTICAL to the four inactive siblings beside it and differs only in ring colour. It
+				// used to invent its own CornerRadii 2 / Width 2 here, a signature that exists nowhere on
+				// disk and nowhere else in the app — two corner radii inside one row of buttons. Only the
+				// two COLOURS below are this function's business now.
 				else if (AssetData.AssetName == TEXT("SWS_ScaleabilityButtonCurrentSet"))
 				{
 					const FLinearColor ChipFill = bLight ? FLinearColor(0.964f, 0.964f, 0.964f) : FLinearColor(0.0452f, 0.0452f, 0.0452f);
 					const FLinearColor Accent = bLight ? FLinearColor(0.0f, 0.1356f, 0.5271f) : FLinearColor(0.100f, 0.330f, 0.661f);
+					// Paddings come along with the shape: the SAME physical button paints through this
+					// asset when active and through SWS_PanelButtonStyle when not, so leaving this one at
+					// the authored 0,0,0,0 made the label inset jump 8px the moment a tier was selected.
+					MobiusButtonGeometry::Chip.ApplyToButtonStyle(*ButtonStyle);
 					for (FSlateBrush* Brush : Brushes)
 					{
-						Brush->SetResourceObject(nullptr);
-						Brush->DrawAs = ESlateBrushDrawType::RoundedBox;
 						Brush->TintColor = FSlateColor(ChipFill);
-						Brush->OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-						Brush->OutlineSettings.CornerRadii = FVector4(2.0f, 2.0f, 2.0f, 2.0f);
 						Brush->OutlineSettings.Color = FSlateColor(Accent);
-						Brush->OutlineSettings.Width = 2.0f;
 					}
 					bChanged = true;
 				}
