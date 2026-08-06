@@ -172,6 +172,42 @@ private:
 	 */
 	static TMap<class UMaterial*, EDatasmithMasterType> MasterTypeCache;
 
+	/**
+	 * Original RefractionIndex of every translucent-view MID, recorded when the MID is created and
+	 * kept for as long as it lives.
+	 *
+	 * The Datasmith translucent master refracts at IOR 1.5. Across a whole floor slab seen
+	 * edge-on that displaces the scene-colour sample far enough to smear unrelated geometry over
+	 * the surface, which reads as a mirror and makes the translucent view unusable. The view
+	 * therefore flattens the IOR to 1.0 for as long as it is active.
+	 *
+	 * Recorded at creation rather than on the first switch into the view: the switch order is
+	 * decided in Blueprint, the view is entered and left repeatedly, and MaterialCache hands the
+	 * same MID to many meshes — so a toggle-time snapshot can miss its chance to see the untouched
+	 * value and then has nothing to restore. A constant cannot stand in for it either, since
+	 * MaterialCache copies the value off each imported Datasmith material and it is per-model.
+	 *
+	 * Weak keys because one MID is shared across meshes and they die with the Datasmith scene.
+	 */
+	TMap<TWeakObjectPtr<UMaterialInstanceDynamic>, float> TranslucentViewRefractionSnapshot;
+
+	/** True while the building is being shown translucent, so late meshes can match the live view. */
+	bool bTranslucentViewActive = false;
+
+	/** Remember a freshly created translucent MID's untouched refraction. Safe to call repeatedly. */
+	void RecordOriginalRefraction(UMaterialInstanceDynamic* TranslucentMaterial);
+
+	/**
+	 * Whether the building is currently being shown translucent, answered from the materials on the
+	 * meshes rather than from which entry point ran last — one mode change calls several of these
+	 * from Blueprint and the order is not ours to assume. An opaque slot rendering its translucent
+	 * MID is the only reliable tell.
+	 */
+	bool IsTranslucentViewActive() const;
+
+	/** Flatten or restore every recorded MID's refraction to match the view that is actually up. */
+	void ApplyRefractionForCurrentView();
+
 public:
 
 	/**

@@ -38,6 +38,7 @@
 #include "Components/FlowCounterSpawnerComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
@@ -52,6 +53,20 @@
 #include "RenderingThread.h"
 
 TMap<UMaterial*, EDatasmithMasterType> ARuntimeMeshBuilder::MasterTypeCache;
+
+namespace
+{
+	/**
+	 * Index of refraction on the RuntimeDatasmithOverrides translucent master.
+	 *
+	 * The Twinmotion translucent master names its equivalent differently, so its MIDs fail the
+	 * lookup and are left alone — deliberately, since that content cannot ship anyway.
+	 */
+	const FName RefractionIndexParamName(TEXT("RefractionIndex"));
+
+	/** IOR 1.0 bends nothing, so the surface contributes no distortion. */
+	constexpr float NoRefractionIndex = 1.0f;
+}
 
 // Sets default values
 ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
@@ -254,6 +269,8 @@ void ARuntimeMeshBuilder::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// Drop our custom MID refs held per-mesh so the MIDs can be GC'd once the
 	// components detach below.
 	DatasmithMaterialsMap.Empty();
+	TranslucentViewRefractionSnapshot.Empty();
+	bTranslucentViewActive = false;
 
 	// Free the DatasmithRuntime scene's heavy render/collision data. The
 	// plugin's static FAssetRegistry::RegistrationMap keeps the UObject shells
@@ -348,6 +365,8 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 	}
 
 	DatasmithMaterialsMap.Empty();
+	TranslucentViewRefractionSnapshot.Empty();
+	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
 	ResetMeshCollisionAndPhysics();
 
@@ -637,6 +656,8 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	PendingDatasmithMeshes.Reset();
 
 	DatasmithMaterialsMap.Empty();
+	TranslucentViewRefractionSnapshot.Empty();
+	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
 
 	// Remove any flow counters, as the mesh is changing
@@ -1242,6 +1263,9 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToTranslucentMaterials()
 			DatasmithMaterialMap.Key->SetMaterial(Index,DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]);
 		}
 	}
+
+	ApplyRefractionForCurrentView();
+
 	UE_LOG(LogTemp, Error, TEXT("SetDatasmithMeshToTranslucentMaterials Finished"));
 }
 
@@ -1272,6 +1296,95 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToSolidMaterials()
 			DatasmithMaterialMap.Key->SetMaterial(Index,DatasmithMaterialMap.Value.MeshMaterials[Index * 2]);
 		}
 	}
+
+	ApplyRefractionForCurrentView();
+}
+
+void ARuntimeMeshBuilder::RecordOriginalRefraction(UMaterialInstanceDynamic* TranslucentMaterial)
+{
+	if (!TranslucentMaterial)
+	{
+		return;
+	}
+
+	// One shared MID serves many slots, so this is reached repeatedly. Only the first sighting can
+	// be trusted as the original — and only a MID recorded here ever gets flattened or restored.
+	if (TranslucentViewRefractionSnapshot.Contains(TranslucentMaterial))
+	{
+		return;
+	}
+
+	float OriginalRefractionIndex = 0.0f;
+	if (!TranslucentMaterial->GetScalarParameterValue(RefractionIndexParamName, OriginalRefractionIndex))
+	{
+		// Master does not expose the parameter — nothing to flatten, nothing to restore.
+		return;
+	}
+
+	TranslucentViewRefractionSnapshot.Add(TranslucentMaterial, OriginalRefractionIndex);
+
+	// Datasmith meshes finish building across several ticks, so a mesh can arrive after the
+	// translucent view is already on. Bring it straight into the current view rather than leaving
+	// one late chunk refracting while the rest of the building does not.
+	if (bTranslucentViewActive)
+	{
+		TranslucentMaterial->SetScalarParameterValue(RefractionIndexParamName, NoRefractionIndex);
+	}
+}
+
+bool ARuntimeMeshBuilder::IsTranslucentViewActive() const
+{
+	for (const TPair<TWeakObjectPtr<UStaticMeshComponent>, FDatasmithMaterials>& Entry : DatasmithMaterialsMap)
+	{
+		const UStaticMeshComponent* Mesh = Entry.Key.Get();
+		if (!Mesh)
+		{
+			continue;
+		}
+
+		for (int32 Index = 0; Index < Mesh->GetNumMaterials(); Index++)
+		{
+			// Only an opaque slot answers the question. A slot Datasmith classified as translucent
+			// renders its translucent MID in both views, so it can never tell them apart.
+			if (!Entry.Value.bIsOpaque.IsValidIndex(Index) || !Entry.Value.bIsOpaque[Index])
+			{
+				continue;
+			}
+
+			if (!Entry.Value.MeshMaterials.IsValidIndex(Index * 2 + 1))
+			{
+				continue;
+			}
+
+			if (Mesh->GetMaterial(Index) == Entry.Value.MeshMaterials[Index * 2 + 1])
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void ARuntimeMeshBuilder::ApplyRefractionForCurrentView()
+{
+	// Read the view off the materials that are actually on the meshes rather than trusting which
+	// function ran last. The UI drives these entry points from Blueprint and a single mode change
+	// calls several of them, so "the last one called wins" is not something this can rely on.
+	bTranslucentViewActive = IsTranslucentViewActive();
+
+	for (const TPair<TWeakObjectPtr<UMaterialInstanceDynamic>, float>& Recorded : TranslucentViewRefractionSnapshot)
+	{
+		if (UMaterialInstanceDynamic* TranslucentMaterial = Recorded.Key.Get())
+		{
+			TranslucentMaterial->SetScalarParameterValue(
+				RefractionIndexParamName,
+				bTranslucentViewActive ? NoRefractionIndex : Recorded.Value);
+		}
+	}
+
+	// The record is never consumed here. It belongs to the MIDs and is dropped with them when the
+	// Datasmith scene is torn down, so the view can be entered and left any number of times.
 }
 
 void ARuntimeMeshBuilder::UpdateDatasmithMeshOpacity(float Opacity)
@@ -1438,12 +1551,12 @@ void ARuntimeMeshBuilder::SetDatasmithToOriginalMatStyle()
 		{
 			if (!DatasmithMaterialMap.Value.MeshMaterials.IsValidIndex(Index * 2 + 1)) continue;
 
-			// set the material shading to use the modified colour material or not
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
+			// set the material shading to not use the modified colour material or and to use the modified material so we are able to override opacity with the slider
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Colour"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Material"), 1.0f);
 
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Colour"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Material"), 1.0f);
 
 			// if is opaque then set the material to use the opaque material
 			if(DatasmithMaterialMap.Value.bIsOpaque[Index])
@@ -1464,6 +1577,11 @@ void ARuntimeMeshBuilder::SetDatasmithToOriginalMatStyle()
 			}
 		}
 	}
+
+	// Translucent slots go back to rendering the same MID the translucent view flattened, so the
+	// refraction it took away has to come back here. This is the route the UI actually uses to
+	// leave the translucent view — SetDatasmithMeshToSolidMaterials never runs in practice.
+	ApplyRefractionForCurrentView();
 }
 
 void ARuntimeMeshBuilder::SetMaterialOnMesh()
@@ -1811,7 +1929,19 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeT
 		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
 
 	//return CreateMaterialInstances(InMaterial, TranslucentMaterialPath); - old way without cache
-	return MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> Created =
+		MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
+
+	// Capture the untouched refraction here, at generation, not on the first switch to the
+	// translucent view. MaterialCache hands back a shared MID and the view can be entered and left
+	// any number of times in any order, so a snapshot taken on a toggle is only ever as good as the
+	// toggle ordering — and the ordering is decided in Blueprint.
+	for (UMaterialInstanceDynamic* Material : Created)
+	{
+		RecordOriginalRefraction(Material);
+	}
+
+	return Created;
 }
 
 void ARuntimeMeshBuilder::EnqueueCollisionEnable(UStaticMeshComponent* Mesh)
