@@ -98,8 +98,30 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Rendering|Methods")
 	void InitializeHeatmap(int32 InHeatmapType, bool bIsLiveTrackingNeeded, const FVector2D& MeshSize, float NewHeightDisplacement = 0.0f, bool bIs3DHeatmap = false);
-	
-	
+
+	/**
+	 * Vertex-grid dimensions for a heatmap covering MeshSizeCm, one entry per axis.
+	 *
+	 * Takes NO 3D flag, on purpose. The 3D toggle is a realtime switch that must never regenerate
+	 * geometry, so the mesh is always built dense enough to carry displacement (owner ruling A0-64) and
+	 * the vertex count must not depend on it. Expressing that as a function WITHOUT the parameter makes
+	 * the invariance structural rather than something a reader has to notice — but a branch can still be
+	 * reintroduced at the CALL SITE, which is why the behavioural gate
+	 * `Mobius.InGame.TrajectoryHeatmap.Mesh.VertexCountIndependentOf3DFlag` also exists.
+	 *
+	 * Rounding is TRUNCATION, matching the shipping path this replaced. Note the dead
+	 * `CalculateNumberOfTriangles` uses `CeilToInt32` instead, so the two disagree on every extent that
+	 * is not a multiple of 25 — do not treat that function as documentation for this one.
+	 *
+	 * The name says "triangles" nowhere: the returned value is the VERTEX count per axis, and the quad
+	 * count is (X-1)*(Y-1). The old `NumTriangles` local meant vertices too, which misread easily.
+	 *
+	 * @param MeshSizeCm Floor extent in centimetres.
+	 * @return Vertices per axis. 25 cm per cell, so a 50 cm floor still yields 2 and never collapses.
+	 */
+	static FIntPoint ComputeHeatmapVertexGrid(const FVector2D& MeshSizeCm);
+
+
 	/** Creates and assigns the materials to the instances if not already done */
 	void CreateMaterialInstances();
 
@@ -294,6 +316,35 @@ public:
 	 * the whole reason the exported PNG and the in-world render can disagree.
 	 */
 	const class UMaterialInstanceDynamic* GetTrajectoryMaterialForTesting() const { return TrajectoryMaterialInstance; }
+
+	/** Emitted mesh sections. One per kept tile when batching is on, else 1. */
+	int32 CountEmittedMeshSectionsForTesting() const;
+
+	/**
+	 * Vertices summed across every emitted section — the number the 3D-toggle invariant is stated in, and
+	 * the one the geometry-cost measurement reports.
+	 *
+	 * ⚠️ This is NOT the size of the logical vertex grid when batching is on. Tiles own their own buffers
+	 * and `BuildTileBuffers` maps global grid indices to LOCAL ones per tile, so a vertex on a tile border
+	 * is materialised once per tile that touches it. Expect a total ABOVE ComputeHeatmapVertexGrid's
+	 * product, by more as GridTileSize shrinks. Set bEnableMultiSectionBatching = false for a total that
+	 * equals the grid exactly.
+	 */
+	int32 CountEmittedMeshVerticesForTesting() const;
+
+	/** Triangles summed across every emitted section — KEPT triangles, i.e. after quad culling. */
+	int32 CountEmittedMeshTrianglesForTesting() const;
+
+	/**
+	 * Quads that `FindAllQuads` currently derives from the world's building geometry, i.e. the culling
+	 * mask the mesh was built against.
+	 *
+	 * **Zero means no culling, not no mesh.** `BuildTileBuffers` opens with
+	 * `bKeep = Quads.Num() == 0`, so an empty mask KEEPS EVERY CELL. That is the state in a world with a
+	 * RuntimeMeshBuilder present but no floor plan loaded, and it is what makes the emitted vertex count
+	 * exactly predictable in a test. With a plan loaded this is non-zero and kept geometry is a subset.
+	 */
+	int32 CountCullingQuadsForTesting() const;
 #endif
 
 #pragma endregion PUBLIC_METHODS
@@ -528,6 +579,18 @@ public:
 
 	/** Cached tile buffers built off the GT and drained into ProcMesh sections on the GT. */
 	TArray<FHeatmapTile> Tiles;
+
+	/**
+	 * Completed tile-emit passes, bumped once in FinalizeTileEmit. Monotonic for the actor's lifetime.
+	 *
+	 * A test cannot detect "the mesh is finished" from the other state: before the thread-pool build
+	 * returns, `Tiles` is empty and `TileEmitTickerHandle` is invalid — which is indistinguishable from
+	 * drained. Polling for that pair passes instantly, before generation has even started, and would make
+	 * any mesh assertion vacuous. Watching this counter increment is unambiguous.
+	 *
+	 * Not a tick-path cost: written once per generation, not per tile and not per frame.
+	 */
+	int32 CompletedTileEmitCount = 0;
 
 #pragma endregion PUBLIC_PROPERTIES_AND_COMPONENTS
 

@@ -1684,6 +1684,84 @@ bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
 // This test is what stops it regressing: regenerate a material, or open it and change the dropdown back,
 // and the suite says so.
 // =====================================================================================================
+
+// =====================================================================================================
+// The heatmap vertex grid: 25 cm per cell, TRUNCATED, and independent of the 3D toggle.
+//
+// A0-64/A0-65 made the mesh always build at the 3D-capable density because the 3D toggle is a realtime
+// switch that must not regenerate geometry. That trade -- roughly 100x the quads of the old /250 path --
+// is only acceptable while the toggle is genuinely free, i.e. while vertex count does not depend on it.
+// Nothing asserted that. This gate is the arithmetic half; the behavioural half is
+// Mobius.InGame.TrajectoryHeatmap.Mesh.VertexCountIndependentOf3DFlag, which drives the real generation
+// path with the flag flipped. Neither sees the other's half: this one cannot catch a branch reintroduced
+// at the call site, and that one cannot pin the rounding.
+//
+// Rounding is the reason this test includes extents that are NOT multiples of 25. The shipping path
+// truncates; the DEAD CalculateNumberOfTriangles uses CeilToInt32. Those agree on every multiple of 25,
+// so a gate built only from 5000 and 20000 -- the two extents already in the record -- would pass
+// against either and pin nothing. 4999 cm separates them: trunc gives 199, ceil would give 200.
+// =====================================================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHeatmapVertexGridFormulaTest,
+	"ProjectMobius.Heatmap.Mesh.VertexGridIs25cmTruncated",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHeatmapVertexGridFormulaTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		double ExtentCm;
+		int32 ExpectedVertsPerAxis;
+		const TCHAR* Why;
+	};
+
+	// Expected values are 25 cm per cell, truncated -- derived from the rule, not copied from an
+	// observation, so a wrong observation cannot ratify itself.
+	const FCase Cases[] = {
+		{  5000.0, 200, TEXT("50 m fixture from the Tier B invariance tests: 200 verts/axis, 39601 quads") },
+		{ 20000.0, 800, TEXT("200 m real-dataset carrier: 800 verts/axis, 638401 quads, ~1.28M tris") },
+		{  4999.0, 199, TEXT("NOT a multiple of 25 -- trunc gives 199, CeilToInt32 would give 200") },
+		{  5013.0, 200, TEXT("NOT a multiple of 25 -- 200.52 truncates DOWN, it does not round to 201") },
+		{    50.0,   2, TEXT("smallest plausible floor: /25 still yields 2, so the span never collapses") },
+		{  7300.0, 292, TEXT("the 73 m floor quoted throughout STATUS") },
+	};
+
+	for (const FCase& C : Cases)
+	{
+		const FIntPoint Grid =
+			AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(C.ExtentCm, C.ExtentCm));
+
+		TestEqual(*FString::Printf(TEXT("%.0f cm -> %d verts/axis (%s)"), C.ExtentCm, C.ExpectedVertsPerAxis, C.Why),
+			Grid.X, C.ExpectedVertsPerAxis);
+		TestEqual(*FString::Printf(TEXT("%.0f cm -> both axes agree on a square floor"), C.ExtentCm),
+			Grid.Y, Grid.X);
+
+		// >= 2 per axis is the degeneracy floor: at 1 vertex there is no span and at 0 there is no mesh.
+		// This is why /25 replaced /250 -- /250 fell below 2 for anything under 500 cm.
+		TestTrue(*FString::Printf(TEXT("%.0f cm yields at least 2 verts/axis (mesh span is non-degenerate)"),
+			C.ExtentCm), Grid.X >= 2 && Grid.Y >= 2);
+	}
+
+	// Non-square extents must not be coupled: X must come from X only. A helper that used the larger or
+	// the average would still pass every square case above.
+	const FIntPoint Oblong =
+		AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(10000.0, 2500.0));
+	TestEqual(TEXT("oblong 100 m x 25 m -> X is 400"), Oblong.X, 400);
+	TestEqual(TEXT("oblong 100 m x 25 m -> Y is 100, i.e. the axes are independent"), Oblong.Y, 100);
+
+	// The quad count the perf discussion is actually about, stated once so the numbers quoted in STATUS
+	// have a machine-checked source: quads = (verts-1) per axis.
+	const FIntPoint Grid50m =
+		AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(5000.0, 5000.0));
+	TestEqual(TEXT("50 m floor is 39601 quads"), (Grid50m.X - 1) * (Grid50m.Y - 1), 39601);
+	const FIntPoint Grid200m =
+		AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(20000.0, 20000.0));
+	TestEqual(TEXT("200 m floor is 638401 quads"), (Grid200m.X - 1) * (Grid200m.Y - 1), 638401);
+
+	return true;
+}
+
+// =====================================================================================================
 #if WITH_EDITOR
 namespace TrajectorySamplerGate
 {

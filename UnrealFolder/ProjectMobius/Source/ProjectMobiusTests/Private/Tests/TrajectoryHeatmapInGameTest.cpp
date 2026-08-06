@@ -1013,4 +1013,254 @@ bool FTrajectoryTextureFiltersBilinearTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// -------------------------------------------------------------------------------------------------
+// THE 3D-TOGGLE INVARIANT. A0-64/A0-65 removed the `bIs3DHeatmap` branch from mesh generation so the grid
+// is always dense enough to displace, because the toggle is a realtime switch and regenerating geometry on
+// it would cost far too much. The owner accepted roughly 100x the quads of the old /250 path ON THE
+// CONDITION that the toggle is free — and "free" means the vertex count does not move when it flips.
+// A0-65 recorded that gate as still owed. This is it.
+//
+// Paired with ProjectMobius.Heatmap.Mesh.VertexGridIs25cmTruncated, which pins the arithmetic. This one
+// drives the REAL path — InitializeHeatmap, thread-pool build, quad culling, staggered tile emit — twice on
+// ONE actor with only the flag different, so it catches a branch reintroduced at the call site, which the
+// arithmetic gate structurally cannot see.
+//
+// Three reasons this is built the way it is, each of which was a way to get a green test that proves
+// nothing:
+//
+//  1. ONE actor, re-initialised, not two actors. `FindAllQuads` derives its marching box and mesh bounds
+//     from `GetActorLocation()`, so two heatmaps at different transforms legitimately cull differently and
+//     the comparison would fail for a reason that has nothing to do with the flag. Re-init on one actor is
+//     supported by design: GenerateMeshVerticesUVsAndTriangles cancels any in-flight ticker and resets
+//     Tiles, and the GT continuation clears the sections before re-emitting.
+//  2. Waits on CompletedTileEmitCount, not on section count or ticker state. Before the thread-pool build
+//     returns, `Tiles` is empty and the ticker handle is invalid — identical to "finished". Polling for
+//     that pair returns instantly, BEFORE generation starts, and every count below would read the
+//     constructor's default section. The counter only moves in FinalizeTileEmit.
+//  3. Asserts NON-ZERO and asserts the exact expected total, not just equality. With the branch already
+//     gone, a bare equality assertion cannot fail today and cannot fail tomorrow unless someone
+//     reintroduces one — including when both sides are 0 because no mesh was built at all.
+//
+// Batching is turned OFF for the run. With one section the emitted vertex total equals the vertex grid
+// exactly; with tiling it exceeds it, because BuildTileBuffers re-materialises boundary vertices per tile
+// (see CountEmittedMeshVerticesForTesting). Equality across the two flag values holds either way, but only
+// the single-section form lets the test state the number it expects.
+// -------------------------------------------------------------------------------------------------
+namespace HeatmapMeshFlagGate
+{
+	/** What one generation produced. */
+	struct FMeshRun
+	{
+		int32 Sections = 0;
+		int32 Verts = 0;
+		int32 Tris = 0;
+	};
+
+	struct FGateState
+	{
+		TWeakObjectPtr<AHeatmapPixelTextureVisualizer> Heatmap;
+		TArray<FMeshRun> Runs;
+	};
+
+	using FGateStatePtr = TSharedPtr<FGateState, ESPMode::ThreadSafe>;
+
+	/** Re-initialises the heatmap with one flag value and measures the mesh once emit has finished. */
+	class FInitAndMeasureCommand : public IAutomationLatentCommand
+	{
+	public:
+		FInitAndMeasureCommand(FAutomationTestBase& InTest, FGateStatePtr InState, bool bIn3D, double InTimeoutSeconds)
+			: Test(InTest), State(InState), bIs3D(bIn3D), TimeoutSeconds(InTimeoutSeconds) {}
+
+		virtual bool Update() override
+		{
+			AHeatmapPixelTextureVisualizer* Heatmap = State->Heatmap.Get();
+			if (!Heatmap)
+			{
+				Test.AddError(TEXT("the gate's heatmap actor went away mid-run"));
+				return true;
+			}
+
+			if (!bKicked)
+			{
+				BaselineEmitCount = Heatmap->CompletedTileEmitCount;
+				Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
+				bKicked = true;
+				// HeatmapType 2 and live tracking off: this gate is about geometry only, and nothing here
+				// deposits. Height displacement 0 because displacement is a material concern after A0-64 —
+				// if a non-zero value here ever changed the vertex count, that is itself the regression.
+				Heatmap->InitializeHeatmap(2, /*bIsLiveTrackingNeeded*/ false,
+					FVector2D(TrajectoryInvariance::HeatmapMetres * 100.0f,
+					          TrajectoryInvariance::HeatmapMetres * 100.0f),
+					/*NewHeightDisplacement*/ 0.0f, bIs3D);
+				return false;
+			}
+
+			if (Heatmap->CompletedTileEmitCount > BaselineEmitCount)
+			{
+				FMeshRun Run;
+				Run.Sections = Heatmap->CountEmittedMeshSectionsForTesting();
+				Run.Verts    = Heatmap->CountEmittedMeshVerticesForTesting();
+				Run.Tris     = Heatmap->CountEmittedMeshTrianglesForTesting();
+				State->Runs.Add(Run);
+				Test.AddInfo(FString::Printf(
+					TEXT("bIs3DHeatmap=%s -> %d sections, %d verts, %d tris"),
+					bIs3D ? TEXT("true") : TEXT("false"), Run.Sections, Run.Verts, Run.Tris));
+				return true;
+			}
+
+			if (FPlatformTime::Seconds() > Deadline)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("timed out after %.0f s waiting for the tile emit to finish (bIs3DHeatmap=%s). ")
+					TEXT("The most likely cause is NO ARuntimeMeshBuilder actor in the loaded level: ")
+					TEXT("GenerateMeshVerticesUVsAndTriangles early-returns when it cannot find one, so no ")
+					TEXT("mesh is ever emitted and FinalizeTileEmit never runs. Check the map, not this test."),
+					TimeoutSeconds, bIs3D ? TEXT("true") : TEXT("false")));
+				return true;
+			}
+			return false;
+		}
+
+	private:
+		FAutomationTestBase& Test;
+		FGateStatePtr State;
+		bool bIs3D;
+		double TimeoutSeconds;
+		bool bKicked = false;
+		int32 BaselineEmitCount = 0;
+		double Deadline = 0.0;
+	};
+
+	/** Compares the two runs and ties the total back to the arithmetic gate's formula. */
+	class FCompareFlagRunsCommand : public IAutomationLatentCommand
+	{
+	public:
+		FCompareFlagRunsCommand(FAutomationTestBase& InTest, FGateStatePtr InState)
+			: Test(InTest), State(InState) {}
+
+		virtual bool Update() override
+		{
+			AHeatmapPixelTextureVisualizer* Heatmap = State->Heatmap.Get();
+			if (!Test.TestEqual(TEXT("both flag values produced a measured mesh"), State->Runs.Num(), 2)
+				|| !Heatmap)
+			{
+				return true;
+			}
+
+			const FMeshRun& Flat = State->Runs[0];
+			const FMeshRun& Displaced = State->Runs[1];
+
+			// (1) Anti-vacuity FIRST. Everything below is satisfied by 0 == 0.
+			Test.TestTrue(TEXT("the 2D run emitted a mesh at all (0 verts would make every equality below vacuous)"),
+				Flat.Verts > 0);
+
+			// (2) The invariant itself.
+			if (Flat.Verts != Displaced.Verts)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("vertex count DEPENDS on bIs3DHeatmap: %d verts with the flag off vs %d with it on. ")
+					TEXT("The 3D toggle is a realtime switch that must not regenerate geometry, so the mesh ")
+					TEXT("is built at the 3D-capable density unconditionally (A0-64/A0-65) and this ")
+					TEXT("difference means a branch on the flag has come back. Look at ")
+					TEXT("GenerateMeshVerticesUVsAndTriangles and its call site in InitializeHeatmap; the ")
+					TEXT("grid itself comes from ComputeHeatmapVertexGrid, which takes no flag."),
+					Flat.Verts, Displaced.Verts));
+			}
+			Test.TestEqual(TEXT("triangle count does not depend on bIs3DHeatmap"), Displaced.Tris, Flat.Tris);
+			Test.TestEqual(TEXT("section count does not depend on bIs3DHeatmap"), Displaced.Sections, Flat.Sections);
+
+			// (3) Tie the measured total to the formula the Tier A gate pins, so a change that moved BOTH
+			// runs together — a different divisor, say — still fails here.
+			const FIntPoint Grid = AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(
+				FVector2D(TrajectoryInvariance::HeatmapMetres * 100.0f,
+				          TrajectoryInvariance::HeatmapMetres * 100.0f));
+			const int32 FullGridVerts = Grid.X * Grid.Y;
+			const int32 FullGridTris  = 2 * (Grid.X - 1) * (Grid.Y - 1);
+			const int32 CullingQuads  = Heatmap->CountCullingQuadsForTesting();
+
+			Test.AddInfo(FString::Printf(
+				TEXT("vertex grid %dx%d = %d verts, %d tris at full density; culling mask = %d quads"),
+				Grid.X, Grid.Y, FullGridVerts, FullGridTris, CullingQuads));
+
+			if (CullingQuads == 0)
+			{
+				// No culling mask means BuildTileBuffers keeps every cell (bKeep = Quads.Num() == 0), and
+				// batching is off, so the total is exactly the grid. This is the normal state for a test
+				// world with no floor plan loaded.
+				Test.TestEqual(TEXT("with no culling mask the emitted verts are exactly the vertex grid"),
+					Flat.Verts, FullGridVerts);
+				Test.TestEqual(TEXT("with no culling mask the emitted tris are exactly two per quad"),
+					Flat.Tris, FullGridTris);
+			}
+			else
+			{
+				// A floor plan is loaded, so kept geometry is a subset. Assert the bound rather than an
+				// equality, and report the ratio — that ratio is the geometry-cost number FR6 wants.
+				Test.TestTrue(FString::Printf(
+					TEXT("kept verts %d do not exceed the full grid %d (culling can only remove)"),
+					Flat.Verts, FullGridVerts), Flat.Verts <= FullGridVerts);
+				Test.TestTrue(FString::Printf(
+					TEXT("kept tris %d do not exceed the full grid %d"), Flat.Tris, FullGridTris),
+					Flat.Tris <= FullGridTris);
+				Test.AddInfo(FString::Printf(
+					TEXT("KEPT FRACTION with a plan loaded: %.2f%% of verts, %.2f%% of tris"),
+					100.0 * Flat.Verts / FMath::Max(1, FullGridVerts),
+					100.0 * Flat.Tris / FMath::Max(1, FullGridTris)));
+			}
+
+			// Leave the world as we found it. Every Tier B test here otherwise leaves its heatmap behind,
+			// and a stray one at this actor's transform is exactly the "first actor wins" hazard the
+			// FindTrajectoryHeatmap comment at the top of this file documents.
+			Heatmap->Destroy();
+			return true;
+		}
+
+	private:
+		FAutomationTestBase& Test;
+		FGateStatePtr State;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHeatmapVertexCountIndependentOf3DFlagTest,
+	"Mobius.InGame.TrajectoryHeatmap.Mesh.VertexCountIndependentOf3DFlag",
+	EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+bool FHeatmapVertexCountIndependentOf3DFlagTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryInvariance;
+	using namespace HeatmapMeshFlagGate;
+
+	UWorld* World = GetActiveGameWorld();
+	if (!World)
+	{
+		AddError(TEXT("no game world - run via RunTests.ps1 -InGame (UnrealEditor-Cmd -game)"));
+		return false;
+	}
+
+	// Deliberately NOT SpawnTrajectoryHeatmap: that helper names every actor Heatmap_InvarianceCheck and
+	// registers it with the subsystem. A second actor under that name is precisely the coin-toss lookup this
+	// file warns about, and registering would put a heatmap into other tests' deposition path.
+	AHeatmapPixelTextureVisualizer* Heatmap =
+		World->SpawnActor<AHeatmapPixelTextureVisualizer>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("gate heatmap spawned"), Heatmap))
+	{
+		return false;
+	}
+	Heatmap->ActorName = TEXT("Heatmap_3DFlagInvarianceGate");
+	Heatmap->FloorID = 0;
+	// Single section, so the emitted vertex total equals the vertex grid with no per-tile boundary
+	// duplication to reason about. Restoring this afterwards is pointless — the actor is destroyed.
+	Heatmap->bEnableMultiSectionBatching = false;
+
+	FGateStatePtr State = MakeShared<FGateState, ESPMode::ThreadSafe>();
+	State->Heatmap = Heatmap;
+
+	// Flag OFF first, then ON. Order matters only for the error messages, which name which run was which.
+	ADD_LATENT_AUTOMATION_COMMAND(FInitAndMeasureCommand(*this, State, /*bIs3D*/ false, 60.0));
+	ADD_LATENT_AUTOMATION_COMMAND(FInitAndMeasureCommand(*this, State, /*bIs3D*/ true, 60.0));
+	ADD_LATENT_AUTOMATION_COMMAND(FCompareFlagRunsCommand(*this, State));
+	return true;
+}
+
 #endif // !UE_BUILD_SHIPPING

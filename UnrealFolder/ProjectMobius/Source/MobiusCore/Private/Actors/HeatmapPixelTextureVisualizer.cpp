@@ -1661,6 +1661,76 @@ void AHeatmapPixelTextureVisualizer::BuildTileBuffers(int32 TileX0, int32 TileY0
 	}
 }
 
+#if WITH_EDITOR
+int32 AHeatmapPixelTextureVisualizer::CountEmittedMeshSectionsForTesting() const
+{
+	return IsValid(RuntimeHeatmapMeshComponent) ? RuntimeHeatmapMeshComponent->GetNumSections() : 0;
+}
+
+int32 AHeatmapPixelTextureVisualizer::CountEmittedMeshVerticesForTesting() const
+{
+	if (!IsValid(RuntimeHeatmapMeshComponent))
+	{
+		return 0;
+	}
+	int32 Total = 0;
+	const int32 NumSections = RuntimeHeatmapMeshComponent->GetNumSections();
+	for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
+	{
+		if (const FProcMeshSection* Section = RuntimeHeatmapMeshComponent->GetProcMeshSection(SectionIdx))
+		{
+			Total += Section->ProcVertexBuffer.Num();
+		}
+	}
+	return Total;
+}
+
+int32 AHeatmapPixelTextureVisualizer::CountEmittedMeshTrianglesForTesting() const
+{
+	if (!IsValid(RuntimeHeatmapMeshComponent))
+	{
+		return 0;
+	}
+	int32 TotalIndices = 0;
+	const int32 NumSections = RuntimeHeatmapMeshComponent->GetNumSections();
+	for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
+	{
+		if (const FProcMeshSection* Section = RuntimeHeatmapMeshComponent->GetProcMeshSection(SectionIdx))
+		{
+			TotalIndices += Section->ProcIndexBuffer.Num();
+		}
+	}
+	return TotalIndices / 3;
+}
+
+int32 AHeatmapPixelTextureVisualizer::CountCullingQuadsForTesting() const
+{
+	// Re-derives the mask rather than caching it at generation time: caching would make this report what
+	// the last build used, which is the same thing right up until the geometry changes underneath it.
+	ARuntimeMeshBuilder* MeshBuilder = nullptr;
+	if (World)
+	{
+		TArray<AActor*> FoundActors;
+		UGameplayStatics::GetAllActorsOfClass(World, ARuntimeMeshBuilder::StaticClass(), FoundActors);
+		if (FoundActors.Num() > 0)
+		{
+			MeshBuilder = Cast<ARuntimeMeshBuilder>(FoundActors[0]);
+		}
+	}
+	// FindAllQuads returns empty for a null builder, which reads identically to "builder present, no
+	// geometry" — both mean no culling. The caller that needs to tell those apart must check the actor.
+	return FindAllQuads(MeshBuilder).Num();
+}
+#endif // WITH_EDITOR
+
+FIntPoint AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(const FVector2D& MeshSizeCm)
+{
+	// 25 cm per cell = 4 cells per metre. static_cast rather than the implicit FIntPoint(double,double)
+	// narrowing this replaced: same truncation toward zero, but stated instead of incidental, so nobody
+	// "tidies" it into a rounding helper and silently shifts every grid by up to one cell.
+	return FIntPoint(static_cast<int32>(MeshSizeCm.X / 25.0), static_cast<int32>(MeshSizeCm.Y / 25.0));
+}
+
 void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const FVector2D& MeshSize,
                                                                          const FIntPoint& TextureSize, bool bIs3DHeatmap)
 {
@@ -1695,8 +1765,13 @@ void AHeatmapPixelTextureVisualizer::GenerateMeshVerticesUVsAndTriangles(const F
 	//
 	// bIs3DHeatmap stays on the signature because callers pass it and it still describes intent, but it
 	// must NOT influence vertex count -- that independence is exactly what makes the toggle free.
+	//
+	// The grid comes from ComputeHeatmapVertexGrid, which takes no 3D flag at all, so the independence is
+	// structural rather than a comment asking to be trusted. Keep this as a CALL, never a re-inlined copy:
+	// an inline duplicate beside a helper is precisely the defect CalculateNumberOfTriangles already is --
+	// a function the gates assert while the shipping path computes its own answer.
 	(void)bIs3DHeatmap;
-	FIntPoint NumTriangles = FIntPoint(MeshSize.X / 25, MeshSize.Y / 25);
+	FIntPoint NumTriangles = ComputeHeatmapVertexGrid(MeshSize);
 	// Generate the square cell size
 	FVector2D CellSize = GenerateSquareCellSize(NumTriangles, MeshSize);
 
@@ -1943,6 +2018,10 @@ void AHeatmapPixelTextureVisualizer::FinalizeTileEmit()
 	Tiles.Empty();
 	PendingTileEmitIndex = 0;
 	TileEmitTickerHandle.Reset();
+
+	// Bump BEFORE the material pass and the logging below: this is the "mesh is final" edge that
+	// waiting tests key on, and everything after this point only decorates the sections.
+	++CompletedTileEmitCount;
 
 	if (IsValid(RuntimeHeatmapMeshComponent))
 	{
