@@ -29,6 +29,10 @@ public class ProjectMobiusTests : ModuleRules
 			"SlateCore", // FSlateBrush / FSlateColor in ThemeMaterialCardBrushTest
 			"Slate", // WindowCloseLifecycleTest drives FSlateApplication / SWindow / SButton::SimulateClick
 			"MobiusWidgets", // ThemeMaterialCardBrushTest calls UBaseLoadingWidget::ThemeMaterialCard
+			// TrajectoryHeatmapInGameTest's FR6 geometry-cost measurement reads the loaded building's
+			// section bounds off ARuntimeMeshBuilder's UProceduralMeshComponent. The headers already
+			// arrive through MobiusCore, but GetNumSections/GetProcMeshSection do not link without this.
+			"ProceduralMeshComponent",
 		});
 	}
 }

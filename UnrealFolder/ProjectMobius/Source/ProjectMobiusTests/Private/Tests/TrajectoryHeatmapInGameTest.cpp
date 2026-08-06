@@ -78,6 +78,12 @@
 // T-PIX-2 reads the band edges back off both consumers: the CPU colouriser lives on the texture, the GPU
 // copy on the material instance.
 #include "DynamicPixelRenderingTexture.h"
+// The FR6 geometry-cost measurement loads a real floor plan through the production entry point and reads
+// the building mesh the heatmap's quad culling is derived from.
+#include "Misc/DateTime.h"
+#include "Kismet/GameplayStatics.h"
+#include "ProceduralMeshComponent.h"
+#include "BuildingGenerator/RuntimeMeshBuilder.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 namespace TrajectoryInvariance
@@ -1260,6 +1266,454 @@ bool FHeatmapVertexCountIndependentOf3DFlagTest::RunTest(const FString& Paramete
 	ADD_LATENT_AUTOMATION_COMMAND(FInitAndMeasureCommand(*this, State, /*bIs3D*/ false, 60.0));
 	ADD_LATENT_AUTOMATION_COMMAND(FInitAndMeasureCommand(*this, State, /*bIs3D*/ true, 60.0));
 	ADD_LATENT_AUTOMATION_COMMAND(FCompareFlagRunsCommand(*this, State));
+	return true;
+}
+
+// -------------------------------------------------------------------------------------------------
+// FR6 GEOMETRY COST ON A REAL FLOOR PLAN.
+//
+// ⚠️ READ THIS BEFORE QUOTING ANY NUMBER THIS PRODUCES. FR6 is "30+ fps on the OLD-HARDWARE TARGET".
+// This test runs on whatever box the suite runs on, which is not that target, so it CANNOT close FR6 and
+// nothing here asserts a frame rate. What it does close is the geometry half: after A0-65 made the mesh
+// always build at the /25 density, the open question was how many triangles a REAL plan actually keeps,
+// because A0-65's own note says the quad-intersect filter and tile culling should put kept geometry far
+// below the full grid -- "should" being the operative word, since nobody had measured it.
+//
+// Deliberately measures KEPT geometry, not grid size. The full grid is arithmetic anyone can do from the
+// extent; the number that matters is what survives FindAllQuads' culling mask on a plan with real walls
+// and real empty space, and that is a property of the plan, not of the hardware. So this number IS
+// portable to the old box even though a frame time measured here would not be.
+//
+// Also measures what the pre-A0-65 /250 path would have produced, so the ~100x trade the owner accepted
+// in principle has an actual figure attached rather than an estimate.
+//
+// Fixture: UnitTestSampleData/WKT/BUW.wkt -- a real building footprint, tracked in git (so this cannot
+// silently skip the way the untracked TechSchool set does), and loaded through
+// UpdateMobiusGameInstanceMeshDataFile, the exact call the Browse button makes. WKT goes through Assimp
+// and lands in the RuntimeMeshBuilder's procedural mesh with bIsDatasmithAsset false, which is the branch
+// of FindAllQuads that reads MobiusProceduralMeshComponent. No Datasmith is involved -- that path
+// asserted on SM_CineCam render data during a runtime import on 2026-08-06 and is not worth the risk for
+// a measurement that does not need it.
+//
+// Assertions are structural only. No timing is asserted: absolute times vary per machine and a threshold
+// here would flake the gate, which is the same reason MobiusTimingTests keeps its trend rows out of the
+// correctness filter. Timings are reported and written to CSV.
+// -------------------------------------------------------------------------------------------------
+namespace HeatmapGeometryCost
+{
+	/** One generation's measured geometry and wall-clock cost. */
+	struct FCostSample
+	{
+		bool  b3D = false;
+		int32 Sections = 0;
+		int32 Verts = 0;
+		int32 Tris = 0;
+		double BuildAndEmitMs = 0.0;
+	};
+
+	struct FCostState
+	{
+		/** Fixture filename under UnitTestSampleData/WKT, e.g. "BUW.wkt". */
+		FString PlanFile;
+		TWeakObjectPtr<AHeatmapPixelTextureVisualizer> Heatmap;
+		FVector2D PlanSizeCm = FVector2D::ZeroVector;
+		FVector   PlanMinCm  = FVector::ZeroVector;
+		int32     CullingQuads = 0;
+		TArray<FCostSample> Samples;
+	};
+
+	using FCostStatePtr = TSharedPtr<FCostState, ESPMode::ThreadSafe>;
+
+	static FString PlanFixturePath(const FString& PlanFile)
+	{
+		return FPaths::Combine(FPaths::ProjectDir(), TEXT("UnitTestSampleData"), TEXT("WKT"), PlanFile);
+	}
+
+	static ARuntimeMeshBuilder* FindMeshBuilder(UWorld* World)
+	{
+		return World ? Cast<ARuntimeMeshBuilder>(
+			UGameplayStatics::GetActorOfClass(World, ARuntimeMeshBuilder::StaticClass())) : nullptr;
+	}
+
+	/** Aggregate local bounds of the loaded building, mirroring InitializeHeatmap's own aggregation. */
+	static bool GetPlanBounds(ARuntimeMeshBuilder* Builder, FBox& OutBounds)
+	{
+		if (!Builder || !Builder->MobiusProceduralMeshComponent)
+		{
+			return false;
+		}
+		FBox Agg(ForceInit);
+		const int32 NumSections = Builder->MobiusProceduralMeshComponent->GetNumSections();
+		for (int32 i = 0; i < NumSections; ++i)
+		{
+			if (const FProcMeshSection* Section = Builder->MobiusProceduralMeshComponent->GetProcMeshSection(i))
+			{
+				Agg += Section->SectionLocalBox;
+			}
+		}
+		OutBounds = Agg;
+		return Agg.IsValid != 0;
+	}
+
+	/** Loads the plan through the production path and waits for the building mesh to exist. */
+	class FLoadPlanCommand : public IAutomationLatentCommand
+	{
+	public:
+		FLoadPlanCommand(FAutomationTestBase& InTest, FCostStatePtr InState, double InTimeoutSeconds)
+			: Test(InTest), State(InState), TimeoutSeconds(InTimeoutSeconds) {}
+
+		virtual bool Update() override
+		{
+			UWorld* World = TrajectoryInvariance::GetActiveGameWorld();
+			if (!World)
+			{
+				Test.AddError(TEXT("no game world"));
+				return true;
+			}
+
+			if (!bKicked)
+			{
+				const FString Path = PlanFixturePath(State->PlanFile);
+				if (!FPaths::FileExists(Path))
+				{
+					// Not a skip. The fixture is tracked in git, so its absence is a broken checkout and
+					// saying "skipped" would report that as a pass.
+					Test.AddError(FString::Printf(TEXT("floor-plan fixture missing: %s"), *Path));
+					return true;
+				}
+				// The two calls IProjectMobiusInterface::UpdateMobiusGameInstanceMeshDataFile makes, which
+				// is in turn the exact call ULoadMeshWidget makes after a Browse selection. Inlined here
+				// because that interface method is NOT static — the preload subsystem can write
+				// `IProjectMobiusInterface::...` only because it implements the interface itself, and a
+				// test is not going to inherit an interface just to reach two setters.
+				UProjectMobiusGameInstance* GameInstance = World->GetGameInstance<UProjectMobiusGameInstance>();
+				if (!GameInstance)
+				{
+					Test.AddError(TEXT("no UProjectMobiusGameInstance - cannot load the floor plan"));
+					return true;
+				}
+				GameInstance->SetSimulationMeshFilePath(Path);
+				GameInstance->SetSimulationMeshFileName(FPaths::GetCleanFilename(Path));
+				Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
+				bKicked = true;
+				return false;
+			}
+
+			FBox Bounds(ForceInit);
+			if (GetPlanBounds(FindMeshBuilder(World), Bounds) && Bounds.GetSize().X > 1.0 && Bounds.GetSize().Y > 1.0)
+			{
+				State->PlanMinCm = Bounds.Min;
+				// Extents x2 is how UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize derives the
+				// heatmap size in production; taking GetSize() directly is the same number.
+				State->PlanSizeCm = FVector2D(Bounds.GetSize().X, Bounds.GetSize().Y);
+				Test.AddInfo(FString::Printf(TEXT("plan loaded: %s  %.0f x %.0f cm (%.1f x %.1f m)"),
+					*State->PlanFile, State->PlanSizeCm.X, State->PlanSizeCm.Y,
+					State->PlanSizeCm.X / 100.0, State->PlanSizeCm.Y / 100.0));
+				return true;
+			}
+
+			if (FPlatformTime::Seconds() > Deadline)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("timed out after %.0f s waiting for %s to import into the RuntimeMeshBuilder's ")
+					TEXT("procedural mesh. Check that an ARuntimeMeshBuilder exists in the level and that ")
+					TEXT("the Assimp WKT path still populates MobiusProceduralMeshComponent."),
+					TimeoutSeconds, *PlanFixturePath(State->PlanFile)));
+				return true;
+			}
+			return false;
+		}
+
+	private:
+		FAutomationTestBase& Test;
+		FCostStatePtr State;
+		double TimeoutSeconds;
+		bool bKicked = false;
+		double Deadline = 0.0;
+	};
+
+	/** One generation at the plan's extent, timed from InitializeHeatmap to emit completion. */
+	class FMeasureGenerationCommand : public IAutomationLatentCommand
+	{
+	public:
+		FMeasureGenerationCommand(FAutomationTestBase& InTest, FCostStatePtr InState, bool bIn3D, double InTimeoutSeconds)
+			: Test(InTest), State(InState), bIs3D(bIn3D), TimeoutSeconds(InTimeoutSeconds) {}
+
+		virtual bool Update() override
+		{
+			UWorld* World = TrajectoryInvariance::GetActiveGameWorld();
+			if (!World || State->PlanSizeCm.IsNearlyZero())
+			{
+				// The load command already reported why; don't pile on a second error for one cause.
+				return true;
+			}
+
+			if (!bKicked)
+			{
+				AHeatmapPixelTextureVisualizer* Heatmap = State->Heatmap.Get();
+				if (!Heatmap)
+				{
+					// Spawned at the plan's MIN corner: FindAllQuads marches from GetActorLocation() and
+					// bounds the mesh at StartPos..StartPos+size, so an actor anywhere else culls against
+					// the wrong region and the kept fraction would be meaningless.
+					Heatmap = World->SpawnActor<AHeatmapPixelTextureVisualizer>(
+						FVector(State->PlanMinCm.X, State->PlanMinCm.Y, State->PlanMinCm.Z),
+						FRotator::ZeroRotator);
+					if (!Heatmap)
+					{
+						Test.AddError(TEXT("failed to spawn the cost-measurement heatmap"));
+						return true;
+					}
+					Heatmap->ActorName = TEXT("Heatmap_GeometryCostProbe");
+					Heatmap->FloorID = 0;
+					// Production configuration: tiled emit ON, default tile size. Unlike the invariance
+					// gate, this measurement wants the cost the app actually pays, including the
+					// per-tile boundary-vertex duplication.
+					Heatmap->bEnableMultiSectionBatching = true;
+					State->Heatmap = Heatmap;
+				}
+
+				BaselineEmitCount = Heatmap->CompletedTileEmitCount;
+				StartSeconds = FPlatformTime::Seconds();
+				Deadline = StartSeconds + TimeoutSeconds;
+				bKicked = true;
+				// HeatmapType 2, live tracking on, 3D per the parameter: this mirrors
+				// UHeatmapSubsystem::CreateHeatmap, which passes bIs3DHeatmap = true in production.
+				Heatmap->InitializeHeatmap(2, true, State->PlanSizeCm, 0.0f, bIs3D);
+				return false;
+			}
+
+			AHeatmapPixelTextureVisualizer* Heatmap = State->Heatmap.Get();
+			if (!Heatmap)
+			{
+				Test.AddError(TEXT("the cost-measurement heatmap went away mid-run"));
+				return true;
+			}
+
+			if (Heatmap->CompletedTileEmitCount > BaselineEmitCount)
+			{
+				FCostSample Sample;
+				Sample.b3D = bIs3D;
+				Sample.Sections = Heatmap->CountEmittedMeshSectionsForTesting();
+				Sample.Verts = Heatmap->CountEmittedMeshVerticesForTesting();
+				Sample.Tris = Heatmap->CountEmittedMeshTrianglesForTesting();
+				Sample.BuildAndEmitMs = (FPlatformTime::Seconds() - StartSeconds) * 1000.0;
+				State->CullingQuads = Heatmap->CountCullingQuadsForTesting();
+				State->Samples.Add(Sample);
+				return true;
+			}
+
+			if (FPlatformTime::Seconds() > Deadline)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("timed out after %.0f s building the heatmap mesh at %.0f x %.0f cm (3D=%s)"),
+					TimeoutSeconds, State->PlanSizeCm.X, State->PlanSizeCm.Y,
+					bIs3D ? TEXT("true") : TEXT("false")));
+				return true;
+			}
+			return false;
+		}
+
+	private:
+		FAutomationTestBase& Test;
+		FCostStatePtr State;
+		bool bIs3D;
+		double TimeoutSeconds;
+		bool bKicked = false;
+		int32 BaselineEmitCount = 0;
+		double StartSeconds = 0.0;
+		double Deadline = 0.0;
+	};
+
+	/** Reports the cost table, writes the trend row, and asserts the structural facts only. */
+	class FReportCostCommand : public IAutomationLatentCommand
+	{
+	public:
+		FReportCostCommand(FAutomationTestBase& InTest, FCostStatePtr InState)
+			: Test(InTest), State(InState) {}
+
+		virtual bool Update() override
+		{
+			if (State->Samples.Num() < 2)
+			{
+				// Errors already reported upstream; nothing measured means nothing to report.
+				if (AHeatmapPixelTextureVisualizer* Dead = State->Heatmap.Get()) { Dead->Destroy(); }
+				return true;
+			}
+
+			const FCostSample& Flat = State->Samples[0];
+			const FCostSample& Displaced = State->Samples[1];
+
+			const FIntPoint Grid = AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(State->PlanSizeCm);
+			const int64 FullGridTris = 2LL * FMath::Max(0, Grid.X - 1) * FMath::Max(0, Grid.Y - 1);
+
+			// What the pre-A0-65 path would have built. /250 instead of /25 is 10x coarser per AXIS, so
+			// ~100x fewer quads -- this is the trade the owner accepted, with a number on it at last.
+			const FIntPoint LegacyGrid(static_cast<int32>(State->PlanSizeCm.X / 250.0),
+			                           static_cast<int32>(State->PlanSizeCm.Y / 250.0));
+			const int64 LegacyTris = 2LL * FMath::Max(0, LegacyGrid.X - 1) * FMath::Max(0, LegacyGrid.Y - 1);
+
+			const double KeptPct = 100.0 * Flat.Tris / FMath::Max<int64>(1, FullGridTris);
+
+			Test.AddInfo(FString::Printf(
+				TEXT("--- FR6 geometry cost, real plan (%s). NOT a frame-rate verdict ---"), *State->PlanFile));
+			Test.AddInfo(FString::Printf(TEXT("plan extent        : %.1f x %.1f m"),
+				State->PlanSizeCm.X / 100.0, State->PlanSizeCm.Y / 100.0));
+			Test.AddInfo(FString::Printf(TEXT("vertex grid (/25)  : %d x %d  -> %lld tris at full density"),
+				Grid.X, Grid.Y, FullGridTris));
+			Test.AddInfo(FString::Printf(TEXT("legacy grid (/250) : %d x %d  -> %lld tris (pre-A0-65)"),
+				LegacyGrid.X, LegacyGrid.Y, LegacyTris));
+			Test.AddInfo(FString::Printf(TEXT("culling mask       : %d quads from the building footprint"),
+				State->CullingQuads));
+			Test.AddInfo(FString::Printf(TEXT("KEPT (3D off)      : %d sections, %d verts, %d tris = %.1f%% of full grid"),
+				Flat.Sections, Flat.Verts, Flat.Tris, KeptPct));
+			Test.AddInfo(FString::Printf(TEXT("KEPT (3D on)       : %d sections, %d verts, %d tris"),
+				Displaced.Sections, Displaced.Verts, Displaced.Tris));
+			Test.AddInfo(FString::Printf(TEXT("build+emit         : %.1f ms (3D off), %.1f ms (3D on)"),
+				Flat.BuildAndEmitMs, Displaced.BuildAndEmitMs));
+			Test.AddInfo(FString::Printf(TEXT("kept vs legacy     : %.2fx the triangles the /250 path would have built"),
+				LegacyTris > 0 ? static_cast<double>(Flat.Tris) / static_cast<double>(LegacyTris) : 0.0));
+
+			WriteTrendRow(Flat, Displaced, Grid, FullGridTris, LegacyTris);
+
+			// ---- Assertions: structural only, never timing ----
+			Test.TestTrue(TEXT("the plan produced a culling mask (otherwise this is not measuring a real footprint)"),
+				State->CullingQuads > 0);
+			Test.TestTrue(TEXT("kept triangles are non-zero"), Flat.Tris > 0);
+			Test.TestTrue(FString::Printf(TEXT("kept triangles %d do not exceed the full grid %lld"),
+				Flat.Tris, FullGridTris), Flat.Tris <= FullGridTris);
+			// NOT asserted: that culling removed anything. A0-65 expected kept geometry to sit far below
+			// the full grid, and this measurement exists to find out whether it does — so requiring it
+			// here would assert the hypothesis instead of testing it, and would redden the suite on a plan
+			// that legitimately keeps everything. Reported instead, with the reason.
+			//
+			// FindAllQuads marches in 650 cm cells (its StepSize), which is 26x coarser than the 25 cm mesh
+			// cell, and it keeps any cell containing a single building vertex. So culling can only drop
+			// whole 650 cm blocks that are completely empty: a compact envelope has almost none, and a plan
+			// whose bounding box spans only a few cells has nowhere to drop at all.
+			if (Flat.Tris >= FullGridTris)
+			{
+				Test.AddInfo(FString::Printf(
+					TEXT("NO CULLING on this plan: kept %d of %lld triangles. Its bounding box is %.1f x %.1f ")
+					TEXT("of the 650 cm mask cell, so there is no fully-empty cell to drop."),
+					Flat.Tris, FullGridTris, State->PlanSizeCm.X / 650.0, State->PlanSizeCm.Y / 650.0));
+			}
+			// Confirms A0-65's invariant on a REAL plan, where culling is active, not just on an
+			// unculled fixture.
+			Test.TestEqual(TEXT("kept triangles are identical with 3D on and off, on a real plan too"),
+				Displaced.Tris, Flat.Tris);
+			Test.TestEqual(TEXT("kept vertices are identical with 3D on and off, on a real plan too"),
+				Displaced.Verts, Flat.Verts);
+
+			if (AHeatmapPixelTextureVisualizer* Probe = State->Heatmap.Get())
+			{
+				Probe->Destroy();
+			}
+
+			// PUT THE WORLD BACK. Tier B runs every test in ONE session and this is the only test that
+			// loads building geometry, so anything left behind changes what its siblings measure. It sorts
+			// alphabetically BEFORE Mesh.VertexCountIndependentOf3DFlag, whose exact vertex assertion holds
+			// only while the culling mask is empty -- leaving BUW loaded would silently push that gate down
+			// its "a plan is loaded" branch and cost it the one number it exists to pin. Any later heatmap
+			// would also be culled against a footprint its own test never asked for.
+			UWorld* World = TrajectoryInvariance::GetActiveGameWorld();
+			if (ARuntimeMeshBuilder* Builder = FindMeshBuilder(World))
+			{
+				Builder->ClearMobiusProceduralMesh();
+				Test.AddInfo(TEXT("building geometry cleared - the world is back to unculled for later tests"));
+			}
+
+			// AND reset the subsystem's retained bounds, which is the part that actually bites.
+			//
+			// Loading geometry makes ARuntimeMeshBuilder broadcast OnMeshBuilt, which lands in
+			// UHeatmapSubsystem::UpdateSpawnLocationAndHeatmapSize and leaves HeatmapBoundingSize non-zero
+			// FOR THE REST OF THE SESSION. ProcessHeatmapGeneration bails while either the bounds are zero
+			// or no floor heights are known; before this test existed the bounds were always zero in Tier B
+			// because nothing ever loaded a building, so the guard held for free. With them set, the next
+			// test to spawn agents satisfies BOTH guards, and ProcessHeatmapGeneration responds by
+			// destroying every registered heatmap and replacing it with app-owned Heatmap_<n> actors. The
+			// sibling tests then fail with "no trajectory heatmap found at pass end" — measured, not
+			// hypothesised: T_INV_1, T_INV_2 and T_REG_1 all failed exactly that way before this reset
+			// existed. Clearing the mesh does NOT undo it; the retained bounds are the damage.
+			//
+			// Zeroing through the same public entry point restores the early-out. It re-arms the generation
+			// timer, which then bails on IsZero() as it did before this test ran.
+			if (UHeatmapSubsystem* Subsystem = World ? World->GetSubsystem<UHeatmapSubsystem>() : nullptr)
+			{
+				Subsystem->UpdateSpawnLocationAndHeatmapSize(FVector::ZeroVector, FVector::ZeroVector);
+				Test.AddInfo(TEXT("heatmap subsystem spawn bounds reset to zero - sibling tests keep their own heatmaps"));
+			}
+			return true;
+		}
+
+	private:
+		void WriteTrendRow(const FCostSample& Flat, const FCostSample& Displaced,
+		                   const FIntPoint& Grid, int64 FullGridTris, int64 LegacyTris) const
+		{
+			const FString Dir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MobiusPerfTimings"));
+			IFileManager::Get().MakeDirectory(*Dir, /*Tree*/ true);
+			const FString CsvPath = FPaths::Combine(Dir, TEXT("heatmap_geometry_cost.csv"));
+
+			FString Csv;
+			if (!FPaths::FileExists(CsvPath))
+			{
+				Csv = TEXT("utc,plan,plan_x_cm,plan_y_cm,grid_x,grid_y,full_tris,legacy_tris,")
+				      TEXT("culling_quads,kept_sections,kept_verts,kept_tris,kept_pct,")
+				      TEXT("build_emit_ms_2d,build_emit_ms_3d\n");
+			}
+			Csv += FString::Printf(TEXT("%s,%s,%.0f,%.0f,%d,%d,%lld,%lld,%d,%d,%d,%d,%.3f,%.2f,%.2f\n"),
+				*FDateTime::UtcNow().ToIso8601(), *State->PlanFile, State->PlanSizeCm.X, State->PlanSizeCm.Y,
+				Grid.X, Grid.Y, FullGridTris, LegacyTris, State->CullingQuads,
+				Flat.Sections, Flat.Verts, Flat.Tris,
+				100.0 * Flat.Tris / FMath::Max<int64>(1, FullGridTris),
+				Flat.BuildAndEmitMs, Displaced.BuildAndEmitMs);
+
+			FFileHelper::SaveStringToFile(Csv, *CsvPath, FFileHelper::EEncodingOptions::AutoDetect,
+				&IFileManager::Get(), FILEWRITE_Append);
+			Test.AddInfo(FString::Printf(TEXT("trend row appended to %s"), *CsvPath));
+		}
+
+		FAutomationTestBase& Test;
+		FCostStatePtr State;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHeatmapGeometryCostOnRealPlanTest,
+	"Mobius.InGame.TrajectoryHeatmap.Mesh.GeometryCostOnRealPlan",
+	EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+bool FHeatmapGeometryCostOnRealPlanTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryInvariance;
+	using namespace HeatmapGeometryCost;
+
+	UWorld* World = GetActiveGameWorld();
+	if (!World)
+	{
+		AddError(TEXT("no game world - run via RunTests.ps1 -InGame (UnrealEditor-Cmd -game)"));
+		return false;
+	}
+
+	// TWO plans, because one footprint cannot tell "this plan keeps 83%" from "plans keep 83%", and the
+	// conclusion drawn from this measurement contradicts A0-65's expectation that culling would put kept
+	// geometry far below the grid. BUW is a compact building envelope -- the realistic case, and the one
+	// that culls least. t_shaped_room is mostly empty bounding box, so it is the opposite end: if culling
+	// ever works, it works there. Reporting the pair bounds the range instead of generalising from one.
+	const TCHAR* PlanFixtures[] = { TEXT("BUW.wkt"), TEXT("t_shaped_room.wkt") };
+
+	for (const TCHAR* PlanFile : PlanFixtures)
+	{
+		FCostStatePtr State = MakeShared<FCostState, ESPMode::ThreadSafe>();
+		State->PlanFile = PlanFile;
+
+		// Each plan gets its own probe actor and its own restore, so a failure on one still leaves the
+		// world clean for the next and for every later test in the session.
+		ADD_LATENT_AUTOMATION_COMMAND(FLoadPlanCommand(*this, State, 120.0));
+		ADD_LATENT_AUTOMATION_COMMAND(FMeasureGenerationCommand(*this, State, /*bIs3D*/ false, 120.0));
+		ADD_LATENT_AUTOMATION_COMMAND(FMeasureGenerationCommand(*this, State, /*bIs3D*/ true, 120.0));
+		ADD_LATENT_AUTOMATION_COMMAND(FReportCostCommand(*this, State));
+	}
 	return true;
 }
 
