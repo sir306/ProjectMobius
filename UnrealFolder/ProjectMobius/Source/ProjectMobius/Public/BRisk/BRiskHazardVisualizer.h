@@ -181,6 +181,25 @@ private:
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentMaterials;
 
 	/**
+	 * One flat, double-sided panel filling each opening, shown only while B-Risk has that opening
+	 * SHUT. Index-aligned with the scenario's vent array (null where the vent could not be placed),
+	 * unlike VentComponents which holds four outline edges per vent.
+	 *
+	 * This lives here rather than as a hole-filling quad in the room mesh for two reasons: the room
+	 * mesh is built once per geometry toggle into a single procedural mesh, so making it
+	 * time-varying would mean rebuilding the whole building every time a door moves; and this way it
+	 * still works with the room-geometry checkbox OFF, against an imported building.
+	 */
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMeshComponent>> VentClosedPanels;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> VentClosedPanelMaterials;
+
+	/** Open/close schedule per vent, index-aligned with VentClosedPanels. See FBRiskVentGeometry::IsOpenAtTime. */
+	TArray<FBRiskVentGeometry> VentData;
+
+	/**
 	 * Per-vent stack of thin flat bands tracing the in/out flow velocity profile across the
 	 * opening height (curved: width ~ sqrt(distance from the neutral plane), pinched to zero
 	 * at the neutral plane). Flattened: band b of vent v is at index v*<bands> + b.

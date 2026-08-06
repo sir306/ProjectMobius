@@ -2075,6 +2075,210 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentScheduleTest,
+	"ProjectMobius.BRisk.Importer.VentSchedule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+/**
+ * B-Risk's vent open/close schedule, read from its own vents.xml.
+ *
+ * Sourced there rather than from the Revit add-in's openTimeS/closeTimeS - which measure identical
+ * on all 34 openings - because vents.xml ships with every B-Risk run that has vents, so scheduling
+ * also reaches .smv-only scenarios and there is one code path instead of two.
+ *
+ * The join is the part that can silently go wrong, so most of this test is about refusing to guess.
+ */
+bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
+{
+	// --- What open/close MEAN, before any file is involved -----------------------------------
+	{
+		FBRiskVentGeometry Door;
+		Door.bHasSchedule = true;
+		Door.OpenTimeSeconds = 10.0;
+		Door.CloseTimeSeconds = 60.0;
+		TestFalse(TEXT("A door that opens at 10 s is SHUT at the start"), Door.IsOpenAtTime(0.0));
+		TestFalse(TEXT("...still shut a moment before it opens"), Door.IsOpenAtTime(9.99));
+		TestTrue(TEXT("...open exactly on its open time"), Door.IsOpenAtTime(10.0));
+		TestTrue(TEXT("...open in between"), Door.IsOpenAtTime(30.0));
+		TestFalse(TEXT("...shut again exactly on its close time"), Door.IsOpenAtTime(60.0));
+		TestFalse(TEXT("...and stays shut"), Door.IsOpenAtTime(600.0));
+
+		// B-Risk writes 0/0 for an opening it never changes. That is a real schedule meaning
+		// "always open", not a missing one - every leakage path in the 12-room export carries it.
+		FBRiskVentGeometry Always;
+		Always.bHasSchedule = true;
+		TestTrue(TEXT("0/0 is a schedule meaning always open, at t=0"), Always.IsOpenAtTime(0.0));
+		TestTrue(TEXT("0/0 is still open late in the run"), Always.IsOpenAtTime(600.0));
+
+		// An opening we could not match must behave exactly as it did before schedules existed.
+		FBRiskVentGeometry Unmatched;
+		TestFalse(TEXT("An unmatched vent has no schedule"), Unmatched.bHasSchedule);
+		TestTrue(TEXT("...and is treated as permanently open"), Unmatched.IsOpenAtTime(0.0));
+		TestTrue(TEXT("...at every time"), Unmatched.IsOpenAtTime(1.0e6));
+
+		// closetime 0 with a real opentime is B-Risk for "opens and never shuts", not a
+		// zero-length window that would leave the opening shut for the whole run.
+		FBRiskVentGeometry OpensOnly;
+		OpensOnly.bHasSchedule = true;
+		OpensOnly.OpenTimeSeconds = 10.0;
+		OpensOnly.CloseTimeSeconds = 0.0;
+		TestFalse(TEXT("Opens-and-never-shuts is shut before its open time"), OpensOnly.IsOpenAtTime(5.0));
+		TestTrue(TEXT("...and open forever after"), OpensOnly.IsOpenAtTime(1.0e6));
+	}
+
+	// --- A .smv-only scenario: joined on the room pair, because there is no ventId ------------
+	{
+		const FString TestDir = MakeBRiskTestDir();
+		const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+		if (!TestTrue(TEXT("SMV should be written"), WriteTextFile(SmvPath, MakeSmv())))
+		{
+			return false;
+		}
+		// MakeSmv's single VENTGEOM is fromRoom 1, toRoom 2, sill 0.
+		WriteTextFile(FPaths::Combine(TestDir, TEXT("vents.xml")),
+			TEXT("<Vents><Vent><id>1</id><fromroom>1</fromroom><toroom>2</toroom>")
+			TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime></Vent></Vents>"));
+
+		FBRiskScenarioData Data;
+		FString Error;
+		if (TestTrue(TEXT("A .smv-only scenario with vents.xml should import"),
+			FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error))
+			&& TestEqual(TEXT("One vent"), Data.Vents.Num(), 1))
+		{
+			TestTrue(TEXT("The room pair alone identified it"), Data.Vents[0].bHasSchedule);
+			TestEqual(TEXT("Open time from vents.xml"), Data.Vents[0].OpenTimeSeconds, 15.0, 1.0e-9);
+			TestEqual(TEXT("Close time from vents.xml"), Data.Vents[0].CloseTimeSeconds, 45.0, 1.0e-9);
+			TestTrue(TEXT("Shut at the start"), !Data.Vents[0].IsOpenAtTime(0.0));
+		}
+		IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	}
+
+	// --- Ambiguity is refused, not guessed ----------------------------------------------------
+	//
+	// This is the case that matters. The .smv's VENTGEOM order is NOT the vents.xml id order -
+	// measured, positional (fromroom,toroom) agrees 20/34 in the 12-room export and 0/3 in
+	// 3_RoomFire - so falling back to "same index" would confidently shut the wrong doors.
+	{
+		const FString TestDir = MakeBRiskTestDir();
+		const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+		WriteTextFile(SmvPath,
+			TEXT("ROOM   1\n 2.4000E+001 5.5000E+000 2.6000E+000\n 0.0000E+000 0.0000E+000 0.0000E+000\n")
+			TEXT("VENTGEOM\n1 2 4 1.0 0.0 0.0 2.0\n")
+			TEXT("VENTGEOM\n1 2 4 1.0 3.0 0.0 2.0\n")
+			TEXT("ZONE\nbasemodel_testBox_zone.csv\n"));
+		// Two records that fit both vents equally well. Neither may be applied.
+		WriteTextFile(FPaths::Combine(TestDir, TEXT("vents.xml")),
+			TEXT("<Vents>")
+			TEXT("<Vent><id>1</id><fromroom>1</fromroom><toroom>2</toroom><sillheight>0</sillheight>")
+			TEXT("<opentime>15</opentime><closetime>45</closetime></Vent>")
+			TEXT("<Vent><id>2</id><fromroom>1</fromroom><toroom>2</toroom><sillheight>0</sillheight>")
+			TEXT("<opentime>20</opentime><closetime>50</closetime></Vent>")
+			TEXT("</Vents>"));
+
+		FBRiskScenarioData Data;
+		FString Error;
+		if (FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)
+			&& TestEqual(TEXT("Two vents"), Data.Vents.Num(), 2))
+		{
+			TestFalse(TEXT("An ambiguous vent gets no schedule rather than the wrong one"),
+				Data.Vents[0].bHasSchedule);
+			TestFalse(TEXT("...both of them"), Data.Vents[1].bHasSchedule);
+			TestTrue(TEXT("...so both stay permanently open, exactly as before schedules existed"),
+				Data.Vents[0].IsOpenAtTime(0.0) && Data.Vents[1].IsOpenAtTime(0.0));
+		}
+		IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	}
+
+	// --- The real export: joined exactly, by the ventId the add-in already recorded -----------
+	const TCHAR* InternalRoots[] =
+	{
+		TEXT("D:/NickWork/Mobius_InternalData"),
+		TEXT("E:/00_Work/Mobius_InternalData"),
+		TEXT("F:/Mobius_InternalData"),
+	};
+	FString RealSmv;
+	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
+	{
+		for (const TCHAR* Root : InternalRoots)
+		{
+			const FString Candidate = FPaths::Combine(
+				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
+			if (FPaths::FileExists(Candidate) && FPaths::FileExists(
+				FPaths::Combine(FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("vents.xml"))))
+			{
+				RealSmv = Candidate;
+				break;
+			}
+		}
+		if (!RealSmv.IsEmpty())
+		{
+			break;
+		}
+	}
+	if (RealSmv.IsEmpty())
+	{
+		AddInfo(TEXT("real-dataset schedule check SKIPPED: no 12-room fixture with a vents.xml on this machine"));
+		return true;
+	}
+
+	FBRiskScenarioData RealData;
+	FString RealError;
+	if (!TestTrue(TEXT("The 34-opening export should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(RealSmv, RealData, &RealError)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *RealError));
+		return false;
+	}
+
+	// Assert per KIND rather than by raw counts. It is what the numbers actually mean, and it does
+	// not go stale the moment the model is re-exported with a different schedule.
+	//
+	// Measured on this export: the 15 DOORS carry 10/60, so they are shut at the start, open during
+	// the fire and shut again. The single WINDOW carries 0/0, and so does every leakage path -
+	// nobody opens or shuts them, which is what "no scheduled change" means. The window sitting with
+	// the leakage rather than with the doors is correct, not an anomaly: it is an opening that is
+	// simply open for the whole run.
+	int32 Scheduled = 0;
+	int32 Doors = 0;
+	int32 NeverChanging = 0;
+	for (const FBRiskVentGeometry& Vent : RealData.Vents)
+	{
+		Scheduled += Vent.bHasSchedule ? 1 : 0;
+
+		const bool bNeverChanges = Vent.IsOpenAtTime(0.0) && Vent.IsOpenAtTime(1.0e6);
+		NeverChanging += bNeverChanges ? 1 : 0;
+
+		if (Vent.Kind == EBRiskVentKind::Door)
+		{
+			++Doors;
+			TestFalse(FString::Printf(TEXT("door %d is shut before the fire starts"), Vent.VentId),
+				Vent.IsOpenAtTime(0.0));
+			TestTrue(FString::Printf(TEXT("door %d is open during the fire"), Vent.VentId),
+				Vent.IsOpenAtTime(30.0));
+			TestFalse(FString::Printf(TEXT("door %d is shut again afterwards"), Vent.VentId),
+				Vent.IsOpenAtTime(100.0));
+		}
+		else
+		{
+			TestTrue(FString::Printf(TEXT("opening %d (a %s) is never shut"),
+				Vent.VentId, Vent.Kind == EBRiskVentKind::Leakage ? TEXT("leakage path") : TEXT("window")),
+				bNeverChanges);
+		}
+	}
+
+	// Every opening matched: the add-in's ventId IS the vents.xml <id>, so nothing here falls back
+	// to the room-pair join, let alone to an index.
+	TestEqual(TEXT("All 34 openings should get a schedule"), Scheduled, RealData.Vents.Num());
+	TestEqual(TEXT("15 doors are the ones that move"), Doors, 15);
+	TestEqual(TEXT("the other 19 openings never change"), NeverChanging, 19);
+	AddInfo(FString::Printf(
+		TEXT("%d of %d openings scheduled from vents.xml; %d doors open and shut, %d never change"),
+		Scheduled, RealData.Vents.Num(), Doors, NeverChanging));
+
+	return true;
+}
+
 // --- Geometry-only import when the model has not been simulated yet -----------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

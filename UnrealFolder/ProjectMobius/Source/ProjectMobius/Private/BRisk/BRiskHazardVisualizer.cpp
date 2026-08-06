@@ -20,6 +20,7 @@ namespace
 	constexpr float ConeMeshRadiusCm = 50.0f;
 	constexpr float ConeMeshHeightCm = 100.0f;
 	constexpr int32 VentFlowBandsPerVent = 36; // height bands tracing the vent-flow velocity profile
+	constexpr float VentPlaneMeshSizeCm = 100.0f; // /Engine/BasicShapes/Plane is 100x100 cm
 	constexpr float MaxFireHeightCm = 120.0f;
 	constexpr float MinFireRadiusCm = 18.0f;
 	constexpr float MinFireConeAngleDeg = 8.0f;
@@ -635,7 +636,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	VentFlowGeometry.SetNum(Vents.Num());
 	VentFlowBandQuads.SetNum(Vents.Num() * VentFlowBandsPerVent);
 	VentFlowBandMaterials.SetNum(Vents.Num() * VentFlowBandsPerVent);
+	// Closed-opening panels and the schedule that drives them, also index-aligned with Vents.
+	VentClosedPanels.SetNum(Vents.Num());
+	VentClosedPanelMaterials.SetNum(Vents.Num());
+	VentData = Vents;
 	int32 CreatedVentCount = 0;
+	int32 ScheduledVentCount = 0;
 
 	for (int32 VentIndex = 0; VentIndex < Vents.Num(); ++VentIndex)
 	{
@@ -718,6 +724,58 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 			VentMaterials.Add(VentMaterial);
 		}
 
+		// A shut opening is filled in, so "closed" reads as a surface rather than as the absence of
+		// a flow band. Owner-specified: a flat double-sided magenta plane, toggled off when the
+		// opening opens. Built for every vent that has a schedule, then shown or hidden per frame by
+		// SetSimulationTime - creating it up front costs one hidden component and keeps the
+		// time-varying path free of allocation.
+		//
+		// VentFlowMaterial, not BasicShapeMaterial: M_BRiskVentFlow is the two-sided unlit one, and a
+		// door has to read the same from either side of the wall. Opacity 1 because this is a solid
+		// leaf, where the flow bands it borrows the material from are deliberately see-through.
+		if (PlaneMesh && VentFlowMaterial && Vent.bHasSchedule)
+		{
+			UStaticMeshComponent* ClosedPanel = NewObject<UStaticMeshComponent>(
+				this, *FString::Printf(TEXT("BRiskVentClosed_%d"), VentIndex));
+			ClosedPanel->SetupAttachment(SceneRoot);
+			ClosedPanel->SetStaticMesh(PlaneMesh);
+			ClosedPanel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			ClosedPanel->SetCastShadow(false);
+			ClosedPanel->SetReceivesDecals(false);
+			ClosedPanel->SetMobility(EComponentMobility::Movable);
+
+			// The opening's own rectangle: width across the wall, height up it. Same numbers the
+			// outline is built from, so the leaf fills the frame it sits in exactly.
+			const double PanelWidthCm = (NormalAxis == 0) ? SizeCm.Y : SizeCm.X;
+			ClosedPanel->SetRelativeLocation(CenterCm);
+			ClosedPanel->SetRelativeRotation(
+				FRotationMatrix::MakeFromXY(WallOutwardNormal, FVector::UpVector).Rotator());
+			ClosedPanel->SetRelativeScale3D(FVector(
+				PanelWidthCm / VentPlaneMeshSizeCm, SizeCm.Z / VentPlaneMeshSizeCm, 1.0f));
+
+			// Hidden until SetSimulationTime says otherwise. Starting visible would flash every
+			// closed door open for one frame on load, and starting hidden is also correct for a
+			// scenario that is never scrubbed.
+			ClosedPanel->SetVisibility(false, true);
+			ClosedPanel->SetHiddenInGame(true);
+
+			AddInstanceComponent(ClosedPanel);
+			ClosedPanel->OnComponentCreated();
+			ClosedPanel->RegisterComponent();
+
+			UMaterialInstanceDynamic* ClosedMaterial = MakeColoredMaterial(
+				VentFlowMaterial, this, VentColourForKind(Vent.Kind));
+			if (ClosedMaterial)
+			{
+				ClosedMaterial->SetScalarParameterValue(TEXT("Opacity"), 1.0f);
+				ClosedPanel->SetMaterial(0, ClosedMaterial);
+			}
+
+			VentClosedPanels[VentIndex] = ClosedPanel;
+			VentClosedPanelMaterials[VentIndex] = ClosedMaterial;
+			++ScheduledVentCount;
+		}
+
 		// Flow-indicator geometry + two hidden flat quad regions (out/in), driven per tick by
 		// SetVentFlows. A flat Plane with the two-sided unlit M_BRiskVentFlow material gives a
 		// flat, uniform, double-sided region (readable from any orbit angle), matching
@@ -784,11 +842,13 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 	}
 
 	UE_LOG(LogBRiskHazardVisualizer, Log,
-		TEXT("Configured B-Risk hazard visualizer: fires=%d sprinklers=%d vents=%d/%d scale=%g"),
+		TEXT("Configured B-Risk hazard visualizer: fires=%d sprinklers=%d vents=%d/%d "
+			"(%d with an open/close schedule) scale=%g"),
 		Fires.Num(),
 		Sprinklers.Num(),
 		CreatedVentCount,
 		Vents.Num(),
+		ScheduledVentCount,
 		Scale);
 
 	return Fires.Num() > 0 || Sprinklers.Num() > 0 || CreatedVentCount > 0;
@@ -834,6 +894,11 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 		if (Band) { Band->DestroyComponent(); }
 	}
 
+	for (UStaticMeshComponent* ClosedPanel : VentClosedPanels)
+	{
+		if (ClosedPanel) { ClosedPanel->DestroyComponent(); }
+	}
+
 	FireConeComponents.Reset();
 	FireNiagaraComponents.Reset();
 	FireMaterials.Reset();
@@ -845,6 +910,9 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 	SprinklerRoomHeightsCm.Reset();
 	VentComponents.Reset();
 	VentMaterials.Reset();
+	VentClosedPanels.Reset();
+	VentClosedPanelMaterials.Reset();
+	VentData.Reset();
 	VentFlowBandQuads.Reset();
 	VentFlowBandMaterials.Reset();
 	VentFlowGeometry.Reset();
@@ -928,6 +996,22 @@ bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisua
 
 void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
 {
+	// Shut openings get filled in. Before this, nothing anywhere read the schedule B-Risk publishes,
+	// so every door stood open for the whole run - including the ones the model shuts at 60 s, which
+	// is exactly the interval the smoke result depends on.
+	for (int32 VentIndex = 0; VentIndex < VentClosedPanels.Num(); ++VentIndex)
+	{
+		UStaticMeshComponent* ClosedPanel = VentClosedPanels[VentIndex];
+		if (!ClosedPanel || !VentData.IsValidIndex(VentIndex))
+		{
+			continue;
+		}
+
+		const bool bClosed = !VentData[VentIndex].IsOpenAtTime(static_cast<double>(TimeSeconds));
+		ClosedPanel->SetVisibility(bClosed, true);
+		ClosedPanel->SetHiddenInGame(!bClosed);
+	}
+
 	for (int32 SprinklerIndex = 0; SprinklerIndex < SprinklerConeComponents.Num(); ++SprinklerIndex)
 	{
 		if (!SprinklerConeComponents[SprinklerIndex]
@@ -970,7 +1054,6 @@ void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
 
 void ABRiskHazardVisualizer::SetVentFlows(const TArray<FBRiskVentFlow>& VentFlows)
 {
-	constexpr float PlaneMeshSizeCm = 100.0f; // /Engine/BasicShapes/Plane is 100x100 cm
 	constexpr float MinShownWidthCm = 3.0f;   // hide the near-neutral-plane slivers (the pinch)
 	constexpr float MaxWidthCm = 120.0f;
 	constexpr float KgsToWidthCm = 80.0f;     // peak mass-flow -> bulge width
@@ -1030,7 +1113,7 @@ void ABRiskHazardVisualizer::SetVentFlows(const TArray<FBRiskVentFlow>& VentFlow
 			Location += Geom.OutwardNormal * (SignSide * WidthCm * 0.5f); // inner edge at the door
 			Band->SetRelativeLocation(Location);
 			Band->SetRelativeRotation(BandRotation);
-			Band->SetRelativeScale3D(FVector(WidthCm / PlaneMeshSizeCm, BandHeightCm / PlaneMeshSizeCm, 1.0f));
+			Band->SetRelativeScale3D(FVector(WidthCm / VentPlaneMeshSizeCm, BandHeightCm / VentPlaneMeshSizeCm, 1.0f));
 			if (Mat)
 			{
 				const FLinearColor Color = TemperatureToColor(

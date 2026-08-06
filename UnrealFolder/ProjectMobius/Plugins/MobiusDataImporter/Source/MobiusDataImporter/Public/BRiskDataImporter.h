@@ -772,9 +772,51 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	double PhysicalWidth = 0.0;
 	double PhysicalHeight = 0.0;
 
-	/** openings[].openTimeS / closeTimeS. Negative when unknown. Both 0 means no scheduled change. */
+	/**
+	 * When the opening opens and shuts, in seconds. Negative when unknown.
+	 *
+	 * Parsed from openings[].openTimeS / closeTimeS, then OVERWRITTEN from B-Risk's own vents.xml
+	 * <opentime>/<closetime> wherever a record can be matched - see ParseVentsXml for why B-Risk
+	 * wins and why the match is not always possible.
+	 */
 	double OpenTimeSeconds = -1.0;
 	double CloseTimeSeconds = -1.0;
+
+	/**
+	 * True once a vents.xml record has been matched to this opening.
+	 *
+	 * Distinct from "the times are non-zero": B-Risk writes 0/0 for an opening with no scheduled
+	 * change, which is a real schedule meaning "always open", and is what every leakage path in the
+	 * 12-room export carries. Without this flag that is indistinguishable from "we never found a
+	 * record", and the two must not be conflated - one is a fact, the other is an absence.
+	 */
+	bool bHasSchedule = false;
+
+	/**
+	 * Is the opening open at this simulation time?
+	 *
+	 * B-Risk semantics: <opentime> is when it opens, <closetime> when it shuts, so a door with
+	 * 10/60 is SHUT for the first ten seconds. Both zero means no scheduled change - always open -
+	 * which is the common case and the default for anything with no record. A close time at or
+	 * before the open time is read as "opens and never shuts" rather than as a zero-length window,
+	 * because B-Risk writes closetime 0 for openings it never closes.
+	 *
+	 * Deliberately ignores the trigger block (autoopenvent / triggerHRR / triggerSD / …). Every
+	 * trigger is False across the test data, and an opening driven by a heat-detector response is a
+	 * different feature - not something to approximate from a fixed time.
+	 */
+	bool IsOpenAtTime(double TimeSeconds) const
+	{
+		if (!bHasSchedule || (OpenTimeSeconds <= 0.0 && CloseTimeSeconds <= 0.0))
+		{
+			return true;
+		}
+		if (TimeSeconds < OpenTimeSeconds)
+		{
+			return false;
+		}
+		return CloseTimeSeconds <= OpenTimeSeconds || TimeSeconds < CloseTimeSeconds;
+	}
 
 	/**
 	 * Thickness of the wall this opening is cut through, in metres, from openings[].hostThickness

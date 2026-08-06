@@ -807,6 +807,196 @@ namespace
 		ParseZonesDataOpenings(Root, JsonPath, InOutRooms, InOutVents);
 	}
 
+	/**
+	 * Apply B-Risk's own vent open/close schedule, from the companion vents.xml.
+	 *
+	 * This is deliberately B-Risk's file rather than the Revit add-in's JSON, even though
+	 * openings[] carries openTimeS/closeTimeS that measure identical on all 34 openings of the
+	 * 12-room export. vents.xml ships with EVERY B-Risk run that has vents, so reading it here
+	 * gives scheduling to .smv-only scenarios too, and leaves one code path instead of a JSON path
+	 * plus a fallback. Where both exist and disagree, B-Risk wins and the disagreement is logged -
+	 * that question is out with the add-in author.
+	 *
+	 * THE JOIN IS THE HARD PART, and it is why this only fills in a schedule where it can prove
+	 * which record belongs to which vent. Measured across two scenarios: the .smv's VENTGEOM order
+	 * is NOT the vents.xml id order (positional (fromroom,toroom) agrees 20/34 in the 12-room export
+	 * and 0/3 in 3_RoomFire), the two files do not even carry the same (fromroom,toroom) multiset,
+	 * both files' `face` and `offset` columns disagree with each other, and vents.xml has no width
+	 * or head to match on. So:
+	 *
+	 *  - VentId set (openings[] was applied) -> exact join on vents.xml <id>. The add-in's ventId IS
+	 *    that id, and both run 1..34 in file order.
+	 *  - Otherwise -> (fromRoom, toRoom, sill), and ONLY when that key picks out exactly one vent and
+	 *    exactly one record. In 3_RoomFire it is unique for all three; in a corridor with 27 openings
+	 *    sharing a room pair it is unique for none, and those are left unscheduled rather than
+	 *    guessed. An opening wrongly told to shut is worse than one that never shuts.
+	 */
+	void ParseVentsXml(const FString& XmlPath, TArray<FBRiskVentGeometry>& InOutVents)
+	{
+		if (InOutVents.Num() == 0 || !FPaths::FileExists(XmlPath))
+		{
+			// No vents.xml is normal: B-Risk omits it for a model with no vents (basemodel_testBox).
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			UE_LOG(LogBRiskDataImporter, Warning, TEXT("Unable to parse B-Risk vents XML: %s"), *XmlPath);
+			return;
+		}
+
+		const FXmlNode* RootNode = XmlFile.GetRootNode();
+		if (!RootNode)
+		{
+			return;
+		}
+
+		struct FVentSchedule
+		{
+			int32 Id = INDEX_NONE;
+			int32 FromRoomId = INDEX_NONE;
+			int32 ToRoomId = INDEX_NONE;
+			double SillHeight = 0.0;
+			double OpenTimeSeconds = 0.0;
+			double CloseTimeSeconds = 0.0;
+			bool bClaimed = false;
+		};
+
+		TArray<FVentSchedule> Schedules;
+		for (const FXmlNode* VentNode : RootNode->GetChildrenNodes())
+		{
+			if (!VentNode || !VentNode->GetTag().Equals(TEXT("Vent"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			FVentSchedule& Schedule = Schedules.AddDefaulted_GetRef();
+			Schedule.Id = GetChildInt(VentNode, TEXT("id"));
+			Schedule.FromRoomId = GetChildInt(VentNode, TEXT("fromroom"));
+			Schedule.ToRoomId = GetChildInt(VentNode, TEXT("toroom"));
+			Schedule.SillHeight = GetChildDouble(VentNode, TEXT("sillheight"));
+			Schedule.OpenTimeSeconds = GetChildDouble(VentNode, TEXT("opentime"));
+			Schedule.CloseTimeSeconds = GetChildDouble(VentNode, TEXT("closetime"));
+		}
+
+		if (Schedules.Num() == 0)
+		{
+			return;
+		}
+
+		constexpr double SillMatchToleranceM = 1.0e-3;
+		int32 MatchedById = 0;
+		int32 MatchedByRoomPair = 0;
+		int32 Disagreements = 0;
+
+		const auto Apply = [&Disagreements](FBRiskVentGeometry& Vent, const FVentSchedule& Schedule)
+		{
+			const bool bHadJsonTimes = Vent.OpenTimeSeconds >= 0.0 || Vent.CloseTimeSeconds >= 0.0;
+			if (bHadJsonTimes
+				&& (!FMath::IsNearlyEqual(Vent.OpenTimeSeconds, Schedule.OpenTimeSeconds, 1.0e-6)
+					|| !FMath::IsNearlyEqual(Vent.CloseTimeSeconds, Schedule.CloseTimeSeconds, 1.0e-6)))
+			{
+				++Disagreements;
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk vent %d: Zones-data.json says open %g / close %g but vents.xml says %g / %g. ")
+					TEXT("Using vents.xml - it is B-Risk's own input and the only source a .smv-only ")
+					TEXT("scenario has."),
+					Schedule.Id, Vent.OpenTimeSeconds, Vent.CloseTimeSeconds,
+					Schedule.OpenTimeSeconds, Schedule.CloseTimeSeconds);
+			}
+
+			Vent.OpenTimeSeconds = Schedule.OpenTimeSeconds;
+			Vent.CloseTimeSeconds = Schedule.CloseTimeSeconds;
+			Vent.bHasSchedule = true;
+		};
+
+		// Pass 1 - exact, by the id the add-in already recorded.
+		for (FBRiskVentGeometry& Vent : InOutVents)
+		{
+			if (Vent.VentId == INDEX_NONE)
+			{
+				continue;
+			}
+
+			FVentSchedule* Schedule = Schedules.FindByPredicate(
+				[&Vent](const FVentSchedule& Candidate) { return Candidate.Id == Vent.VentId; });
+			if (Schedule && !Schedule->bClaimed)
+			{
+				Schedule->bClaimed = true;
+				Apply(Vent, *Schedule);
+				++MatchedById;
+			}
+		}
+
+		// Pass 2 - .smv-only vents, and only where the room pair and sill single one out on BOTH sides.
+		for (FBRiskVentGeometry& Vent : InOutVents)
+		{
+			if (Vent.bHasSchedule)
+			{
+				continue;
+			}
+
+			const auto MatchesVent = [&Vent](const FVentSchedule& Candidate)
+			{
+				return !Candidate.bClaimed
+					&& Candidate.FromRoomId == Vent.FromRoomId
+					&& Candidate.ToRoomId == Vent.ToRoomId
+					&& FMath::IsNearlyEqual(Candidate.SillHeight, Vent.SillHeight, SillMatchToleranceM);
+			};
+
+			int32 CandidateCount = 0;
+			FVentSchedule* Match = nullptr;
+			for (FVentSchedule& Candidate : Schedules)
+			{
+				if (MatchesVent(Candidate))
+				{
+					++CandidateCount;
+					Match = &Candidate;
+				}
+			}
+			if (CandidateCount != 1 || !Match)
+			{
+				continue;
+			}
+
+			// Ambiguity has two directions: one record fitting several vents is just as unusable as
+			// several records fitting one vent.
+			int32 CompetingVents = 0;
+			for (const FBRiskVentGeometry& Other : InOutVents)
+			{
+				if (!Other.bHasSchedule
+					&& Other.FromRoomId == Vent.FromRoomId
+					&& Other.ToRoomId == Vent.ToRoomId
+					&& FMath::IsNearlyEqual(Other.SillHeight, Vent.SillHeight, SillMatchToleranceM))
+				{
+					++CompetingVents;
+				}
+			}
+			if (CompetingVents != 1)
+			{
+				continue;
+			}
+
+			Match->bClaimed = true;
+			Apply(Vent, *Match);
+			++MatchedByRoomPair;
+		}
+
+		int32 Unscheduled = 0;
+		for (const FBRiskVentGeometry& Vent : InOutVents)
+		{
+			Unscheduled += Vent.bHasSchedule ? 0 : 1;
+		}
+
+		UE_LOG(LogBRiskDataImporter, Log,
+			TEXT("Applied B-Risk vent schedules from %s: %d of %d vents (%d by ventId, %d by room pair), ")
+			TEXT("%d left permanently open because no record could be matched unambiguously, %d ")
+			TEXT("disagreement(s) with Zones-data.json."),
+			*XmlPath, MatchedById + MatchedByRoomPair, InOutVents.Num(),
+			MatchedById, MatchedByRoomPair, Unscheduled, Disagreements);
+	}
+
 	void ParseSprinklersXml(const FString& XmlPath, const TArray<FBRiskRoomGeometry>& Rooms, TArray<FBRiskSprinklerGeometry>& OutSprinklers)
 	{
 		OutSprinklers.Reset();
@@ -1227,6 +1417,15 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	if (FPaths::FileExists(ZonesDataJsonPath))
 	{
 		OutData.ReferencedFiles.AddUnique(ZonesDataJsonPath);
+	}
+
+	// AFTER the JSON, because the JSON replaces the whole vent list and would drop anything applied
+	// before it - and because the ventId it brings is what makes the exact join possible.
+	const FString VentsXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("vents.xml")));
+	ParseVentsXml(VentsXmlPath, OutData.Vents);
+	if (FPaths::FileExists(VentsXmlPath))
+	{
+		OutData.ReferencedFiles.AddUnique(VentsXmlPath);
 	}
 
 	// Decide the scenario's coordinate frame ONCE, here, and only here.
