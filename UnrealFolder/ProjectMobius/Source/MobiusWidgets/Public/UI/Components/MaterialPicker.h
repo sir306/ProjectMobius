@@ -39,6 +39,7 @@ class UImage;
 class UTextBlock;
 class UEditableTextBox;
 class UHorizontalBox;
+class SMoveableWindow;
 
 /**
  * Delegate for when the colour value changes
@@ -160,7 +161,44 @@ protected:
 	 */
 	UFUNCTION(BlueprintCallable, Category="MaterialPicker|Methods")
 	void ResetNewColorValue();
-	
+
+	/**
+	 * Open this picker as a themed, draggable SMoveableWindow instead of a widget pinned inside the game
+	 * viewport — the same host the Settings and Custom Display cards use
+	 * (MobiusPanelWindow::Open / ScalabilityPanelWidget::ShowAsWindow). An SMoveableWindow is a real
+	 * SWindow, so the picker can be dragged clear of the game window and onto another monitor, which is the
+	 * point: you cannot judge a colour against the heatmap while the picker is sitting on top of it.
+	 *
+	 * Call this INSTEAD of adding the picker to the viewport. The host detaches the widget from any current
+	 * parent first, so calling it on an already-parented picker is safe.
+	 *
+	 * SINGLE WINDOW BY CONSTRUCTION. `CreateHeatmapMaterialPicker` in WBP_HeatmapColourBands returns a
+	 * fresh picker per band click, so unlike UScalabilityPanelWidget — which reuses ONE persistent instance
+	 * and can therefore guard with a plain `PanelWindow.IsValid()` — a per-instance handle here would give
+	 * one window per chip clicked, and the guard would never fire because each new picker starts with a
+	 * null handle. `WindowedPicker` closes whichever picker currently owns a window before opening the
+	 * next, so six chips cannot leave six windows on screen.
+	 */
+	UFUNCTION(BlueprintCallable, Category="MaterialPicker|Window")
+	void ShowAsWindow();
+
+	/** Close the hosted window if one is open. Safe to call when it is not. */
+	UFUNCTION(BlueprintCallable, Category="MaterialPicker|Window")
+	void CloseWindow();
+
+	/** True while this picker is being hosted in a window. */
+	UFUNCTION(BlueprintPure, Category="MaterialPicker|Window")
+	bool IsWindowOpen() const;
+
+protected:
+	/**
+	 * The window holds this widget's Slate, so leaving it up past the widget's life would paint a dead
+	 * tree — same reason UScalabilityPanelWidget::NativeDestruct closes its own.
+	 */
+	virtual void NativeDestruct() override;
+
+public:
+
 #pragma endregion METHODS
 
 #pragma region COMPONENTS
@@ -180,6 +218,18 @@ public:
 	/** Text block for title to show what this Widget color represents */
 	UPROPERTY(BlueprintReadWrite, Category = "MaterialPicker|Components", meta = (BindWidget))
 	TObjectPtr<UTextBlock> TitleTextBlock;
+
+	/**
+	 * The picker's OWN in-tree title bar (title text + close button). ShowAsWindow() collapses it, because
+	 * SMoveableWindow supplies a themed title bar with its own close button and two stacked title bars read
+	 * as a bug — this is what MobiusPanelWindowHost.h means by "the cards' own in-tree title bars should be
+	 * collapsed".
+	 *
+	 * BindWidgetOptional, not BindWidget: the picker still works when shown the old in-viewport way, and a
+	 * required bind would hard-fail compilation of any WBP that does not provide it.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "MaterialPicker|Components", meta = (BindWidgetOptional))
+	TObjectPtr<UGridPanel> TopBarGrid;
 
 	/** Text block for R input hint */
 	UPROPERTY(BlueprintReadWrite, Category = "MaterialPicker|Components", meta = (BindWidget))
@@ -265,8 +315,28 @@ public:
 	/** Delegate to broadcast when colour change has been updated */
 	UPROPERTY(BlueprintAssignable, Category = "MaterialPicker")
 	FOnColourValueChanged OnColourValueChanged;
-	
+
 private:
+	/**
+	 * The window hosting this picker, when ShowAsWindow() is used. Not a UPROPERTY — it is Slate, not a
+	 * UObject.
+	 */
+	TSharedPtr<SMoveableWindow> PanelWindow;
+
+	/**
+	 * Whichever picker currently owns a hosted window, across all instances. See ShowAsWindow(): the
+	 * pickers are created per band click, so "one window at a time" cannot be enforced from a per-instance
+	 * member. Weak so a GC'd picker does not keep this pointing at a dead object.
+	 */
+	static TWeakObjectPtr<UMaterialPicker> WindowedPicker;
+
+	/**
+	 * Set only while NativeDestruct is closing the window. MobiusPanelWindow::Close destroys the window
+	 * synchronously and runs the closed-event lambda inline, so without this the "X means cancel" path
+	 * would also run during teardown.
+	 */
+	bool bSuppressCancelOnClose = false;
+
 #pragma endregion PROPERTIES
 };
 
