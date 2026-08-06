@@ -1290,6 +1290,13 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Door Width should stay the MODELLED width"), Door.Width, 0.45, 1.0e-9);
 	TestEqual(TEXT("Door PhysicalWidth should be the real width"), Door.PhysicalWidth, 0.9, 1.0e-9);
 
+	// Height must split the same way as width. This fixture omits modelledHeight, so Height falls
+	// back to the real one - the case that must NOT silently leave Height meaning something
+	// different from Width, since their product is the zone CSV's HVENT.
+	TestEqual(TEXT("Door PhysicalHeight should be the real height"), Door.PhysicalHeight, 2.134, 1.0e-9);
+	TestEqual(TEXT("Height falls back to the real height when modelledHeight is absent"),
+		Door.Height, 2.134, 1.0e-9);
+
 	// Exterior openings must keep landing on B-Risk's outside-room id (rooms + 1) so FindRoomById
 	// still returns null for them and adjacency behaves exactly as it did.
 	TestEqual(TEXT("Exterior vent should point at the outside room id"), Door.ToRoomId, Data.Rooms.Num() + 1);
@@ -1325,7 +1332,9 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 
 	// "leg south" runs along X, so the opening runs along X and the slab is thin in Y.
 	TestEqual(TEXT("Door should run along X at its real width"), SizeCm.X, 90.0, 1.0e-3);
-	TestEqual(TEXT("Door should be thin across the wall"), SizeCm.Y, static_cast<double>(ThicknessCm), 1.0e-3);
+	// No hostThickness in this fixture, so the caller's fallback depth is used.
+	TestEqual(TEXT("Door depth falls back when hostThickness is absent"),
+		SizeCm.Y, static_cast<double>(ThicknessCm), 1.0e-3);
 	TestEqual(TEXT("Door height"), SizeCm.Z, 213.4, 1.0e-3);
 
 	// The window sits on "spur east", which runs along Y - the other axis. If the axis were
@@ -1336,7 +1345,42 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Window X should be the centre, untouched"), CentreCm.X, -766.35, 1.0e-3);
 		TestEqual(TEXT("Window should run along Y"), SizeCm.Y, 105.0, 1.0e-3);
-		TestEqual(TEXT("Window should be thin across the wall"), SizeCm.X, static_cast<double>(ThicknessCm), 1.0e-3);
+		TestEqual(TEXT("Window depth falls back when hostThickness is absent"),
+			SizeCm.X, static_cast<double>(ThicknessCm), 1.0e-3);
+
+		// hostThickness (v2 export) becomes the drawn depth, replacing the caller's constant. Kept as
+		// a mutation of an opening that already placed, so only the depth differs.
+		FBRiskVentGeometry ThickWindow = Window;
+		ThickWindow.HostThicknessMetres = 0.2;
+		FVector ThickCentreCm = FVector::ZeroVector;
+		FVector ThickSizeCm = FVector::ZeroVector;
+		if (TestTrue(TEXT("Window with a host thickness should place"),
+			ABRiskHazardVisualizer::ComputeVentSlab(
+				ThickWindow, &Room, nullptr, Scale, Data.RoomFrame, ThicknessCm, ThickCentreCm, ThickSizeCm)))
+		{
+			TestEqual(TEXT("Depth should be the host wall thickness, not the fallback"),
+				ThickSizeCm.X, 20.0, 1.0e-3);
+			TestEqual(TEXT("Host thickness must not disturb the opening width"),
+				ThickSizeCm.Y, 105.0, 1.0e-3);
+			TestEqual(TEXT("Host thickness must not move the centre"),
+				ThickCentreCm.X, CentreCm.X, 1.0e-6);
+		}
+
+		// A modelled height smaller than the real one must NOT shrink the drawn opening - the same
+		// split that keeps a 0.9 m door from drawing at its modelled 0.45 m.
+		FBRiskVentGeometry ModelledShortWindow = Window;
+		ModelledShortWindow.Height = 0.5;          // what B-Risk simulated
+		ModelledShortWindow.PhysicalHeight = 1.35; // what is really there
+		FVector ShortCentreCm = FVector::ZeroVector;
+		FVector ShortSizeCm = FVector::ZeroVector;
+		if (TestTrue(TEXT("Window with a reduced modelled height should place"),
+			ABRiskHazardVisualizer::ComputeVentSlab(
+				ModelledShortWindow, &Room, nullptr, Scale, Data.RoomFrame, ThicknessCm,
+				ShortCentreCm, ShortSizeCm)))
+		{
+			TestEqual(TEXT("Drawn height should be the real height, not the modelled one"),
+				ShortSizeCm.Z, 135.0, 1.0e-3);
+		}
 		// Sill 0.9 head 2.25 -> centre 1.575 m. Proves Z ignores the JSON centre z entirely.
 		TestEqual(TEXT("Window Z from sill+height"), CentreCm.Z, 157.5, 1.0e-3);
 	}
@@ -1385,13 +1429,23 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 		TEXT("F:/Mobius_InternalData"),
 	};
 	FString RealSmv;
-	for (const TCHAR* Root : InternalRoots)
+	// Newest export first: v2 added openings[].hostThickness, v1 dropped normal. Any of them
+	// exercises placement; only v2 exercises the real host-wall depth.
+	const TCHAR* InternalFolders[] = { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") };
+	for (const TCHAR* Folder : InternalFolders)
 	{
-		const FString Candidate = FPaths::Combine(
-			FString(Root), TEXT("12-room-test-vents"), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
-		if (FPaths::FileExists(Candidate))
+		for (const TCHAR* Root : InternalRoots)
 		{
-			RealSmv = Candidate;
+			const FString Candidate = FPaths::Combine(
+				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
+			if (FPaths::FileExists(Candidate))
+			{
+				RealSmv = Candidate;
+				break;
+			}
+		}
+		if (!RealSmv.IsEmpty())
+		{
 			break;
 		}
 	}
@@ -1455,11 +1509,20 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 		{
 			AddError(FString::Printf(TEXT("Vent %d reported normal axis %d."), Vent.VentId, MarkerNormalAxis));
 		}
-		else if (!FMath::IsNearlyEqual(MarkerSizeCm[MarkerNormalAxis], static_cast<double>(ThicknessCm), 1.0e-3))
+		else
 		{
-			AddError(FString::Printf(
-				TEXT("Vent %d is %.2f cm along its reported normal axis, expected the %.2f cm slab."),
-				Vent.VentId, MarkerSizeCm[MarkerNormalAxis], ThicknessCm));
+			// Depth through the wall: the host wall's real thickness when the export supplies one
+			// (v2 onward), otherwise the caller's fallback. Asserting the RESOLVED value keeps this
+			// honest across all three export generations rather than pinning one constant.
+			const double ExpectedDepthCm = (Vent.HostThicknessMetres > 0.0)
+				? Vent.HostThicknessMetres * Scale
+				: static_cast<double>(ThicknessCm);
+			if (!FMath::IsNearlyEqual(MarkerSizeCm[MarkerNormalAxis], ExpectedDepthCm, 1.0e-3))
+			{
+				AddError(FString::Printf(
+					TEXT("Vent %d is %.2f cm deep along its reported normal axis, expected %.2f cm."),
+					Vent.VentId, MarkerSizeCm[MarkerNormalAxis], ExpectedDepthCm));
+			}
 		}
 
 		// On a real wall: the centre is the wall centreline, so it stands off the footprint polygon
@@ -1484,6 +1547,18 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 			NearestCm = FMath::Min(NearestCm, FVector2D::Distance(Point, A + Along * T));
 		}
 		WorstStandOffCm = FMath::Max(WorstStandOffCm, NearestCm);
+
+		// hostThickness/2 IS the measured stand-off from the room polygon - 0.100 m against a
+		// declared 0.200 m wall across the whole model - so when the export supplies the field the
+		// two must corroborate each other rather than drift apart. Leakage is excluded: the add-in
+		// derives wall-leakage vents from the room boundary, so those legitimately sit at 0.
+		if (Vent.HostThicknessMetres > 0.0 && Vent.Kind != EBRiskVentKind::Leakage
+			&& !FMath::IsNearlyEqual(NearestCm, Vent.HostThicknessMetres * Scale * 0.5, 0.5))
+		{
+			AddError(FString::Printf(
+				TEXT("Vent %d stands %.2f cm off the wall but declares a %.2f cm host wall."),
+				Vent.VentId, NearestCm, Vent.HostThicknessMetres * Scale));
+		}
 		if (NearestCm > 15.0)
 		{
 			++OffWall;
@@ -1622,13 +1697,26 @@ bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters
 		TEXT("F:/Mobius_InternalData"),
 	};
 	FString RealSmv;
-	for (const TCHAR* Root : InternalRoots)
+	// This test needs an export that has NOT been simulated, so select on that property rather than
+	// on a folder name - the exports get re-run, and "12-room-test-v2" has results while its
+	// predecessor does not. Picking by name is how this test started passing against the wrong data.
+	const TCHAR* InternalFolders[] = { TEXT("12-room-test-vents"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-v2") };
+	for (const TCHAR* Folder : InternalFolders)
 	{
-		const FString Candidate = FPaths::Combine(
-			FString(Root), TEXT("12-room-test-vents"), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
-		if (FPaths::FileExists(Candidate))
+		for (const TCHAR* Root : InternalRoots)
 		{
-			RealSmv = Candidate;
+			const FString Candidate = FPaths::Combine(
+				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
+			const FString SiblingCsv = FPaths::Combine(
+				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default_zone.csv"));
+			if (FPaths::FileExists(Candidate) && !FPaths::FileExists(SiblingCsv))
+			{
+				RealSmv = Candidate;
+				break;
+			}
+		}
+		if (!RealSmv.IsEmpty())
+		{
 			break;
 		}
 	}

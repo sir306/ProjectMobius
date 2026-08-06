@@ -618,17 +618,37 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	FVector CentreMetres = FVector::ZeroVector;
 
 	/**
-	 * True physical opening width in metres, from openings[].width - what a person would measure.
+	 * True physical opening size in metres, from openings[].width / .height - what a person would
+	 * measure at the door.
 	 *
-	 * Distinct from Width, which for an opening that came from a .smv is the MODELLED width B-Risk
-	 * simulated: a 0.9 m door is commonly modelled at 0.45 m. Renderers want this one; anything
-	 * reasoning about flow area wants Width. 0 when unknown.
+	 * Distinct from Width/Height, which are the MODELLED figures B-Risk actually simulated: a 0.9 m
+	 * door is commonly modelled at 0.45 m. Renderers want these; anything reasoning about flow area
+	 * wants Width/Height, whose product is the zone CSV's HVENT. 0 when unknown.
+	 *
+	 * Both are carried, not just width, so the modelled/physical split stays symmetric. In every
+	 * export seen so far modelledHeight == height, so this changes no number today - but Width is
+	 * modelled while Height was being filled from the REAL height, and the first export that models
+	 * a reduced height would have made Width * Height silently mix the two.
 	 */
 	double PhysicalWidth = 0.0;
+	double PhysicalHeight = 0.0;
 
 	/** openings[].openTimeS / closeTimeS. Negative when unknown. Both 0 means no scheduled change. */
 	double OpenTimeSeconds = -1.0;
 	double CloseTimeSeconds = -1.0;
+
+	/**
+	 * Thickness of the wall this opening is cut through, in metres, from openings[].hostThickness
+	 * (added in the v2 export). 0 when the add-in did not supply it.
+	 *
+	 * This is the depth of the opening, so it is what a marker should be drawn with rather than a
+	 * made-up constant. It also corroborates CentreMetres independently: the centre sits exactly
+	 * hostThickness/2 outside the room's footprint polygon for 31 of the 34 openings in the 12-room
+	 * model - measured 0.100 m against a declared 0.200 m wall. The three that do not are the
+	 * wall-leakage vents, which sit at 0.000 because the add-in derives those from the room boundary
+	 * rather than the wall centreline. That is an inconsistency in the source data, not here.
+	 */
+	double HostThicknessMetres = 0.0;
 
 	/** True when openings[] marked this opening as giving onto the outside rather than another room. */
 	bool bExterior = false;

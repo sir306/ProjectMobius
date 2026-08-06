@@ -137,7 +137,13 @@ namespace
 
 		const double HalfU = SizeCm[UAxis] * 0.5;
 		const double HalfV = SizeCm[VAxis] * 0.5;
-		const double NormalCm = FMath::Min(static_cast<double>(WireThicknessCm), static_cast<double>(SizeCm[NormalAxis]));
+
+		// Each edge spans the FULL depth of the opening, so the outline reads as a hole through the
+		// wall rather than a rectangle painted on its face. That depth is the host wall's real
+		// thickness once openings[].hostThickness is present (0.200 m in the 12-room model), which is
+		// the whole point of that field. This used to clamp to the wire thickness, which drew every
+		// opening the same 2 cm deep no matter what wall it was cut through.
+		const double NormalCm = SizeCm[NormalAxis];
 
 		auto AddEdge = [&](double UOffset, double VOffset, bool bSpanU)
 		{
@@ -269,11 +275,17 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	const FVector MinCm = FromBoxCm.Min;
 	const FVector MaxCm = FromBoxCm.Max;
 
+	// The TRUE opening height where the add-in gave one, matching how WidthCm below prefers
+	// PhysicalWidth. Vent.Height is the MODELLED figure B-Risk simulated, and drawing that would
+	// shrink the opening the same way drawing Vent.Width shrinks every door to half a leaf. The two
+	// are equal in every export seen so far, so this is symmetry rather than a visible change.
+	const double DrawHeight = (Vent.PhysicalHeight > 0.0) ? Vent.PhysicalHeight : Vent.Height;
+
 	const double Sill = FMath::Clamp(
 		(FromRoom->Origin.Z + Vent.SillHeight) * Scale,
 		static_cast<double>(MinCm.Z), static_cast<double>(MaxCm.Z));
 	const double Head = FMath::Clamp(
-		(FromRoom->Origin.Z + Vent.SillHeight + Vent.Height) * Scale,
+		(FromRoom->Origin.Z + Vent.SillHeight + DrawHeight) * Scale,
 		static_cast<double>(MinCm.Z), static_cast<double>(MaxCm.Z));
 	if (Head <= Sill)
 	{
@@ -281,6 +293,17 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	}
 	const double CenterZ = (Sill + Head) * 0.5;
 	const double HeightCm = Head - Sill;
+
+	// Depth THROUGH the wall. openings[].hostThickness is the real host wall thickness, so an
+	// opening is drawn as deep as the wall it is cut through instead of a house constant. The
+	// caller's ThicknessCm stays the fallback for pre-v2 exports and .smv-only scenarios, where no
+	// wall thickness exists anywhere in the data.
+	//
+	// Independently corroborates the centre: across the 12-room model the centre sits exactly
+	// hostThickness/2 outside the room polygon, 0.100 m against a declared 0.200 m wall.
+	const double DepthCm = (Vent.HostThicknessMetres > 0.0)
+		? Vent.HostThicknessMetres * Scale
+		: static_cast<double>(ThicknessCm);
 	// The TRUE opening when the add-in gave us one. Vent.Width is what B-Risk simulated, commonly
 	// half the real leaf, so drawing it would show every door at half size.
 	const double WidthCm = (Vent.PhysicalWidth > 0.0 ? Vent.PhysicalWidth : Vent.Width) * Scale;
@@ -373,8 +396,8 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 
 				OutCenterCm = FVector(CentrePlan.X, CentrePlan.Y, CenterZ);
 				OutSizeCm = bRunsAlongX
-					? FVector(WidthCm, ThicknessCm, HeightCm)
-					: FVector(ThicknessCm, WidthCm, HeightCm);
+					? FVector(WidthCm, DepthCm, HeightCm)
+					: FVector(DepthCm, WidthCm, HeightCm);
 				SetWallDirection(Axis, OutwardSign);
 				return true;
 			}
@@ -458,7 +481,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		}
 		const double WallX = (Wall == WallPosX) ? MaxCm.X : MinCm.X;
 		OutCenterCm = FVector(WallX, (OpenStart + OpenEnd) * 0.5, CenterZ);
-		OutSizeCm = FVector(ThicknessCm, OpenEnd - OpenStart, HeightCm);
+		OutSizeCm = FVector(DepthCm, OpenEnd - OpenStart, HeightCm);
 		// This path places on a bounding-box face, so the face IS the outward direction - no centre
 		// test needed, and unlike that test this stays right for a room that does not fill its box.
 		SetWallDirection(0, (Wall == WallPosX) ? 1.0 : -1.0);
@@ -480,7 +503,7 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 	}
 	const double WallY = (Wall == WallPosY) ? MaxCm.Y : MinCm.Y;
 	OutCenterCm = FVector((OpenStart + OpenEnd) * 0.5, WallY, CenterZ);
-	OutSizeCm = FVector(OpenEnd - OpenStart, ThicknessCm, HeightCm);
+	OutSizeCm = FVector(OpenEnd - OpenStart, DepthCm, HeightCm);
 	SetWallDirection(1, (Wall == WallPosY) ? 1.0 : -1.0);
 	return true;
 }

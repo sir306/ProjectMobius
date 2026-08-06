@@ -557,18 +557,27 @@ namespace
 
 			Opening->TryGetNumberField(TEXT("ventId"), Vent.VentId);
 			Opening->TryGetNumberField(TEXT("sillHeight"), Vent.SillHeight);
-			Opening->TryGetNumberField(TEXT("height"), Vent.Height);
 			Opening->TryGetNumberField(TEXT("width"), Vent.PhysicalWidth);
+			Opening->TryGetNumberField(TEXT("height"), Vent.PhysicalHeight);
 			Opening->TryGetNumberField(TEXT("openTimeS"), Vent.OpenTimeSeconds);
 			Opening->TryGetNumberField(TEXT("closeTimeS"), Vent.CloseTimeSeconds);
+			// v2 and later. Absent in v1, which leaves it 0 and lets the renderer keep its own default.
+			Opening->TryGetNumberField(TEXT("hostThickness"), Vent.HostThicknessMetres);
 
-			// Width keeps meaning "what B-Risk simulated" so anything reasoning about flow area is
-			// unaffected by this file appearing. modelledWidth is that figure; fall back to the true
-			// width only when the add-in omitted it, so Width is never left at zero and silently
-			// culled by the renderer's own width check.
+			// Width and Height keep meaning "what B-Risk simulated", so anything reasoning about flow
+			// area is unaffected by this file appearing - their product is the CSV's HVENT. The
+			// modelled* fields are those figures; fall back to the true size only when the add-in
+			// omitted them, so neither is left at zero and silently culled by the renderer's own
+			// zero-size check. Both axes are handled the same way on purpose: filling one from the
+			// modelled value and the other from the real one is how HVENT would quietly stop meaning
+			// what it says.
 			if (!Opening->TryGetNumberField(TEXT("modelledWidth"), Vent.Width))
 			{
 				Vent.Width = Vent.PhysicalWidth;
+			}
+			if (!Opening->TryGetNumberField(TEXT("modelledHeight"), Vent.Height))
+			{
+				Vent.Height = Vent.PhysicalHeight;
 			}
 
 			FString TypeName;
