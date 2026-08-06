@@ -1187,9 +1187,13 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 	FString* OutError,
 	bool bCutLeakageOpenings)
 {
-	// Generates single-sided, outward-facing room shells in Unreal space. Currently
-	// DORMANT (bAutoGenerateRoomGeometryOnLoad defaults false) — intended for a future "load
-	// extra geometry" toggle.
+	// Generates single-sided, outward-facing room shells in Unreal space.
+	//
+	// This is USER-FACING, not dormant: bAutoGenerateRoomGeometryOnLoad defaults false, but
+	// LoadRoomGeometryCheckBox in SimulationSettingsWidget drives it through
+	// SetRoomGeometryEnabled, which rebuilds immediately when a scenario is already loaded. So a
+	// change here is visible the moment someone ticks that box - owner-verified on screen
+	// 2026-08-06 with the openings cut.
 	//
 	// Two paths, chosen per room and never mixed within a room:
 	//
