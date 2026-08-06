@@ -129,3 +129,21 @@ void ULoadBRiskDataWidget::OnDialogError(const FString& ErrorTitle, const FStrin
 {
 	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
 }
+
+void ULoadBRiskDataWidget::BindGameInstanceFileDelegate()
+{
+	// Same delegate UBRiskDataSubsystem::OnSmvFileChanged listens on, so the field and the load are
+	// driven by one signal.
+	if (UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInstance->OnBRiskFileChanged.AddUniqueDynamic(this, &ULoadBRiskDataWidget::RefreshFromGameInstance);
+	}
+}
+
+void ULoadBRiskDataWidget::UnbindGameInstanceFileDelegate()
+{
+	if (UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInstance->OnBRiskFileChanged.RemoveDynamic(this, &ULoadBRiskDataWidget::RefreshFromGameInstance);
+	}
+}

@@ -50,11 +50,31 @@ public:
 	// Native Pre Construct
 	virtual void NativePreConstruct() override;
 
-	// Native Constructor 
+	// Native Constructor
 	virtual void NativeConstruct() override;
+
+	/** Native destructor - drops the game-instance file-change subscription. */
+	virtual void NativeDestruct() override;
 
 	/** Method to keep the design properties synchronized */
 	virtual void SynchronizeProperties() override;
+
+	/**
+	 * Re-read this widget's file path from the game instance and repaint the text block.
+	 *
+	 * This is what makes the displayed filename correct no matter WHO changed it. Before it existed
+	 * the field was only ever written by this widget's own file-dialog callback, so a path set from
+	 * anywhere else - a launch argument, a Mobius.Load.* console command, or any future caller of the
+	 * game-instance setters - loaded the data while the field still read "Click Browse to choose
+	 * file". The widget is now a pure observer of the game instance: the setter is the single writer,
+	 * and this pulls from it.
+	 *
+	 * Bound to whichever OnXxxFileChanged delegate the subclass owns, so it also covers the ordering
+	 * both ways round: a widget constructed AFTER the path was set picks it up from the
+	 * GetMobiusGameInstanceData() pull in NativeConstruct instead.
+	 */
+	UFUNCTION()
+	void RefreshFromGameInstance();
 
 	/**
 	* Method to call when the SelectFileButton is clicked
@@ -106,6 +126,19 @@ public:
 	 */
 	
 	virtual void DialogClosed(const FString& AgentFilePath, const FString& MeshFilePath, bool bAgentSuccess, bool bMeshSuccess);
+
+protected:
+	/**
+	 * Subscribe RefreshFromGameInstance to the game-instance delegate that carries THIS widget's
+	 * file. The base does nothing: ULoadDataParentWidget has no file of its own, and each subclass
+	 * owns a different delegate (mesh / pedestrian / B-Risk).
+	 */
+	virtual void BindGameInstanceFileDelegate() {}
+
+	/** Mirror of BindGameInstanceFileDelegate, called from NativeDestruct. */
+	virtual void UnbindGameInstanceFileDelegate() {}
+
+public:
 
 #pragma endregion PUBLIC_METHODS
 

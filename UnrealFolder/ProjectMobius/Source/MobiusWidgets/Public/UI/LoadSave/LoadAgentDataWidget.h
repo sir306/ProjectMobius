@@ -64,4 +64,9 @@ public:
 	/** Handler for file dialog errors. Displays error popup to user. */
 	UFUNCTION()
 	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
+
+protected:
+	/** Mirrors OnPedestrianVectorFileUpdated into the displayed filename. */
+	virtual void BindGameInstanceFileDelegate() override;
+	virtual void UnbindGameInstanceFileDelegate() override;
 };

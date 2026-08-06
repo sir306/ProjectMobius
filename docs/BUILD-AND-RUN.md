@@ -186,6 +186,89 @@ UnrealEditor-Cmd.exe ProjectMobius.uproject -run=GenerateDatasmithMaterials -una
 Or use the provided scripts: `Scripts/GenerateDatasmithMaterials.bat` (Windows)
 / `Scripts/GenerateDatasmithMaterials.sh` (macOS/Linux).
 
+## Launch with Preloaded Files
+
+Project Mobius can be started with geometry, pedestrian and B-RISK files already
+loaded, so another application can hand a prepared scenario straight to the
+viewer. This is the supported integration surface for third-party tools.
+
+```bash
+ProjectMobius.exe -MobiusGeometry="<path>/building.fbx" -MobiusPedestrian="<path>/pedestrians.json" -MobiusBRisk="<path>/scenario.smv"
+```
+
+All three arguments are **optional and independent**. Pass one, two, or all
+three; each file is loaded on its own and one failure never blocks the others.
+
+| Argument | Accepted types |
+| --- | --- |
+| `-MobiusGeometry=` | `.fbx` `.obj` `.udatasmith` `.ifc` `.wkt` `.h5` |
+| `-MobiusPedestrian=` | `.json` `.h5` |
+| `-MobiusBRisk=` | `.smv` (the manifest only — its companion files are read from the same folder) |
+
+Each preloaded file behaves exactly as if its **Browse** button had been used:
+the file field in the UI is populated so the user can see what is loaded, and the
+full import and pre-processing chain runs.
+
+### Quoting
+
+Wrap every path in double quotes so spaces survive, and do not leave a trailing
+path separator immediately before the closing quote — on Windows a trailing
+backslash escapes the quote and the argument runs into the next one.
+
+### Driving an already-running instance
+
+The same three loads are available as console commands, which also makes them
+usable through Unreal's own `-ExecCmds` argument:
+
+```
+Mobius.Load.Geometry <path>
+Mobius.Load.Pedestrian <path>
+Mobius.Load.BRisk <path>
+Mobius.Load.Status          # what was requested, and what happened to each file
+```
+
+```bash
+ProjectMobius.exe -ExecCmds="Mobius.Load.Pedestrian <path>/pedestrians.json"
+```
+
+### Behaviour to expect
+
+- **Startup timing.** A queued file is not loaded until the level has finished
+  initialising and the loader for that file type is live. This is deliberate: the
+  geometry loader in particular belongs to a level actor, so an earlier request
+  would be discarded silently.
+- **First-launch legal notice.** On a packaged first run the mandatory terms and
+  licence notice appears before anything is loaded. Queued files are held until
+  it is accepted; if it is declined they are discarded and the application exits
+  without loading. Time spent reading the notice is not counted against the
+  readiness timeout.
+- **Do not pass `-unattended`.** It takes effect in packaged builds, not only in
+  the editor, and it suppresses the notice — so acceptance can never be recorded.
+  Preloading is refused in that state rather than treated as consent.
+- **Invalid paths** are reported in the application's error window and named in
+  the log under `LogMobiusPreload`. Any valid files supplied alongside them still
+  load.
+- **Once per process.** Launch arguments are consumed by the first level load.
+  In the editor that means the first Play In Editor session of an editor run;
+  re-trigger later sessions with the `Mobius.Load.*` commands above.
+
+Optional: `-MobiusPreloadTimeout=<seconds>` overrides how long a queued file
+waits for its loader after the notice is accepted (console variable
+`Mobius.Preload.TimeoutSeconds`, default 30).
+
+### Helper script
+
+`Scripts/Launch-Mobius.ps1` in the source repository wraps all of the above,
+validates the files before launching, and prints the exact command line it used
+so it can be lifted into another application. It is a developer convenience and
+is not staged into packaged builds — the arguments above are the contract:
+
+```powershell
+./Scripts/Launch-Mobius.ps1 -Geometry '<path>/building.fbx' -Pedestrian '<path>/pedestrians.json'
+./Scripts/Launch-Mobius.ps1 -Pedestrian '<path>/pedestrians.json' -DryRun
+./Scripts/Launch-Mobius.ps1 -Mode EditorGame -BRisk '<path>/scenario.smv' -ShowLog
+```
+
 ## Package
 
 ### Example command

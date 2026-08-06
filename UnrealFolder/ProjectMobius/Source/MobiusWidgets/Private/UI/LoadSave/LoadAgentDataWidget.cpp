@@ -23,6 +23,7 @@
  */
 
 #include "UI/LoadSave/LoadAgentDataWidget.h"
+#include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 //#include "MassAI/Subsystems/TimeDilationSubSystem.h"
@@ -142,4 +143,24 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 void ULoadAgentDataWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
 {
 	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
+}
+
+void ULoadAgentDataWidget::BindGameInstanceFileDelegate()
+{
+	// The UPDATED delegate, not CHANGED: SetPedestrianDataFilePath broadcasts both, but
+	// OnPedestrianVectorFileChanged carries an FString parameter and RefreshFromGameInstance takes
+	// none - and the path is read back out of the game instance anyway, so the parameterless signal
+	// is the correct one to bind.
+	if (UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInstance->OnPedestrianVectorFileUpdated.AddUniqueDynamic(this, &ULoadAgentDataWidget::RefreshFromGameInstance);
+	}
+}
+
+void ULoadAgentDataWidget::UnbindGameInstanceFileDelegate()
+{
+	if (UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInstance->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &ULoadAgentDataWidget::RefreshFromGameInstance);
+	}
 }

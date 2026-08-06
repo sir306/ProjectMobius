@@ -66,6 +66,13 @@ public:
 	/** Handler for file dialog errors. Displays error popup to user. */
 	UFUNCTION()
 	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
+
+protected:
+	/** Mirrors OnMeshFileChanged into the displayed filename. */
+	virtual void BindGameInstanceFileDelegate() override;
+	virtual void UnbindGameInstanceFileDelegate() override;
+
+public:
 #pragma endregion PUBLIC_METHODS
 
 #pragma endregion METHODS

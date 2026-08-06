@@ -93,6 +93,12 @@ void ULoadDataParentWidget::NativeConstruct()
 
 		// Update the data file defaults from the custom game instance
 		GetMobiusGameInstanceData();
+
+		// Observe the game instance from here on. The pull above covers a path that was already set
+		// before this widget existed (a launch-argument preload beats the HUD into existence); this
+		// covers one set afterwards, by the preload subsystem, a console command, or anything else
+		// that writes the game instance without going through this widget's Browse callback.
+		BindGameInstanceFileDelegate();
 	}
 	else
 	{
@@ -102,10 +108,31 @@ void ULoadDataParentWidget::NativeConstruct()
 	UpdateFileTextBlockTexts();
 }
 
+void ULoadDataParentWidget::NativeDestruct()
+{
+	// The game instance outlives this widget, so a subscription left behind would fire into a
+	// destructed UObject on the next file change.
+	if (!IsDesignTime())
+	{
+		UnbindGameInstanceFileDelegate();
+	}
+
+	Super::NativeDestruct();
+}
+
 void ULoadDataParentWidget::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
-	
+
+}
+
+void ULoadDataParentWidget::RefreshFromGameInstance()
+{
+	// GetMobiusGameInstanceData is the subclass's "read my field out of the game instance" hook and
+	// ends in UpdateWidgetFileProperties, so this is exactly the state the Browse callback would have
+	// left behind - minus the write back to the game instance, which would be circular here.
+	GetMobiusGameInstanceData();
+	UpdateFileTextBlockTexts();
 }
 
 void ULoadDataParentWidget::OnSelectFileButtonClicked()

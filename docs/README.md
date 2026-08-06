@@ -8,6 +8,7 @@ Packaged builds mirror a selected subset of these pages into UnrealFolder/Projec
 ## Core Pages
 
 - [Build and Run](BUILD-AND-RUN.md)
+- [Launch with Preloaded Files](BUILD-AND-RUN.md#launch-with-preloaded-files)
 - [Controls](CONTROLS.md)
 - [Architecture](ARCHITECTURE.md)
 - [Data Pipeline](DATA-PIPELINE.md)
