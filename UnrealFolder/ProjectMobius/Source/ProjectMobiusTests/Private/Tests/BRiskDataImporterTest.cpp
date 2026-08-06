@@ -2022,9 +2022,12 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 					{
 						continue;
 					}
-					// The same bound the mesh applies: nearest-edge always answers, so an opening
-					// belonging to a wall this room does not have must not be counted as cut.
-					if (Placement.DistanceCm > Vent.HostThicknessMetres * Scale * 0.5 + 5.0)
+					// The same bound the mesh applies, through the same function rather than a
+					// second copy of the formula. An inlined copy here silently dropped the
+					// no-thickness branch, so on a pre-v2 fixture it would have expected zero cuts
+					// from code that cut all of them correctly.
+					if (Placement.DistanceCm
+						> BRiskCoord::MaxOpeningStandoffCm(Vent.HostThicknessMetres, Scale))
 					{
 						continue;
 					}

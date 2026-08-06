@@ -1142,22 +1142,6 @@ namespace
 	/** Tolerance, in metres, for cross-checking Zones-data.json elevations against the .smv. */
 	constexpr double FootprintElevationToleranceM = 0.01;
 
-	/**
-	 * How far past its expected stand-off an opening centre may sit before the wall is left solid.
-	 *
-	 * The centre sits on the wall centreline, half a wall thickness outside the room's polygon, so
-	 * the expected stand-off is hostThickness/2 and this is the slack on top. Nearest-edge always
-	 * returns SOME edge however far away the centre is, and without a bound an opening that belongs
-	 * to a wall this room does not have still gets cut into whichever wall is closest. Measured in
-	 * the 12-room model: vent 32's centre is 10 cm from room 1's wall as declared, but 20 cm from
-	 * room 2's, because the add-in derives wall-leakage from the room boundary rather than the wall
-	 * centreline. 5 cm accepts the ~14 mm mesh/zones model mismatch and still rejects that.
-	 */
-	constexpr double OpeningStandoffToleranceCm = 5.0;
-
-	/** Stand-off allowance for a pre-v2 opening, which carries no hostThickness to derive one from. */
-	constexpr double OpeningStandoffFallbackCm = 25.0;
-
 	/** Grid-line weld distance, and the smallest wall panel worth emitting, in centimetres. */
 	constexpr double WallBandWeldCm = 0.01;
 
@@ -1552,10 +1536,7 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 
 			// Nearest is not on. Without this bound an opening belonging to a wall this room does
 			// not have is still cut into whichever of its walls happens to be closest.
-			const double HalfThicknessCm = Vent.HostThicknessMetres * 0.5 * Scale;
-			const double MaxStandoffCm = (HalfThicknessCm > 0.0 ? HalfThicknessCm : OpeningStandoffFallbackCm)
-				+ OpeningStandoffToleranceCm;
-			if (Placement.DistanceCm > MaxStandoffCm)
+			if (Placement.DistanceCm > BRiskCoord::MaxOpeningStandoffCm(Vent.HostThicknessMetres, Scale))
 			{
 				++RejectedFarOpenings;
 				continue;

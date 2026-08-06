@@ -373,6 +373,37 @@ namespace BRiskCoord
 	 */
 	constexpr double OpeningEdgeTieToleranceCm = 0.01;
 
+	/**
+	 * How far past its expected stand-off an opening centre may sit before a consumer should stop
+	 * treating it as belonging to that wall.
+	 *
+	 * The centre sits on the wall centreline, half a wall thickness outside the room's polygon, so
+	 * the expected stand-off is hostThickness/2 and this is the slack on top. 5 cm accepts the
+	 * ~14 mm mesh/zones model mismatch. Measured in the 12-room model: vent 32's centre is 10 cm
+	 * from room 1's wall as declared, but 20 cm from room 2's, because the add-in derives
+	 * wall-leakage from the room boundary rather than the wall centreline - so a bound is the only
+	 * thing standing between that and a hole cut in a wall the opening does not belong to.
+	 */
+	constexpr double OpeningStandoffToleranceCm = 5.0;
+
+	/** Stand-off allowance for a pre-v2 opening, which carries no hostThickness to derive one from. */
+	constexpr double OpeningStandoffFallbackCm = 25.0;
+
+	/**
+	 * The largest distance from a wall at which an opening still counts as being ON that wall.
+	 *
+	 * One formula, not one per caller: ResolveOpeningEdge always returns SOME edge however far away
+	 * the centre is, so every destructive consumer needs this bound, and two copies of it drift. The
+	 * copy that omitted the no-thickness branch was a live example - on a pre-v2 export it collapsed
+	 * to 5 cm and rejected every opening at the measured 10 cm stand-off.
+	 */
+	FORCEINLINE double MaxOpeningStandoffCm(double HostThicknessMetres, float Scale)
+	{
+		const double HalfThicknessCm = HostThicknessMetres * 0.5 * Scale;
+		return (HalfThicknessCm > 0.0 ? HalfThicknessCm : OpeningStandoffFallbackCm)
+			+ OpeningStandoffToleranceCm;
+	}
+
 	/** Which footprint edge an opening sits on, and where along it. See ResolveOpeningEdge. */
 	struct FOpeningEdgePlacement
 	{
