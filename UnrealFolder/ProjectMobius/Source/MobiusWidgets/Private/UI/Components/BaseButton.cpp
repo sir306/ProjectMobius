@@ -27,6 +27,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Diagnostics/MobiusClickLog.h"
 #include "Engine/GameInstance.h"
+#include "Style/MobiusButtonGeometry.h"
 #include "Styling/SlateWidgetStyleAsset.h"
 #include "UI/Theme/MobiusThemePalette.h"
 #include "UI/Theme/UIThemeSubsystem.h"
@@ -44,17 +45,64 @@ void UBaseButton::SynchronizeProperties()
 	ApplyMobiusButtonStyle();
 }
 
+const FMobiusButtonGeometry* UBaseButton::ResolveButtonGeometry() const
+{
+	switch (GeometryFamily)
+	{
+	case EMobiusButtonGeometryFamily::Panel:
+		return &MobiusButtonGeometry::Chip;
+	case EMobiusButtonGeometryFamily::Tab:
+		return &MobiusButtonGeometry::Tab;
+	case EMobiusButtonGeometryFamily::Shared:
+		return nullptr;
+	case EMobiusButtonGeometryFamily::FromAsset:
+	default:
+		break;
+	}
+
+	// Transitional: map the bound asset by NAME. Both C++ geometries were measured field-for-field
+	// against these two assets before the swap, so this arm is shape-identical to the snapshot it
+	// replaced. An unbound button returns null and keeps the shared "Mobius.Button" style — that is what
+	// the 12 asset-less UBaseButtons (tool-panel rows, Custom Display link, Reset/Confirm bar) do today,
+	// and giving them a shape here would re-lay-out ten live buttons for no requested reason.
+	if (!SlateButtonStyle)
+	{
+		return nullptr;
+	}
+	const FName AssetName = SlateButtonStyle->GetFName();
+	if (AssetName == TEXT("SWS_PanelButtonStyle"))
+	{
+		return &MobiusButtonGeometry::Chip;
+	}
+	if (AssetName == TEXT("SWS_SettingButtonStyle"))
+	{
+		return &MobiusButtonGeometry::Tab;
+	}
+	return nullptr;
+}
+
 void UBaseButton::ApplyMobiusButtonStyle()
 {
-	// if the style asset and button is valid, apply the style to the button
-	if (SlateButtonStyle && SlateButtonStyle->GetStyle<FButtonStyle>())
+	// A10b/T3 (2026-08-06): the button's SHAPE comes from C++, not from a snapshot of the bound SWS
+	// asset. `SetStyle(*SlateButtonStyle->GetStyle<FButtonStyle>())` used to run here and copied the
+	// asset's whole FButtonStyle — geometry, padding AND sound — which is the last thing tying a Mobius
+	// button to a style asset now that colour is the palette's. Building the shape here instead means a
+	// new widget is correct with no asset bound at all.
+	if (const FMobiusButtonGeometry* Geometry = ResolveButtonGeometry())
 	{
-		// Set the style of the button
-		SetStyle(*SlateButtonStyle->GetStyle<FButtonStyle>());
+		FButtonStyle Style = GetStyle();
+		Geometry->ApplyToButtonStyle(Style);
+		// Carried explicitly: both assets author PressedSlateSound = click_Cue, and the snapshot above was
+		// the ONLY route from that cue to a button. Without this the migration would have silently taken
+		// the click sound off every Mobius button.
+		MobiusButtonSound::ApplyPressedCue(Style);
+		SetStyle(Style);
 	}
 
 	// Order matters: fix the hit-rect FIRST (unconditional — see StabilisePressedPadding), then recolour.
 	// RefreshThemedButtonStyle reads GetStyle(), so it carries the corrected padding forward.
+	// Both named geometries derive their pressed padding at equal totals, so this is a no-op for them —
+	// kept because it must still catch anything that reaches a button by another route.
 	StabilisePressedPadding();
 
 	// The SWS snapshot above (or the shared "Mobius.Button" fallback) supplies the GEOMETRY; the colours
