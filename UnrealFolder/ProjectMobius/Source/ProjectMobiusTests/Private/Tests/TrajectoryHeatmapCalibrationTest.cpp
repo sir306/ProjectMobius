@@ -1467,9 +1467,27 @@ bool FTrajNonSquareNegativeOriginTest::RunTest(const FString& Parameters)
 // POSITION-BLIND -- the same blind spot that left the row-orientation question open for weeks. This test
 // exists so a one-character change to that divisor fails loudly instead of quietly skewing every heatmap.
 //
-// Deliberately swept over many extents, including non-square and deliberately awkward ones, because
-// `CalculateNumberOfTriangles` CEILS (MeshSize/25) and the interesting cases are the ones where 25 does
-// not divide the extent.
+// -----------------------------------------------------------------------------------------------------
+// REWRITTEN 2026-08-07 (A0-79). IT WAS GATING A FUNCTION NOTHING CALLS.
+//
+// The version before this took its vertex count from `CalculateNumberOfTriangles`, which has ZERO callers
+// in the shipping path -- C++ or Blueprint. The path that actually builds every heatmap is
+// `GenerateMeshVerticesUVsAndTriangles` -> `ComputeHeatmapVertexGrid` -> `GenerateSquareCellSize`, and the
+// two disagree: the live one TRUNCATES `MeshSize/25`, the dead one CEILS it. So the gate asserted a pairing
+// between one dead function and one live one, and a regression in the live pair could not redden it.
+//
+// Two consequences worth stating so this does not get "restored":
+//   * `TextureSize` is gone from this test. It only ever existed to satisfy the dead function's signature;
+//     texture size does not enter the shipping grid at all.
+//   * the old `(137, 26)` case is gone and 50 cm replaces it. It passed only BECAUSE of the ceil: trunc
+//     gives 26/25 = 1 vertex on Y, which is below the two this test requires. That is not a test bug, it is
+//     production behaviour, and it is pinned explicitly in the degeneracy block at the bottom instead.
+//
+// The `/250` formula named alongside `/25` in the open item no longer exists in production -- A0-64 made
+// generation always dense, so there is no second live formula to gate here.
+//
+// Extents stay deliberately awkward (non-square, primes, extreme aspect) even though truncation replaced
+// ceiling: those are the extents where `NumTriangles - 1` and `MeshSize/25` part company.
 // =====================================================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FTrajMeshSpanMatchesExtentTest,
@@ -1486,27 +1504,31 @@ bool FTrajMeshSpanMatchesExtentTest::RunTest(const FString& Parameters)
 		FVector2D(2000.0, 2000.0),     // small floor
 		FVector2D(10000.0, 2500.0),    // extreme aspect ratio
 		FVector2D(1013.0, 787.0),      // primes: 25 divides neither
-		FVector2D(137.0, 26.0),        // degenerate-ish, exercises the Max(1, n-1) guard
+		FVector2D(50.0, 50.0),         // the exact floor: trunc(50/25) = 2, the fewest verts that span
 	};
-
-	const FIntPoint TextureSize(1024, 1024); // only CalculateNumberOfTriangles' signature needs this
 
 	for (const FVector2D& Extent : Extents)
 	{
-		const FIntPoint NumTriangles =
-			AHeatmapPixelTextureVisualizer::CalculateNumberOfTriangles(Extent, TextureSize);
+		// The shipping pair, both taken from production rather than restated here.
+		const FIntPoint NumTriangles = AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(Extent);
 		const FVector2D CellSize =
 			AHeatmapPixelTextureVisualizer::GenerateSquareCellSize(NumTriangles, Extent);
 
 		// Must mirror BuildTileBuffers exactly: gx runs 0..NumTriangles-1, vertex at gx * CellSize.
+		// That the tiler really does stop at NumTriangles-1 is not assumed from reading it -- A0-77
+		// MEASURED a fully-kept 200x200 grid emitting 40000 verts and 79202 tris = 2 * 199^2.
 		const double SpanX = static_cast<double>(NumTriangles.X - 1) * CellSize.X;
 		const double SpanY = static_cast<double>(NumTriangles.Y - 1) * CellSize.Y;
 		const double ErrX = SpanX - Extent.X;
 		const double ErrY = SpanY - Extent.Y;
 
+		// Reported, not asserted: the cell is ALWAYS wider than the nominal 25 cm, because dividing by
+		// (N-1) spreads the extent over one fewer gap than the count suggests. 25.13 cm at 50 m, 33.3 cm
+		// on a 1 m floor. `cell >= 25` is true by construction so asserting it proves nothing, and any
+		// tighter bound would redden on small floors for no defect.
 		AddInfo(FString::Printf(
-			TEXT("extent %.0f x %.0f cm -> verts %d x %d, cell %.6f x %.6f, span %.4f x %.4f, ")
-			TEXT("error %+.4f x %+.4f cm"),
+			TEXT("extent %.0f x %.0f cm -> verts %d x %d, cell %.6f x %.6f (nominal 25), ")
+			TEXT("span %.4f x %.4f, error %+.4f x %+.4f cm"),
 			Extent.X, Extent.Y, NumTriangles.X, NumTriangles.Y,
 			CellSize.X, CellSize.Y, SpanX, SpanY, ErrX, ErrY));
 
@@ -1519,10 +1541,79 @@ bool FTrajMeshSpanMatchesExtentTest::RunTest(const FString& Parameters)
 			TEXT("mesh Y span equals the extent for %.0f cm (error %+.4f cm, tolerance 0.01)"),
 			Extent.Y, ErrY), FMath::Abs(ErrY) < 0.01);
 
-		// Guard the assumption the span formula rests on. One vertex means no span at all, and the
-		// Max(1, n-1) guard in GenerateSquareCellSize would silently return the full extent as the cell.
+		// Guards the FIXTURE LIST, not production: every extent here must stay above the degeneracy floor,
+		// or the span assertions above become meaningless for it. Add a sub-50 cm extent and this fails
+		// first, with a clear reason, instead of a confusing span error further up.
+		//
+		// It used to be justified as covering `Max(1, n-1)` in GenerateSquareCellSize "silently returning
+		// the full extent as the cell". That is no longer what it does: at N >= 2 the Max is a no-op, and
+		// the sub-floor cases that DO reach it are pinned in the degeneracy block at the bottom instead.
 		TestTrue(FString::Printf(TEXT("extent %.0f cm yields at least 2 vertices per axis"), Extent.X),
 			NumTriangles.X >= 2 && NumTriangles.Y >= 2);
+	}
+
+	// -------------------------------------------------------------------------------------------------
+	// PROVE THE GATE HAS TEETH.
+	//
+	// Read plainly, everything above is a tautology: `GenerateSquareCellSize` divides by (N-1) and the span
+	// multiplies by (N-1), so span == extent for ANY N >= 2 and no extent can ever fail it. That is exactly
+	// why it is worth having -- the thing under test is the DIVISOR, not the arithmetic -- but a reader who
+	// spots the tautology and not the reason deletes the test. So run the pre-2026-08-05 form here and show
+	// it fails: dividing by N instead of (N-1) shortens the mesh by one cell while its UVs still span the
+	// whole texture, which is the A0-56/A0-60 defect the owner saw as a ~2-texel shift at the far corner.
+	// -------------------------------------------------------------------------------------------------
+	{
+		const FVector2D Extent(20000.0, 20000.0);
+		const FIntPoint NumTriangles = AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(Extent);
+		const FVector2D CellSize =
+			AHeatmapPixelTextureVisualizer::GenerateSquareCellSize(NumTriangles, Extent);
+
+		const double LegacyCellX = Extent.X / FMath::Max(1, NumTriangles.X); // the OLD divisor: N, not N-1
+		const double LegacySpanX = static_cast<double>(NumTriangles.X - 1) * LegacyCellX;
+		const double LegacyErrX = LegacySpanX - Extent.X;
+
+		AddInfo(FString::Printf(
+			TEXT("non-vacuity: pre-2026-08-05 divisor on a %.0f cm carrier gives cell %.6f, span %.4f, ")
+			TEXT("error %+.4f cm against a live cell of %.6f"),
+			Extent.X, LegacyCellX, LegacySpanX, LegacyErrX, CellSize.X));
+
+		// Scaled to the cell rather than hard-coded to 25 cm, so this stays honest if the density changes.
+		// The error it must exceed is ~2500x the 0.01 cm tolerance the assertions above run at.
+		TestTrue(TEXT("the pre-2026-08-05 divisor misses the extent by about one cell, so a regression to ")
+			TEXT("it would redden the assertions above rather than slip through"),
+			FMath::Abs(LegacyErrX) > 0.9 * CellSize.X);
+	}
+
+	// -------------------------------------------------------------------------------------------------
+	// WHERE THE SPAN INVARIANT STOPS HOLDING, AND THE FACT THAT PRODUCTION DOES NOT SAY SO.
+	//
+	// GenerateMeshVerticesUVsAndTriangles' comment says /25 "stays >= 2 vertices from 50 cm up, so every
+	// plausible floor is safe". True, and this pins the boundary rather than trusting the sentence. What
+	// the comment does not say is what happens BELOW it, so record that here:
+	//
+	//   extent >= 50 cm  -> N >= 2, mesh spans the extent exactly (asserted above)
+	//   25..49 cm        -> N == 1. `bValidTriangles` only rejects N == 0, so the guard PASSES, Max(1, N-1)
+	//                       returns 1, the cell loop runs zero times, and the actor emits an EMPTY mesh
+	//                       with no error and no user feedback. Silent.
+	//   < 25 cm          -> N == 0, caught by bValidTriangles, reported through the feedback subsystem.
+	//
+	// The silent band needs a floor smaller than a doorway, so it is not worth code today -- but it is a
+	// hole in a guard that looks total, and nothing else in the tree writes it down.
+	// -------------------------------------------------------------------------------------------------
+	{
+		const FIntPoint AtFloor = AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(50.0, 50.0));
+		TestTrue(TEXT("50 cm is exactly the smallest extent that yields 2 vertices per axis"),
+			AtFloor.X == 2 && AtFloor.Y == 2);
+
+		const FIntPoint BelowFloor =
+			AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(49.99, 49.99));
+		TestTrue(TEXT("just below 50 cm the grid drops to 1 vertex per axis, which spans nothing -- this is ")
+			TEXT("the documented floor of the /25 density, not a defect"),
+			BelowFloor.X == 1 && BelowFloor.Y == 1);
+
+		const FIntPoint Empty = AHeatmapPixelTextureVisualizer::ComputeHeatmapVertexGrid(FVector2D(24.0, 24.0));
+		TestTrue(TEXT("below 25 cm the grid is 0, which bValidTriangles rejects and reports"),
+			Empty.X == 0 && Empty.Y == 0);
 	}
 
 	return true;

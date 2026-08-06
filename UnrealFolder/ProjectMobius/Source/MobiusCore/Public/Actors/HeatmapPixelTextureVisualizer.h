@@ -647,22 +647,34 @@ private:
 	 * @param[FVector2D&] MeshSize The size of the mesh in the X and Y direction
 	 * @return[FVector2D] The size of the square cell
 	 */
-	// PUBLIC deliberately, and only these two. Both are pure static maths over their arguments with no
-	// actor state, and together they define the mesh's world span:
-	//     span = (CalculateNumberOfTriangles(..) - 1) * GenerateSquareCellSize(..)
+	// PUBLIC deliberately. Pure static maths over the arguments with no actor state, which is what makes
+	// the span invariant assertable from ProjectMobiusTests without spawning a world:
+	//     span = (ComputeHeatmapVertexGrid(..) - 1) * GenerateSquareCellSize(..)
 	// That span MUST equal the heatmap's world extent, or the texture is stretched across the wrong
 	// distance and the whole image shifts. It was wrong by exactly one cell until 2026-08-05 (A0-60), and
-	// no test could see it because the suite only ever measured sums, which are position-blind. Exposing
-	// them is what makes that invariant assertable from ProjectMobiusTests without spawning a world.
+	// no test could see it because the suite only ever measured sums, which are position-blind.
+	//
+	// This sentence named `CalculateNumberOfTriangles` until 2026-08-07 (A0-79). That was wrong in the way
+	// that matters: it has no callers anywhere, so the invariant as written paired a live function with a
+	// dead one — and the gate that asserted it, `Offset.MeshSpanMatchesExtent`, guarded nothing shipping.
+	// The live grid comes from `ComputeHeatmapVertexGrid` (declared above, near InitializeHeatmap).
 public:
 	static FVector2d GenerateSquareCellSize(const FIntPoint& NumberOfTriangles, const FVector2D& MeshSize);
 
 	/**
-	 * Method to calculate the number of triangles needed for the mesh when using 3D heatmaps - TODO: this may be needed for all heatmap types due to the cost asscoiated with the mesh generation
+	 * DEAD as of 2026-08-07 (A0-79) — nothing calls this. Verified: no C++ caller, and no name-literal hit
+	 * across all 1751 project .uasset/.umap files, so no Blueprint calls it either.
+	 *
+	 * Kept, not deleted, because removing public API is the owner's call — but do not treat it as a
+	 * reference for the real grid. It CEILS `MeshSize/25` where the shipping `ComputeHeatmapVertexGrid`
+	 * TRUNCATES, so the two return different vertex counts for every extent that is not a multiple of 25,
+	 * and `TextureSize` is ignored outright. It sat here long enough to capture a gate:
+	 * `Offset.MeshSpanMatchesExtent` asserted against it for two days while the shipping path went
+	 * unguarded. Listed in _CurrentHandoff\DEAD_CODE_CLEANUP.md.
 	 *
 	 * @param[FVector2D&] MeshSize - The size of the mesh in the X and Y direction
-	 * @param[FIntPoint&] TextureSize - The size of the texture in the X and Y direction
-	 * @return[FIntPoint] The number of triangles needed for the mesh in the X and Y direction
+	 * @param[FIntPoint&] TextureSize - Unused.
+	 * @return[FIntPoint] Vertices per axis, ceiled.
 	 */
 	static FIntPoint CalculateNumberOfTriangles(const FVector2D& MeshSize, const FIntPoint& TextureSize);
 
