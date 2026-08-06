@@ -328,6 +328,13 @@ public:
 	/**
 	 * Build mesh arrays for a set of B-Risk rooms. Intended for C++ tests and non-Blueprint callers.
 	 * Frame must be the scenario's RoomFrame (see GetRoomFrame).
+	 *
+	 * @param bCutLeakageOpenings  Whether leakage vents are cut as holes. Off by default: a leakage
+	 *   vent models porosity, or the gap round a closed door leaf, so there is no aperture in the
+	 *   building to cut. In the 12-room model 15 of the 18 sit inside a door's span anyway, and the
+	 *   three that do not are the wall-leakage vents whose centre the add-in derives from a
+	 *   different reference. Exposed so a test can turn them on and check the slits appear - the
+	 *   wall decomposition unions overlapping openings, so this is safe to flip.
 	 */
 	static bool BuildRoomMeshDataFromRooms(
 		const TArray<FBRiskRoomGeometry>& Rooms,
@@ -337,7 +344,8 @@ public:
 		TArray<FVector>& OutVertices,
 		TArray<int32>& OutTriangles,
 		TArray<FVector>& OutNormals,
-		FString* OutError = nullptr);
+		FString* OutError = nullptr,
+		bool bCutLeakageOpenings = false);
 
 	/** Convert a B-Risk smoke layer height and room height into the material's RoomSmoke scalar. */
 	static float ComputeRoomSmokeScalar(double LayerHeight, double RoomHeight);

@@ -332,56 +332,12 @@ bool ABRiskHazardVisualizer::ComputeVentSlab(
 		// wrong. Fall through to the legacy path rather than invent one.
 		if (Ring.Num() >= 3)
 		{
-			// Nearest edge wins, with the full opening width having to fit as the tie-break. Ties are
-			// real: a vent in a room corner is equidistant from two edges (measured: two of the 34
-			// openings in the 12-room test sit exactly on a corner at 0.100 m from both). Without the
-			// fit test the winner would be whichever edge came first in winding order.
-			// Distances, not squared distances. A tolerance on squared centimetres is not a
-			// tolerance on centimetres - at the measured 10 cm stand-off, two candidate edges a
-			// visible 0.5 mm apart differ by ~1 cm^2, so a squared comparison would sort near-ties
-			// by an amount nobody chose. TieToleranceCm is a deliberate 0.1 mm.
-			constexpr double TieToleranceCm = 0.01;
-
-			int32 BestEdge = INDEX_NONE;
-			double BestDistanceCm = TNumericLimits<double>::Max();
-			bool bBestFits = false;
-
-			for (int32 EdgeIndex = 0; EdgeIndex < Ring.Num(); ++EdgeIndex)
+			// Which wall this opening is on. Shared with the room mesh's hole cut rather than
+			// duplicated, so the marker provably sits inside its own hole - see ResolveOpeningEdge.
+			BRiskCoord::FOpeningEdgePlacement Placement;
+			if (BRiskCoord::ResolveOpeningEdge(Ring, CentrePlan, WidthCm, Placement))
 			{
-				const FVector2D& A = Ring[EdgeIndex];
-				const FVector2D& B = Ring[(EdgeIndex + 1) % Ring.Num()];
-				const FVector2D Along = B - A;
-				const double LengthSq = Along.SizeSquared();
-				if (LengthSq <= 0.0)
-				{
-					continue;
-				}
-
-				const double T = FMath::Clamp(FVector2D::DotProduct(CentrePlan - A, Along) / LengthSq, 0.0, 1.0);
-				const FVector2D Closest = A + Along * T;
-				const double DistanceCm = FVector2D::Distance(CentrePlan, Closest);
-
-				const double Length = FMath::Sqrt(LengthSq);
-				const double AlongCm = T * Length;
-				const bool bFits = (AlongCm - WidthCm * 0.5 >= -TieToleranceCm)
-					&& (AlongCm + WidthCm * 0.5 <= Length + TieToleranceCm);
-
-				// Strictly nearer always wins; an equal-distance edge only takes the place of the
-				// incumbent by being one the opening actually fits on.
-				const bool bNearer = DistanceCm < BestDistanceCm - TieToleranceCm;
-				const bool bTiedAndBetter = FMath::Abs(DistanceCm - BestDistanceCm) <= TieToleranceCm
-					&& bFits && !bBestFits;
-
-				if (BestEdge == INDEX_NONE || bNearer || bTiedAndBetter)
-				{
-					BestEdge = EdgeIndex;
-					BestDistanceCm = DistanceCm;
-					bBestFits = bFits;
-				}
-			}
-
-			if (BestEdge != INDEX_NONE)
-			{
+				const int32 BestEdge = Placement.EdgeIndex;
 				const FVector2D EdgeDirection = Ring[(BestEdge + 1) % Ring.Num()] - Ring[BestEdge];
 				const bool bRunsAlongX = FMath::Abs(EdgeDirection.X) >= FMath::Abs(EdgeDirection.Y);
 

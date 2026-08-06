@@ -1141,6 +1141,55 @@ namespace
 {
 	/** Tolerance, in metres, for cross-checking Zones-data.json elevations against the .smv. */
 	constexpr double FootprintElevationToleranceM = 0.01;
+
+	/**
+	 * How far past its expected stand-off an opening centre may sit before the wall is left solid.
+	 *
+	 * The centre sits on the wall centreline, half a wall thickness outside the room's polygon, so
+	 * the expected stand-off is hostThickness/2 and this is the slack on top. Nearest-edge always
+	 * returns SOME edge however far away the centre is, and without a bound an opening that belongs
+	 * to a wall this room does not have still gets cut into whichever wall is closest. Measured in
+	 * the 12-room model: vent 32's centre is 10 cm from room 1's wall as declared, but 20 cm from
+	 * room 2's, because the add-in derives wall-leakage from the room boundary rather than the wall
+	 * centreline. 5 cm accepts the ~14 mm mesh/zones model mismatch and still rejects that.
+	 */
+	constexpr double OpeningStandoffToleranceCm = 5.0;
+
+	/** Stand-off allowance for a pre-v2 opening, which carries no hostThickness to derive one from. */
+	constexpr double OpeningStandoffFallbackCm = 25.0;
+
+	/** Grid-line weld distance, and the smallest wall panel worth emitting, in centimetres. */
+	constexpr double WallBandWeldCm = 0.01;
+
+	/** One opening reduced to a rectangle in a wall's own (distance along, height) frame. */
+	struct FWallOpeningRect
+	{
+		double StartCm = 0.0;
+		double EndCm = 0.0;
+		double SillZ = 0.0;
+		double HeadZ = 0.0;
+	};
+
+	/**
+	 * The lining of one opening: a tunnel running from the wall's inner face outward through the
+	 * wall body, so the opening reads as a hole with depth rather than a gap in a paper shell.
+	 */
+	struct FOpeningRevealCm
+	{
+		FVector2D InnerStart = FVector2D::ZeroVector;
+		FVector2D InnerEnd = FVector2D::ZeroVector;
+
+		/** Outward wall normal times the host wall thickness - the vector from inner face to outer. */
+		FVector2D OutwardCm = FVector2D::ZeroVector;
+
+		double SillZ = 0.0;
+		double HeadZ = 0.0;
+
+		/** Set when this came from the opening's own roomA, which wins over the far side of the wall. */
+		bool bFromPrimaryRoom = false;
+
+		bool bValid = false;
+	};
 }
 
 bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
@@ -1151,17 +1200,18 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 	TArray<FVector>& OutVertices,
 	TArray<int32>& OutTriangles,
 	TArray<FVector>& OutNormals,
-	FString* OutError)
+	FString* OutError,
+	bool bCutLeakageOpenings)
 {
-	// Generates solid, single-sided, outward-facing room shells in Unreal space. Currently
+	// Generates single-sided, outward-facing room shells in Unreal space. Currently
 	// DORMANT (bAutoGenerateRoomGeometryOnLoad defaults false) — intended for a future "load
 	// extra geometry" toggle.
 	//
 	// Two paths, chosen per room and never mixed within a room:
 	//
 	//  * Room HAS a Zones-data.json footprint -> extruded polygon prism, converted with
-	//    BRiskCoord::FootprintToUnreal (Y negated). This is the real floor plan. Door/window
-	//    openings are NOT cut — see the comment on the polygon path below.
+	//    BRiskCoord::FootprintToUnreal (Y negated). This is the real floor plan, with the real
+	//    door/window openings cut out of its walls and lined to the host wall's thickness.
 	//  * Room has NO footprint -> the legacy equivalent-rectangle box, converted with
 	//    BRiskCoord::ToUnreal (X<->Y swap), with one door opening per wall.
 	//
@@ -1247,9 +1297,141 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 		OutTriangles.Append({ Base, Base + 1, Base + 2 });
 	};
 
-	// Builds the true floor plan for one room: triangulated floor and ceiling caps plus one
-	// extruded quad per polygon edge.
-	const auto AppendFootprintRoom = [&AddTriangleFacing, Scale, Frame](
+	// One reveal per opening rather than one per room that cuts it, so a shared wall - cut from
+	// both sides, both tunnels occupying the same wall body - does not get two coincident,
+	// co-facing sets of quads. Indexed by vent so the emission order does not depend on room order.
+	TArray<FOpeningRevealCm> RevealsByVent;
+	RevealsByVent.SetNum(Vents.Num());
+
+	int32 CutOpenings = 0;
+	int32 RejectedFarOpenings = 0;
+	int32 ClampedOpenings = 0;
+
+	// Emits one wall panel, wound to face outward. Deliberately the same two triangles in the same
+	// order as the pre-hole code so a room with no openings produces byte-identical geometry.
+	const auto AppendWallPanel = [&AddTriangleFacing](
+		const FVector2D& From,
+		const FVector2D& To,
+		const FVector& Outward,
+		double BottomZ,
+		double TopZ)
+	{
+		AddTriangleFacing(
+			FVector(From.X, From.Y, BottomZ),
+			FVector(To.X, To.Y, BottomZ),
+			FVector(To.X, To.Y, TopZ),
+			Outward);
+		AddTriangleFacing(
+			FVector(From.X, From.Y, BottomZ),
+			FVector(To.X, To.Y, TopZ),
+			FVector(From.X, From.Y, TopZ),
+			Outward);
+	};
+
+	// Builds one wall with its openings removed.
+	//
+	// Grid decomposition rather than a triangulator with holes, because the two shapes this
+	// actually has to produce are the ones an ear-clipper handles worst. Measured in the 12-room
+	// model: a door can span its wall corner to corner (the corridor's 100 cm doorway stubs, where
+	// the opening runs 0.00..100.00 of a 100 cm edge) - that is a notch, and a "hole" whose vertices
+	// lie on the outer ring is degenerate. And 15 of the 18 leakage openings sit wholly inside a
+	// door's span - a hole inside a hole. Splitting the wall at every opening boundary and dropping
+	// the covered cells is exact for both, unions overlaps for free, and needs no triangulator.
+	const auto AppendWallWithOpenings = [&AppendWallPanel](
+		const FVector2D& Start,
+		const FVector2D& End,
+		const FVector& Outward,
+		double FloorZ,
+		double CeilingZ,
+		const TArray<FWallOpeningRect>& Openings)
+	{
+		const double EdgeLengthCm = FVector2D::Distance(Start, End);
+		if (EdgeLengthCm <= WallBandWeldCm)
+		{
+			return;
+		}
+
+		// Exact at both ends: reconstructing the far corner as Start + Unit * Length would move it
+		// by an ulp or two, which is enough to change the mesh of a room that has no openings.
+		const FVector2D AlongUnit = (End - Start) / EdgeLengthCm;
+		const auto PointAt = [&Start, &End, &AlongUnit, EdgeLengthCm](double AlongCm) -> FVector2D
+		{
+			if (AlongCm <= 0.0) { return Start; }
+			if (AlongCm >= EdgeLengthCm) { return End; }
+			return Start + AlongUnit * AlongCm;
+		};
+
+		const auto SortAndWeld = [](TArray<double>& Values)
+		{
+			Values.Sort();
+			for (int32 Index = Values.Num() - 1; Index > 0; --Index)
+			{
+				if (Values[Index] - Values[Index - 1] < WallBandWeldCm)
+				{
+					Values.RemoveAt(Index);
+				}
+			}
+		};
+
+		TArray<double> AlongBands = { 0.0, EdgeLengthCm };
+		TArray<double> HeightBands = { FloorZ, CeilingZ };
+		for (const FWallOpeningRect& Opening : Openings)
+		{
+			AlongBands.Add(Opening.StartCm);
+			AlongBands.Add(Opening.EndCm);
+			HeightBands.Add(Opening.SillZ);
+			HeightBands.Add(Opening.HeadZ);
+		}
+		SortAndWeld(AlongBands);
+		SortAndWeld(HeightBands);
+
+		for (int32 HeightIndex = 0; HeightIndex + 1 < HeightBands.Num(); ++HeightIndex)
+		{
+			const double BottomZ = HeightBands[HeightIndex];
+			const double TopZ = HeightBands[HeightIndex + 1];
+			const double MidZ = (BottomZ + TopZ) * 0.5;
+
+			// Merge neighbouring surviving cells along the wall, so a continuous strip - the band
+			// under a row of door sills, say - stays one panel instead of one per opening boundary.
+			int32 RunStart = INDEX_NONE;
+			for (int32 AlongIndex = 0; AlongIndex + 1 < AlongBands.Num(); ++AlongIndex)
+			{
+				const double MidAlong = (AlongBands[AlongIndex] + AlongBands[AlongIndex + 1]) * 0.5;
+
+				bool bCovered = false;
+				for (const FWallOpeningRect& Opening : Openings)
+				{
+					if (MidAlong > Opening.StartCm && MidAlong < Opening.EndCm
+						&& MidZ > Opening.SillZ && MidZ < Opening.HeadZ)
+					{
+						bCovered = true;
+						break;
+					}
+				}
+
+				if (!bCovered && RunStart == INDEX_NONE)
+				{
+					RunStart = AlongIndex;
+				}
+
+				const bool bLastCell = (AlongIndex + 2 >= AlongBands.Num());
+				if (RunStart != INDEX_NONE && (bCovered || bLastCell))
+				{
+					const int32 RunEnd = bCovered ? AlongIndex : AlongIndex + 1;
+					AppendWallPanel(
+						PointAt(AlongBands[RunStart]), PointAt(AlongBands[RunEnd]),
+						Outward, BottomZ, TopZ);
+					RunStart = INDEX_NONE;
+				}
+			}
+		}
+	};
+
+	// Builds the true floor plan for one room: triangulated floor and ceiling caps plus the walls,
+	// with the room's real openings cut out of them.
+	const auto AppendFootprintRoom = [&AddTriangleFacing, &AppendWallWithOpenings, &Vents,
+		&RevealsByVent, &CutOpenings, &RejectedFarOpenings, &ClampedOpenings,
+		Scale, Frame, bCutLeakageOpenings](
 		const FBRiskRoomGeometry& Room,
 		FString& OutRoomError) -> bool
 	{
@@ -1328,11 +1510,106 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 				FVector::UpVector);
 		}
 
-		// Walls are solid: no door or window openings are cut on the polygon path. A B-Risk vent
-		// is located by (face, offset) along the perimeter of the EQUIVALENT RECTANGLE, which has
-		// neither the edge count nor the perimeter length of the real footprint, so an offset
-		// cannot be mapped onto a polygon edge. Punching a hole in a guessed wall is worse than
-		// leaving the shell closed. Vent XY in Zones-data.json would fix this upstream.
+		// Resolve every opening this room owns onto one of its walls, ONCE, before building any
+		// wall - one nearest-edge search per opening rather than one per opening per edge.
+		//
+		// A B-Risk vent's own (face, offset) is not usable here and is not a fallback: both are
+		// coordinates in the area/perimeter-equivalent RECTANGLE (SR282 eq. 1-2), which has neither
+		// the edge count nor the perimeter length of the real footprint. What makes the cut possible
+		// is the Zones-data.json opening CENTRE - a real position in the same frame as the polygon.
+		TMap<int32, TArray<FWallOpeningRect>> OpeningsByEdge;
+		for (int32 VentIndex = 0; VentIndex < Vents.Num(); ++VentIndex)
+		{
+			const FBRiskVentGeometry& Vent = Vents[VentIndex];
+
+			// Both sides: one opening record describes a shared wall, so the far room needs the hole
+			// too or a door reads as an opening from one side and a solid wall from the other.
+			if (!Vent.bHasPlacement
+				|| (Vent.FromRoomId != Room.RoomId && Vent.ToRoomId != Room.RoomId)
+				|| Vent.Width <= 0.0 || Vent.Height <= 0.0)
+			{
+				continue;
+			}
+
+			if (Vent.Kind == EBRiskVentKind::Leakage && !bCutLeakageOpenings)
+			{
+				continue;
+			}
+
+			// The TRUE opening size, exactly as ComputeVentSlab resolves it, so the hazard marker
+			// and the hole it sits in are the same rectangle. Vent.Width/Height are the MODELLED
+			// figures B-Risk simulated - commonly half a door leaf - and cutting those would leave
+			// the marker overhanging its own hole.
+			const double WidthCm = (Vent.PhysicalWidth > 0.0 ? Vent.PhysicalWidth : Vent.Width) * Scale;
+			const double DrawHeight = (Vent.PhysicalHeight > 0.0) ? Vent.PhysicalHeight : Vent.Height;
+
+			BRiskCoord::FOpeningEdgePlacement Placement;
+			const FVector CentreCm = BRiskCoord::FootprintToUnreal(Vent.CentreMetres, Scale);
+			if (!BRiskCoord::ResolveOpeningEdge(Ring, FVector2D(CentreCm.X, CentreCm.Y), WidthCm, Placement))
+			{
+				continue;
+			}
+
+			// Nearest is not on. Without this bound an opening belonging to a wall this room does
+			// not have is still cut into whichever of its walls happens to be closest.
+			const double HalfThicknessCm = Vent.HostThicknessMetres * 0.5 * Scale;
+			const double MaxStandoffCm = (HalfThicknessCm > 0.0 ? HalfThicknessCm : OpeningStandoffFallbackCm)
+				+ OpeningStandoffToleranceCm;
+			if (Placement.DistanceCm > MaxStandoffCm)
+			{
+				++RejectedFarOpenings;
+				continue;
+			}
+
+			FWallOpeningRect Rect;
+			Rect.StartCm = FMath::Max(0.0, Placement.AlongCm - WidthCm * 0.5);
+			Rect.EndCm = FMath::Min(Placement.EdgeLengthCm, Placement.AlongCm + WidthCm * 0.5);
+			Rect.SillZ = FMath::Clamp((Room.Origin.Z + Vent.SillHeight) * Scale, FloorZ, CeilingZ);
+			Rect.HeadZ = FMath::Clamp((Room.Origin.Z + Vent.SillHeight + DrawHeight) * Scale, FloorZ, CeilingZ);
+
+			if (Rect.EndCm - Rect.StartCm <= WallBandWeldCm || Rect.HeadZ - Rect.SillZ <= WallBandWeldCm)
+			{
+				continue;
+			}
+
+			// bFitsOnEdge is a tie-break inside the resolver, not a rejection, so a corner-straddling
+			// opening arrives wider than its wall and has just been clipped to it. Say so rather than
+			// let a half-cut door look intentional.
+			if (!Placement.bFitsOnEdge)
+			{
+				++ClampedOpenings;
+			}
+
+			OpeningsByEdge.FindOrAdd(Placement.EdgeIndex).Add(Rect);
+			++CutOpenings;
+
+			// Record the lining. hostThickness is what makes an opening a hole with depth rather
+			// than a gap in a paper shell; without it (pre-v2 export) the hole is still cut, just
+			// unlined, because there is no wall thickness anywhere in that data to invent one from.
+			const bool bPrimaryRoom = (Vent.FromRoomId == Room.RoomId);
+			const double DepthCm = Vent.HostThicknessMetres * Scale;
+			if (DepthCm > WallBandWeldCm
+				&& RevealsByVent.IsValidIndex(VentIndex)
+				&& (!RevealsByVent[VentIndex].bValid || (bPrimaryRoom && !RevealsByVent[VentIndex].bFromPrimaryRoom)))
+			{
+				const FVector2D& EdgeStart = Ring[Placement.EdgeIndex];
+				const FVector2D& EdgeEnd = Ring[(Placement.EdgeIndex + 1) % Ring.Num()];
+				const FVector2D AlongUnit = (EdgeEnd - EdgeStart).GetSafeNormal();
+
+				FOpeningRevealCm& Reveal = RevealsByVent[VentIndex];
+				Reveal.InnerStart = EdgeStart + AlongUnit * Rect.StartCm;
+				Reveal.InnerEnd = EdgeStart + AlongUnit * Rect.EndCm;
+				// Ring is counter-clockwise, so (dy, -dx) points out of the room - the direction the
+				// wall body lies in, since the polygon is the room's inner face.
+				Reveal.OutwardCm = FVector2D(AlongUnit.Y, -AlongUnit.X) * DepthCm;
+				Reveal.SillZ = Rect.SillZ;
+				Reveal.HeadZ = Rect.HeadZ;
+				Reveal.bFromPrimaryRoom = bPrimaryRoom;
+				Reveal.bValid = true;
+			}
+		}
+
+		const TArray<FWallOpeningRect> NoOpenings;
 		for (int32 Index = 0; Index < Ring.Num(); ++Index)
 		{
 			const FVector2D& Start = Ring[Index];
@@ -1346,13 +1623,10 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 				continue;
 			}
 
-			const FVector BottomStart(Start.X, Start.Y, FloorZ);
-			const FVector BottomEnd(End.X, End.Y, FloorZ);
-			const FVector TopEnd(End.X, End.Y, CeilingZ);
-			const FVector TopStart(Start.X, Start.Y, CeilingZ);
-
-			AddTriangleFacing(BottomStart, BottomEnd, TopEnd, Outward);
-			AddTriangleFacing(BottomStart, TopEnd, TopStart, Outward);
+			const TArray<FWallOpeningRect>* EdgeOpenings = OpeningsByEdge.Find(Index);
+			AppendWallWithOpenings(
+				Start, End, Outward, FloorZ, CeilingZ,
+				EdgeOpenings ? *EdgeOpenings : NoOpenings);
 		}
 
 		return true;
@@ -1455,14 +1729,13 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 			// not yet supported.) The caller passes the B-Risk face for this UE wall under the
 			// X<->Y swap.
 			//
-			// KNOWN GAP - this matches NOTHING in a scenario that has Zones-data.json openings[].
-			// Those vents carry a real centre and their Face is deliberately cleared to INDEX_NONE,
-			// because the .smv face column does not identify a wall (measured: face 2 and face 3
-			// each map to three different wall normals across the 12-room model). So the walls come
-			// out solid rather than wrongly-holed. Only reachable for a room with no footprint, and
-			// only when the generated-room-geometry toggle is on. Cutting real openings needs the
-			// polygon path below to support holes, which openings[] now makes possible for the
-			// first time - see _CurrentHandoff\BRISK_VENTS_HANDOFF.md.
+			// Matches NOTHING in a scenario that has Zones-data.json openings[], and that is the
+			// intended degrade rather than a gap to close. Those vents carry a real centre and their
+			// Face is deliberately cleared to INDEX_NONE, because the .smv face column does not
+			// identify a wall (measured: face 2 and face 3 each map to three different wall normals
+			// across the 12-room model). A room reaching this path has no polygon, so there is no
+			// real wall to put the centre against - leaving it solid is the honest result. Rooms that
+			// DO have a polygon get their real openings cut on the path above.
 			const FBRiskVentGeometry* WallVent = nullptr;
 			for (const FBRiskVentGeometry& Vent : Vents)
 			{
@@ -1567,23 +1840,80 @@ bool UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
 		AddWallWithOptionalOpening(3, FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Max.Y, Min.Z), FVector(Max.X, Max.Y, Max.Z), FVector(Max.X, Min.Y, Max.Z), false, false, Min.Y, Max.Y);
 	}
 
+	// Line every cut opening, once. Separate from the wall build on purpose: the hole is the thing
+	// that had to happen and it stands alone, whereas the lining is the only part that depends on
+	// hostThickness, so it can be dropped without disturbing the cut.
+	{
+		const auto AddRevealQuad = [&AddTriangleFacing](
+			const FVector& A, const FVector& B, const FVector& C, const FVector& D, const FVector& Facing)
+		{
+			AddTriangleFacing(A, B, C, Facing);
+			AddTriangleFacing(A, C, D, Facing);
+		};
+
+		for (const FOpeningRevealCm& Reveal : RevealsByVent)
+		{
+			if (!Reveal.bValid)
+			{
+				continue;
+			}
+
+			const FVector2D OuterStart = Reveal.InnerStart + Reveal.OutwardCm;
+			const FVector2D OuterEnd = Reveal.InnerEnd + Reveal.OutwardCm;
+			const FVector2D AlongPlan = (Reveal.InnerEnd - Reveal.InnerStart).GetSafeNormal();
+			const FVector Along(AlongPlan.X, AlongPlan.Y, 0.0);
+
+			const FVector InnerStartSill(Reveal.InnerStart.X, Reveal.InnerStart.Y, Reveal.SillZ);
+			const FVector InnerStartHead(Reveal.InnerStart.X, Reveal.InnerStart.Y, Reveal.HeadZ);
+			const FVector InnerEndSill(Reveal.InnerEnd.X, Reveal.InnerEnd.Y, Reveal.SillZ);
+			const FVector InnerEndHead(Reveal.InnerEnd.X, Reveal.InnerEnd.Y, Reveal.HeadZ);
+			const FVector OuterStartSill(OuterStart.X, OuterStart.Y, Reveal.SillZ);
+			const FVector OuterStartHead(OuterStart.X, OuterStart.Y, Reveal.HeadZ);
+			const FVector OuterEndSill(OuterEnd.X, OuterEnd.Y, Reveal.SillZ);
+			const FVector OuterEndHead(OuterEnd.X, OuterEnd.Y, Reveal.HeadZ);
+
+			// All four face INTO the opening, so the lining is what you see looking through it.
+			AddRevealQuad(InnerStartSill, OuterStartSill, OuterStartHead, InnerStartHead, Along);
+			AddRevealQuad(InnerEndSill, OuterEndSill, OuterEndHead, InnerEndHead, -Along);
+			AddRevealQuad(InnerStartSill, InnerEndSill, OuterEndSill, OuterStartSill, FVector::UpVector);
+			AddRevealQuad(InnerStartHead, InnerEndHead, OuterEndHead, OuterStartHead, FVector::DownVector);
+		}
+	}
+
 	if (FootprintRoomCount > 0)
 	{
-		int32 UncutVents = 0;
+		int32 LeakageSkipped = 0;
+		int32 OnRectangleRooms = 0;
 		for (const FBRiskVentGeometry& Vent : Vents)
 		{
+			if (!Vent.bHasPlacement)
+			{
+				continue;
+			}
+
 			const FBRiskRoomGeometry* Owner = Rooms.FindByPredicate(
 				[&Vent](const FBRiskRoomGeometry& Candidate) { return Candidate.RoomId == Vent.FromRoomId; });
-			UncutVents += (Owner && Owner->FootprintPolygon.Num() >= 3) ? 1 : 0;
+			if (!Owner || Owner->FootprintPolygon.Num() < 3)
+			{
+				++OnRectangleRooms;
+				continue;
+			}
+
+			LeakageSkipped += (!bCutLeakageOpenings && Vent.Kind == EBRiskVentKind::Leakage) ? 1 : 0;
 		}
 
 		UE_LOG(LogBRiskDataSubsystem, Log,
 			TEXT("B-Risk room geometry: %d of %d rooms built from Zones-data.json footprints; ")
-			TEXT("%d vent opening(s) left uncut because B-Risk locates vents on the equivalent ")
-			TEXT("rectangle, not on the real polygon."),
+			TEXT("%d opening(s) cut (a shared wall counts once per side). %d leakage opening(s) left ")
+			TEXT("solid, %d too far from any wall of their own room to cut, %d clipped to fit their ")
+			TEXT("wall, %d on rooms with no footprint."),
 			FootprintRoomCount,
 			Rooms.Num(),
-			UncutVents);
+			CutOpenings,
+			LeakageSkipped,
+			RejectedFarOpenings,
+			ClampedOpenings,
+			OnRectangleRooms);
 	}
 
 	return true;

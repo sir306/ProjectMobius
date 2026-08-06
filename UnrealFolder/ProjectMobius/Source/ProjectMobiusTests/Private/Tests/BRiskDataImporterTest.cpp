@@ -588,6 +588,71 @@ namespace
 		return Room;
 	}
 
+	/**
+	 * Is Point covered by any mesh triangle lying in the same wall plane and facing the same way?
+	 *
+	 * This is what "there is a hole here" actually means, and it cannot be answered by counting
+	 * vertices: cutting an opening changes the triangle count for lots of reasons, and a count that
+	 * moved tells you nothing about WHERE the geometry went. Restricted to co-planar, co-facing
+	 * triangles so the opposite wall of the same room, and the reveal quads running through the
+	 * wall, cannot answer for a wall they are not part of.
+	 */
+	bool IsWallPointCovered(
+		const TArray<FVector>& Vertices,
+		const TArray<int32>& Triangles,
+		const TArray<FVector>& Normals,
+		const FVector& Point,
+		const FVector& Outward,
+		double PlaneToleranceCm = 0.1)
+	{
+		// The wall's own 2D frame: drop the axis its normal runs along.
+		int32 NormalAxis = 0;
+		for (int32 Axis = 1; Axis < 3; ++Axis)
+		{
+			if (FMath::Abs(Outward[Axis]) > FMath::Abs(Outward[NormalAxis]))
+			{
+				NormalAxis = Axis;
+			}
+		}
+		const int32 AxisU = (NormalAxis + 1) % 3;
+		const int32 AxisV = (NormalAxis + 2) % 3;
+		const FVector2D Query(Point[AxisU], Point[AxisV]);
+
+		for (int32 Index = 0; Index + 2 < Triangles.Num(); Index += 3)
+		{
+			if (FVector::DotProduct(Normals[Triangles[Index]], Outward) < 0.999)
+			{
+				continue;
+			}
+
+			const FVector& A = Vertices[Triangles[Index]];
+			const FVector& B = Vertices[Triangles[Index + 1]];
+			const FVector& C = Vertices[Triangles[Index + 2]];
+			if (FMath::Abs(A[NormalAxis] - Point[NormalAxis]) > PlaneToleranceCm
+				|| FMath::Abs(B[NormalAxis] - Point[NormalAxis]) > PlaneToleranceCm
+				|| FMath::Abs(C[NormalAxis] - Point[NormalAxis]) > PlaneToleranceCm)
+			{
+				continue;
+			}
+
+			const FVector2D P0(A[AxisU], A[AxisV]);
+			const FVector2D P1(B[AxisU], B[AxisV]);
+			const FVector2D P2(C[AxisU], C[AxisV]);
+			const auto Side = [](const FVector2D& From, const FVector2D& To, const FVector2D& Test)
+			{
+				return (To.X - From.X) * (Test.Y - From.Y) - (To.Y - From.Y) * (Test.X - From.X);
+			};
+			const double S0 = Side(P0, P1, Query);
+			const double S1 = Side(P1, P2, Query);
+			const double S2 = Side(P2, P0, Query);
+			if ((S0 >= 0.0 && S1 >= 0.0 && S2 >= 0.0) || (S0 <= 0.0 && S1 <= 0.0 && S2 <= 0.0))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Total area of every triangle whose normal faces straight down, i.e. the floor cap. */
 	double FloorCapArea(const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals)
 	{
@@ -1065,6 +1130,297 @@ bool FBRiskRoomMeshFootprintTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("Legacy frame max X"), Bounds.Max.X, -1623.29, 0.01);
 			TestEqual(TEXT("Legacy frame min Y"), Bounds.Min.Y, 325.05, 0.01);
 			TestEqual(TEXT("Legacy frame max Y"), Bounds.Max.Y, 825.05, 0.01);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskRoomMeshOpeningsTest,
+	"ProjectMobius.BRisk.Geometry.RoomMeshOpenings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+/**
+ * Cutting the real door/window openings out of the polygon room shell.
+ *
+ * What makes this possible is the Zones-data.json opening CENTRE, not hostThickness: the centre is
+ * a real position in the room's own frame, where (face, offset) are coordinates in B-Risk's
+ * area/perimeter-equivalent rectangle and cannot be mapped onto a polygon at all. hostThickness
+ * only supplies the DEPTH, which is what lines the hole - so the two are tested separately, and an
+ * export without a thickness must still get its hole.
+ *
+ * The shapes asserted here are the ones the 12-room model actually produces, and they are the ones
+ * a triangulator-with-holes handles worst: an opening spanning its wall corner to corner (a notch,
+ * whose "hole" vertices lie on the outer boundary), and openings that overlap each other.
+ */
+bool FBRiskRoomMeshOpeningsTest::RunTest(const FString& Parameters)
+{
+	constexpr float Scale = 100.0f;
+	constexpr BRiskCoord::ERoomFrame Frame = BRiskCoord::ERoomFrame::Revit;
+
+	// A 5 x 5 m room at the origin, 3 m tall. Under FootprintToUnreal (Y negated) the ring comes
+	// out counter-clockwise spanning UE X 0..500, Y 0..500.
+	const auto MakeSquareRoom = [](int32 RoomId, double OriginX) -> FBRiskRoomGeometry
+	{
+		FBRiskRoomGeometry Room;
+		Room.RoomId = RoomId;
+		Room.Label = FString::Printf(TEXT("square %d"), RoomId);
+		Room.Origin = FVector(OriginX, -5.0, 0.0);
+		Room.Size = FVector(5.0, 5.0, 3.0);
+		Room.FootprintPolygon = {
+			FVector2D(OriginX,       -5.0),
+			FVector2D(OriginX + 5.0, -5.0),
+			FVector2D(OriginX + 5.0,  0.0),
+			FVector2D(OriginX,        0.0),
+		};
+		return Room;
+	};
+
+	// An opening on the room's UE -Y wall (the y = 0 edge), centred at X = CentreX metres and
+	// standing off half a wall thickness OUTSIDE the room, exactly as the add-in writes them.
+	const auto MakeOpening = [](
+		int32 VentId, EBRiskVentKind Kind, int32 FromRoom, int32 ToRoom,
+		double CentreX, double WidthM, double ThicknessM) -> FBRiskVentGeometry
+	{
+		FBRiskVentGeometry Vent;
+		Vent.VentId = VentId;
+		Vent.Kind = Kind;
+		Vent.FromRoomId = FromRoom;
+		Vent.ToRoomId = ToRoom;
+		Vent.bHasPlacement = true;
+		Vent.CentreMetres = FVector(CentreX, ThicknessM * 0.5, 1.0);
+		Vent.PhysicalWidth = WidthM;
+		Vent.PhysicalHeight = 2.0;
+		Vent.Width = WidthM * 0.5;   // modelled, as B-Risk halves a door leaf
+		Vent.Height = 2.0;
+		Vent.SillHeight = 0.0;
+		Vent.HostThicknessMetres = ThicknessM;
+		return Vent;
+	};
+
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector> Normals;
+	FString Error;
+
+	// The wall the openings are cut into: UE y = 0, facing -Y.
+	const FVector WallOutward = -FVector::YAxisVector;
+
+	// --- No openings: the shell must be exactly what it was before holes existed --------------
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		const TArray<FBRiskVentGeometry> NoVents;
+		if (TestTrue(TEXT("A room with no openings should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, NoVents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			// Two caps of two triangles each, plus one two-triangle panel per wall. Pinned exactly:
+			// the decomposition must collapse back to a single panel when there is nothing to cut,
+			// or every scenario without a Zones-data.json silently gains geometry.
+			TestEqual(TEXT("Uncut square room is 12 triangles"), Triangles.Num(), 36);
+			TestEqual(TEXT("Uncut square room is 36 vertices"), Vertices.Num(), 36);
+			TestTrue(TEXT("The wall is solid where a door would go"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 100.0), WallOutward));
+		}
+	}
+
+	// --- One door mid-wall --------------------------------------------------------------------
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		const TArray<FBRiskVentGeometry> Vents = {
+			MakeOpening(1, EBRiskVentKind::Door, 1, 99, 2.5, 1.0, 0.2) };
+
+		if (TestTrue(TEXT("A room with a door should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			// The PHYSICAL width, not the modelled one. Cutting Vent.Width would leave a 50 cm hole
+			// under a 100 cm marker - the same half-a-door-leaf error the marker itself used to make.
+			TestFalse(TEXT("The door centre is open"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 100.0), WallOutward));
+			TestFalse(TEXT("The door is a full 100 cm wide, not the modelled 50"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(203.0, 0.0, 100.0), WallOutward));
+			TestTrue(TEXT("The wall beside the door survives"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(195.0, 0.0, 100.0), WallOutward));
+			TestTrue(TEXT("The wall above the door survives"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 250.0), WallOutward));
+			TestTrue(TEXT("The other three walls are untouched"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 500.0, 100.0), FVector::YAxisVector));
+
+			// The lining, which is the only part hostThickness pays for. It runs from the polygon -
+			// the room's INNER face - outward through the wall body, so the jamb is a surface at
+			// y = 0..-20 that faces along the opening.
+			TestTrue(TEXT("The door is lined to the host wall's depth"),
+				IsWallPointCovered(Vertices, Triangles, Normals,
+					FVector(200.0, -5.0, 100.0), FVector::XAxisVector));
+			TestTrue(TEXT("The lining has a head"),
+				IsWallPointCovered(Vertices, Triangles, Normals,
+					FVector(250.0, -5.0, 200.0), -FVector::ZAxisVector));
+
+			FBox Bounds(Vertices);
+			TestEqual(TEXT("The lining reaches the outer face and no further"), Bounds.Min.Y, -20.0, 1.0e-6);
+		}
+	}
+
+	// --- No hostThickness: the hole is still cut, just unlined ---------------------------------
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		TArray<FBRiskVentGeometry> Vents = { MakeOpening(1, EBRiskVentKind::Door, 1, 99, 2.5, 1.0, 0.2) };
+		// A pre-v2 export: a real centre, no wall thickness anywhere in the data.
+		Vents[0].HostThicknessMetres = 0.0;
+
+		if (TestTrue(TEXT("A pre-v2 opening should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			TestFalse(TEXT("The door is still cut without a declared thickness"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 100.0), WallOutward));
+			const FBox Bounds(Vertices);
+			TestEqual(TEXT("Nothing is lined, so no geometry leaves the footprint"), Bounds.Min.Y, 0.0, 1.0e-6);
+		}
+	}
+
+	// --- A door spanning its wall corner to corner ---------------------------------------------
+	//
+	// The corridor's 100 cm doorway stubs do exactly this: the opening runs 0.00..100.00 of a 100 cm
+	// edge. There is no wall left either side, so the "hole" touches the outer boundary and is a
+	// notch, not a hole - the case an ear-clipper produces self-intersecting output for.
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		const TArray<FBRiskVentGeometry> Vents = {
+			MakeOpening(1, EBRiskVentKind::Door, 1, 99, 2.5, 5.0, 0.2) };
+
+		if (TestTrue(TEXT("A wall-wide door should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			TestFalse(TEXT("The full-width door is open at one end"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(5.0, 0.0, 100.0), WallOutward));
+			TestFalse(TEXT("The full-width door is open at the other"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(495.0, 0.0, 100.0), WallOutward));
+			TestTrue(TEXT("Only the band above it is left"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 250.0), WallOutward));
+
+			for (int32 Index = 0; Index + 2 < Triangles.Num(); Index += 3)
+			{
+				const FVector& A = Vertices[Triangles[Index]];
+				const FVector& B = Vertices[Triangles[Index + 1]];
+				const FVector& C = Vertices[Triangles[Index + 2]];
+				TestTrue(TEXT("No degenerate triangle is emitted"),
+					FVector::CrossProduct(B - A, C - A).Size() > 1.0e-3);
+			}
+		}
+	}
+
+	// --- Overlapping openings union ------------------------------------------------------------
+	//
+	// 15 of the 18 leakage vents in the 12-room model sit wholly inside a door's span. Turning them
+	// on must not produce a hole inside a hole, or geometry stacked on the boundary between them.
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		const TArray<FBRiskVentGeometry> Vents = {
+			MakeOpening(1, EBRiskVentKind::Door, 1, 99, 2.5, 1.0, 0.2),
+			MakeOpening(2, EBRiskVentKind::Door, 1, 99, 2.8, 1.0, 0.2) };
+
+		if (TestTrue(TEXT("Overlapping openings should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			TestFalse(TEXT("The union is open across the overlap"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(275.0, 0.0, 100.0), WallOutward));
+			TestFalse(TEXT("The union is open at the far end"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(325.0, 0.0, 100.0), WallOutward));
+			TestTrue(TEXT("The wall outside the union survives"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(340.0, 0.0, 100.0), WallOutward));
+		}
+	}
+
+	// --- Leakage is not an aperture -------------------------------------------------------------
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		const TArray<FBRiskVentGeometry> Vents = {
+			MakeOpening(1, EBRiskVentKind::Leakage, 1, 99, 2.5, 0.01, 0.2) };
+
+		if (TestTrue(TEXT("A leakage-only room should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			TestEqual(TEXT("A leakage vent leaves the wall exactly as it found it"), Triangles.Num(), 36);
+			TestTrue(TEXT("The wall is solid where the leakage path is"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 100.0), WallOutward));
+		}
+
+		if (TestTrue(TEXT("A leakage-only room should build with cutting on"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error, /*bCutLeakageOpenings*/ true)))
+		{
+			TestFalse(TEXT("Turning leakage on does cut the slit"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 100.0), WallOutward));
+		}
+	}
+
+	// --- An opening nowhere near a wall of this room --------------------------------------------
+	//
+	// Nearest-edge always returns SOME edge. Vent 32 in the 12-room model is the live case: its
+	// centre is 10 cm from room 1's wall as declared and 20 cm from room 2's, because the add-in
+	// derives wall-leakage from the room boundary rather than the wall centreline.
+	{
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0) };
+		TArray<FBRiskVentGeometry> Vents = { MakeOpening(1, EBRiskVentKind::Door, 1, 99, 2.5, 1.0, 0.2) };
+		Vents[0].CentreMetres.Y = 1.0; // a metre outside a room whose walls are 200 mm
+
+		if (TestTrue(TEXT("A stray opening should still build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			TestEqual(TEXT("An opening that far off any wall is not cut"), Triangles.Num(), 36);
+		}
+	}
+
+	// --- A shared wall is cut from both sides, and lined once -----------------------------------
+	//
+	// One opening record describes both rooms. Cut it into only its roomA and a door reads as an
+	// opening from one side and a solid wall from the other; line it from both and the two tunnels
+	// occupy the same wall body as coincident, co-facing quads.
+	{
+		// Two rooms 20 cm apart across the y = 0 / y = -20 gap: room 1 spans UE Y 0..500 and room 2
+		// UE Y -520..-20, so the shared wall body is exactly the declared 200 mm.
+		FBRiskRoomGeometry Far = MakeSquareRoom(2, 0.0);
+		Far.Origin = FVector(0.0, -0.2, 0.0);
+		Far.Size = FVector(5.0, 5.0, 3.0);
+		Far.FootprintPolygon = {
+			FVector2D(0.0, 0.2),
+			FVector2D(5.0, 0.2),
+			FVector2D(5.0, 5.2),
+			FVector2D(0.0, 5.2),
+		};
+
+		const TArray<FBRiskRoomGeometry> Rooms = { MakeSquareRoom(1, 0.0), Far };
+		const TArray<FBRiskVentGeometry> Vents = {
+			MakeOpening(1, EBRiskVentKind::Door, 1, 2, 2.5, 1.0, 0.2) };
+
+		if (TestTrue(TEXT("A shared-wall opening should build"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				Rooms, Vents, Scale, Frame, Vertices, Triangles, Normals, &Error)))
+		{
+			TestFalse(TEXT("The near room's wall is open"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, 0.0, 100.0), WallOutward));
+			TestFalse(TEXT("The far room's wall is open at the same place"),
+				IsWallPointCovered(Vertices, Triangles, Normals, FVector(250.0, -20.0, 100.0), FVector::YAxisVector));
+
+			// One lining, not two. Both rooms' tunnels would occupy the same 20 cm of wall.
+			int32 JambTriangles = 0;
+			for (int32 Index = 0; Index + 2 < Triangles.Num(); Index += 3)
+			{
+				const FVector& A = Vertices[Triangles[Index]];
+				if (Normals[Triangles[Index]].Equals(FVector::XAxisVector, 1.0e-3)
+					&& FMath::IsNearlyEqual(A.X, 200.0, 0.1))
+				{
+					++JambTriangles;
+				}
+			}
+			TestEqual(TEXT("The shared opening is lined exactly once"), JambTriangles, 2);
 		}
 	}
 
@@ -1617,6 +1973,100 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	{
 		TestNotEqual(TEXT("facing walls of the corridor must point in OPPOSITE directions"),
 			CorridorLongWallSigns[0], CorridorLongWallSigns[1]);
+	}
+
+	// --- Every marker must sit inside its own hole ---------------------------------------------
+	//
+	// The hole and the marker are sized from the same four numbers, so this is the free check that
+	// falls out of building both: if a marker overhangs its opening, one of the two is wrong. It has
+	// force only because both go through BRiskCoord::ResolveOpeningEdge rather than each carrying a
+	// copy of the nearest-edge search.
+	{
+		TArray<FVector> MeshVertices;
+		TArray<int32> MeshTriangles;
+		TArray<FVector> MeshNormals;
+		FString MeshError;
+		if (TestTrue(TEXT("The 12-room scenario should build a mesh"),
+			UBRiskDataSubsystem::BuildRoomMeshDataFromRooms(
+				RealData.Rooms, RealData.Vents, Scale, RealData.RoomFrame,
+				MeshVertices, MeshTriangles, MeshNormals, &MeshError)))
+		{
+			int32 ExpectedCuts = 0;
+			int32 MarkersOutsideTheirHole = 0;
+
+			for (const FBRiskVentGeometry& Vent : RealData.Vents)
+			{
+				if (!Vent.bHasPlacement || Vent.Kind == EBRiskVentKind::Leakage)
+				{
+					continue;
+				}
+
+				const int32 RoomIds[] = { Vent.FromRoomId, Vent.ToRoomId };
+				for (const int32 RoomId : RoomIds)
+				{
+					const FBRiskRoomGeometry* HoleRoom = RealData.Rooms.FindByPredicate(
+						[RoomId](const FBRiskRoomGeometry& Candidate) { return Candidate.RoomId == RoomId; });
+					if (!HoleRoom)
+					{
+						continue;
+					}
+
+					const BRiskCoord::FRoomFootprintCm Footprint =
+						BRiskCoord::MakeRoomFootprint(*HoleRoom, Scale, RealData.RoomFrame);
+					const double WidthCm = (Vent.PhysicalWidth > 0.0 ? Vent.PhysicalWidth : Vent.Width) * Scale;
+					const FVector OpeningCentreCm = BRiskCoord::FootprintToUnreal(Vent.CentreMetres, Scale);
+
+					BRiskCoord::FOpeningEdgePlacement Placement;
+					if (!BRiskCoord::ResolveOpeningEdge(
+						Footprint.Polygon, FVector2D(OpeningCentreCm.X, OpeningCentreCm.Y), WidthCm, Placement))
+					{
+						continue;
+					}
+					// The same bound the mesh applies: nearest-edge always answers, so an opening
+					// belonging to a wall this room does not have must not be counted as cut.
+					if (Placement.DistanceCm > Vent.HostThicknessMetres * Scale * 0.5 + 5.0)
+					{
+						continue;
+					}
+					++ExpectedCuts;
+
+					// Where the marker meets this room's wall: the centre dropped onto the wall
+					// plane, at the marker's own mid-height.
+					const FVector2D& EdgeStart = Footprint.Polygon[Placement.EdgeIndex];
+					const FVector2D& EdgeEnd =
+						Footprint.Polygon[(Placement.EdgeIndex + 1) % Footprint.Polygon.Num()];
+					const FVector2D AlongUnit = (EdgeEnd - EdgeStart).GetSafeNormal();
+					const FVector2D OnWall = EdgeStart + AlongUnit * Placement.AlongCm;
+					const FVector Outward(AlongUnit.Y, -AlongUnit.X, 0.0);
+					const double DrawHeight = (Vent.PhysicalHeight > 0.0) ? Vent.PhysicalHeight : Vent.Height;
+					const double MidZ = (HoleRoom->Origin.Z + Vent.SillHeight + DrawHeight * 0.5) * Scale;
+
+					if (IsWallPointCovered(MeshVertices, MeshTriangles, MeshNormals,
+						FVector(OnWall.X, OnWall.Y, MidZ), Outward))
+					{
+						++MarkersOutsideTheirHole;
+						AddError(FString::Printf(
+							TEXT("Vent %d's marker sits against solid wall in room %d - no hole was cut for it."),
+							Vent.VentId, RoomId));
+					}
+				}
+			}
+
+			// 15 doors + 1 window, of which only the Lobby/Corridor door has a second room with a
+			// footprint, so it is cut from both sides.
+			TestEqual(TEXT("17 openings should be cut across the two rooms with footprints"),
+				ExpectedCuts, 17);
+			TestEqual(TEXT("Every marker sits inside its own hole"), MarkersOutsideTheirHole, 0);
+			// Say it out loud: a fixture that is not on this machine makes the whole block above
+			// vanish, and a test that checked nothing still reports success.
+			AddInfo(FString::Printf(
+				TEXT("%d openings cut into the real 12-room mesh, %d markers outside their own hole"),
+				ExpectedCuts, MarkersOutsideTheirHole));
+		}
+		else
+		{
+			AddError(FString::Printf(TEXT("Room mesh build error: %s"), *MeshError));
+		}
 	}
 
 	return true;

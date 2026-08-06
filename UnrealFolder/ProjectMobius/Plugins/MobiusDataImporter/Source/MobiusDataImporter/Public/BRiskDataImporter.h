@@ -364,6 +364,114 @@ namespace BRiskCoord
 	}
 
 	/**
+	 * Tolerance for comparing two candidate edges' distances, in centimetres.
+	 *
+	 * Distances, not squared distances. A tolerance on squared centimetres is not a tolerance on
+	 * centimetres - at the measured 10 cm stand-off, two candidate edges a visible 0.5 mm apart
+	 * differ by ~1 cm^2, so a squared comparison would sort near-ties by an amount nobody chose.
+	 * A deliberate 0.1 mm.
+	 */
+	constexpr double OpeningEdgeTieToleranceCm = 0.01;
+
+	/** Which footprint edge an opening sits on, and where along it. See ResolveOpeningEdge. */
+	struct FOpeningEdgePlacement
+	{
+		/** Index into the ring; the edge runs Ring[EdgeIndex] -> Ring[(EdgeIndex + 1) % Num]. */
+		int32 EdgeIndex = INDEX_NONE;
+
+		/** Distance of the opening centre along the edge from Ring[EdgeIndex], in centimetres. */
+		double AlongCm = 0.0;
+
+		/** Perpendicular distance from the opening centre to the edge, in centimetres. */
+		double DistanceCm = 0.0;
+
+		/** Length of the chosen edge, in centimetres. */
+		double EdgeLengthCm = 0.0;
+
+		/** True when the full opening width lies within the edge. A tie-break, NOT a rejection. */
+		bool bFitsOnEdge = false;
+	};
+
+	/**
+	 * Decide which wall of a room's footprint an opening belongs to.
+	 *
+	 * Shared by every consumer that needs to know where an opening meets a wall - the hazard
+	 * marker slab and the room mesh's hole cut - because those two are sized from the same numbers
+	 * and a marker that does not sit inside its own hole means one of them is wrong. That check
+	 * only has force if both go through this function rather than each keeping a copy of it.
+	 *
+	 * Nearest edge wins, with the full opening width having to fit as the tie-break. Ties are real:
+	 * an opening in a room corner is equidistant from two edges (measured: two of the 34 openings in
+	 * the 12-room test sit exactly on a corner at 0.100 m from both). Without the fit test the
+	 * winner would be whichever edge came first in winding order.
+	 *
+	 * CentrePlanCm is used verbatim and is NOT projected onto the ring: it sits on the wall
+	 * centreline, roughly half a wall thickness outside the footprint, and for a wall shared by two
+	 * rooms that is the only point both rooms agree on. The ring supplies the axis, nothing else.
+	 *
+	 * Note this always returns SOME edge for a non-degenerate ring, however far away the centre is.
+	 * A caller that acts on the result destructively - cutting a hole, say - must also bound
+	 * OutPlacement.DistanceCm, because "nearest" is not "on".
+	 *
+	 * @return false when the ring has fewer than three vertices or every edge is zero-length.
+	 */
+	FORCEINLINE bool ResolveOpeningEdge(
+		const TArray<FVector2D>& Ring,
+		const FVector2D& CentrePlanCm,
+		double WidthCm,
+		FOpeningEdgePlacement& OutPlacement)
+	{
+		OutPlacement = FOpeningEdgePlacement();
+		if (Ring.Num() < 3)
+		{
+			return false;
+		}
+
+		for (int32 EdgeIndex = 0; EdgeIndex < Ring.Num(); ++EdgeIndex)
+		{
+			const FVector2D& A = Ring[EdgeIndex];
+			const FVector2D& B = Ring[(EdgeIndex + 1) % Ring.Num()];
+			const FVector2D Along = B - A;
+			const double LengthSq = Along.SizeSquared();
+			if (LengthSq <= 0.0)
+			{
+				continue;
+			}
+
+			const double T = FMath::Clamp(FVector2D::DotProduct(CentrePlanCm - A, Along) / LengthSq, 0.0, 1.0);
+			const FVector2D Closest = A + Along * T;
+			const double DistanceCm = FVector2D::Distance(CentrePlanCm, Closest);
+
+			const double Length = FMath::Sqrt(LengthSq);
+			const double AlongCm = T * Length;
+			const bool bFits = (AlongCm - WidthCm * 0.5 >= -OpeningEdgeTieToleranceCm)
+				&& (AlongCm + WidthCm * 0.5 <= Length + OpeningEdgeTieToleranceCm);
+
+			// Strictly nearer always wins; an equal-distance edge only takes the place of the
+			// incumbent by being one the opening actually fits on.
+			if (OutPlacement.EdgeIndex != INDEX_NONE)
+			{
+				const bool bNearer = DistanceCm < OutPlacement.DistanceCm - OpeningEdgeTieToleranceCm;
+				const bool bTiedAndBetter =
+					FMath::Abs(DistanceCm - OutPlacement.DistanceCm) <= OpeningEdgeTieToleranceCm
+					&& bFits && !OutPlacement.bFitsOnEdge;
+				if (!bNearer && !bTiedAndBetter)
+				{
+					continue;
+				}
+			}
+
+			OutPlacement.EdgeIndex = EdgeIndex;
+			OutPlacement.AlongCm = AlongCm;
+			OutPlacement.DistanceCm = DistanceCm;
+			OutPlacement.EdgeLengthCm = Length;
+			OutPlacement.bFitsOnEdge = bFits;
+		}
+
+		return OutPlacement.EdgeIndex != INDEX_NONE;
+	}
+
+	/**
 	 * Rasterise a room footprint into an 8-bit coverage mask spanning its own bounding box.
 	 *
 	 * Texel (i, j) is sampled at its centre, mapped into the bbox as
