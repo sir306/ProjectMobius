@@ -1777,26 +1777,29 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 						bChanged = true;
 					}
 				}
-				// Scalability/panel buttons: their dark fill shares the panel-body value so the
-				// generic remap can't give them contrast — set the full style explicitly per theme.
-				if (AssetData.AssetName == TEXT("SWS_PanelButtonStyle"))
-				{
-					ButtonStyle->Normal.TintColor = FSlateColor(bLight ? FLinearColor(0.964f, 0.964f, 0.964f) : FLinearColor(0.052861f, 0.052861f, 0.052861f));
-					ButtonStyle->Hovered.TintColor = FSlateColor(bLight ? FLinearColor(0.8228f, 0.8228f, 0.8228f) : FLinearColor(0.068f, 0.068f, 0.068f));
-					ButtonStyle->Pressed.TintColor = FSlateColor(bLight ? FLinearColor(0.7913f, 0.7913f, 0.7913f) : FLinearColor(0.0452f, 0.0452f, 0.0452f));
-					const FLinearColor OutlineColor = bLight
-						? FLinearColor(0.4179f, 0.4179f, 0.4179f)   // #adadad
-						: FLinearColor(0.1023f, 0.1023f, 0.1023f);  // #5a5a5a
-					for (FSlateBrush* Brush : Brushes)
-					{
-						// Outline WIDTH is SWS-owned geometry (the asset carries Width=1 on all four
-						// brushes on disk); C++ sets only the theme-dependent outline COLOUR here. Do NOT
-						// re-add a Width clobber: it re-overwrites the asset geometry and breaks the
-						// owner's split (colours = C++, padding + sound + geometry = SWS asset).
-						Brush->OutlineSettings.Color = FSlateColor(OutlineColor);
-					}
-					bChanged = true;
-				}
+				// A10b (2026-08-06): the SWS_PanelButtonStyle branch that used to sit here — stamping
+				// Normal/Hovered/Pressed TintColor plus an outline colour onto the shared asset — is GONE,
+				// because it was a DEAD WRITE. UBaseButton::ApplyMobiusButtonStyle snapshots this asset and
+				// RefreshThemedButtonStyle then overwrites all four brush tints from ButtonBg/ButtonHoverBg/
+				// ButtonPressedBg and the outline from ButtonBorder, so nothing it wrote ever reached a
+				// pixel. That is why light renders the bluish palette hover and not the neutral 0.8228 this
+				// branch wrote — confirmed on screen by the owner before it was removed.
+				//
+				// Gated first, because four escapes would have kept the asset colour visible: a consumer
+				// that is not a UBaseButton, bFollowThemePalette cleared, bIsRibbonButton set (ribbon tabs
+				// route to ApplyRibbonTabStyle), or Normal outline width > 1.5 (the accent-ring early-out) —
+				// plus Recolour skipping any brush that carries a resource object. All 37 consumers came
+				// back UButtonWithText, palette-following, non-ribbon, ROUNDED_BOX, outline 1.0, no resource
+				// object: every escape empty.
+				//
+				// This also carried the last tokenless literals in the function. The 0.964/0.052861 fill
+				// matched no design token and had an open owner ruling, which deleting the write closed
+				// rather than answered — no role was invented (EMobiusPaletteRole static_asserts its count).
+				// Do not re-add: colour for these buttons belongs to the palette subsystem, per the
+				// 2026-08-06 ruling that widgets theme from the subsystem and not from an SWS asset. The
+				// asset is still the source of GEOMETRY (corner radii, outline width, padding, sounds) until
+				// that half moves to FMobiusButtonGeometry.
+				//
 				// A10 (2026-08-05): the "current tier" chip branch that used to sit here — matching
 				// SWS_ScaleabilityButtonCurrentSet and rebuilding it as a flat rounded box with an accent
 				// ring — is GONE, because the asset is. The panel rebuild replaced the five tier buttons
