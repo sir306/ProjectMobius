@@ -227,4 +227,34 @@ namespace MobiusThemePalette
 		}
 		return bLight ? GMobiusPalette[Index].Light : GMobiusPalette[Index].Dark;
 	}
+
+	/**
+	 * Black or white, whichever reads better ON TOP OF `Background`. For labels sitting on a colour that is
+	 * NOT a palette role — LoS band chips, and any future data-coloured chip — which is exactly why this is
+	 * a function and not a role pair: the fill is data, so no light/dark entry could describe it (S8).
+	 *
+	 * WCAG relative luminance, then the standard contrast ratios: against white it is
+	 * (1.0 + 0.05) / (L + 0.05), against black (L + 0.05) / 0.05. Setting those equal gives
+	 * L = sqrt(0.0525) - 0.05 = 0.179129..., so the whole rule collapses to one comparison.
+	 *
+	 * TRAP 1: `Background` MUST be LINEAR. The coefficients below are defined on linear light, so handing
+	 * this an sRGB-encoded value silently picks the wrong label near the threshold — which is the only
+	 * place the choice is ever close. `FLinearColor` and this palette are already linear, but note that
+	 * `UDynamicPixelRenderingTexture::CalculateLevelOfService()` returns an **FColor**, so that return
+	 * value is NOT a valid argument.
+	 *
+	 * TRAP 2: pass the fill you actually DREW, read back off the widget — not a constant that is merely
+	 * expected to match it. The LoS legend chips are authored in `WBP_HeatmapColourBands` and have no C++
+	 * writer, while the `LOS_?_COLOR` macros in `DynamicPixelRenderingTexture.cpp` colour only the heatmap
+	 * render target. Those are two independent sources of truth for the same six colours; computing
+	 * contrast from the macros is correct only for as long as nobody retunes either side.
+	 *
+	 * Alpha is ignored — a chip is drawn opaque, and a translucent fill's effective luminance depends on
+	 * whatever is behind it, which this function cannot see.
+	 */
+	inline FLinearColor ContrastingLabelColor(const FLinearColor& Background)
+	{
+		const float Luminance = 0.2126f * Background.R + 0.7152f * Background.G + 0.0722f * Background.B;
+		return Luminance > 0.1791f ? FLinearColor::Black : FLinearColor::White;
+	}
 }
