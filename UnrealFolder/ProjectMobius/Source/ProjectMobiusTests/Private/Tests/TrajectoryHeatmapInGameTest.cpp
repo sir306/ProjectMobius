@@ -1697,9 +1697,17 @@ bool FHeatmapGeometryCostOnRealPlanTest::RunTest(const FString& Parameters)
 
 	// TWO plans, because one footprint cannot tell "this plan keeps 83%" from "plans keep 83%", and the
 	// conclusion drawn from this measurement contradicts A0-65's expectation that culling would put kept
-	// geometry far below the grid. BUW is a compact building envelope -- the realistic case, and the one
-	// that culls least. t_shaped_room is mostly empty bounding box, so it is the opposite end: if culling
-	// ever works, it works there. Reporting the pair bounds the range instead of generalising from one.
+	// geometry far below the grid. BUW is a compact building envelope -- the realistic case. t_shaped_room
+	// is mostly empty bounding box, chosen as the opposite end on the theory that if culling ever works it
+	// works there.
+	//
+	// MEASURED 2026-08-07: that theory did not hold. Both keep ~80% (82.6% and 79.7%), because the two
+	// plans have something in common that matters more than their shape -- they span only 7.7x5.0 and
+	// 3.1x1.5 of FindAllQuads' 650 cm mask cells, and a mask that coarse has almost no wholly-empty cell to
+	// drop at either shape. So this pair does NOT bound the range for large plans; A0-65's real worry case
+	// is the 200 m carrier (~30x30 mask cells) and that dataset is not on this machine. Anyone adding a
+	// bigger fixture here should read A0-78 first -- the mechanism is understood, so a third small plan adds
+	// nothing.
 	const TCHAR* PlanFixtures[] = { TEXT("BUW.wkt"), TEXT("t_shaped_room.wkt") };
 
 	for (const TCHAR* PlanFile : PlanFixtures)
