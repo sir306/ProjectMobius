@@ -81,8 +81,10 @@ TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 		.TextShapingMethod(ETextShapingMethod::FullShaping);
 
 	MyButton = SNew(SButton)
-		.ButtonStyle(ButtonStyleDefault ? ButtonStyleDefault->GetStyle<FButtonStyle>()
-			             : &FMobiusStyle::Get().GetWidgetStyle<FButtonStyle>("Mobius.Button"))
+		// Construction-time style only: ApplyMobiusButtonStyle re-shapes this from FMobiusButtonGeometry and
+		// recolours it from the palette on the same SynchronizeProperties pass. The ButtonStyleDefault
+		// override that used to sit here was never set on any widget and had no writer left.
+		.ButtonStyle(&FMobiusStyle::Get().GetWidgetStyle<FButtonStyle>("Mobius.Button"))
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Center)
 		.ContentPadding(FMobiusStyle::Get().GetMargin("Mobius.Padding.Button"))
@@ -175,32 +177,21 @@ void UButtonWithText::RefreshThemedLabelStyle()
 		return; // design time / no game instance — the UseForeground fallback from RebuildWidget stands
 	}
 
-	// A saturated authored colour on the text style is a deliberate SIGNAL, not chrome — today that means
-	// exactly one thing in Mobius, the destructive Remove action. The asset is the DETECTOR; the value comes
-	// from the palette (DangerText), so the signal is theme-correct in both directions instead of shipping
-	// one hard-coded red that only has contrast on a dark button. Greyscale test rather than an asset-name
-	// test: white/black/grey labels are chrome, and the magenta USE_COLOR_FOREGROUND sentinels live on BUTTON
-	// styles, not on these text styles, so nothing else in the project trips the saturated branch.
+	// A destructive action's label is a SIGNAL, not chrome, so it paints from DangerText — theme-correct in
+	// both directions rather than one hard-coded red that only has contrast on a dark button.
+	//
+	// 2026-08-06: the signal is now DECLARED (bIsDangerLabel) instead of DETECTED. It used to be inferred
+	// from MobiusButtonTextStyle's authored colour via a greyscale test — a saturated value meant "signal".
+	// That inference made an SWS text asset's colour a control channel, which (a) blocked retiring the
+	// asset and (b) degraded silently to chrome if anyone normalised the red to grey. Owner ruling: widgets
+	// are themed by the palette subsystem, so intent is declared on the widget.
 	//
 	// Owner-confirmed 2026-07-28: destructive buttons are red TEXT on the normal button surface, NOT a red
 	// fill ("i think it looks better than a background red") — so only the label colour moves here.
 	EMobiusPaletteRole LabelRole = bIsToolPanelRow ? EMobiusPaletteRole::LabelText : EMobiusPaletteRole::ButtonText;
-	if (MobiusButtonTextStyle)
+	if (bIsDangerLabel)
 	{
-		if (const FTextBlockStyle* AuthoredStyle = MobiusButtonTextStyle->GetStyle<FTextBlockStyle>())
-		{
-			const FSlateColor& AuthoredColor = AuthoredStyle->ColorAndOpacity;
-			if (AuthoredColor.IsColorSpecified())
-			{
-				const FLinearColor Authored = AuthoredColor.GetSpecifiedColor();
-				const float MaxChannel = FMath::Max3(Authored.R, Authored.G, Authored.B);
-				const float MinChannel = FMath::Min3(Authored.R, Authored.G, Authored.B);
-				if (MaxChannel - MinChannel > 0.05f)
-				{
-					LabelRole = EMobiusPaletteRole::DangerText;
-				}
-			}
-		}
+		LabelRole = EMobiusPaletteRole::DangerText;
 	}
 	ApplyThemedLabelColor(Theme->GetPaletteColor(LabelRole));
 }
@@ -262,19 +253,9 @@ void UButtonWithText::HandleThemeChanged()
 	RefreshThemedLabelStyle();
 }
 
-void UButtonWithText::ButtonClickedUpdateStyle()
-{
-	if(bShouldSwitchNormalWithHovered)
-	{
-		if(GetStyle().Normal == ButtonStyleDefault->GetStyle<FButtonStyle>()->Normal)
-		{
-			FButtonStyle NewButtonStyle = *ButtonStyleDefault->GetStyle<FButtonStyle>();
-			NewButtonStyle.Normal = ButtonStyleDefault->GetStyle<FButtonStyle>()->Hovered;
-			SetStyle(NewButtonStyle);
-		}
-		else
-		{
-			SetStyle(*ButtonStyleDefault->GetStyle<FButtonStyle>());
-		}
-	}
-}
+// 2026-08-06: ButtonClickedUpdateStyle + bShouldSwitchNormalWithHovered + ButtonStyleDefault deleted here.
+// The function swapped Normal and Hovered brushes on click, from a style asset that had NO writer left, so
+// it dereferenced a null ButtonStyleDefault on every button — dormant only because its OnClicked binding
+// had been commented out. Nothing referenced any of the three: zero hits across Source/ and zero across
+// every .uasset/.umap, so no Blueprint graph could call it either. Ribbon "active tab" appearance, which
+// this was written for, is owned by ApplyRibbonTabStyle / SetIsActiveTab.

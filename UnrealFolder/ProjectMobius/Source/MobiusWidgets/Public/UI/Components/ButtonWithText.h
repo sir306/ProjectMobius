@@ -114,12 +114,6 @@ public:
 	UFUNCTION(BlueprintGetter)
 	bool GetIsActiveTab() const { return bIsActiveTab; }
 
-	/**
-	 * To change the style of the button from default to clicked to give the ribbon appearance on the widget,
-	 * we can bind to the on clicked method to flip between the two style sheets */
-	UFUNCTION()
-	void ButtonClickedUpdateStyle();
-
 	/** Marks this button as a ribbon tab: self-themes from the UIThemeSubsystem (GetThemedTabStyle + tab
 	 *  text palette) instead of the SWS snapshot, and re-themes on OnThemeChanged. Set in the designer. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Ribbon")
@@ -144,19 +138,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
 	TObjectPtr<USlateWidgetStyleAsset> MobiusButtonTextStyle;
 
-	/** Slate style used as the SButton's construction-time style (RebuildWidget), distinct from
-	 *  UBaseButton::SlateButtonStyle which is re-applied on every SynchronizeProperties.
-	 *  NOTE (audited 2026-07-27, re-checked 2026-08-05): not set in ANY WidgetBlueprint, and it now has
-	 *  NO writer at all — its only one was UScalabilitySettingWidget, deleted with its retired Blueprints.
-	 *  Prefer SlateButtonStyle in the designer; treat this as a retirement candidate in its own right. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Mobius|Style")
-	TObjectPtr<USlateWidgetStyleAsset> ButtonStyleDefault;
-
-	/** Toggle property to say if this button should switch the normal with hovered when clicked.
-	 *  NOTE: only acts through ButtonClickedUpdateStyle, whose OnClicked binding is currently commented
-	 *  out (ButtonWithText.cpp), so this is inert unless a Blueprint calls that function directly. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Mobius|Behaviour")
-	bool bShouldSwitchNormalWithHovered = true;
+	/**
+	 * This button's label is a DESTRUCTIVE-ACTION signal, so it paints from EMobiusPaletteRole::DangerText
+	 * instead of ButtonText — red in both themes, at a contrast the palette guarantees.
+	 *
+	 * Replaces the greyscale DETECTOR this used to infer from MobiusButtonTextStyle's authored colour (a
+	 * saturated value meant "signal"). That inference was clever but load-bearing in the wrong direction:
+	 * it made an SWS text asset's colour a control channel, so the asset could not be retired, and the
+	 * signal silently degraded to chrome if anyone "tidied" the red to grey. Owner ruling 2026-08-06 —
+	 * widgets are themed by the palette subsystem, so the intent is declared here rather than smuggled
+	 * through an asset.
+	 *
+	 * Note what does NOT change: the button surface stays normal and only the LABEL goes red
+	 * (owner, 2026-07-28: "i think it looks better than a background red").
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
+	bool bIsDangerLabel = false;
 
 	/** The slate text block used inside the button */
 	TSharedPtr<STextBlock> MyButtonText;
