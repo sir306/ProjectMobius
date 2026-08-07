@@ -729,10 +729,49 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 ImGui::Spacing();
         }
 
-        // ImPlotFlags_NoMenus: the copy actions belong in the plot's own right-click menu next to the
-        // axis options, not on buttons stealing height above the chart. ImPlot 0.17 exposes no hook for
-        // appending to that menu, so this suppresses ImPlot's popups and the block before EndPlot below
-        // rebuilds them with our items on top. See the comment there for why nothing is lost.
+        // S6: copy the plotted series to the OS clipboard as TSV, ready to paste into a spreadsheet.
+        // Offered BOTH ways on purpose — visible buttons so it is discoverable, and the plot's right-click
+        // menu (rebuilt before EndPlot below) so it sits where ImPlot puts everything else. One lambda
+        // behind both, so the two entry points can never disagree about what gets copied.
+        //
+        // FPlatformApplicationMisc::ClipboardCopy, NOT ImGui::SetClipboardText: ImGui's clipboard is scoped
+        // to its own context and never reaches the Windows clipboard.
+        //
+        // Deliberately the ForChart accessor: this function is per-chart, and the legacy GetPlotPoints()
+        // reads a different series while looking entirely plausible.
+        const TArray<FVector2D>& CopyPoints = GetPlotPointsForChart(ChartId);
+        auto CopySeriesToClipboard = [this, &ChartId, &CopyPoints](const bool bIncludeTime)
+        {
+                // Built here, inside the click handler, never per frame — this is a paint path.
+                const FString Tsv = BuildChartTsv(CopyPoints, bIncludeTime,
+                        bIncludeTime ? GetXAxisTitleForChart(ChartId).ToString() : FString(),
+                        GetYAxisTitleForChart(ChartId).ToString());
+                FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+        };
+
+        {
+                ImGui::BeginDisabled(CopyPoints.Num() == 0);
+                if (ImGui::SmallButton("Copy values"))
+                {
+                        CopySeriesToClipboard(/*bIncludeTime*/false);
+                }
+                ImGui::SetItemTooltip("Copy %d value%s to the clipboard, one per line",
+                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Copy time + values"))
+                {
+                        CopySeriesToClipboard(/*bIncludeTime*/true);
+                }
+                ImGui::SetItemTooltip("Copy %d row%s of time and value, tab separated",
+                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
+                ImGui::EndDisabled();
+                ImGui::Spacing();
+        }
+
+        // ImPlotFlags_NoMenus: ImPlot 0.17 exposes no hook for appending to its context menu, so this
+        // suppresses ImPlot's popups and the block before EndPlot below rebuilds them with the same copy
+        // actions on top. See the comment there for why nothing is lost.
+        // The plot is sized ImVec2(-1, -1), so it reflows into whatever height the buttons above leave.
         if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f), ImPlotFlags_NoMenus))
         {
                 if (HasAxisSettingsForChart(ChartId))
@@ -844,23 +883,15 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         }
                         if (ImGui::BeginPopup("##PlotContext"))
                         {
-                                // Deliberately the ForChart accessor: this function is per-chart, and the
-                                // legacy GetPlotPoints() reads a different series while looking plausible.
-                                const TArray<FVector2D>& CopyPoints = GetPlotPointsForChart(ChartId);
+                                // Same lambda as the buttons above — one definition of what gets copied.
                                 ImGui::BeginDisabled(CopyPoints.Num() == 0);
-                                // The TSV is built inside the click, never per frame — this is a paint path.
                                 if (ImGui::MenuItem("Copy values"))
                                 {
-                                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/false,
-                                                FString(), GetYAxisTitleForChart(ChartId).ToString());
-                                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+                                        CopySeriesToClipboard(/*bIncludeTime*/false);
                                 }
                                 if (ImGui::MenuItem("Copy time + values"))
                                 {
-                                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/true,
-                                                GetXAxisTitleForChart(ChartId).ToString(),
-                                                GetYAxisTitleForChart(ChartId).ToString());
-                                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+                                        CopySeriesToClipboard(/*bIncludeTime*/true);
                                 }
                                 ImGui::EndDisabled();
                                 ImGui::Separator();
