@@ -81,8 +81,33 @@ int32 SAgentFollowIndicator::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 			}
 		}
 		
-		// there is 6 colour bands for a given agent flux speed
-		// Colour bands are the same as fruins LOS -> blue to red
+		// Six colour bands over SpeedFractionOfMax = CurrentSpeed / EntityMaxSpeed, where max_speed is a
+		// PER-AGENT field read from the dataset. So this is v/v_free for that individual: an agent with a
+		// 0.7 m/s free speed walking unimpeded shows the same blue as one doing 1.8 m/s. That is the right
+		// quantity for "is this person being held up", and it is NOT comparable between agents.
+		//
+		// THE SIX BANDS AND THE BLUE->RED RAMP ARE FRUIN'S PRESENTATION. THE EDGES ARE NOT FRUIN'S, AND
+		// DELIBERATELY SO. Fruin Level of Service is defined on DENSITY (m^2/person), not on speed, and its
+		// boundaries are 3.24/2.32/1.39/0.93/0.46 m^2/p -- the ones the density heatmap really does use
+		// (UDynamicPixelRenderingTexture::CalculateLevelOfService). The edges below are equal sixths of free
+		// speed instead. Do not "correct" them to Fruin without reading the next paragraph, because that
+		// conversion has been done and rejected once already.
+		//
+		// Pushing Fruin's density boundaries through a speed-density relation is the documented route, and
+		// it gives useless colours here. Weidmann (1993) v = v_free*[1-exp(-1.913*(1/rho - 1/5.4))] puts the
+		// five Fruin edges at v/v_free = 0.997 / 0.983 / 0.900 / 0.760 / 0.409; the SFPE Handbook's linear
+		// Nelson-MacLennan form, S = 1.40*(1-0.266*D), gives 0.918 / 0.885 / 0.809 / 0.714 / 0.422. Either
+		// way FOUR of the six bands live above v/v_free = 0.76 -- LOS A spans 0.3% of the scale under
+		// Weidmann and LOS B spans 1.4%. On a single-agent indicator, whose whole job is showing one person
+		// change over time, that would sit blue-cyan almost permanently and then lurch. Even spacing shows
+		// the change; LOS fidelity does not.
+		//
+		// Consequence to be aware of when reading the colour: this scale UNDER-REPORTS congestion against
+		// LOS. Under Weidmann an agent at half their free speed (green here) is in LOS E, and at a third
+		// (yellow here) is already past LOS F. Green means "half speed", not "comfortable".
+		//
+		// Known gap: STOPPED and SLOW are both red. For accessibility work "stationary at a bottleneck for
+		// 8 s" is a stronger signal than "15% of free speed" and wants its own state, not a sixth band.
 		if (PedestrianAgentData.SpeedFractionOfMax >= 0.8335f) // fastest band
 		{
 			MatInst->SetVectorParameterValue(FName(TEXT("SpeedChangeIndicator")), FLinearColor(0.0f, 0.0f, 1.0f, 1.0f)); // Blue
