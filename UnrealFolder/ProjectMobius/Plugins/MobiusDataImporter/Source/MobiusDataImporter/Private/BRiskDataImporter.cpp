@@ -860,6 +860,7 @@ namespace
 			double SillHeight = 0.0;
 			double OpenTimeSeconds = 0.0;
 			double CloseTimeSeconds = 0.0;
+			bool bAutoOpenVent = false;
 			bool bClaimed = false;
 		};
 
@@ -878,6 +879,14 @@ namespace
 			Schedule.SillHeight = GetChildDouble(VentNode, TEXT("sillheight"));
 			Schedule.OpenTimeSeconds = GetChildDouble(VentNode, TEXT("opentime"));
 			Schedule.CloseTimeSeconds = GetChildDouble(VentNode, TEXT("closetime"));
+
+			// B-Risk writes the literal "True"/"False". A vent in this mode ignores its open/close
+			// times entirely and starts SHUT - see FBRiskVentGeometry::IsOpenAtTime.
+			if (const FXmlNode* AutoNode = VentNode->FindChildNode(TEXT("autoopenvent")))
+			{
+				Schedule.bAutoOpenVent = AutoNode->GetContent().TrimStartAndEnd().Equals(
+					TEXT("True"), ESearchCase::IgnoreCase);
+			}
 		}
 
 		if (Schedules.Num() == 0)
@@ -908,7 +917,19 @@ namespace
 
 			Vent.OpenTimeSeconds = Schedule.OpenTimeSeconds;
 			Vent.CloseTimeSeconds = Schedule.CloseTimeSeconds;
+			Vent.bAutoOpenVent = Schedule.bAutoOpenVent;
 			Vent.bHasSchedule = true;
+
+			if (Schedule.bAutoOpenVent)
+			{
+				// Worth a line in the log: this opening is reported shut for the entire run, which is
+				// a visible difference on screen and is NOT what its 0/0 times would suggest.
+				UE_LOG(LogBRiskDataImporter, Log,
+					TEXT("B-Risk vent %d opens on a trigger (autoopenvent), not on a clock. Its ")
+					TEXT("open/close times (%g / %g) do not apply and it is shown SHUT for the whole ")
+					TEXT("run - B-Risk's triggers cannot be evaluated from the exported results."),
+					Schedule.Id, Schedule.OpenTimeSeconds, Schedule.CloseTimeSeconds);
+			}
 		};
 
 		// Pass 1 - exact, by the id the add-in already recorded.

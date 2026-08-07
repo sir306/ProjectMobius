@@ -1780,6 +1780,12 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	// Assert those directly. Skips when the fixture is not on this machine.
 	const TCHAR* InternalRoots[] =
 	{
+		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
+		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
+		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
+		// block in this file was silently SKIPPING (they report green when skipped - the whole
+		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
+		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
 		TEXT("D:/NickWork/Mobius_InternalData"),
 		TEXT("E:/00_Work/Mobius_InternalData"),
 		TEXT("F:/Mobius_InternalData"),
@@ -2193,6 +2199,12 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 	// --- The real export: joined exactly, by the ventId the add-in already recorded -----------
 	const TCHAR* InternalRoots[] =
 	{
+		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
+		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
+		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
+		// block in this file was silently SKIPPING (they report green when skipped - the whole
+		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
+		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
 		TEXT("D:/NickWork/Mobius_InternalData"),
 		TEXT("E:/00_Work/Mobius_InternalData"),
 		TEXT("F:/Mobius_InternalData"),
@@ -2242,9 +2254,24 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 	int32 Scheduled = 0;
 	int32 Doors = 0;
 	int32 NeverChanging = 0;
+	int32 AutoOpening = 0;
 	for (const FBRiskVentGeometry& Vent : RealData.Vents)
 	{
 		Scheduled += Vent.bHasSchedule ? 1 : 0;
+
+		// An auto-opening vent is shut for the whole run, so it is neither "never changing" (which
+		// means permanently OPEN below) nor a door. Counted and asserted on its own.
+		if (Vent.bAutoOpenVent)
+		{
+			++AutoOpening;
+			TestFalse(FString::Printf(TEXT("auto-opening vent %d is shut at the start"), Vent.VentId),
+				Vent.IsOpenAtTime(0.0));
+			TestFalse(FString::Printf(TEXT("auto-opening vent %d is still shut mid-fire"), Vent.VentId),
+				Vent.IsOpenAtTime(300.0));
+			TestFalse(FString::Printf(TEXT("auto-opening vent %d never opens on a clock"), Vent.VentId),
+				Vent.IsOpenAtTime(1.0e6));
+			continue;
+		}
 
 		const bool bNeverChanges = Vent.IsOpenAtTime(0.0) && Vent.IsOpenAtTime(1.0e6);
 		NeverChanging += bNeverChanges ? 1 : 0;
@@ -2269,12 +2296,198 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 
 	// Every opening matched: the add-in's ventId IS the vents.xml <id>, so nothing here falls back
 	// to the room-pair join, let alone to an index.
+	//
+	// The 19/18 split changed on 2026-08-07 and the reason matters: the WINDOW used to be counted as
+	// "never changes" because its times are 0/0, which read as permanently open. It carries
+	// autoopenvent=True, so it is really shut for the whole run - confirmed against B-Risk's own
+	// wallventflows.txt, where it is absent from all 61 timesteps. See the flow-log test below.
 	TestEqual(TEXT("All 34 openings should get a schedule"), Scheduled, RealData.Vents.Num());
 	TestEqual(TEXT("15 doors are the ones that move"), Doors, 15);
-	TestEqual(TEXT("the other 19 openings never change"), NeverChanging, 19);
+	TestEqual(TEXT("1 opening opens on a trigger, not a clock"), AutoOpening, 1);
+	TestEqual(TEXT("the other 18 openings never change"), NeverChanging, 18);
 	AddInfo(FString::Printf(
-		TEXT("%d of %d openings scheduled from vents.xml; %d doors open and shut, %d never change"),
-		Scheduled, RealData.Vents.Num(), Doors, NeverChanging));
+		TEXT("%d of %d openings scheduled; %d doors open and shut, %d auto-opening (shown shut), %d never change"),
+		Scheduled, RealData.Vents.Num(), Doors, AutoOpening, NeverChanging));
+
+	return true;
+}
+
+// --- Our open/close state vs B-Risk's OWN flow log ----------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentStateVsFlowLogTest,
+	"ProjectMobius.BRisk.Importer.VentStateVsBRiskFlowLog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
+{
+	// B-Risk can be asked to write wallventflows.txt, and it is the ONLY output anywhere that
+	// reveals whether a vent is open: a shut vent simply does not appear at that timestep. Nothing
+	// else does - output1.xml has no vent element, the run log has no vent lines, and the zone CSV's
+	// HVENT columns are static nominal geometry (width * (head - sill)) that never vary.
+	//
+	// So this is the one place our IsOpenAtTime can be checked against ground truth instead of
+	// against our own reading of the manual. It caught the real defect: the window (vent 27) carries
+	// 0/0 times, which we read as "permanently open", while B-Risk had it shut for the entire run.
+	const TCHAR* InternalRoots[] =
+	{
+		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
+		TEXT("D:/NickWork/Mobius_InternalData"),
+		TEXT("E:/00_Work/Mobius_InternalData"),
+		TEXT("F:/Mobius_InternalData"),
+	};
+	FString SmvPath;
+	FString FlowLogPath;
+	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
+	{
+		for (const TCHAR* Root : InternalRoots)
+		{
+			const FString Dir = FPaths::Combine(FString(Root), FString(Folder), TEXT("basemodel_default"));
+			const FString Smv = FPaths::Combine(Dir, TEXT("basemodel_default.smv"));
+			const FString Log = FPaths::Combine(Dir, TEXT("wallventflows.txt"));
+			if (FPaths::FileExists(Smv) && FPaths::FileExists(Log))
+			{
+				SmvPath = Smv;
+				FlowLogPath = Log;
+				break;
+			}
+		}
+		if (!SmvPath.IsEmpty())
+		{
+			break;
+		}
+	}
+	if (SmvPath.IsEmpty())
+	{
+		// Genuinely optional: wallventflows.txt only exists when the modeller ticked the box.
+		AddInfo(TEXT("flow-log cross-check SKIPPED: no 12-room fixture with a wallventflows.txt on this machine"));
+		return true;
+	}
+
+	FBRiskScenarioData Data;
+	FString ImportError;
+	if (!TestTrue(TEXT("The export should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &ImportError)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *ImportError));
+		return false;
+	}
+
+	TArray<FString> Lines;
+	if (!TestTrue(TEXT("The flow log should read"), FFileHelper::LoadFileToStringArray(Lines, *FlowLogPath)))
+	{
+		return false;
+	}
+
+	// Presence set keyed by (time, fromRoom, toRoom, ventNumberWithinThatPair). Only the header line
+	// of each record carries those; the continuation lines are extra elevation bands of the same vent
+	// and are distinguished by having far fewer tokens.
+	TSet<FString> Present;
+	TSet<int32> LoggedTimes;
+	for (const FString& Line : Lines)
+	{
+		TArray<FString> Tok;
+		Line.TrimStartAndEnd().ParseIntoArrayWS(Tok);
+		if (Tok.Num() < 8)
+		{
+			continue;
+		}
+		bool bHeader = true;
+		for (int32 k = 0; k < 5; ++k)
+		{
+			if (Tok[k].Contains(TEXT(".")) || !Tok[k].IsNumeric())
+			{
+				bHeader = false;
+				break;
+			}
+		}
+		if (!bHeader)
+		{
+			continue;
+		}
+		const int32 T = FCString::Atoi(*Tok[0]);
+		LoggedTimes.Add(T);
+		Present.Add(FString::Printf(TEXT("%d|%s|%s|%s"), T, *Tok[1], *Tok[2], *Tok[3]));
+	}
+
+	if (!TestTrue(TEXT("The flow log should contain timesteps"), LoggedTimes.Num() > 0))
+	{
+		return false;
+	}
+
+	// B-Risk numbers vents per (from,to) PAIR, starting at 1, in the same order the .smv lists them -
+	// and it keeps the number of a vent that never opens, so a closed vent leaves a HOLE in the
+	// sequence. That hole is what identifies the window: room 1 -> exterior logs #1, #2 and #4.
+	TMap<FIntPoint, int32> PairCounter;
+	TArray<int32> VentNumber;
+	VentNumber.Reserve(Data.Vents.Num());
+	for (const FBRiskVentGeometry& Vent : Data.Vents)
+	{
+		int32& Next = PairCounter.FindOrAdd(FIntPoint(Vent.FromRoomId, Vent.ToRoomId));
+		VentNumber.Add(++Next);
+	}
+
+	TArray<int32> SortedTimes = LoggedTimes.Array();
+	SortedTimes.Sort();
+
+	int32 Checked = 0;
+	int32 Mismatches = 0;
+	int32 SkippedAtTransition = 0;
+	FString FirstMismatch;
+	for (int32 VentIndex = 0; VentIndex < Data.Vents.Num(); ++VentIndex)
+	{
+		const FBRiskVentGeometry& Vent = Data.Vents[VentIndex];
+		for (const int32 T : SortedTimes)
+		{
+			// The two transition samples are excluded on purpose. B-Risk ramps an opening over two
+			// seconds rather than switching it (SR282 §4.6.2), and it reports a door from the sample
+			// AFTER its open time up to and including its close time. Those are reporting-convention
+			// edges, not state disagreements, and asserting them would encode B-Risk's logging
+			// quirks rather than whether we know the vent is open.
+			const double Td = static_cast<double>(T);
+			if (Vent.bHasSchedule
+				&& (FMath::IsNearlyEqual(Td, Vent.OpenTimeSeconds, 0.5)
+					|| FMath::IsNearlyEqual(Td, Vent.CloseTimeSeconds, 0.5)))
+			{
+				++SkippedAtTransition;
+				continue;
+			}
+
+			const bool bWeSayOpen = Vent.IsOpenAtTime(Td);
+			const bool bBRiskSaysOpen = Present.Contains(FString::Printf(
+				TEXT("%d|%d|%d|%d"), T, Vent.FromRoomId, Vent.ToRoomId, VentNumber[VentIndex]));
+			++Checked;
+			if (bWeSayOpen != bBRiskSaysOpen)
+			{
+				++Mismatches;
+				if (FirstMismatch.IsEmpty())
+				{
+					FirstMismatch = FString::Printf(
+						TEXT("vent id %d (%d->%d, #%d) at t=%d: we say %s, B-Risk says %s"),
+						Vent.VentId, Vent.FromRoomId, Vent.ToRoomId, VentNumber[VentIndex], T,
+						bWeSayOpen ? TEXT("OPEN") : TEXT("SHUT"),
+						bBRiskSaysOpen ? TEXT("OPEN") : TEXT("SHUT"));
+				}
+			}
+		}
+	}
+
+	if (Mismatches > 0)
+	{
+		AddError(FString::Printf(TEXT("First disagreement: %s"), *FirstMismatch));
+	}
+	TestEqual(TEXT("Our open/shut state agrees with B-Risk's own flow log at every timestep"),
+		Mismatches, 0);
+
+	// Guard the guard: if the pair numbering ever stopped lining up, every vent would read as shut
+	// and Mismatches could only be zero by us also calling everything shut. Assert that the log
+	// really did place a healthy number of vents as open.
+	TestTrue(TEXT("The cross-check actually compared something"), Checked > 500);
+	TestTrue(TEXT("The log shows plenty of OPEN vents (numbering lines up)"), Present.Num() > 500);
+	AddInfo(FString::Printf(
+		TEXT("Cross-checked %d vent/time pairs against wallventflows.txt across %d timesteps: %d disagreements ")
+		TEXT("(%d transition samples excluded, %d open records in the log)"),
+		Checked, SortedTimes.Num(), Mismatches, SkippedAtTransition, Present.Num()));
 
 	return true;
 }
@@ -2349,6 +2562,12 @@ bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters
 	// Hdf5ImportMatrixTest / MobiusTimingTests; the drive letter moved between boxes, so try both.
 	const TCHAR* InternalRoots[] =
 	{
+		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
+		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
+		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
+		// block in this file was silently SKIPPING (they report green when skipped - the whole
+		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
+		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
 		TEXT("D:/NickWork/Mobius_InternalData"),
 		TEXT("E:/00_Work/Mobius_InternalData"),
 		TEXT("F:/Mobius_InternalData"),
@@ -2584,6 +2803,69 @@ bool FBRiskVentWallPlacementTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("revit exterior vent spans Y by width"), Size.Y, 240.0, 0.01);
 	}
 
+	return true;
+}
+
+// --- Orientation of the panel that fills a SHUT opening ---
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentClosedPanelOrientationTest,
+	"ProjectMobius.BRisk.Hazard.VentClosedPanelOrientation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentClosedPanelOrientationTest::RunTest(const FString& Parameters)
+{
+	// This test exists because the first version of the closed-opening panel shipped rotated 90
+	// degrees and NOTHING in this file could see it: every other geometry assertion here reads mesh
+	// triangles, and the panel is a UStaticMeshComponent whose transform never reaches a vertex
+	// buffer. It was found by looking at the screen. ABRiskHazardVisualizer::ClosedPanelRotation was
+	// extracted purely so the invariant could be stated here instead.
+	//
+	// The invariant is the FULL axis assignment, not just the facing direction. Asserting only
+	// "local +Z lands on the wall normal" would still pass for MakeFromZX, which faces the panel
+	// correctly while silently swapping the axes SetRelativeScale3D feeds width and height into - a
+	// door that is 2.0 m wide and 0.8 m tall. So all three axes are checked, and they are checked
+	// against the two scale terms by name.
+	auto CheckNormal = [this](const TCHAR* Label, const FVector& Outward)
+	{
+		const FRotator Rotation = ABRiskHazardVisualizer::ClosedPanelRotation(Outward);
+		const FVector LocalX = Rotation.RotateVector(FVector::XAxisVector);
+		const FVector LocalY = Rotation.RotateVector(FVector::YAxisVector);
+		const FVector LocalZ = Rotation.RotateVector(FVector::ZAxisVector);
+
+		// /Engine/BasicShapes/Plane is 100x100 cm lying in local XY with its surface normal on local
+		// +Z, so the SURFACE faces the way local +Z points. This is the assertion that fails on the
+		// original MakeFromXY, which pointed the surface along the wall instead of through it.
+		TestEqual(*FString::Printf(TEXT("%s: surface (local +Z) faces along the wall normal"), Label),
+			FVector::DotProduct(LocalZ, Outward.GetSafeNormal()), 1.0, 1.0e-4);
+
+		// Scaled by the opening HEIGHT (SizeCm.Z), so it must be world up - not merely perpendicular
+		// to the normal, which the along-wall axis also is.
+		TestEqual(*FString::Printf(TEXT("%s: height axis (local +Y) is world up"), Label),
+			FVector::DotProduct(LocalY, FVector::UpVector), 1.0, 1.0e-4);
+
+		// Scaled by the opening WIDTH, so it must lie in the wall: horizontal, and perpendicular to
+		// the normal. Sign is deliberately not asserted - the plane is symmetric about its centre and
+		// the material is two-sided, so a 180-degree flip along the wall is not observable.
+		TestEqual(*FString::Printf(TEXT("%s: width axis (local +X) is horizontal"), Label),
+			LocalX.Z, 0.0, 1.0e-4);
+		TestEqual(*FString::Printf(TEXT("%s: width axis (local +X) lies in the wall"), Label),
+			FVector::DotProduct(LocalX, Outward.GetSafeNormal()), 0.0, 1.0e-4);
+	};
+
+	// The four axis-aligned walls ComputeVentSlab actually produces today...
+	CheckNormal(TEXT("+X wall"), FVector(1.0, 0.0, 0.0));
+	CheckNormal(TEXT("-X wall"), FVector(-1.0, 0.0, 0.0));
+	CheckNormal(TEXT("+Y wall"), FVector(0.0, 1.0, 0.0));
+	CheckNormal(TEXT("-Y wall"), FVector(0.0, -1.0, 0.0));
+
+	// ...plus a diagonal, so a rotation that happens to satisfy the axis-aligned cases by symmetry
+	// cannot pass. NOTE: a green diagonal here says the panel FACES correctly, not that it is the
+	// right size - the caller reads its width off an axis-aligned slab extent, which over-measures
+	// on a diagonal wall. See the handoff; that is a separate open item.
+	CheckNormal(TEXT("diagonal wall"), FVector(0.6, 0.8, 0.0));
+
+	AddInfo(TEXT("Closed-opening panel orientation checked on 4 axis-aligned walls + 1 diagonal."));
 	return true;
 }
 

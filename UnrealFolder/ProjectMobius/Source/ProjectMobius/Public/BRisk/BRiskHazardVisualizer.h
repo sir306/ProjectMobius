@@ -57,6 +57,41 @@ public:
 	void SetSimulationTime(float TimeSeconds);
 
 	/**
+	 * Show or hide the filled panels that mark a SHUT opening. OFF by default, per owner: the
+	 * panels are a fire-engineering read-out, not scenery, and a wall of magenta leaves standing in
+	 * every doorway obscures the crowd the app exists to show.
+	 *
+	 * Applies immediately at the last simulation time seen, so ticking the box mid-playback shows
+	 * the doors that are shut RIGHT NOW rather than waiting for the next timeline update (there is
+	 * none while paused).
+	 */
+	void SetClosedOpeningPanelsEnabled(bool bEnabled);
+
+	/** True when shut openings are filled in. See SetClosedOpeningPanelsEnabled. */
+	bool GetClosedOpeningPanelsEnabled() const { return bShowClosedOpeningPanels; }
+
+	/**
+	 * Rotation for the flat panel that fills a shut opening, from the wall's outward normal.
+	 *
+	 * Extracted from the placement code so it is testable: the panel is a UStaticMeshComponent, and
+	 * nothing about a component's transform is visible to the mesh-triangle assertions the rest of
+	 * this file is covered by. The first version of it shipped rotated 90 degrees and no test could
+	 * see it.
+	 *
+	 * MakeFromZY, not MakeFromXY: /Engine/BasicShapes/Plane lies in its local XY with the surface
+	 * normal on local +Z, so the NORMAL is what must land on WallOutwardNormal. MakeFromXY puts
+	 * local X there instead, leaving the surface facing along the wall - correct for the flow bands
+	 * at SetVentFlows, which are ribbons read edge-on, and wrong for a leaf that has to fill a hole.
+	 *
+	 * The axis assignment is half of a contract with the caller's SetRelativeScale3D:
+	 *   local +Z -> WallOutwardNormal (flat axis, scale 1)
+	 *   local +Y -> world up          (scaled by the opening HEIGHT)
+	 *   local +X -> along the wall    (scaled by the opening WIDTH)
+	 * Change one without the other and the panel comes out sideways again.
+	 */
+	static FRotator ClosedPanelRotation(const FVector& WallOutwardNormal);
+
+	/**
 	 * Update the per-vent in/out flow indicators from derived flow (one entry per vent,
 	 * index-aligned with the Vents array passed to ConfigureFromScenario). Out and in
 	 * streams are split at the neutral plane, sized by mass flow and coloured by stream
@@ -198,6 +233,19 @@ private:
 
 	/** Open/close schedule per vent, index-aligned with VentClosedPanels. See FBRiskVentGeometry::IsOpenAtTime. */
 	TArray<FBRiskVentGeometry> VentData;
+
+	/** Push the schedule at TimeSeconds onto the closed-opening panels. Honours bShowClosedOpeningPanels. */
+	void ApplyClosedOpeningPanels(float TimeSeconds);
+
+	/** User toggle for the shut-opening panels. See SetClosedOpeningPanelsEnabled. */
+	bool bShowClosedOpeningPanels = false;
+
+	/**
+	 * Last time SetSimulationTime was given, so the toggle can re-evaluate the schedule without
+	 * waiting for a timeline update. Cleared with the visuals, otherwise a toggle after a fresh load
+	 * but before the first SetSimulationTime would evaluate at the PREVIOUS scenario's time.
+	 */
+	float LastSimulationTimeSeconds = 0.0f;
 
 	/**
 	 * Per-vent stack of thin flat bands tracing the in/out flow velocity profile across the

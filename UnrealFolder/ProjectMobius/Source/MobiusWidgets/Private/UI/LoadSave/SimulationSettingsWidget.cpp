@@ -51,6 +51,15 @@ void USimulationSettingsWidget::NativeConstruct()
 			LoadRoomGeometryCheckBox->SetIsChecked(BRiskSubsystem->GetAutoGenerateRoomGeometryOnLoad());
 		}
 	}
+
+	if (ShowClosedOpeningsCheckBox)
+	{
+		ShowClosedOpeningsCheckBox->OnCheckStateChanged.AddDynamic(this, &USimulationSettingsWidget::OnShowClosedOpeningsChanged);
+		if (BRiskSubsystem)
+		{
+			ShowClosedOpeningsCheckBox->SetIsChecked(BRiskSubsystem->GetShowClosedOpeningPanels());
+		}
+	}
 }
 
 void USimulationSettingsWidget::OnUseBRiskTimingChanged(bool bIsChecked)
@@ -75,6 +84,19 @@ void USimulationSettingsWidget::OnLoadRoomGeometryChanged(bool bIsChecked)
 			// Live: sets the flag AND generates/tears down room geometry immediately when a
 			// scenario is already loaded.
 			BRiskSubsystem->SetRoomGeometryEnabled(bIsChecked);
+		}
+	}
+}
+
+void USimulationSettingsWidget::OnShowClosedOpeningsChanged(bool bIsChecked)
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UBRiskDataSubsystem* BRiskSubsystem = World->GetSubsystem<UBRiskDataSubsystem>())
+		{
+			// Live and cheap: only flips visibility on panels that already exist, so unlike the room
+			// geometry toggle there is nothing to rebuild and no confirmation to ask for.
+			BRiskSubsystem->SetShowClosedOpeningPanels(bIsChecked);
 		}
 	}
 }

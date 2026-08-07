@@ -227,6 +227,15 @@ FLinearColor ABRiskHazardVisualizer::VentColourForKind(EBRiskVentKind Kind) cons
 	}
 }
 
+FRotator ABRiskHazardVisualizer::ClosedPanelRotation(const FVector& WallOutwardNormal)
+{
+	// MakeFromZY(Z, Y) resolves to X = Y x Z, Y = Z x X, Z = Z. With Z = the (horizontal) wall
+	// normal and Y = up, that is X along the wall, Y straight up, Z through the wall - the axis
+	// assignment SetRelativeScale3D is written against. Up can never be parallel to a wall normal,
+	// so the degenerate branch inside MakeFromZY is unreachable here.
+	return FRotationMatrix::MakeFromZY(WallOutwardNormal, FVector::UpVector).Rotator();
+}
+
 bool ABRiskHazardVisualizer::ComputeVentSlab(
 	const FBRiskVentGeometry& Vent,
 	const FBRiskRoomGeometry* FromRoom,
@@ -746,10 +755,12 @@ bool ABRiskHazardVisualizer::ConfigureFromScenario(
 
 			// The opening's own rectangle: width across the wall, height up it. Same numbers the
 			// outline is built from, so the leaf fills the frame it sits in exactly.
+			// X = along the wall, Y = up, Z = flat. Paired with ClosedPanelRotation, which puts the
+			// Plane's local axes on exactly those three directions - see its comment before changing
+			// either line.
 			const double PanelWidthCm = (NormalAxis == 0) ? SizeCm.Y : SizeCm.X;
 			ClosedPanel->SetRelativeLocation(CenterCm);
-			ClosedPanel->SetRelativeRotation(
-				FRotationMatrix::MakeFromXY(WallOutwardNormal, FVector::UpVector).Rotator());
+			ClosedPanel->SetRelativeRotation(ClosedPanelRotation(WallOutwardNormal));
 			ClosedPanel->SetRelativeScale3D(FVector(
 				PanelWidthCm / VentPlaneMeshSizeCm, SizeCm.Z / VentPlaneMeshSizeCm, 1.0f));
 
@@ -916,6 +927,11 @@ void ABRiskHazardVisualizer::ClearHazardVisuals()
 	VentFlowBandQuads.Reset();
 	VentFlowBandMaterials.Reset();
 	VentFlowGeometry.Reset();
+
+	// Not the user's toggle (bShowClosedOpeningPanels survives a reload, like every other setting) -
+	// just the cached time, so a toggle between a fresh load and the first SetSimulationTime does not
+	// evaluate the new scenario's schedule at the old scenario's clock.
+	LastSimulationTimeSeconds = 0.0f;
 }
 
 bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisualState& FireState)
@@ -994,11 +1010,15 @@ bool ABRiskHazardVisualizer::SetFireState(int32 FireIndex, const FBRiskFireVisua
 	return true;
 }
 
-void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
+void ABRiskHazardVisualizer::ApplyClosedOpeningPanels(float TimeSeconds)
 {
 	// Shut openings get filled in. Before this, nothing anywhere read the schedule B-Risk publishes,
 	// so every door stood open for the whole run - including the ones the model shuts at 60 s, which
 	// is exactly the interval the smoke result depends on.
+	//
+	// Deliberately no early-out on bShowClosedOpeningPanels: this loop is the only thing that hides
+	// a panel, so returning early would strand whatever was on screen when the toggle went off.
+	// SetVisibility already no-ops when the value is unchanged.
 	for (int32 VentIndex = 0; VentIndex < VentClosedPanels.Num(); ++VentIndex)
 	{
 		UStaticMeshComponent* ClosedPanel = VentClosedPanels[VentIndex];
@@ -1007,10 +1027,26 @@ void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
 			continue;
 		}
 
-		const bool bClosed = !VentData[VentIndex].IsOpenAtTime(static_cast<double>(TimeSeconds));
+		const bool bClosed = bShowClosedOpeningPanels
+			&& !VentData[VentIndex].IsOpenAtTime(static_cast<double>(TimeSeconds));
 		ClosedPanel->SetVisibility(bClosed, true);
 		ClosedPanel->SetHiddenInGame(!bClosed);
 	}
+}
+
+void ABRiskHazardVisualizer::SetClosedOpeningPanelsEnabled(bool bEnabled)
+{
+	bShowClosedOpeningPanels = bEnabled;
+
+	// Apply at the last time seen rather than waiting for a timeline update - while playback is
+	// paused there is no next update, so without this the box would appear to do nothing.
+	ApplyClosedOpeningPanels(LastSimulationTimeSeconds);
+}
+
+void ABRiskHazardVisualizer::SetSimulationTime(float TimeSeconds)
+{
+	LastSimulationTimeSeconds = TimeSeconds;
+	ApplyClosedOpeningPanels(TimeSeconds);
 
 	for (int32 SprinklerIndex = 0; SprinklerIndex < SprinklerConeComponents.Num(); ++SprinklerIndex)
 	{

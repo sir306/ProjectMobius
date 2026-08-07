@@ -59,6 +59,10 @@ protected:
 	UFUNCTION()
 	void OnLoadRoomGeometryChanged(bool bIsChecked);
 
+	/** Toggle: fill each opening B-Risk has SHUT with a solid panel. Off by default. */
+	UFUNCTION()
+	void OnShowClosedOpeningsChanged(bool bIsChecked);
+
 private:
 	/** "Use B-Risk playback timing" toggle. Optional so the C++ works before the WBP adds the control. */
 	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
@@ -67,4 +71,13 @@ private:
 	/** "Load room geometry" toggle. Optional so the C++ works before the WBP adds the control. */
 	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
 	TObjectPtr<UCheckBox> LoadRoomGeometryCheckBox;
+
+	/**
+	 * "Show closed openings" toggle. Optional like its neighbours, so this compiles before the WBP
+	 * has the control - but note that until a UCheckBox named exactly ShowClosedOpeningsCheckBox is
+	 * added to the settings WBP, this binds to nothing and the feature is unreachable. It defaults
+	 * OFF, so an unbound control and a working one look identical on screen.
+	 */
+	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
+	TObjectPtr<UCheckBox> ShowClosedOpeningsCheckBox;
 };

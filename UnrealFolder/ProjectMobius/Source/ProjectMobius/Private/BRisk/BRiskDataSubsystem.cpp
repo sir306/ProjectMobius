@@ -634,6 +634,19 @@ void UBRiskDataSubsystem::SetRoomGeometryEnabled(bool bEnabled)
 	ClearRoomGeometry();
 }
 
+void UBRiskDataSubsystem::SetShowClosedOpeningPanels(bool bEnabled)
+{
+	bShowClosedOpeningPanels = bEnabled;
+
+	// Pure visibility on components that already exist - no rebuild, and nothing to confirm with the
+	// user first, unlike the room-geometry toggle above. With no scenario loaded the flag simply
+	// applies when GenerateHazardVisuals next pushes it.
+	if (HazardVisualizerActor && !HazardVisualizerActor->IsActorBeingDestroyed())
+	{
+		HazardVisualizerActor->SetClosedOpeningPanelsEnabled(bEnabled);
+	}
+}
+
 void UBRiskDataSubsystem::SetUseBRiskTiming(bool bEnabled)
 {
 	bConfigureSharedPlaybackOnLoad = bEnabled;
@@ -793,6 +806,11 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 	}
 	HazardVisualizerActor->SetFlowTemperatureRange(20.0f, static_cast<float>(MaxUpperTempC));
 
+	// The visualizer is respawned per load and starts with its own default, so a user who ticked the
+	// box before loading a second scenario would silently lose it. Push the kept flag onto the new
+	// actor rather than relying on the two defaults agreeing.
+	HazardVisualizerActor->SetClosedOpeningPanelsEnabled(bShowClosedOpeningPanels);
+
 	if (UTimeDilationSubSystem* TimeSubsystem = GetTimeDilationSubsystem())
 	{
 		TimeSubsystem->OnNewCurrentTime.RemoveDynamic(this, &UBRiskDataSubsystem::HandleNewSimulationTime);
@@ -950,6 +968,17 @@ bool UBRiskDataSubsystem::UpdateHazardVisualsAtTime(float TimeSeconds)
 		for (int32 VentIndex = 0; VentIndex < ScenarioData.Vents.Num(); ++VentIndex)
 		{
 			const FBRiskVentGeometry& Vent = ScenarioData.Vents[VentIndex];
+
+			// A shut opening carries no flow. Without this the flow bands were drawn from the vent's
+			// STATIC geometry at every timestep, so every door in the model kept streaming after
+			// B-Risk closed it - measured against B-Risk's own wallventflows.txt, up to 2.9 kg/s
+			// through openings it reports as absent (i.e. exactly zero). Leaving the default-
+			// constructed entry gives bHasFlow=false, which is what SetVentFlows hides on.
+			if (!Vent.IsOpenAtTime(static_cast<double>(TimeSeconds)))
+			{
+				continue;
+			}
+
 			FBRiskVentSideState From = BuildVentSide(Vent.FromRoomId);
 			FBRiskVentSideState To = BuildVentSide(Vent.ToRoomId);
 			if (To.bIsExterior)

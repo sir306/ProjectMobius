@@ -180,6 +180,23 @@ public:
 	void SetRoomGeometryEnabled(bool bEnabled);
 
 	/**
+	 * Live toggle for the filled panels that mark a SHUT opening. OFF by default.
+	 *
+	 * Cheap where SetRoomGeometryEnabled is not: the panels already exist for every scheduled vent
+	 * from the moment the scenario loads, so this only flips their visibility. No rebuild, no
+	 * building-model reload, and nothing to warn the user about.
+	 *
+	 * The flag lives here rather than on the visualizer alone because the visualizer is respawned
+	 * per scenario load - GenerateHazardVisuals pushes this onto the new actor.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "B-Risk|Geometry")
+	void SetShowClosedOpeningPanels(bool bEnabled);
+
+	/** True when shut openings are filled in. See SetShowClosedOpeningPanels. */
+	UFUNCTION(BlueprintPure, Category = "B-Risk|Geometry")
+	bool GetShowClosedOpeningPanels() const { return bShowClosedOpeningPanels; }
+
+	/**
 	 * Live toggle for B-Risk playback timing. Sets the flag AND re-evaluates the active timeline
 	 * source immediately (without reloading), preserving the current play position and play/pause
 	 * state. See ApplyActiveTimeline.
@@ -415,6 +432,19 @@ private:
 
 	bool bAutoGenerateSmokeVolumesOnLoad = true;
 	bool bAutoGenerateHazardVisualsOnLoad = true;
+
+	/**
+	 * Fill shut openings with a solid panel. OFF by default, per owner: it is a fire-engineering
+	 * read-out rather than scenery, and a magenta leaf standing in every doorway hides the crowd.
+	 * See SetShowClosedOpeningPanels.
+	 */
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadWrite,
+		Config,
+		Category = "B-Risk|Loading",
+		meta = (AllowPrivateAccess = "true", DisplayName = "Show Closed Openings"))
+	bool bShowClosedOpeningPanels = false;
 
 	/**
 	 * True while B-Risk-generated room geometry is present in the shared RuntimeMeshBuilder.

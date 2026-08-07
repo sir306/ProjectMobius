@@ -793,6 +793,13 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	bool bHasSchedule = false;
 
 	/**
+	 * True when vents.xml has <autoopenvent>True</autoopenvent> for this opening - B-Risk's
+	 * "open automatically when a trigger is reached" mode, which is a DIFFERENT mechanism from
+	 * <opentime>/<closetime> and overrides them. See IsOpenAtTime for why that forces closed.
+	 */
+	bool bAutoOpenVent = false;
+
+	/**
 	 * Is the opening open at this simulation time?
 	 *
 	 * B-Risk semantics: <opentime> is when it opens, <closetime> when it shuts, so a door with
@@ -801,12 +808,28 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	 * before the open time is read as "opens and never shuts" rather than as a zero-length window,
 	 * because B-Risk writes closetime 0 for openings it never closes.
 	 *
-	 * Deliberately ignores the trigger block (autoopenvent / triggerHRR / triggerSD / …). Every
-	 * trigger is False across the test data, and an opening driven by a heat-detector response is a
-	 * different feature - not something to approximate from a fixed time.
+	 * An auto-opening vent is reported SHUT for the whole run, and its zeros are ignored. Three
+	 * reasons, in order of weight:
+	 *   1. SR282 §4.6.2 lists the initial state as open "except ... (b) when the vent is set to open
+	 *      at flashover, when the ventilation limit is reached or when a detector responds". So the
+	 *      manual's own initial state for this mode is CLOSED, whatever the times say.
+	 *   2. We cannot evaluate B-Risk's triggers. triggerFR/FO/VL/HRR/SD/HD are not reproducible from
+	 *      the exported results, so there is no honest moment at which to open it.
+	 *   3. It matches the only ground truth that exists. B-Risk's optional wallventflows.txt lists a
+	 *      vent only while it is open, and the 12-room model's auto-opening window (vent 27) is
+	 *      absent from all 61 timesteps of a 600 s run.
+	 * Reporting it open was the old behaviour and was wrong in the worst direction for an evacuation
+	 * model: a window drawn open all run, with flow through it, that B-Risk had shut throughout.
+	 *
+	 * NOTE: an earlier version of this comment claimed "every trigger is False across the test data".
+	 * That is false - vent 27 of the 12-room export carries autoopenvent=True + triggerFR=True.
 	 */
 	bool IsOpenAtTime(double TimeSeconds) const
 	{
+		if (bAutoOpenVent)
+		{
+			return false;
+		}
 		if (!bHasSchedule || (OpenTimeSeconds <= 0.0 && CloseTimeSeconds <= 0.0))
 		{
 			return true;
