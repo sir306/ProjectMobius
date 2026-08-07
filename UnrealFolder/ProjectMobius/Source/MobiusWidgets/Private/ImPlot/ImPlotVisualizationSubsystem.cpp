@@ -861,20 +861,14 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
         ImGuiIO& IO = ImGui::GetIO();
         // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
-        // BOTH of these come from THIS WIDGET's geometry, never from the window.
+        // Size from THIS WIDGET, never from the window.
         //
-        // They used to be taken from Window->GetClientRectInScreen() whenever the widget resolved to a
-        // window, and that is wrong here: OpenOverlayWindow passes the overlay as `WindowPanelContent`, so
-        // it sits BELOW SMoveableWindow's title bar. Measuring the cursor from the window's client origin
-        // therefore added a constant offset equal to the title-bar height — the cursor read as lower than
-        // it really was, by the same amount at every window size — and DisplaySize was correspondingly
-        // taller than the widget, so ImGui laid the chart out into a space bigger than it was drawn into.
-        // RenderDrawData already positions the output from AllottedGeometry's layout transform, so the
-        // widget's own geometry is the only frame of reference that agrees with what is on screen.
-        //
-        // It also removes the special case the capture pass needed: an offscreen re-render is still
-        // parented to the live window, so the window branch would have sized ImGui to the window while
-        // Slate allotted the capture size.
+        // DisplaySize used to come from Window->GetClientRectInScreen(), which is wrong here:
+        // OpenOverlayWindow passes the overlay as `WindowPanelContent`, so it sits BELOW SMoveableWindow's
+        // title bar and the client rect is taller than the widget. ImGui laid the chart out into a space
+        // bigger than it was drawn into. RenderDrawData already positions its output from
+        // AllottedGeometry's layout transform, so the widget's own local size is the frame of reference
+        // that agrees with what ends up on screen.
         FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
         // Replay the last on-screen DPI during a capture rather than defaulting to 1.0, or the shared
         // glyph atlas re-bakes for the capture and re-bakes back on the next real paint — across every
@@ -882,12 +876,20 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         float WindowDpiScale = bCapturingForImageCopy ? State->LastPaintDpiScale : 1.0f;
         if (FSlateApplication::IsInitialized())
         {
-                const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
-                const FVector2f LocalCursorPos = FVector2f(AllottedGeometry.AbsoluteToLocal(CursorPos));
-                IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
+                // The cursor is tracked by SImPlotOverlay's own pointer events and arrives ALREADY in
+                // local space. It is not derived here, because Slate has more than one absolute space and
+                // this function cannot see which one it is in: the FGeometry passed to OnPaint is in
+                // WINDOW space, while FSlateApplication::GetCursorPos() is DESKTOP. Combining them leaves
+                // an error equal to the window's screen position — which looks correct only while the
+                // window sits in the top-left corner of the display.
+                if (State->OverlayWidget.IsValid())
+                {
+                        const FVector2D LocalCursorPos = State->OverlayWidget->GetLocalCursorPosition();
+                        IO.MousePos = ImVec2(static_cast<float>(LocalCursorPos.X), static_cast<float>(LocalCursorPos.Y));
+                }
 
                 // The window is still the only place a DPI scale can come from; it just must not decide
-                // position or size.
+                // cursor position or display size.
                 if (!bCapturingForImageCopy)
                 {
                         if (const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(Widget))
