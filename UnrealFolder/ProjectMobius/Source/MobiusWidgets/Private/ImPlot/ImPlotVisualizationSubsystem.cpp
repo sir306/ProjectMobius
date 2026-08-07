@@ -984,18 +984,16 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
                 ImGui::SameLine();
                 ImGui::BeginDisabled(CopyPoints.Num() == 0);
+                // ONE data button. Whether it carries the time column is the "Copy with timeline" toggle
+                // in the right-click menu, not a second button — two near-identical buttons made the
+                // caller choose every time about a column that is usually the least interesting one.
                 if (ImGui::SmallButton("Copy values"))
                 {
-                        CopySeriesToClipboard(/*bIncludeTime*/false);
+                        CopySeriesToClipboard(State->bCopyWithTimeline);
                 }
-                ImGui::SetItemTooltip("Copy %d value%s to the clipboard, one per line",
-                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Copy time + values"))
-                {
-                        CopySeriesToClipboard(/*bIncludeTime*/true);
-                }
-                ImGui::SetItemTooltip("Copy %d row%s of time and value, tab separated",
+                ImGui::SetItemTooltip(State->bCopyWithTimeline
+                                ? "Copy %d row%s of time and value, tab separated"
+                                : "Copy %d value%s to the clipboard, one per line",
                         CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
                 ImGui::EndDisabled();
                 ImGui::Spacing();
@@ -1044,7 +1042,11 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 double LiveX = 0.0;
                 double LiveY = 0.0;
                 const bool bHasLiveSample = HasLiveSampleForChart(ChartId);
-                if (bHasLiveSample)
+                // Left out of a copied image on purpose. The playhead marks where playback happens to be
+                // sitting at the moment of the copy, which means nothing once the picture is in a document
+                // — and on a chart with no data yet it was the ONLY thing in the image, so an empty copy
+                // came out as a legend entry reading "Live" and nothing else.
+                if (bHasLiveSample && !bCapturingForImageCopy)
                 {
                         GetLiveSampleForChart(ChartId, LiveX, LiveY);
                         ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.35f, 0.25f, 1.0f), 2.0f);
@@ -1131,13 +1133,12 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                 ImGui::BeginDisabled(CopyPoints.Num() == 0);
                                 if (ImGui::MenuItem("Copy values"))
                                 {
-                                        CopySeriesToClipboard(/*bIncludeTime*/false);
-                                }
-                                if (ImGui::MenuItem("Copy time + values"))
-                                {
-                                        CopySeriesToClipboard(/*bIncludeTime*/true);
+                                        CopySeriesToClipboard(State->bCopyWithTimeline);
                                 }
                                 ImGui::EndDisabled();
+                                // Checkable, and it governs the button above as well as the item above it.
+                                ImGui::MenuItem("Copy with timeline", nullptr, &State->bCopyWithTimeline);
+                                ImGui::SetItemTooltip("Include the time column when copying values");
                                 ImGui::Separator();
                                 ImPlot::ShowPlotContextMenu(*CurrentPlot);
                                 ImGui::EndPopup();

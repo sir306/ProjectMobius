@@ -185,6 +185,14 @@ private:
                 bool bImageCopyRequested = false;
 
                 /**
+                 * Whether "Copy values" also writes the time column. OFF by default — whoever is reading
+                 * this chart supplied the trajectory data, so the timestamps are usually the least
+                 * interesting column. Toggled from the right-click menu. Per chart and per session; it is
+                 * not written to UUserProjectSettings.
+                 */
+                bool bCopyWithTimeline = false;
+
+                /**
                  * DPI scale of the last ON-SCREEN paint. The capture pass has no window to ask, and
                  * letting it fall back to 1.0 would re-bake SharedFontAtlas — which is shared by every
                  * chart context — and then re-bake it again on the next on-screen paint. Replaying the
