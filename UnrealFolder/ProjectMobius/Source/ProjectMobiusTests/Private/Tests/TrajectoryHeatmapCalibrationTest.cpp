@@ -1620,12 +1620,12 @@ bool FTrajMeshSpanMatchesExtentTest::RunTest(const FString& Parameters)
 }
 
 // =====================================================================================================
-// T-OFFSET-1 -- IS THE DEPOSITED STROKE LATERALLY BIASED AGAINST THE TRUE PATH?
+// T-OFFSET-1 -- IS THE DEPOSITED MASS LATERALLY BIASED AGAINST THE TRUE PATH?
 //
 // Owner observed 2026-08-05 that the stroke width looks right but sits off-centre from the agent, to one
 // side (ruling A0-56). Three stages could introduce that, and they need different fixes:
 //
-//   A. the FIELD          -- WorldToCell / DepositSegment placing mass half a texel off  <- THIS TEST
+//   A. the FIELD          -- the DDA placing deposited mass half a texel off             <- THIS TEST
 //   B. the RENDER         -- texel -> UV -> mesh mapping putting cell 0 at a texel EDGE rather than its
 //                            CENTRE (`UVy = gy/(N-1)` is the suspect form). Not reachable from here.
 //   C. the PRODUCER       -- the deposited point not being the agent's visual centre (entity transform
@@ -1635,13 +1635,51 @@ bool FTrajMeshSpanMatchesExtentTest::RunTest(const FString& Parameters)
 // sends the search to B or C. That is its whole purpose: none of the conservation criteria can fail on a
 // lateral shift, because depositing the right length along a shifted path conserves person-metres exactly.
 //
+// WHAT IS ACTUALLY MEASURED -- and the test ID oversells the stroke. Every assertion reads
+// GetCanonical(...), the per-cell DDA integral, and NOT the presentation stroke. DisplayPathWidthCm sizes
+// the presentation kernel only (TrajectoryField.cpp:250) and is INERT in everything below; it is still
+// passed so the field is configured as it ships, and so this test keeps measuring the right thing if it
+// is ever pointed at the presentation array. So the +/- half-texel bound below is CELL QUANTISATION, not
+// a consequence of stroke width -- it would read the same if the stroke were 30 cm wide. The ID
+// "StrokeCentroidBias" is kept unchanged so A0-57/A0-58's recorded numbers stay comparable.
+//
 // METHOD, and the reason it is not simply "deposit one path and look":
-// a single path cannot distinguish a real bias from ordinary quantisation. With a one-texel stroke the
-// drawn centre is the CELL centre, so a path anywhere inside that cell reads up to half a texel off, which
-// is correct behaviour. So sweep the path across one full texel in sub-texel phases and take the MEAN
-// signed offset. Symmetric quantisation averages to ~0. A half-texel convention error averages to +/-5 cm
-// at 10 cm/texel and is unmissable. Max |offset| is reported separately and is allowed to reach half a
-// texel -- that number is the accuracy limit of a one-texel stroke, not a defect.
+// a single path cannot distinguish a real bias from ordinary quantisation. Mass lands in the cell the
+// path crosses, so a path anywhere inside that cell reads up to half a texel off, which is correct
+// behaviour. So sweep the path across one full texel in sub-texel phases and take the MEAN signed offset.
+// Symmetric quantisation averages to ~0. A half-texel convention error averages to +/-5 cm at 10 cm/texel
+// and is unmissable. Max |offset| is reported separately: half a texel is the accuracy limit of
+// cell-resolution deposition and not a defect, so that is asserted as a bound -- but the bound alone
+// cannot tell midpoint sampling from edge sampling (5.0000 satisfies it just as 4.9750 does), so the
+// exact value is pinned too. It is the one observable that would redden on a revert to the old sweep.
+//
+// SAMPLE THE TEXEL AT ITS MIDPOINTS, NOT FROM ITS EDGE (A0-80, fixing the sweep A0-58 measured).
+// The offset is a sawtooth in the path's sub-texel position: +5 cm just after a grid line, falling to
+// -5 cm just before the next. Its mean over a period is 0, but it is DISCONTINUOUS at the line, where the
+// ratified lower-index rule picks the -5 end. The original sweep started at 500.0 -- an exact grid line --
+// so one of its 20 samples read -5 while the other 19 summed to 0, and both axes reported a spurious
+// -5/20 = -0.2500 cm. Sampling at (Phase + 0.5)/Phases straddles no discontinuity and the mean is 0.
+//
+// A0-58's other suggested fix -- "run Phases + 1 samples and drop the endpoint" -- does NOT work, and is
+// corrected here rather than left for the next reader: BOTH ends of the period are grid lines. Trapezoid
+// over p = 0..20 gives (0.5*(-5) + 0 + 0.5*(-5))/20 = -0.25, and dropping the FIRST sample instead leaves
+// p = 20 sitting on 510, also a grid line, also -0.25. Only midpoint sampling steps around it.
+//
+// RESOLUTION -- THIS STATISTIC IS A STAIRCASE, so the tolerance is derived from the sweep, not chosen.
+// For an injected bias B the reading is s * round(B/s), with s the sweep step and an exact half-step tie
+// going DOWN, because the one sample that then lands on a grid line is booked to the lower-index cell. It
+// can only ever report MULTIPLES OF THE STEP: a bias of s/2 or smaller reads exactly zero no matter how
+// tight the assertion, so asserting tighter than s/2 is theatre. The lever is the phase count, and only
+// the phase count.
+//
+// Phases was 20, so s = 0.5 cm. A 0.25 cm bias read exactly 0.0000 and anything above it read exactly
+// 0.5000 -- against a tolerance of 0.5. The first detectable fault therefore landed on EQUALITY with the
+// bound it had to break, and everything at or below 0.25 cm was invisible. 200 phases give s = 0.05 cm
+// and a tolerance of s/2 = 0.025 cm = 0.25 mm; the smallest detectable fault now reads 0.0500, twice the
+// bound, so detection has a factor-of-two margin instead of resting on a comparison of equals. That is
+// the sensitivity A0-58 asked for. Both ends are pinned below: the injected-bias case proves the
+// statistic reports a real fault at full size, and the sub-resolution case pins the floor so it cannot be
+// mistaken for millimetre accuracy that is not there.
 // =====================================================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FTrajStrokeCentroidBiasTest,
@@ -1653,27 +1691,36 @@ bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
 	using namespace TrajectoryOracle;
 
 	constexpr float CmPerTexel = 10.0f;   // shipping default
-	constexpr float WidthCm    = 10.0f;   // shipping default after A0-47: one texel, one kernel tap
-	constexpr int32 Phases     = 20;      // sub-texel phases across one whole texel
+	constexpr float WidthCm    = 10.0f;   // shipping default after A0-47 -- INERT here, see the header
+	constexpr int32 Phases     = 200;     // sub-texel phases across one whole texel
 	constexpr double HalfTexel = CmPerTexel * 0.5;
+	// The sweep's own step, and the resolution of every mean it reports. Both derived from Phases so a
+	// change to the phase count moves the tolerance with it instead of leaving a stale literal behind.
+	constexpr double SweepStepCm     = static_cast<double>(CmPerTexel) / Phases;  // 0.05 cm
+	constexpr double BiasToleranceCm = 0.5 * SweepStepCm;                         // 0.025 cm = 0.25 mm
 
 	// Returns { mean signed offset, max abs offset } in cm for a path running along one axis.
-	auto MeasureAxis = [this](bool bAlongX) -> TPair<double, double>
+	// BiasCm displaces the DEPOSITED path without moving the reference it is measured against. Zero for
+	// the real measurement; non-zero to inject a known fault and prove the statistic can see it.
+	auto MeasureAxis = [this](bool bAlongX, double BiasCm) -> TPair<double, double>
 	{
 		double SumOffset = 0.0;
 		double MaxAbsOffset = 0.0;
 		for (int32 Phase = 0; Phase < Phases; ++Phase)
 		{
-			// Lateral coordinate of the true path, swept across exactly one texel.
-			const double TrueLateral = 500.0 + (static_cast<double>(CmPerTexel) * Phase) / Phases;
+			// Lateral coordinate of the true path, swept across exactly one texel at the MIDPOINT of each
+			// sub-interval -- never on a grid line, where the offset function is discontinuous.
+			const double TrueLateral =
+				500.0 + (static_cast<double>(CmPerTexel) * (static_cast<double>(Phase) + 0.5)) / Phases;
+			const double DepositLateral = TrueLateral + BiasCm;
 			FTrajectoryField Field = MakeField(1000.0, 1000.0, CmPerTexel, WidthCm);
 			if (bAlongX)
 			{
-				Field.DepositSegment(FVector2D(100.0, TrueLateral), FVector2D(900.0, TrueLateral), 1.0f);
+				Field.DepositSegment(FVector2D(100.0, DepositLateral), FVector2D(900.0, DepositLateral), 1.0f);
 			}
 			else
 			{
-				Field.DepositSegment(FVector2D(TrueLateral, 100.0), FVector2D(TrueLateral, 900.0), 1.0f);
+				Field.DepositSegment(FVector2D(DepositLateral, 100.0), FVector2D(DepositLateral, 900.0), 1.0f);
 			}
 
 			const TArray<float>& Values = Field.GetCanonical(ETrajectoryMapMode::RouteUsage);
@@ -1708,29 +1755,105 @@ bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
 		return TPair<double, double>(SumOffset / Phases, MaxAbsOffset);
 	};
 
-	const TPair<double, double> AlongX = MeasureAxis(/*bAlongX*/ true);   // measures the Y offset
-	const TPair<double, double> AlongY = MeasureAxis(/*bAlongX*/ false);  // measures the X offset
+	const TPair<double, double> AlongX = MeasureAxis(/*bAlongX*/ true, 0.0);   // measures the Y offset
+	const TPair<double, double> AlongY = MeasureAxis(/*bAlongX*/ false, 0.0);  // measures the X offset
 
 	AddInfo(FString::Printf(
-		TEXT("lateral offset over %d sub-texel phases at %.1f cm/texel, stroke %.1f cm: ")
+		TEXT("lateral offset over %d sub-texel phases at %.1f cm/texel (step %.4f cm, tolerance %.4f cm): ")
 		TEXT("Y mean=%+.4f cm max=%.4f cm | X mean=%+.4f cm max=%.4f cm (half texel = %.1f cm)"),
-		Phases, CmPerTexel, WidthCm, AlongX.Key, AlongX.Value, AlongY.Key, AlongY.Value, HalfTexel));
+		Phases, CmPerTexel, SweepStepCm, BiasToleranceCm,
+		AlongX.Key, AlongX.Value, AlongY.Key, AlongY.Value, HalfTexel));
 
-	// The real assertion. 0.5 cm is a twentieth of a texel: far below the sweep's own resolution of
-	// CmPerTexel/Phases, and two orders below the 5 cm a half-texel error would produce.
-	TestTrue(FString::Printf(TEXT("stroke is not laterally biased along Y (mean %+.4f cm, tolerance 0.5)"),
-		AlongX.Key), FMath::Abs(AlongX.Key) < 0.5);
-	TestTrue(FString::Printf(TEXT("stroke is not laterally biased along X (mean %+.4f cm, tolerance 0.5)"),
-		AlongY.Key), FMath::Abs(AlongY.Key) < 0.5);
+	// The real assertion. Half a sweep step is the finest bias the staircase can resolve at all, so it is
+	// the tightest HONEST bound -- and it is 200x below the 5 cm a half-texel convention error produces.
+	TestTrue(FString::Printf(TEXT("deposit is not laterally biased along Y (mean %+.4f cm, tolerance %.4f)"),
+		AlongX.Key, BiasToleranceCm), FMath::Abs(AlongX.Key) < BiasToleranceCm);
+	TestTrue(FString::Printf(TEXT("deposit is not laterally biased along X (mean %+.4f cm, tolerance %.4f)"),
+		AlongY.Key, BiasToleranceCm), FMath::Abs(AlongY.Key) < BiasToleranceCm);
 
-	// Quantisation bound. Exceeding half a texel means mass landed in a cell that does not contain the
-	// path at all, which is a placement bug rather than a rounding limit.
+	// Quantisation bound -- the durable invariant. Exceeding half a texel means mass landed in a cell that
+	// does not contain the path at all, which is a placement bug rather than a rounding limit. This one
+	// survives any change to Phases or to the sampling scheme, which is why it is kept alongside the
+	// exact check below rather than folded into it.
 	TestTrue(FString::Printf(TEXT("worst-case Y offset within half a texel (%.4f <= %.1f)"),
 		AlongX.Value, HalfTexel), AlongX.Value <= HalfTexel + KINDA_SMALL_NUMBER);
 	TestTrue(FString::Printf(TEXT("worst-case X offset within half a texel (%.4f <= %.1f)"),
 		AlongY.Value, HalfTexel), AlongY.Value <= HalfTexel + KINDA_SMALL_NUMBER);
 
-	// Pin the cell-centre convention outright, so a future change to WorldToCell cannot quietly move it.
+	// ---- Pin that the sweep samples MIDPOINTS, which the bound above cannot see ---------------------
+	// max is the only observable that separates midpoint sampling from the edge sampling this item
+	// replaced -- edge sampling puts one sample exactly on a grid line and max reads a flat 5.0000, while
+	// midpoints cap it half a step short at 4.9750. "<= HalfTexel" is satisfied by BOTH, so on its own it
+	// would stay green through a straight revert to the sweep A0-58 measured, and the header's claim that
+	// nothing touches the discontinuity would become quietly false. Assert the value, not just the bound.
+	//
+	// Derived from Phases, not written as 4.9750, so raising the phase count moves it instead of leaving a
+	// stale literal. Nor is it test arithmetic restated: the extreme sample sits at 500.025 cm and reading
+	// 4.9750 requires the FIELD to book that into cell 50 and to keep the whole 800 cm segment in one row.
+	// A change to AxisIndexFromCoord, or a DDA that smeared the line across two rows, both move it.
+	const double ExpectedMaxCm = HalfTexel - 0.5 * SweepStepCm;   // 4.9750 cm at 200 phases
+	TestTrue(FString::Printf(
+		TEXT("worst-case Y offset is half a texel less half a step (%.4f vs %.4f expected), i.e. the sweep ")
+		TEXT("straddles the grid line rather than landing on it"), AlongX.Value, ExpectedMaxCm),
+		FMath::Abs(AlongX.Value - ExpectedMaxCm) < 1.0e-6);
+	TestTrue(FString::Printf(
+		TEXT("worst-case X offset is half a texel less half a step (%.4f vs %.4f expected)"),
+		AlongY.Value, ExpectedMaxCm),
+		FMath::Abs(AlongY.Value - ExpectedMaxCm) < 1.0e-6);
+
+	// ---- NON-VACUITY: the statistic reports a real fault at FULL SIZE ------------------------------
+	// "Mean offset is zero" is what a symmetric quantiser gives away for free, so on its own it says
+	// nothing about sensitivity and reads as a tautology worth deleting. Inject exactly the fault this
+	// test was written to hunt -- a half-texel convention error, family A of A0-56 -- and require the
+	// sweep to read it back at 5 cm, not at a fraction of it. A statistic that damped a real bias would
+	// pass the assertions above while hiding the thing they exist to catch.
+	{
+		const TPair<double, double> BiasedX = MeasureAxis(/*bAlongX*/ true, HalfTexel);
+		const TPair<double, double> BiasedY = MeasureAxis(/*bAlongX*/ false, HalfTexel);
+		AddInfo(FString::Printf(
+			TEXT("non-vacuity: a %.1f cm half-texel bias injected into the deposit reads back as ")
+			TEXT("Y %+.4f cm | X %+.4f cm"), HalfTexel, BiasedX.Key, BiasedY.Key));
+
+		TestTrue(FString::Printf(
+			TEXT("an injected half-texel Y bias is reported 1:1 (%+.4f cm vs %.1f injected), so a real ")
+			TEXT("one would redden the assertion above rather than average away"), BiasedX.Key, HalfTexel),
+			FMath::Abs(BiasedX.Key - HalfTexel) < BiasToleranceCm);
+		TestTrue(FString::Printf(
+			TEXT("an injected half-texel X bias is reported 1:1 (%+.4f cm vs %.1f injected)"),
+			BiasedY.Key, HalfTexel),
+			FMath::Abs(BiasedY.Key - HalfTexel) < BiasToleranceCm);
+	}
+
+	// ---- THE RESOLUTION FLOOR, pinned rather than assumed ------------------------------------------
+	// The staircase reads s * round(B/s), so a bias below half a step is genuinely INVISIBLE here. That
+	// is a property of the method, not a defect -- but it is the one thing a reader could get wrong about
+	// this gate, and the reason the tolerance must never be tightened on its own. Assert it, so the claim
+	// is checked rather than believed, and so raising Phases is the only way to move it.
+	//
+	// The bound here is NOISE, not BiasToleranceCm. Asserting the sub-resolution reading against the same
+	// 0.025 cm the main check uses would be the identical predicate written twice, and it would stay green
+	// if deposition ever changed so a 0.02 cm bias LEAKED THROUGH partially -- the reading would become
+	// ~0.02, the assertion would still pass, and the comment above it would be quietly false. The claim is
+	// "exactly zero", so the bound has to be float noise: Moment/Mass carries ~5e-14 at a 505 cm centroid
+	// and 200 phases accumulate to ~1e-11 worst case, so 1e-9 leaves four orders of headroom.
+	{
+		const double SubResolutionBias = 0.4 * SweepStepCm;   // 0.02 cm: below the s/2 = 0.025 cm floor
+		const TPair<double, double> Blind = MeasureAxis(/*bAlongX*/ true, SubResolutionBias);
+		AddInfo(FString::Printf(
+			TEXT("resolution floor: a %.4f cm bias (below half a %.4f cm step) reads %+.4g cm -- this ")
+			TEXT("statistic cannot resolve it, and only a higher phase count can"),
+			SubResolutionBias, SweepStepCm, Blind.Key));
+
+		TestTrue(FString::Printf(
+			TEXT("a bias below half a sweep step vanishes ENTIRELY rather than reading small (%+.4g cm, ")
+			TEXT("noise bound 1e-9) -- so the tolerance above is the sweep's resolution, and tightening ")
+			TEXT("it without raising Phases would buy nothing"),
+			Blind.Key), FMath::Abs(Blind.Key) < 1.0e-9);
+	}
+
+	// Pin the cell-centre convention outright, so a future change to AxisIndexFromCoord cannot quietly
+	// move it (there is no WorldToCell; the two entry points are ContainingCell for a stationary segment
+	// and the DDA for a moving one, and both index through AxisIndexFromCoord).
 	// A stationary agent at an exact cell centre must land in that cell; at an exact boundary the
 	// lower-index cell owns it (the ratified rule).
 	{
@@ -1748,6 +1871,34 @@ bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
 		const FIntPoint Dims = Field.GetGridDims();
 		TestTrue(TEXT("a point on the exact boundary is owned by the LOWER-index cell (44,44)"),
 			Values.IsValidIndex(44 * Dims.X + 44) && Values[44 * Dims.X + 44] > 0.0f);
+	}
+
+	// The grid line the sweep no longer touches. Midpoint sampling deliberately steps around the
+	// discontinuity, so nothing in the sweep exercises the lower-index rule any more -- and the two probes
+	// above do not close that on their own: they are STATIONARY segments read out of RouteExposure, which
+	// reach the grid through ContainingCell. A moving segment takes a different route (the DDA's
+	// AxisIndexFromCoord with Dir == 0 on the lateral axis, TrajectoryField.cpp:119). Both call the same
+	// index function today; pin the moving case explicitly rather than assume they always will.
+	{
+		FTrajectoryField Field = MakeField(1000.0, 1000.0, CmPerTexel, WidthCm);
+		Field.DepositSegment(FVector2D(100.0, 500.0), FVector2D(900.0, 500.0), 1.0f); // dead on grid line y = 50
+		const TArray<float>& Values = Field.GetCanonical(ETrajectoryMapMode::RouteUsage);
+		const FIntPoint Dims = Field.GetGridDims();
+		if (TestTrue(TEXT("the 1000 cm / 10 cm-per-texel fixture gives the 100x100 grid the row indices below assume"),
+				Dims.X == 100 && Dims.Y == 100))
+		{
+			double Row49 = 0.0;
+			double Row50 = 0.0;
+			for (int32 I = 0; I < Dims.X; ++I)
+			{
+				Row49 += static_cast<double>(Values[49 * Dims.X + I]);
+				Row50 += static_cast<double>(Values[50 * Dims.X + I]);
+			}
+			TestTrue(FString::Printf(
+				TEXT("a MOVING segment running exactly along the y = 500 cm grid line books entirely into ")
+				TEXT("row 49, the lower-index cell (row 49 = %.6f, row 50 = %.6f)"), Row49, Row50),
+				Row49 > 0.0 && Row50 == 0.0);
+		}
 	}
 
 	return true;
