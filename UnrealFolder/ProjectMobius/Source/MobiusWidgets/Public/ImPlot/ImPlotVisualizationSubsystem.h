@@ -26,16 +26,21 @@ class UTextureRenderTarget2D;
 /**
  * Where the copy buttons sit relative to the chart.
  *
- * Four edges only, deliberately — ImPlot's legend picker offers nine positions because a legend floats
- * INSIDE the plot, where corners are the useful spots. These buttons live outside it, in the overlay's own
- * layout, so a corner would mean nothing.
+ * Same eight positions as ImPlot's legend picker (its centre cell is an InvisibleButton, so nine cells,
+ * eight choices). The corners are not decorative here: a horizontal row is drawn at the top or bottom and
+ * ALIGNED left / centre / right, which is what makes NorthWest a different layout from North. NorthWest is
+ * the default because it is where an un-aligned row already landed.
  */
 enum class EMobiusCopyButtonLocation : uint8
 {
-        Top,
-        Right,
-        Bottom,
-        Left,
+        NorthWest,
+        North,
+        NorthEast,
+        West,
+        East,
+        SouthWest,
+        South,
+        SouthEast,
 };
 
 class SImPlotOverlay;
@@ -207,8 +212,8 @@ private:
                  */
                 bool bCopyWithTimeline = false;
 
-                /** Which edge the copy buttons sit on. Top = above the chart title. Same scope as above. */
-                EMobiusCopyButtonLocation CopyButtonLocation = EMobiusCopyButtonLocation::Top;
+                /** Where the copy buttons sit. North* rows go above the chart TITLE. Same scope as above. */
+                EMobiusCopyButtonLocation CopyButtonLocation = EMobiusCopyButtonLocation::NorthWest;
 
                 /**
                  * DPI scale of the last ON-SCREEN paint. The capture pass has no window to ask, and

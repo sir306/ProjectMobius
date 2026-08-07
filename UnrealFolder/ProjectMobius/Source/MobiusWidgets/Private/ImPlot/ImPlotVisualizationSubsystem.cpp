@@ -199,12 +199,18 @@ namespace
 	 * as linear 0.06. So every value is sRGB-encoded on the way in, or the whole chart would come out
 	 * far too dark.
 	 */
+	/** One palette role as an ImGui colour. Free function so per-widget style pushes can use it too. */
+	ImVec4 MobiusImGuiColor(const EMobiusPaletteRole InRole, const bool bLight, const float Alpha = 1.0f)
+	{
+		const FColor Srgb = MobiusThemePalette::Color(InRole, bLight).ToFColor(/*bSRGB=*/true);
+		return ImVec4(Srgb.R / 255.0f, Srgb.G / 255.0f, Srgb.B / 255.0f, Alpha);
+	}
+
 	void ApplyMobiusPaletteToImGui(const bool bLight)
 	{
 		auto Role = [bLight](const EMobiusPaletteRole InRole, const float Alpha = 1.0f) -> ImVec4
 		{
-			const FColor Srgb = MobiusThemePalette::Color(InRole, bLight).ToFColor(/*bSRGB=*/true);
-			return ImVec4(Srgb.R / 255.0f, Srgb.G / 255.0f, Srgb.B / 255.0f, Alpha);
+			return MobiusImGuiColor(InRole, bLight, Alpha);
 		};
 
 		ImVec4* Colors = ImGui::GetStyle().Colors;
@@ -857,10 +863,12 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         // Match the Mobius UI theme (light = design 4b, dark = 7a). Applied per frame: it is a
         // trivial colour-table fill, covers freshly created contexts, and follows a runtime theme
         // toggle without any change tracking. FontScaleMain is set again after this each frame.
+        // Kept at function scope because the copy buttons push a per-widget border colour from the
+        // palette further down, and that needs the same theme this table was built from.
+        const UUserProjectSettings* ThemeSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
+        const bool bLightTheme = !ThemeSettings || ThemeSettings->GetUseLightUITheme();
         {
-                const UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
-                const bool bLight = !UserSettings || UserSettings->GetUseLightUITheme();
-                if (bLight)
+                if (bLightTheme)
                 {
                         ImGui::StyleColorsLight();
                         ImPlot::StyleColorsLight();
@@ -873,7 +881,7 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
                 // The stock call above seeds the whole table; this overwrites the entries the Mobius
                 // palette owns. Order matters — the stock call resets every colour, so it has to run first.
-                ApplyMobiusPaletteToImGui(bLight);
+                ApplyMobiusPaletteToImGui(bLightTheme);
         }
 
         ImGuiIO& IO = ImGui::GetIO();
@@ -976,8 +984,16 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         // The copy ACTIONS live only here, on buttons. They used to be duplicated as items in the
         // right-click menu, which read wrong: everything else in that menu is a setting, so two verbs sat
         // among a list of adjustments. The menu now carries only the "Copy Settings" submenu.
-        auto DrawCopyButtons = [this, &State, &CopyPoints, &CopySeriesToClipboard](const bool bStacked)
+        auto DrawCopyButtons = [this, &State, &CopyPoints, &CopySeriesToClipboard, bLightTheme](const bool bStacked)
         {
+                // ImGui draws buttons with NO border by default (FrameBorderSize is 0), which is what made
+                // these read as flat blocks of colour next to the outlined Slate buttons elsewhere. Pushed
+                // per-widget rather than set globally: the same ImGuiCol_Border also draws the window and
+                // popup frames, and a 1px outline is right for a button but not for those.
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Border,
+                        MobiusImGuiColor(EMobiusPaletteRole::ButtonBorder, bLightTheme));
+
                 if (ImGui::SmallButton("Copy chart"))
                 {
                         // Only a flag. The capture has to flush rendering commands and re-render this very
@@ -1004,17 +1020,65 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                 : "Copy %d value%s to the clipboard, one per line",
                         CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
                 ImGui::EndDisabled();
+
+                ImGui::PopStyleColor();
+                ImGui::PopStyleVar();
+        };
+
+        // Width of the two buttons side by side, measured rather than assumed so a font or DPI change
+        // cannot make the alignment drift. Needed before anything is drawn, to right-align or centre a row.
+        auto CopyButtonRowWidth = []() -> float
+        {
+                const ImGuiStyle& Style = ImGui::GetStyle();
+                return ImGui::CalcTextSize("Copy chart").x + Style.FramePadding.x * 2.0f
+                        + Style.ItemSpacing.x
+                        + ImGui::CalcTextSize("Copy values").x + Style.FramePadding.x * 2.0f;
+        };
+
+        // Horizontal rows (the North* and South* positions) differ ONLY in alignment — that is what makes
+        // NorthWest a different layout from North rather than a decorative label.
+        auto AlignCopyButtonRow = [&CopyButtonRowWidth](const EMobiusCopyButtonLocation Location)
+        {
+                const float RowWidth = CopyButtonRowWidth();
+                const float Avail = ImGui::GetContentRegionAvail().x;
+                if (Avail <= RowWidth)
+                {
+                        return; // too narrow to align; left edge is the only honest answer
+                }
+                float Offset = 0.0f;
+                if (Location == EMobiusCopyButtonLocation::North || Location == EMobiusCopyButtonLocation::South)
+                {
+                        Offset = (Avail - RowWidth) * 0.5f;
+                }
+                else if (Location == EMobiusCopyButtonLocation::NorthEast || Location == EMobiusCopyButtonLocation::SouthEast)
+                {
+                        Offset = Avail - RowWidth;
+                }
+                if (Offset > 0.0f)
+                {
+                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Offset);
+                }
         };
 
         // Skipped entirely while capturing — the chrome must not appear in the copied image.
         const bool bShowButtons = !bCapturingForImageCopy;
         const EMobiusCopyButtonLocation ButtonLocation = State->CopyButtonLocation;
 
-        if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Top)
+        const bool bButtonsNorth = ButtonLocation == EMobiusCopyButtonLocation::NorthWest
+                || ButtonLocation == EMobiusCopyButtonLocation::North
+                || ButtonLocation == EMobiusCopyButtonLocation::NorthEast;
+        const bool bButtonsSouth = ButtonLocation == EMobiusCopyButtonLocation::SouthWest
+                || ButtonLocation == EMobiusCopyButtonLocation::South
+                || ButtonLocation == EMobiusCopyButtonLocation::SouthEast;
+        const bool bButtonsWest = ButtonLocation == EMobiusCopyButtonLocation::West;
+        const bool bButtonsEast = ButtonLocation == EMobiusCopyButtonLocation::East;
+
+        if (bShowButtons && bButtonsNorth)
         {
                 // Above the TITLE, not just above the plot: the title belongs to the chart, so the controls
                 // that act on the whole chart sit outside it.
                 ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                AlignCopyButtonRow(ButtonLocation);
                 DrawCopyButtons(/*bStacked*/false);
         }
 
@@ -1023,24 +1087,47 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         {
                 // Nudge the title down so it isn't jammed against the window's top border.
                 ImGui::Dummy(ImVec2(0.0f, 8.0f));
-                ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
+
+                // Held in a named local, not TCHAR_TO_UTF8 inline: the macro's buffer only lives to the end
+                // of the full expression, and the title is needed twice — measure, then draw.
+                const FTCHARToUTF8 TitleUtf8(*TitleString);
+                const float TitleWidth = ImGui::CalcTextSize(TitleUtf8.Get()).x;
+                const float TitleAvail = ImGui::GetContentRegionAvail().x;
+                if (TitleAvail > TitleWidth)
+                {
+                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (TitleAvail - TitleWidth) * 0.5f);
+                }
+                ImGui::TextUnformatted(TitleUtf8.Get());
                 ImGui::Spacing();
         }
 
-        // Left/Right put the buttons in a column beside the plot, so the plot has to give up that width.
+        // West/East put the buttons in a column beside the plot, so the plot has to give up that width.
         // Measured from the widest label rather than hard-coded, or a font or DPI change clips it.
         float SideColumnWidth = 0.0f;
-        if (bShowButtons && (ButtonLocation == EMobiusCopyButtonLocation::Left
-                || ButtonLocation == EMobiusCopyButtonLocation::Right))
+        if (bShowButtons && (bButtonsWest || bButtonsEast))
         {
                 SideColumnWidth = ImGui::CalcTextSize("Copy values").x
                         + ImGui::GetStyle().FramePadding.x * 2.0f
                         + ImGui::GetStyle().ItemSpacing.x;
         }
 
-        if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Left)
+        // Vertically centre a side column against the plot — that is what West and East mean, as opposed to
+        // the corners, which are horizontal rows. Two stacked SmallButtons: SmallButton has zero vertical
+        // frame padding, so each is one text line.
+        auto CentreSideColumn = []()
+        {
+                const float GroupHeight = ImGui::GetTextLineHeight() * 2.0f + ImGui::GetStyle().ItemSpacing.y;
+                const float Avail = ImGui::GetContentRegionAvail().y;
+                if (Avail > GroupHeight)
+                {
+                        ImGui::Dummy(ImVec2(0.0f, (Avail - GroupHeight) * 0.5f));
+                }
+        };
+
+        if (bShowButtons && bButtonsWest)
         {
                 ImGui::BeginGroup();
+                CentreSideColumn();
                 DrawCopyButtons(/*bStacked*/true);
                 ImGui::EndGroup();
                 ImGui::SameLine();
@@ -1052,7 +1139,7 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         // A bottom row has to be reserved BEFORE the plot claims the remaining height, or the plot fills
         // everything and pushes the buttons out of the window. SmallButton uses zero vertical frame
         // padding, so its height is one text line.
-        const float BottomRowHeight = (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Bottom)
+        const float BottomRowHeight = (bShowButtons && bButtonsSouth)
                 ? ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y * 2.0f
                 : 0.0f;
 
@@ -1193,29 +1280,50 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                         ImGui::Separator();
                                         ImGui::TextUnformatted("Buttons");
 
-                                        // Same idiom as ImPlot's own legend location picker
-                                        // (ShowLegendContextMenu): a grid of small buttons laid out where the
-                                        // thing will end up, so the control looks like what it does. Four
-                                        // edges rather than nine positions — these buttons sit outside the
-                                        // plot, so a corner has no meaning.
+                                        // The same nine-cell grid as ImPlot's legend picker
+                                        // (ShowLegendContextMenu), centre cell invisible — eight choices laid
+                                        // out where the buttons will actually end up, so the control looks
+                                        // like what it does.
+                                        //
+                                        // The corners are not decoration: North* and South* are horizontal
+                                        // rows that differ by ALIGNMENT (left / centre / right), which is why
+                                        // NorthWest is a real position and not a synonym for North. It is
+                                        // also the default, because it is where an unaligned row already sat.
                                         const float ButtonSize = ImGui::GetFrameHeight();
                                         const ImVec2 CellSize(1.5f * ButtonSize, ButtonSize);
                                         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, 2));
 
-                                        ImGui::InvisibleButton("##NW", CellSize); ImGui::SameLine();
-                                        if (ImGui::Button("T", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Top; }
-                                        ImGui::SameLine();
-                                        ImGui::InvisibleButton("##NE", CellSize);
+                                        auto LocationCell = [&State, &CellSize](const char* Label, const EMobiusCopyButtonLocation Location)
+                                        {
+                                                // Selected cell is drawn in the accent so the current position
+                                                // is readable at a glance; ImPlot's own picker gives no such
+                                                // feedback, which is a small thing it gets wrong.
+                                                const bool bSelected = State->CopyButtonLocation == Location;
+                                                if (bSelected)
+                                                {
+                                                        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_CheckMark]);
+                                                }
+                                                if (ImGui::Button(Label, CellSize))
+                                                {
+                                                        State->CopyButtonLocation = Location;
+                                                }
+                                                if (bSelected)
+                                                {
+                                                        ImGui::PopStyleColor();
+                                                }
+                                        };
 
-                                        if (ImGui::Button("L", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Left; }
-                                        ImGui::SameLine();
-                                        ImGui::InvisibleButton("##C", CellSize); ImGui::SameLine();
-                                        if (ImGui::Button("R", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Right; }
+                                        LocationCell("NW", EMobiusCopyButtonLocation::NorthWest); ImGui::SameLine();
+                                        LocationCell("N",  EMobiusCopyButtonLocation::North);     ImGui::SameLine();
+                                        LocationCell("NE", EMobiusCopyButtonLocation::NorthEast);
 
-                                        ImGui::InvisibleButton("##SW", CellSize); ImGui::SameLine();
-                                        if (ImGui::Button("B", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Bottom; }
-                                        ImGui::SameLine();
-                                        ImGui::InvisibleButton("##SE", CellSize);
+                                        LocationCell("W",  EMobiusCopyButtonLocation::West);      ImGui::SameLine();
+                                        ImGui::InvisibleButton("##C", CellSize);                  ImGui::SameLine();
+                                        LocationCell("E",  EMobiusCopyButtonLocation::East);
+
+                                        LocationCell("SW", EMobiusCopyButtonLocation::SouthWest); ImGui::SameLine();
+                                        LocationCell("S",  EMobiusCopyButtonLocation::South);     ImGui::SameLine();
+                                        LocationCell("SE", EMobiusCopyButtonLocation::SouthEast);
 
                                         ImGui::PopStyleVar();
                                         ImGui::EndMenu();
@@ -1268,16 +1376,18 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 ImPlot::EndPlot();
         }
 
-        if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Right)
+        if (bShowButtons && bButtonsEast)
         {
                 // SameLine pairs with the width the plot gave up via SideColumnWidth above.
                 ImGui::SameLine();
                 ImGui::BeginGroup();
+                CentreSideColumn();
                 DrawCopyButtons(/*bStacked*/true);
                 ImGui::EndGroup();
         }
-        else if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Bottom)
+        else if (bShowButtons && bButtonsSouth)
         {
+                AlignCopyButtonRow(ButtonLocation);
                 DrawCopyButtons(/*bStacked*/false);
         }
 
