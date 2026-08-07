@@ -39,20 +39,21 @@ UENUM(BlueprintType)
 enum class EMobiusButtonGeometryFamily : uint8
 {
 	/**
-	 * Transitional default: infer the family from the bound SlateButtonStyle asset's NAME, and leave the
-	 * geometry alone entirely when nothing is bound. Exists so the C++ migration could land without
-	 * editing every consuming widget in the same commit. Retire it once every button sets a family.
+	 * Take no shape from C++ — keep the shared "Mobius.Button" style.
+	 *
+	 * FIRST on purpose, so it is the value 0. A UENUM property serialises by enumerator NAME, and a name
+	 * that no longer exists resolves to the first entry on load. `FromAsset` was removed in A10b step 5,
+	 * and every asset was migrated off it first — but if one were ever missed, landing on `Shared` gives it
+	 * exactly the behaviour `FromAsset` had with nothing bound, which is what all six of them were doing.
+	 * Reordering costs nothing here: `Panel` and `Tab` keep the numeric values they already had.
 	 */
-	FromAsset	UMETA(DisplayName = "From Asset (legacy)"),
+	Shared		UMETA(DisplayName = "Shared Default"),
 
 	/** The standard Mobius button: 4px rounded box, 1px ring, 8/4 padding (MobiusButtonGeometry::Chip). */
 	Panel		UMETA(DisplayName = "Panel Button"),
 
 	/** Setting/panel tab: square at rest, 4px on hover, no ring, 0/20 padding (MobiusButtonGeometry::Tab). */
-	Tab			UMETA(DisplayName = "Setting Tab"),
-
-	/** Take no shape from C++ — keep the shared "Mobius.Button" style. What an unbound button does today. */
-	Shared		UMETA(DisplayName = "Shared Default")
+	Tab			UMETA(DisplayName = "Setting Tab")
 };
 
 /**
@@ -134,37 +135,21 @@ public:
 	void StabilisePressedPadding();
 
 	/**
-	 * LEGACY, being retired. The Style asset the designer bound in the widget. It used to supply the
-	 * button's GEOMETRY (draw type, corner radii, outline width, padding, sound) by being snapshotted
-	 * wholesale into the live style.
+	 * Which named C++ geometry this button is shaped by.
 	 *
-	 * As of 2026-08-06 it no longer is: geometry and sound come from FMobiusButtonGeometry, and colour
-	 * has come from the palette since A6b. This pointer is now read for ONE thing — to infer which
-	 * geometry family a button belongs to when GeometryFamily is FromAsset — and that inference exists
-	 * only so the migration could land without editing 40 widgets in the same commit. Once every
-	 * consumer carries an explicit GeometryFamily, both this property and the inference go.
+	 * A10b step 5 (2026-08-07) removed the `SlateButtonStyle` property that used to sit here and the
+	 * `FromAsset` inference that read it. A Mobius button is now shaped entirely by this enum: nothing
+	 * about it comes from a style asset, which is the owner's 2026-08-06 ruling — widgets are themed by
+	 * the palette subsystem, not by an asset binding. Colour has come from the palette since A6b,
+	 * geometry and the click sound from FMobiusButtonGeometry since A10b/T3.
 	 *
-	 * Do not bind it on a NEW widget. Set GeometryFamily instead: the owner's 2026-08-06 ruling is that
-	 * widgets are themed by the palette subsystem, not by a style asset.
+	 * Defaults to `Shared` (= leave the shape alone), which is what an unbound button always did. A new
+	 * widget is therefore correct with nothing configured, and only opts in to a shape deliberately.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
-	TObjectPtr<USlateWidgetStyleAsset> SlateButtonStyle;
+	EMobiusButtonGeometryFamily GeometryFamily = EMobiusButtonGeometryFamily::Shared;
 
-	/**
-	 * Which named C++ geometry this button is shaped by. Defaults to FromAsset so that every widget on
-	 * disk at migration time keeps exactly the shape it had — the 12 UBaseButtons that bind NO style
-	 * asset (the tool-panel rows, the Custom Display link, the Reset/Confirm bar) must keep falling
-	 * through to the shared "Mobius.Button" style, and defaulting this to Panel would have silently
-	 * re-laid-out all ten live ones.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
-	EMobiusButtonGeometryFamily GeometryFamily = EMobiusButtonGeometryFamily::FromAsset;
-
-	/**
-	 * Resolve GeometryFamily to a shape, or null for "leave this button's geometry alone".
-	 * FromAsset maps the bound asset by name; an unbound button resolves to null and keeps the shared
-	 * style, which is the pre-migration behaviour for those 12.
-	 */
+	/** Resolve GeometryFamily to a shape, or null for "leave this button's geometry alone". */
 	const struct FMobiusButtonGeometry* ResolveButtonGeometry() const;
 
 	/** Set: the button's fill/hover/pressed/outline/foreground colours are re-stamped from the theme

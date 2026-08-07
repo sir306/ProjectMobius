@@ -47,6 +47,11 @@ void UBaseButton::SynchronizeProperties()
 
 const FMobiusButtonGeometry* UBaseButton::ResolveButtonGeometry() const
 {
+	// A10b step 5 (2026-08-07): the `FromAsset` arm that used to follow this switch — mapping the bound
+	// SWS asset by NAME to a geometry — is gone, along with the SlateButtonStyle property it read. It was
+	// only ever scaffolding so the migration could land without editing every consuming widget in one
+	// commit. All 38 UBaseButtons outside /Game/99_Old now carry an explicit family (15 Panel, 17 Tab,
+	// 6 Shared), audited before and after the content pass that set them.
 	switch (GeometryFamily)
 	{
 	case EMobiusButtonGeometryFamily::Panel:
@@ -54,31 +59,11 @@ const FMobiusButtonGeometry* UBaseButton::ResolveButtonGeometry() const
 	case EMobiusButtonGeometryFamily::Tab:
 		return &MobiusButtonGeometry::Tab;
 	case EMobiusButtonGeometryFamily::Shared:
-		return nullptr;
-	case EMobiusButtonGeometryFamily::FromAsset:
 	default:
-		break;
-	}
-
-	// Transitional: map the bound asset by NAME. Both C++ geometries were measured field-for-field
-	// against these two assets before the swap, so this arm is shape-identical to the snapshot it
-	// replaced. An unbound button returns null and keeps the shared "Mobius.Button" style — that is what
-	// the 12 asset-less UBaseButtons (tool-panel rows, Custom Display link, Reset/Confirm bar) do today,
-	// and giving them a shape here would re-lay-out ten live buttons for no requested reason.
-	if (!SlateButtonStyle)
-	{
+		// Null means "leave the geometry alone", which keeps the shared "Mobius.Button" style — the
+		// behaviour every asset-less button already had.
 		return nullptr;
 	}
-	const FName AssetName = SlateButtonStyle->GetFName();
-	if (AssetName == TEXT("SWS_PanelButtonStyle"))
-	{
-		return &MobiusButtonGeometry::Chip;
-	}
-	if (AssetName == TEXT("SWS_SettingButtonStyle"))
-	{
-		return &MobiusButtonGeometry::Tab;
-	}
-	return nullptr;
 }
 
 void UBaseButton::ApplyMobiusButtonStyle()
