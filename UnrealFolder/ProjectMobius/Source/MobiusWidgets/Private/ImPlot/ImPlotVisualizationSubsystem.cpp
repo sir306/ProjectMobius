@@ -218,6 +218,23 @@ namespace
 		Colors[ImGuiCol_TitleBg]       = Role(EMobiusPaletteRole::TitlebarBg);
 		Colors[ImGuiCol_TitleBgActive] = Role(EMobiusPaletteRole::TitlebarBg);
 
+		// Interactive roles. Until the copy controls landed nothing in this overlay was clickable, so these
+		// were never mapped and every button, menu highlight and tick mark still came from ImGui's STOCK
+		// dark/light theme — a blue-grey that belongs to no Mobius palette row. Buttons take the same three
+		// roles the Slate buttons do, so an ImGui button and a UMG one read as the same control.
+		Colors[ImGuiCol_Button]         = Role(EMobiusPaletteRole::ButtonBg);
+		Colors[ImGuiCol_ButtonHovered]  = Role(EMobiusPaletteRole::ButtonHoverBg);
+		Colors[ImGuiCol_ButtonActive]   = Role(EMobiusPaletteRole::ButtonPressedBg);
+		Colors[ImGuiCol_FrameBgHovered] = Role(EMobiusPaletteRole::ButtonHoverBg);
+		Colors[ImGuiCol_FrameBgActive]  = Role(EMobiusPaletteRole::ButtonPressedBg);
+		// Header* is what MenuItem / Selectable highlight with, i.e. every row of the right-click menu.
+		Colors[ImGuiCol_Header]         = Role(EMobiusPaletteRole::HoverBg);
+		Colors[ImGuiCol_HeaderHovered]  = Role(EMobiusPaletteRole::ButtonHoverBg);
+		Colors[ImGuiCol_HeaderActive]   = Role(EMobiusPaletteRole::ButtonPressedBg);
+		Colors[ImGuiCol_CheckMark]      = Role(EMobiusPaletteRole::Accent);
+		Colors[ImGuiCol_Separator]      = Role(EMobiusPaletteRole::PanelDivider);
+		Colors[ImGuiCol_MenuBarBg]      = Role(EMobiusPaletteRole::RibbonBg);
+
 		ImVec4* Plot = ImPlot::GetStyle().Colors;
 		// PlotBg is the card the series are drawn on — same role the migrated card backgrounds use.
 		Plot[ImPlotCol_PlotBg]       = Role(EMobiusPaletteRole::InputBg);
@@ -939,19 +956,7 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
-        const FString TitleString = GetChartTitleForChart(ChartId).ToString();
-        if (!TitleString.IsEmpty())
-        {
-                // Nudge the title down so it isn't jammed against the window's top border.
-                ImGui::Dummy(ImVec2(0.0f, 8.0f));
-                ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
-                ImGui::Spacing();
-        }
-
-        // S6: copy the plotted series to the OS clipboard as TSV, ready to paste into a spreadsheet.
-        // Offered BOTH ways on purpose — visible buttons so it is discoverable, and the plot's right-click
-        // menu (rebuilt before EndPlot below) so it sits where ImPlot puts everything else. One lambda
-        // behind both, so the two entry points can never disagree about what gets copied.
+        // S6: copy the chart, either as an image or as TSV.
         //
         // FPlatformApplicationMisc::ClipboardCopy, NOT ImGui::SetClipboardText: ImGui's clipboard is scoped
         // to its own context and never reaches the Windows clipboard.
@@ -968,11 +973,11 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 FPlatformApplicationMisc::ClipboardCopy(*Tsv);
         };
 
-        // Skipped entirely while capturing — the chrome must not appear in the copied image.
-        if (!bCapturingForImageCopy)
+        // The copy ACTIONS live only here, on buttons. They used to be duplicated as items in the
+        // right-click menu, which read wrong: everything else in that menu is a setting, so two verbs sat
+        // among a list of adjustments. The menu now carries only the "Copy Settings" submenu.
+        auto DrawCopyButtons = [this, &State, &CopyPoints, &CopySeriesToClipboard](const bool bStacked)
         {
-                // "Copy chart" first and on its own: the owner's ask is the PICTURE. The data exports are
-                // secondary, since whoever is looking at this chart supplied the data in the first place.
                 if (ImGui::SmallButton("Copy chart"))
                 {
                         // Only a flag. The capture has to flush rendering commands and re-render this very
@@ -982,11 +987,14 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 }
                 ImGui::SetItemTooltip("Copy the chart to the clipboard as an image");
 
-                ImGui::SameLine();
+                if (!bStacked)
+                {
+                        ImGui::SameLine();
+                }
                 ImGui::BeginDisabled(CopyPoints.Num() == 0);
                 // ONE data button. Whether it carries the time column is the "Copy with timeline" toggle
-                // in the right-click menu, not a second button — two near-identical buttons made the
-                // caller choose every time about a column that is usually the least interesting one.
+                // in Copy Settings, not a second button — two near-identical buttons made the caller
+                // choose on every copy about a column that is usually the least interesting one.
                 if (ImGui::SmallButton("Copy values"))
                 {
                         CopySeriesToClipboard(State->bCopyWithTimeline);
@@ -996,14 +1004,61 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                 : "Copy %d value%s to the clipboard, one per line",
                         CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
                 ImGui::EndDisabled();
+        };
+
+        // Skipped entirely while capturing — the chrome must not appear in the copied image.
+        const bool bShowButtons = !bCapturingForImageCopy;
+        const EMobiusCopyButtonLocation ButtonLocation = State->CopyButtonLocation;
+
+        if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Top)
+        {
+                // Above the TITLE, not just above the plot: the title belongs to the chart, so the controls
+                // that act on the whole chart sit outside it.
+                ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                DrawCopyButtons(/*bStacked*/false);
+        }
+
+        const FString TitleString = GetChartTitleForChart(ChartId).ToString();
+        if (!TitleString.IsEmpty())
+        {
+                // Nudge the title down so it isn't jammed against the window's top border.
+                ImGui::Dummy(ImVec2(0.0f, 8.0f));
+                ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
                 ImGui::Spacing();
+        }
+
+        // Left/Right put the buttons in a column beside the plot, so the plot has to give up that width.
+        // Measured from the widest label rather than hard-coded, or a font or DPI change clips it.
+        float SideColumnWidth = 0.0f;
+        if (bShowButtons && (ButtonLocation == EMobiusCopyButtonLocation::Left
+                || ButtonLocation == EMobiusCopyButtonLocation::Right))
+        {
+                SideColumnWidth = ImGui::CalcTextSize("Copy values").x
+                        + ImGui::GetStyle().FramePadding.x * 2.0f
+                        + ImGui::GetStyle().ItemSpacing.x;
+        }
+
+        if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Left)
+        {
+                ImGui::BeginGroup();
+                DrawCopyButtons(/*bStacked*/true);
+                ImGui::EndGroup();
+                ImGui::SameLine();
         }
 
         // ImPlotFlags_NoMenus: ImPlot 0.17 exposes no hook for appending to its context menu, so this
         // suppresses ImPlot's popups and the block before EndPlot below rebuilds them with the same copy
         // actions on top. See the comment there for why nothing is lost.
-        // The plot is sized ImVec2(-1, -1), so it reflows into whatever height the buttons above leave.
-        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f), ImPlotFlags_NoMenus))
+        // A bottom row has to be reserved BEFORE the plot claims the remaining height, or the plot fills
+        // everything and pushes the buttons out of the window. SmallButton uses zero vertical frame
+        // padding, so its height is one text line.
+        const float BottomRowHeight = (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Bottom)
+                ? ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y * 2.0f
+                : 0.0f;
+
+        // Negative width/height means "fill, minus this much", so the plot reflows around whatever the
+        // buttons take: all the remaining space, less any side column or bottom row reserved for them.
+        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f - SideColumnWidth, -1.0f - BottomRowHeight), ImPlotFlags_NoMenus))
         {
                 if (HasAxisSettingsForChart(ChartId))
                 {
@@ -1125,20 +1180,46 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         }
                         if (ImGui::BeginPopup("##MobiusPlotContext"))
                         {
-                                if (ImGui::MenuItem("Copy chart"))
+                                // A SUBMENU of settings, not the copy actions themselves. Everything else in
+                                // this menu — Legend, Settings, the per-axis entries — adjusts the chart, so
+                                // two verbs sitting among them read as a different kind of thing. The actions
+                                // are the buttons; this is where their behaviour is configured. One entry
+                                // today, and it is the right shape for the next one.
+                                if (ImGui::BeginMenu("Copy Settings"))
                                 {
-                                        State->bImageCopyRequested = true;
+                                        ImGui::MenuItem("Copy with timeline", nullptr, &State->bCopyWithTimeline);
+                                        ImGui::SetItemTooltip("Include the time column when copying values");
+
+                                        ImGui::Separator();
+                                        ImGui::TextUnformatted("Buttons");
+
+                                        // Same idiom as ImPlot's own legend location picker
+                                        // (ShowLegendContextMenu): a grid of small buttons laid out where the
+                                        // thing will end up, so the control looks like what it does. Four
+                                        // edges rather than nine positions — these buttons sit outside the
+                                        // plot, so a corner has no meaning.
+                                        const float ButtonSize = ImGui::GetFrameHeight();
+                                        const ImVec2 CellSize(1.5f * ButtonSize, ButtonSize);
+                                        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, 2));
+
+                                        ImGui::InvisibleButton("##NW", CellSize); ImGui::SameLine();
+                                        if (ImGui::Button("T", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Top; }
+                                        ImGui::SameLine();
+                                        ImGui::InvisibleButton("##NE", CellSize);
+
+                                        if (ImGui::Button("L", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Left; }
+                                        ImGui::SameLine();
+                                        ImGui::InvisibleButton("##C", CellSize); ImGui::SameLine();
+                                        if (ImGui::Button("R", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Right; }
+
+                                        ImGui::InvisibleButton("##SW", CellSize); ImGui::SameLine();
+                                        if (ImGui::Button("B", CellSize)) { State->CopyButtonLocation = EMobiusCopyButtonLocation::Bottom; }
+                                        ImGui::SameLine();
+                                        ImGui::InvisibleButton("##SE", CellSize);
+
+                                        ImGui::PopStyleVar();
+                                        ImGui::EndMenu();
                                 }
-                                // Same lambda as the buttons above — one definition of what gets copied.
-                                ImGui::BeginDisabled(CopyPoints.Num() == 0);
-                                if (ImGui::MenuItem("Copy values"))
-                                {
-                                        CopySeriesToClipboard(State->bCopyWithTimeline);
-                                }
-                                ImGui::EndDisabled();
-                                // Checkable, and it governs the button above as well as the item above it.
-                                ImGui::MenuItem("Copy with timeline", nullptr, &State->bCopyWithTimeline);
-                                ImGui::SetItemTooltip("Include the time column when copying values");
                                 ImGui::Separator();
                                 ImPlot::ShowPlotContextMenu(*CurrentPlot);
                                 ImGui::EndPopup();
@@ -1185,6 +1266,19 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 }
 
                 ImPlot::EndPlot();
+        }
+
+        if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Right)
+        {
+                // SameLine pairs with the width the plot gave up via SideColumnWidth above.
+                ImGui::SameLine();
+                ImGui::BeginGroup();
+                DrawCopyButtons(/*bStacked*/true);
+                ImGui::EndGroup();
+        }
+        else if (bShowButtons && ButtonLocation == EMobiusCopyButtonLocation::Bottom)
+        {
+                DrawCopyButtons(/*bStacked*/false);
         }
 
         ImGui::End();

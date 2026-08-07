@@ -23,6 +23,21 @@ struct ImFontAtlas;
 struct FSlateDynamicImageBrush;
 class UTextureRenderTarget2D;
 
+/**
+ * Where the copy buttons sit relative to the chart.
+ *
+ * Four edges only, deliberately — ImPlot's legend picker offers nine positions because a legend floats
+ * INSIDE the plot, where corners are the useful spots. These buttons live outside it, in the overlay's own
+ * layout, so a corner would mean nothing.
+ */
+enum class EMobiusCopyButtonLocation : uint8
+{
+        Top,
+        Right,
+        Bottom,
+        Left,
+};
+
 class SImPlotOverlay;
 class SMoveableWindow;
 class SWindow;
@@ -191,6 +206,9 @@ private:
                  * not written to UUserProjectSettings.
                  */
                 bool bCopyWithTimeline = false;
+
+                /** Which edge the copy buttons sit on. Top = above the chart title. Same scope as above. */
+                EMobiusCopyButtonLocation CopyButtonLocation = EMobiusCopyButtonLocation::Top;
 
                 /**
                  * DPI scale of the last ON-SCREEN paint. The capture pass has no window to ask, and
