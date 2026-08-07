@@ -64,6 +64,15 @@ void SImPlotOverlay::OnMouseLeave(const FPointerEvent& MouseEvent)
 
 EActiveTimerReturnType SImPlotOverlay::RepaintWhileHovered(double InCurrentTime, float InDeltaTime)
 {
+        // Serviced here rather than in OnPaint because the capture flushes rendering commands and
+        // re-renders this widget - neither is safe from inside a paint. A timer tick is an ordinary
+        // game-thread callback, and the cursor is by definition still over the chart, which is where the
+        // click that raised the request came from. No-op unless something was requested.
+        if (Subsystem.IsValid())
+        {
+                Subsystem->ServicePendingImageCopy(ChartId);
+        }
+
         Invalidate(EInvalidateWidget::Paint);
         return EActiveTimerReturnType::Continue;
 }

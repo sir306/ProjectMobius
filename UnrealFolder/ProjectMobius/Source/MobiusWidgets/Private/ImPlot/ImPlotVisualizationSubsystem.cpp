@@ -9,7 +9,15 @@
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformApplicationMisc.h" // ClipboardCopy for the chart TSV export (S6)
+#include "Engine/TextureRenderTarget2D.h"
+#include "RenderingThread.h"             // FlushRenderingCommands before the capture readback
+#include "Slate/WidgetRenderer.h"        // offscreen re-render of the chart for "Copy chart image"
 #include "Styling/CoreStyle.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "InputCoreTypes.h"
 #include "Layout/Clipping.h"
@@ -61,6 +69,96 @@ namespace
 				: FString::Printf(TEXT("%.10g\r\n"), Point.Y);
 		}
 		return Out;
+	}
+
+	/**
+	 * S6: put a captured chart on the OS clipboard as an image.
+	 *
+	 * UE has no image clipboard — FPlatformApplicationMisc only ever calls SetClipboardData with
+	 * CF_UNICODETEXT (WindowsPlatformApplicationMisc.cpp) — so this is raw Win32.
+	 *
+	 * Two decisions that consumers actually notice:
+	 *   * CF_DIB is written OPAQUE. Alpha in a 32-bit CF_DIB is interpreted inconsistently — Word,
+	 *     PowerPoint and Paint commonly render a transparent pixel as BLACK — so anything not fully
+	 *     opaque is composited onto Backdrop and the alpha byte is forced to 255. A chart that pastes
+	 *     as a black rectangle is the classic failure here.
+	 *   * biHeight is NEGATIVE, i.e. top-down rows, which matches ReadPixels' order. A positive height
+	 *     means bottom-up and pastes the chart upside down.
+	 *
+	 * FColor is already B,G,R,A in memory on Windows, which is exactly the DIB channel order, so the
+	 * rows copy straight across.
+	 */
+	bool CopyImageToClipboard(const TArray<FColor>& Pixels, const FIntPoint& Size, const FColor Backdrop)
+	{
+#if PLATFORM_WINDOWS
+		if (Size.X <= 0 || Size.Y <= 0 || Pixels.Num() < Size.X * Size.Y)
+		{
+			return false;
+		}
+
+		const SIZE_T HeaderBytes = sizeof(BITMAPINFOHEADER);
+		const SIZE_T PixelBytes = static_cast<SIZE_T>(Size.X) * static_cast<SIZE_T>(Size.Y) * 4;
+
+		HGLOBAL GlobalMem = ::GlobalAlloc(GMEM_MOVEABLE, HeaderBytes + PixelBytes);
+		if (GlobalMem == nullptr)
+		{
+			return false;
+		}
+
+		void* Locked = ::GlobalLock(GlobalMem);
+		if (Locked == nullptr)
+		{
+			::GlobalFree(GlobalMem);
+			return false;
+		}
+
+		BITMAPINFOHEADER* Header = static_cast<BITMAPINFOHEADER*>(Locked);
+		FMemory::Memzero(Header, HeaderBytes);
+		Header->biSize = sizeof(BITMAPINFOHEADER);
+		Header->biWidth = Size.X;
+		Header->biHeight = -Size.Y; // top-down; see note above
+		Header->biPlanes = 1;
+		Header->biBitCount = 32;
+		Header->biCompression = BI_RGB;
+		Header->biSizeImage = static_cast<DWORD>(PixelBytes);
+
+		FColor* Dest = reinterpret_cast<FColor*>(static_cast<uint8*>(Locked) + HeaderBytes);
+		for (int32 Index = 0; Index < Size.X * Size.Y; ++Index)
+		{
+			const FColor Src = Pixels[Index];
+			if (Src.A == 255)
+			{
+				Dest[Index] = FColor(Src.R, Src.G, Src.B, 255);
+				continue;
+			}
+			const int32 Alpha = Src.A;
+			const int32 Inv = 255 - Alpha;
+			Dest[Index] = FColor(
+				static_cast<uint8>((Src.R * Alpha + Backdrop.R * Inv) / 255),
+				static_cast<uint8>((Src.G * Alpha + Backdrop.G * Inv) / 255),
+				static_cast<uint8>((Src.B * Alpha + Backdrop.B * Inv) / 255),
+				255);
+		}
+
+		::GlobalUnlock(GlobalMem);
+
+		if (!::OpenClipboard(nullptr))
+		{
+			::GlobalFree(GlobalMem);
+			return false;
+		}
+		::EmptyClipboard();
+		const bool bSet = ::SetClipboardData(CF_DIB, GlobalMem) != nullptr;
+		::CloseClipboard();
+		if (!bSet)
+		{
+			// Ownership only transfers on success; freeing after a successful set would corrupt it.
+			::GlobalFree(GlobalMem);
+		}
+		return bSet;
+#else
+		return false;
+#endif
 	}
 
 	/**
@@ -566,6 +664,65 @@ void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>
         }
 }
 
+void UImPlotVisualizationSubsystem::ServicePendingImageCopy(const FName& ChartId)
+{
+        FImPlotOverlayState* State = FindOverlayState(ChartId);
+        if (State == nullptr || !State->bImageCopyRequested || !State->OverlayWidget.IsValid())
+        {
+                return;
+        }
+
+        // Cleared BEFORE the render: DrawWidget repaints this same widget, and a request left standing
+        // would be re-serviced on the next tick forever.
+        State->bImageCopyRequested = false;
+
+        const TSharedRef<SWidget> OverlayRef = State->OverlayWidget.ToSharedRef();
+        const FVector2D DrawSize(OverlayRef->GetTickSpaceGeometry().GetLocalSize());
+        if (DrawSize.X < 1.0 || DrawSize.Y < 1.0)
+        {
+                return;
+        }
+
+        const FIntPoint TargetSize(FMath::CeilToInt(DrawSize.X), FMath::CeilToInt(DrawSize.Y));
+        if (CaptureRenderTarget == nullptr
+                || CaptureRenderTarget->SizeX != TargetSize.X
+                || CaptureRenderTarget->SizeY != TargetSize.Y)
+        {
+                // Gamma-corrected so the captured image matches what is on screen rather than coming out
+                // washed out; TF_Bilinear is what CreateTargetFor uses for widget captures generally.
+                CaptureRenderTarget = FWidgetRenderer::CreateTargetFor(DrawSize, TF_Bilinear, /*bUseGammaCorrection*/true);
+        }
+        if (CaptureRenderTarget == nullptr)
+        {
+                return;
+        }
+
+        {
+                // Scoped so the flag is down again before anything else can paint, even on an early return.
+                TGuardValue<bool> CaptureGuard(bCapturingForImageCopy, true);
+                FWidgetRenderer Renderer(/*bUseGammaCorrection*/true);
+                Renderer.SetIsPrepassNeeded(true);
+                Renderer.DrawWidget(CaptureRenderTarget, OverlayRef, DrawSize, /*DeltaTime*/0.0f);
+                // DrawWidget only ENQUEUES; without this the readback races an empty target.
+                FlushRenderingCommands();
+        }
+
+        FTextureRenderTargetResource* Resource = CaptureRenderTarget->GameThread_GetRenderTargetResource();
+        TArray<FColor> Pixels;
+        if (Resource == nullptr || !Resource->ReadPixels(Pixels))
+        {
+                return;
+        }
+
+        // Backdrop for any non-opaque pixel. ImGui fills its window with WindowBg so most of the image is
+        // already opaque, but the corners it rounds off are not, and those are what paste black.
+        const UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
+        const bool bLight = !UserSettings || UserSettings->GetUseLightUITheme();
+        const FColor Backdrop = MobiusThemePalette::Color(EMobiusPaletteRole::WellBg, bLight).ToFColor(/*bSRGB*/true);
+
+        CopyImageToClipboard(Pixels, TargetSize, Backdrop);
+}
+
 void UImPlotVisualizationSubsystem::InvalidateOverlay(const FName& ChartId) const
 {
 	const FImPlotOverlayState* State = FindOverlayState(ChartId);
@@ -662,11 +819,17 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
         ImGuiIO& IO = ImGui::GetIO();
         // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
         FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
-        float WindowDpiScale = 1.0f;
+        // Replay the last on-screen DPI during a capture instead of defaulting to 1.0, or the shared glyph
+        // atlas re-bakes for the capture and re-bakes back on the next real paint — across every chart.
+        float WindowDpiScale = bCapturingForImageCopy ? State->LastPaintDpiScale : 1.0f;
         if (FSlateApplication::IsInitialized())
         {
                 const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
-                const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(Widget);
+                // During a capture the widget is still parented to its live window, so asking the window
+                // would size ImGui to the WINDOW while Slate allots the capture's DrawSize — the chart
+                // comes out clipped or letterboxed. Take the allotted-geometry branch instead.
+                const TSharedPtr<SWindow> Window = bCapturingForImageCopy
+                        ? nullptr : FSlateApplication::Get().FindWidgetWindow(Widget);
                 if (Window.IsValid())
                 {
                         const FSlateRect ClientRect = Window->GetClientRectInScreen();
@@ -686,6 +849,10 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 IO.MouseDown[0] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
                 IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
                 IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
+        }
+        if (!bCapturingForImageCopy)
+        {
+                State->LastPaintDpiScale = WindowDpiScale;
         }
 
         // (Re)bake the shared glyph atlas at this window's DPI scale. Must happen BEFORE NewFrame —
@@ -749,7 +916,21 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 FPlatformApplicationMisc::ClipboardCopy(*Tsv);
         };
 
+        // Skipped entirely while capturing — the chrome must not appear in the copied image.
+        if (!bCapturingForImageCopy)
         {
+                // "Copy chart" first and on its own: the owner's ask is the PICTURE. The data exports are
+                // secondary, since whoever is looking at this chart supplied the data in the first place.
+                if (ImGui::SmallButton("Copy chart"))
+                {
+                        // Only a flag. The capture has to flush rendering commands and re-render this very
+                        // widget, neither of which is safe from inside a Slate paint — see
+                        // ServicePendingImageCopy.
+                        State->bImageCopyRequested = true;
+                }
+                ImGui::SetItemTooltip("Copy the chart to the clipboard as an image");
+
+                ImGui::SameLine();
                 ImGui::BeginDisabled(CopyPoints.Num() == 0);
                 if (ImGui::SmallButton("Copy values"))
                 {
@@ -883,6 +1064,10 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         }
                         if (ImGui::BeginPopup("##PlotContext"))
                         {
+                                if (ImGui::MenuItem("Copy chart"))
+                                {
+                                        State->bImageCopyRequested = true;
+                                }
                                 // Same lambda as the buttons above — one definition of what gets copied.
                                 ImGui::BeginDisabled(CopyPoints.Num() == 0);
                                 if (ImGui::MenuItem("Copy values"))

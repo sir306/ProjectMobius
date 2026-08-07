@@ -21,6 +21,7 @@ struct ImPlotContext;
 struct ImDrawData;
 struct ImFontAtlas;
 struct FSlateDynamicImageBrush;
+class UTextureRenderTarget2D;
 
 class SImPlotOverlay;
 class SMoveableWindow;
@@ -158,6 +159,18 @@ public:
                 const FWidgetStyle& InWidgetStyle, bool bParentEnabled, const TSharedRef<const SWidget>& Widget,
                 const FSimpleDelegate& OnRequestClose);
 
+        /**
+         * Render the chart offscreen and put the image on the OS clipboard, if a copy was asked for.
+         *
+         * Split from the click on purpose. The button/menu item only raises a flag, because the capture
+         * has to FlushRenderingCommands and re-render the widget — neither is safe from inside
+         * PaintOverlayForChart, which IS a Slate paint. SImPlotOverlay's hover timer calls this, so the
+         * work lands on a normal tick with the cursor still over the chart.
+         *
+         * No-op when nothing is pending, so it is cheap to call every tick.
+         */
+        void ServicePendingImageCopy(const FName& ChartId);
+
 private:
 
         struct FImPlotOverlayState
@@ -167,6 +180,17 @@ private:
                 bool bHasLiveSample = false;
                 bool bHasLiveSampleThickness = false;
                 bool bMoveableWindowActivityRegistered = false;
+
+                /** Raised by the "Copy chart image" button / menu item; serviced next tick. */
+                bool bImageCopyRequested = false;
+
+                /**
+                 * DPI scale of the last ON-SCREEN paint. The capture pass has no window to ask, and
+                 * letting it fall back to 1.0 would re-bake SharedFontAtlas — which is shared by every
+                 * chart context — and then re-bake it again on the next on-screen paint. Replaying the
+                 * live scale keeps the atlas untouched.
+                 */
+                float LastPaintDpiScale = 1.0f;
 
                 bool bWindowOpen = true;
                 ImGuiContext* ImGuiContext = nullptr;
@@ -242,6 +266,17 @@ private:
         bool TryGetNearestPointForChart(const FName& ChartId, double TimeSeconds, FVector2D& OutPoint) const;
         void RenderDrawData(const ImDrawData* DrawData, const FVector2f& WindowOffset,
                 float DpiScale, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
+
+        /**
+         * True only while ServicePendingImageCopy is re-rendering a chart offscreen. PaintOverlayForChart
+         * reads it to leave the copy buttons out of the captured image and to size ImGui from the allotted
+         * geometry instead of the live window.
+         */
+        bool bCapturingForImageCopy = false;
+
+        /** Reused across captures: sized on demand, kept alive by UPROPERTY rather than left to GC. */
+        UPROPERTY(Transient)
+        TObjectPtr<UTextureRenderTarget2D> CaptureRenderTarget;
 
         ImFontAtlas* SharedFontAtlas = nullptr;
         TSharedPtr<FSlateDynamicImageBrush> SharedFontBrush;
