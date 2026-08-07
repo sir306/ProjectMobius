@@ -8,6 +8,7 @@
 #include "Core/MobiusWidgetSubsystem.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/PlatformApplicationMisc.h" // ClipboardCopy for the chart TSV export (S6)
 #include "Styling/CoreStyle.h"
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "InputCoreTypes.h"
@@ -28,6 +29,37 @@
 #include "implot.h"
 namespace
 {
+	/**
+	 * S6: render the plotted series as TSV for the OS clipboard.
+	 *
+	 * `bIncludeTime` is passed explicitly rather than inferred from a non-empty XHeader: the axis titles
+	 * are optional (HasAxisSettingsForChart can be false), so inferring would silently downgrade the
+	 * time+values export to values-only on any chart that never set its axis labels.
+	 *
+	 * %.10g, not the %.2f / %.0f the hover tooltip uses. The tooltip is rounding for a human reading one
+	 * point; an export that rounds is data loss the user cannot see once it is in their spreadsheet.
+	 * CRLF and a header row because the destination is Excel on Windows.
+	 */
+	FString BuildChartTsv(const TArray<FVector2D>& Points, const bool bIncludeTime,
+		const FString& XHeader, const FString& YHeader)
+	{
+		const FString TimeLabel = XHeader.IsEmpty() ? TEXT("Time") : XHeader;
+		const FString ValueLabel = YHeader.IsEmpty() ? TEXT("Value") : YHeader;
+
+		FString Out;
+		Out.Reserve(Points.Num() * (bIncludeTime ? 32 : 16) + 64);
+		Out += bIncludeTime ? FString::Printf(TEXT("%s\t%s"), *TimeLabel, *ValueLabel) : ValueLabel;
+		Out += TEXT("\r\n");
+
+		for (const FVector2D& Point : Points)
+		{
+			Out += bIncludeTime
+				? FString::Printf(TEXT("%.10g\t%.10g\r\n"), Point.X, Point.Y)
+				: FString::Printf(TEXT("%.10g\r\n"), Point.Y);
+		}
+		return Out;
+	}
+
 	/**
 	 * R1: paint the ImGui/ImPlot colour table from the Mobius palette.
 	 *
@@ -691,6 +723,39 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 // Nudge the title down so it isn't jammed against the window's top border.
                 ImGui::Dummy(ImVec2(0.0f, 8.0f));
                 ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
+                ImGui::Spacing();
+        }
+
+        // S6: copy the plotted series to the OS clipboard as TSV, ready to paste into a spreadsheet.
+        // Two buttons instead of a persisted toggle — the ask is "values by default, time + values as an
+        // option", and a second button costs no new state on FImPlotOverlayState, no theming and no
+        // persistence question. FPlatformApplicationMisc::ClipboardCopy, NOT ImGui::SetClipboardText:
+        // ImGui's clipboard is scoped to its own context and never reaches the Windows clipboard.
+        // The plot below is sized ImVec2(-1, -1), so it reflows into whatever height these leave.
+        {
+                const TArray<FVector2D>& CopyPoints = GetPlotPointsForChart(ChartId);
+                // Deliberately the ForChart accessor: this function is per-chart, and the legacy
+                // GetPlotPoints() reads a different series while looking entirely plausible.
+                ImGui::BeginDisabled(CopyPoints.Num() == 0);
+                // The TSV is built inside the click, never per frame — this is a paint path.
+                if (ImGui::SmallButton("Copy values"))
+                {
+                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/false,
+                                FString(), GetYAxisTitleForChart(ChartId).ToString());
+                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+                }
+                ImGui::SetItemTooltip("Copy %d value%s to the clipboard, one per line",
+                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Copy time + values"))
+                {
+                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/true,
+                                GetXAxisTitleForChart(ChartId).ToString(), GetYAxisTitleForChart(ChartId).ToString());
+                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+                }
+                ImGui::SetItemTooltip("Copy %d row%s of time and value, tab separated",
+                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
+                ImGui::EndDisabled();
                 ImGui::Spacing();
         }
 
