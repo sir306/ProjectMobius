@@ -27,6 +27,9 @@
 #endif
 #include "imgui.h"
 #include "implot.h"
+// GImPlot, GetCurrentPlot, ShowPlotContextMenu and ShowAxisContextMenu are all IMPLOT_API but live in the
+// internal header. They are what let the plot's right-click menu be rebuilt (S6) without patching ImPlot.
+#include "implot_internal.h"
 namespace
 {
 	/**
@@ -726,40 +729,11 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 ImGui::Spacing();
         }
 
-        // S6: copy the plotted series to the OS clipboard as TSV, ready to paste into a spreadsheet.
-        // Two buttons instead of a persisted toggle — the ask is "values by default, time + values as an
-        // option", and a second button costs no new state on FImPlotOverlayState, no theming and no
-        // persistence question. FPlatformApplicationMisc::ClipboardCopy, NOT ImGui::SetClipboardText:
-        // ImGui's clipboard is scoped to its own context and never reaches the Windows clipboard.
-        // The plot below is sized ImVec2(-1, -1), so it reflows into whatever height these leave.
-        {
-                const TArray<FVector2D>& CopyPoints = GetPlotPointsForChart(ChartId);
-                // Deliberately the ForChart accessor: this function is per-chart, and the legacy
-                // GetPlotPoints() reads a different series while looking entirely plausible.
-                ImGui::BeginDisabled(CopyPoints.Num() == 0);
-                // The TSV is built inside the click, never per frame — this is a paint path.
-                if (ImGui::SmallButton("Copy values"))
-                {
-                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/false,
-                                FString(), GetYAxisTitleForChart(ChartId).ToString());
-                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
-                }
-                ImGui::SetItemTooltip("Copy %d value%s to the clipboard, one per line",
-                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Copy time + values"))
-                {
-                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/true,
-                                GetXAxisTitleForChart(ChartId).ToString(), GetYAxisTitleForChart(ChartId).ToString());
-                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
-                }
-                ImGui::SetItemTooltip("Copy %d row%s of time and value, tab separated",
-                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
-                ImGui::EndDisabled();
-                ImGui::Spacing();
-        }
-
-        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f)))
+        // ImPlotFlags_NoMenus: the copy actions belong in the plot's own right-click menu next to the
+        // axis options, not on buttons stealing height above the chart. ImPlot 0.17 exposes no hook for
+        // appending to that menu, so this suppresses ImPlot's popups and the block before EndPlot below
+        // rebuilds them with our items on top. See the comment there for why nothing is lost.
+        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f), ImPlotFlags_NoMenus))
         {
                 if (HasAxisSettingsForChart(ChartId))
                 {
@@ -837,6 +811,101 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                 }
                         }
                         ImGui::EndTooltip();
+                }
+
+                // S6: the plot's right-click menu, rebuilt.
+                //
+                // ImPlotFlags_NoMenus on BeginPlot above suppressed ImPlot's own popups because 0.17 has no
+                // way to append to them. Everything ImPlot would have drawn is reproduced here from its
+                // exported internals — ShowPlotContextMenu and ShowAxisContextMenu are both IMPLOT_API, so
+                // this needs NO patch to the vendored library and no copied menu code that could drift from
+                // it. The axis popups are rebuilt too: NoMenus kills those as well, and dropping
+                // right-click-on-an-axis would be a silent regression on a chart people zoom.
+                //
+                // The open condition mirrors implot.cpp's own `can_ctx` exactly, including the
+                // legend-hovered exclusion. GImPlot->OpenContextThisFrame is set by UpdateInput() during
+                // BeginPlot and cleared while selecting or panning, which is what stops a right-drag
+                // box-zoom from also opening the menu — reimplementing that from IsMouseReleased would get
+                // it wrong.
+                if (ImPlotPlot* CurrentPlot = ImPlot::GetCurrentPlot())
+                {
+                        const bool bCanOpenContext = GImPlot != nullptr
+                                && GImPlot->OpenContextThisFrame
+                                && !CurrentPlot->Items.Legend.Hovered;
+                        const bool bAxisEqual = ImHasFlag(CurrentPlot->Flags, ImPlotFlags_Equal);
+
+                        // PushOverrideID(plot.ID) is what ImPlot does, so the popup IDs match the plot
+                        // rather than wherever this happens to sit on the ID stack.
+                        ImGui::PushOverrideID(CurrentPlot->ID);
+
+                        if (bCanOpenContext && CurrentPlot->Hovered)
+                        {
+                                ImGui::OpenPopup("##PlotContext");
+                        }
+                        if (ImGui::BeginPopup("##PlotContext"))
+                        {
+                                // Deliberately the ForChart accessor: this function is per-chart, and the
+                                // legacy GetPlotPoints() reads a different series while looking plausible.
+                                const TArray<FVector2D>& CopyPoints = GetPlotPointsForChart(ChartId);
+                                ImGui::BeginDisabled(CopyPoints.Num() == 0);
+                                // The TSV is built inside the click, never per frame — this is a paint path.
+                                if (ImGui::MenuItem("Copy values"))
+                                {
+                                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/false,
+                                                FString(), GetYAxisTitleForChart(ChartId).ToString());
+                                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+                                }
+                                if (ImGui::MenuItem("Copy time + values"))
+                                {
+                                        const FString Tsv = BuildChartTsv(CopyPoints, /*bIncludeTime*/true,
+                                                GetXAxisTitleForChart(ChartId).ToString(),
+                                                GetYAxisTitleForChart(ChartId).ToString());
+                                        FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+                                }
+                                ImGui::EndDisabled();
+                                ImGui::Separator();
+                                ImPlot::ShowPlotContextMenu(*CurrentPlot);
+                                ImGui::EndPopup();
+                        }
+
+                        for (int32 AxisIndex = 0; AxisIndex < IMPLOT_NUM_X_AXES; ++AxisIndex)
+                        {
+                                ImGui::PushID(AxisIndex);
+                                ImPlotAxis& XAxis = CurrentPlot->XAxis(AxisIndex);
+                                if (bCanOpenContext && XAxis.Hovered && XAxis.HasMenus())
+                                {
+                                        ImGui::OpenPopup("##XContext");
+                                }
+                                if (ImGui::BeginPopup("##XContext"))
+                                {
+                                        ImGui::TextUnformatted(XAxis.HasLabel()
+                                                ? CurrentPlot->GetAxisLabel(XAxis) : "X-Axis");
+                                        ImGui::Separator();
+                                        ImPlot::ShowAxisContextMenu(XAxis, bAxisEqual ? XAxis.OrthoAxis : nullptr, true);
+                                        ImGui::EndPopup();
+                                }
+                                ImGui::PopID();
+                        }
+                        for (int32 AxisIndex = 0; AxisIndex < IMPLOT_NUM_Y_AXES; ++AxisIndex)
+                        {
+                                ImGui::PushID(AxisIndex);
+                                ImPlotAxis& YAxis = CurrentPlot->YAxis(AxisIndex);
+                                if (bCanOpenContext && YAxis.Hovered && YAxis.HasMenus())
+                                {
+                                        ImGui::OpenPopup("##YContext");
+                                }
+                                if (ImGui::BeginPopup("##YContext"))
+                                {
+                                        ImGui::TextUnformatted(YAxis.HasLabel()
+                                                ? CurrentPlot->GetAxisLabel(YAxis) : "Y-Axis");
+                                        ImGui::Separator();
+                                        ImPlot::ShowAxisContextMenu(YAxis, bAxisEqual ? YAxis.OrthoAxis : nullptr, false);
+                                        ImGui::EndPopup();
+                                }
+                                ImGui::PopID();
+                        }
+
+                        ImGui::PopID();
                 }
 
                 ImPlot::EndPlot();
