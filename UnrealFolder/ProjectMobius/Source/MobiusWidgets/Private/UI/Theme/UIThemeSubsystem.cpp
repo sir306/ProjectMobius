@@ -37,6 +37,7 @@
 #include "Components/ComboBoxString.h"
 #include "Components/EditableTextBox.h"
 #include "Components/Image.h"
+#include "Components/PanelWidget.h"   // S8: data-chip label resolution walks panel children
 #include "Components/ProgressBar.h"
 #include "Components/ScrollBox.h"
 #include "Components/Slider.h"
@@ -123,6 +124,76 @@ namespace MobiusTheme
 		// CollapsePillBg (CollapsePillOverlay/CollapsePillBox do not contain it).
 		{ TEXT("PillBg"),            EMobiusPaletteRole::ButtonBg,          EThemeRoleTarget::BorderFill },
 	};
+
+	/** First map row whose substring the widget name contains, or null. One lookup, two callers. */
+	static const FNameRole* FindNameRole(const FString& WidgetName)
+	{
+		for (const FNameRole& Entry : GNameRoleMap)
+		{
+			if (WidgetName.Contains(Entry.Substr))
+			{
+				return &Entry;
+			}
+		}
+		return nullptr;
+	}
+
+	/**
+	 * S8: a DATA CHIP is a UBorder whose fill carries a data value rather than a palette role — today only
+	 * the LoS band chips. `BorderOutline` is exactly that set by construction: that target exists BECAUSE
+	 * the fill is data and must not be themed, so it is the test rather than a second name list.
+	 */
+	static bool IsDataChipBorder(const UWidget* Widget)
+	{
+		const FNameRole* Entry = Widget ? FindNameRole(Widget->GetName()) : nullptr;
+		return Entry && Entry->Target == EThemeRoleTarget::BorderOutline;
+	}
+
+	/** Every UTextBlock in this subtree. Stops at a nested UUserWidget — its WidgetTree is its own to theme. */
+	static void CollectTextBlocks(UWidget* Widget, TArray<UTextBlock*>& Out)
+	{
+		if (!Widget)
+		{
+			return;
+		}
+		if (UTextBlock* Text = Cast<UTextBlock>(Widget))
+		{
+			Out.Add(Text);
+			return;
+		}
+		if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
+		{
+			for (int32 Index = 0; Index < Panel->GetChildrenCount(); ++Index)
+			{
+				CollectTextBlocks(Panel->GetChildAt(Index), Out);
+			}
+		}
+	}
+
+	/**
+	 * S8: the band letter belonging to `Chip`. Child first (UBorder is a UContentWidget, so a letter drawn
+	 * INSIDE the chip is simply its content); failing that, the sole letter under the chip's parent, which
+	 * covers the layout where `ChipBox_N` holds the border and the letter as siblings.
+	 *
+	 * Returns null unless the match is UNAMBIGUOUS — exactly one UTextBlock. Taking the first of several
+	 * would be silently order-dependent, and a wrong-widget recolour is worse than no recolour: the chip is
+	 * still readable with its authored label, and a missing write is visible at the pixel gate.
+	 */
+	static UTextBlock* ResolveDataChipLabel(UBorder* Chip)
+	{
+		if (!Chip)
+		{
+			return nullptr;
+		}
+
+		TArray<UTextBlock*> Found;
+		CollectTextBlocks(Chip, Found);
+		if (Found.Num() == 0)
+		{
+			CollectTextBlocks(Chip->GetParent(), Found);
+		}
+		return Found.Num() == 1 ? Found[0] : nullptr;
+	}
 
 	/** App typeface (composite Inter/JetBrains-Mono UFont). Cached; loaded once game content is mounted. */
 	static UFont* GetInterFont()
@@ -1037,6 +1108,9 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		return;
 	}
 	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
+	// S8: collected in the pass below, written after it. See the RefreshDataChipLabel block for why the
+	// letter cannot be written from inside the loop.
+	TArray<UBorder*> DataChips;
 	// Recurse into embedded user widgets: a panel's controls are usually a level or two down in nested
 	// WBPs that have no C++ owner of their own, and those are exactly the ones that would otherwise be
 	// left behind when the walk goes. Overlap with a nested themed widget's own call is harmless.
@@ -1046,7 +1120,7 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 	// dilation input). MobiusWidgets already depends on ProjectMobius, so those classes cannot derive from
 	// UMobiusThemedUserWidget without a circular module dependency. They are reached because
 	// WBP_CompleteMobiusUI (UTopMainUiWrapper, this module) embeds them: the root themes the whole tree.
-	Root->WidgetTree->ForEachWidget([this, bLight, bConstruct](UWidget* Widget)
+	Root->WidgetTree->ForEachWidget([this, bLight, bConstruct, &DataChips](UWidget* Widget)
 	{
 		if (!Widget)
 		{
@@ -1117,6 +1191,10 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 		else if (UBorder* Border = Cast<UBorder>(Widget))
 		{
 			StyleBorderForTheme(Border, bLight);
+			if (MobiusTheme::IsDataChipBorder(Border))
+			{
+				DataChips.Add(Border);
+			}
 		}
 		// A6b-5: plain UButton. No-ops on a UBaseButton, which self-themes — so this covers exactly the
 		// residue the walk was still carrying. 8 of the 13 belong to USimulationPlayBar, which is reached
@@ -1139,6 +1217,14 @@ void UUIThemeSubsystem::ThemeStandardControlsInTree(UUserWidget* Root, const boo
 			StyleTextBlockForTheme(Text, bLight);
 		}
 	});
+
+	// S8, LAST: the text branch above remaps every UTextBlock in this tree, band letters included, so the
+	// contrast write has to outlive it. Nested plain WBPs are covered by their own recursive call, which
+	// runs its own copy of this post-pass over its own tree.
+	for (UBorder* Chip : DataChips)
+	{
+		RefreshDataChipLabel(Chip);
+	}
 }
 
 void UUIThemeSubsystem::StyleImageForTheme(UImage* Image, const bool bLight)
@@ -1688,26 +1774,83 @@ bool UUIThemeSubsystem::ApplyNameRoleOverride(UWidget* Widget, const bool bLight
 		return false;
 	}
 
-	const FString Name = Widget->GetName();
-	for (const FNameRole& Entry : GNameRoleMap)
+	const FNameRole* Entry = FindNameRole(Widget->GetName());
+	if (!Entry)
 	{
-		if (Name.Contains(Entry.Substr))
-		{
-			const FLinearColor Color = PaletteColor(Entry.Role, bLight);
-			if (Entry.Target == EThemeRoleTarget::BorderFill)
-			{
-				Border->SetBrushColor(Color);
-			}
-			else // BorderOutline — recolour only the 1u outline; the fill is a data colour (LoS band).
-			{
-				FSlateBrush Brush = Border->Background;
-				Brush.OutlineSettings.Color = FSlateColor(Color);
-				Border->SetBrush(Brush);
-			}
-			return true;
-		}
+		return false;
 	}
-	return false;
+
+	const FLinearColor Color = PaletteColor(Entry->Role, bLight);
+	if (Entry->Target == EThemeRoleTarget::BorderFill)
+	{
+		Border->SetBrushColor(Color);
+	}
+	else // BorderOutline — recolour only the 1u outline; the fill is a data colour (LoS band).
+	{
+		FSlateBrush Brush = Border->Background;
+		Brush.OutlineSettings.Color = FSlateColor(Color);
+		Border->SetBrush(Brush);
+	}
+	return true;
+}
+
+// =================================================================================================
+// S8 — CONTRASTING BAND LETTERS (2026-08-07)
+//
+// Stakeholder: "the banding letters need contrasting font to the selected color for band unsure how to
+// know when to use black or white font depending upon its selected color". The rule is exact and lives in
+// MobiusThemePalette.h (ContrastingLabelColor) — see that header for the derivation and its two traps.
+//
+// ONE WRITER. The band letter is a UTextBlock, so ThemeStandardControlsInTree's text branch would
+// otherwise remap it like any other label; that is why the refresh runs as a POST-PASS after that loop
+// and not from inside the UBorder branch. Order within the loop cannot be relied on — the letter is a
+// separate widget and ForEachWidget may reach it either side of its chip.
+//
+// The theme pass is also the only reason the letters are correct at construct without any Blueprint
+// change. The contrast itself is theme-INDEPENDENT (it is computed from a data colour, not a palette
+// role), so re-running it per theme is not about the theme — it is about being the last writer.
+// =================================================================================================
+
+void UUIThemeSubsystem::RefreshDataChipLabel(UBorder* Chip)
+{
+	UTextBlock* Label = Chip ? MobiusTheme::ResolveDataChipLabel(Chip) : nullptr;
+	if (!Label)
+	{
+		return;
+	}
+
+	// THE DOUBLE-TINT. SBorder paints its brush's TintColor MULTIPLIED by the widget's BrushColor, so
+	// neither one alone is the colour on screen. Feeding a single channel to ContrastingLabelColor would
+	// pick against a background that is not being drawn. A brush whose tint is "use foreground" specifies
+	// no colour of its own and multiplies by white.
+	const FSlateColor& Tint = Chip->Background.TintColor;
+	const FLinearColor TintColor = Tint.IsColorSpecified() ? Tint.GetSpecifiedColor() : FLinearColor::White;
+	const FLinearColor EffectiveFill = TintColor * Chip->GetBrushColor();
+
+	Label->SetColorAndOpacity(FSlateColor(MobiusThemePalette::ContrastingLabelColor(EffectiveFill)));
+}
+
+void UUIThemeSubsystem::SetDataChipFill(UBorder* Chip, const FLinearColor Fill)
+{
+	if (!Chip)
+	{
+		return;
+	}
+
+	// Normalise the double-tint before writing, so `Fill` is the colour that actually appears whichever
+	// channel the asset happened to author the band colour in. Without this, a chip whose BRUSH tint
+	// carries the old band colour would render TintColor x Fill — a colour nobody asked for, and the
+	// label would then be contrasted against it "correctly", which is the worst kind of right.
+	// This is the project's standing rule for themed borders (colour in BrushColor, tint white).
+	FSlateBrush Brush = Chip->Background;
+	if (!Brush.TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.001f))
+	{
+		Brush.TintColor = FSlateColor(FLinearColor::White);
+		Chip->SetBrush(Brush);
+	}
+
+	Chip->SetBrushColor(Fill);
+	RefreshDataChipLabel(Chip);
 }
 
 void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)

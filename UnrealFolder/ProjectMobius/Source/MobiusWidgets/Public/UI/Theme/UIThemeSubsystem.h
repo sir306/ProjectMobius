@@ -255,6 +255,30 @@ public:
 	void ThemeStandardControlsInTree(UUserWidget* Root, bool bConstruct = false);
 
 	/**
+	 * S8 (2026-08-07): set a DATA CHIP's fill and re-derive its letter colour in one call — the LoS band
+	 * chips, and any future chip whose fill is a value rather than a palette role.
+	 *
+	 * STATIC, so Blueprint gets a node with no target pin: this is meant to REPLACE an existing
+	 * `Set Brush Color` node on the chip, not to be appended after one. That is deliberate — if the fill
+	 * could still be written on its own, the contrast rule would be optional, and an optional invariant is
+	 * not an invariant. Anything that changes a band colour must come through here.
+	 *
+	 * Normalises the brush's TintColor to white so `Fill` is what actually renders (UBorder multiplies the
+	 * two), then picks black or white per MobiusThemePalette::ContrastingLabelColor. The label is resolved
+	 * off the widget — child first, then the sole text block beside it — and left alone if that is
+	 * ambiguous. Silent no-op on a null chip or a chip with no unambiguous letter.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
+	static void SetDataChipFill(UBorder* Chip, FLinearColor Fill);
+
+	/**
+	 * S8: re-derive `Chip`'s letter colour from the fill it currently carries, without changing the fill.
+	 * Runs as a post-pass at the end of ThemeStandardControlsInTree because the text branch of that walk
+	 * would otherwise be the last writer on the letter. See the block comment above the definition.
+	 */
+	static void RefreshDataChipLabel(UBorder* Chip);
+
+	/**
 	 * Slider: handle = SliderThumb role (design: thumb is the accent), track = SliderTrack for a plain
 	 * greyscale bar and LEFT ALONE for a saturated one, because a coloured bar is data (the material
 	 * picker's HSV sliders) and not chrome. Also neutralises the style's own brush tints to white so the
