@@ -72,6 +72,27 @@ namespace
 	}
 
 	/**
+	 * Gamma pairing for the chart capture, as two console levers.
+	 *
+	 * Getting this wrong is not subtle — an extra linear->sRGB encode turns the near-black chart
+	 * background into mid grey and the whole image reads washed out — but which pairing is correct
+	 * depends on the RHI, and it cannot be settled by reading code. The defaults are the reasoned answer
+	 * (gamma-space output stored raw, so ReadPixels returns exactly the bytes that were on screen); these
+	 * exist so the other three combinations can be tried from the console in seconds instead of costing
+	 * an editor rebuild each.
+	 */
+	static TAutoConsoleVariable<int32> CVarChartCopyGammaSpace(
+		TEXT("Mobius.ChartCopy.GammaSpace"), 1,
+		TEXT("Chart image copy: 1 = Slate3D writes gamma-space values (default), 0 = linear."),
+		ECVF_Default);
+
+	static TAutoConsoleVariable<int32> CVarChartCopyLinearTarget(
+		TEXT("Mobius.ChartCopy.LinearTarget"), 1,
+		TEXT("Chart image copy: 1 = render target forces linear gamma so the hardware does NOT re-encode "
+			"on write (default), 0 = sRGB target."),
+		ECVF_Default);
+
+	/**
 	 * S6: put a captured chart on the OS clipboard as an image.
 	 *
 	 * UE has no image clipboard — FPlatformApplicationMisc only ever calls SetClipboardData with
@@ -683,14 +704,36 @@ void UImPlotVisualizationSubsystem::ServicePendingImageCopy(const FName& ChartId
                 return;
         }
 
+        const bool bLinearTarget = CVarChartCopyLinearTarget.GetValueOnGameThread() != 0;
+        const bool bGammaSpace = CVarChartCopyGammaSpace.GetValueOnGameThread() != 0;
+
         const FIntPoint TargetSize(FMath::CeilToInt(DrawSize.X), FMath::CeilToInt(DrawSize.Y));
         if (CaptureRenderTarget == nullptr
                 || CaptureRenderTarget->SizeX != TargetSize.X
-                || CaptureRenderTarget->SizeY != TargetSize.Y)
+                || CaptureRenderTarget->SizeY != TargetSize.Y
+                || bCaptureTargetLinearGamma != bLinearTarget) // rebuild when the console lever moves
         {
-                // Gamma-corrected so the captured image matches what is on screen rather than coming out
-                // washed out; TF_Bilinear is what CreateTargetFor uses for widget captures generally.
-                CaptureRenderTarget = FWidgetRenderer::CreateTargetFor(DrawSize, TF_Bilinear, /*bUseGammaCorrection*/true);
+                // Built by hand rather than with FWidgetRenderer::CreateTargetFor, because that helper
+                // derives BOTH of its gamma flags from one argument and the pairing it produces
+                // double-corrects — which is what made the first capture come out washed out (a near-black
+                // chart background landed at mid grey, the signature of an extra linear->sRGB encode).
+                //
+                // CreateTargetFor(true) gives SRGB=false but bForceLinearGamma=FALSE, so the RHI texture is
+                // created sRGB and the hardware encodes on write — while the Slate3D renderer, constructed
+                // with bUseGammaCorrection=true below, is ALREADY writing gamma-space values. Encoded twice.
+                //
+                // What is wanted is gamma-space output stored raw: force linear gamma on the resource so
+                // nothing re-encodes, and ReadPixels then hands back exactly the bytes that were on screen.
+                // 8-bit is safe here — Slate's recommended colour format is PF_B8G8R8A8, so there is no
+                // float path to lose precision through.
+                CaptureRenderTarget = NewObject<UTextureRenderTarget2D>(this);
+                CaptureRenderTarget->Filter = TF_Bilinear;
+                CaptureRenderTarget->ClearColor = FLinearColor::Transparent;
+                CaptureRenderTarget->SRGB = !bLinearTarget;
+                CaptureRenderTarget->TargetGamma = 1.0f;
+                CaptureRenderTarget->InitCustomFormat(TargetSize.X, TargetSize.Y, PF_B8G8R8A8, bLinearTarget);
+                CaptureRenderTarget->UpdateResourceImmediate(true);
+                bCaptureTargetLinearGamma = bLinearTarget;
         }
         if (CaptureRenderTarget == nullptr)
         {
@@ -700,7 +743,7 @@ void UImPlotVisualizationSubsystem::ServicePendingImageCopy(const FName& ChartId
         {
                 // Scoped so the flag is down again before anything else can paint, even on an early return.
                 TGuardValue<bool> CaptureGuard(bCapturingForImageCopy, true);
-                FWidgetRenderer Renderer(/*bUseGammaCorrection*/true);
+                FWidgetRenderer Renderer(bGammaSpace);
                 Renderer.SetIsPrepassNeeded(true);
                 Renderer.DrawWidget(CaptureRenderTarget, OverlayRef, DrawSize, /*DeltaTime*/0.0f);
                 // DrawWidget only ENQUEUES; without this the readback races an empty target.
@@ -818,34 +861,41 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
         ImGuiIO& IO = ImGui::GetIO();
         // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
+        // BOTH of these come from THIS WIDGET's geometry, never from the window.
+        //
+        // They used to be taken from Window->GetClientRectInScreen() whenever the widget resolved to a
+        // window, and that is wrong here: OpenOverlayWindow passes the overlay as `WindowPanelContent`, so
+        // it sits BELOW SMoveableWindow's title bar. Measuring the cursor from the window's client origin
+        // therefore added a constant offset equal to the title-bar height — the cursor read as lower than
+        // it really was, by the same amount at every window size — and DisplaySize was correspondingly
+        // taller than the widget, so ImGui laid the chart out into a space bigger than it was drawn into.
+        // RenderDrawData already positions the output from AllottedGeometry's layout transform, so the
+        // widget's own geometry is the only frame of reference that agrees with what is on screen.
+        //
+        // It also removes the special case the capture pass needed: an offscreen re-render is still
+        // parented to the live window, so the window branch would have sized ImGui to the window while
+        // Slate allotted the capture size.
         FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
-        // Replay the last on-screen DPI during a capture instead of defaulting to 1.0, or the shared glyph
-        // atlas re-bakes for the capture and re-bakes back on the next real paint — across every chart.
+        // Replay the last on-screen DPI during a capture rather than defaulting to 1.0, or the shared
+        // glyph atlas re-bakes for the capture and re-bakes back on the next real paint — across every
+        // chart, since the atlas is shared.
         float WindowDpiScale = bCapturingForImageCopy ? State->LastPaintDpiScale : 1.0f;
         if (FSlateApplication::IsInitialized())
         {
                 const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
-                // During a capture the widget is still parented to its live window, so asking the window
-                // would size ImGui to the WINDOW while Slate allots the capture's DrawSize — the chart
-                // comes out clipped or letterboxed. Take the allotted-geometry branch instead.
-                const TSharedPtr<SWindow> Window = bCapturingForImageCopy
-                        ? nullptr : FSlateApplication::Get().FindWidgetWindow(Widget);
-                if (Window.IsValid())
+                const FVector2f LocalCursorPos = FVector2f(AllottedGeometry.AbsoluteToLocal(CursorPos));
+                IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
+
+                // The window is still the only place a DPI scale can come from; it just must not decide
+                // position or size.
+                if (!bCapturingForImageCopy)
                 {
-                        const FSlateRect ClientRect = Window->GetClientRectInScreen();
-                        const float DpiScale = Window->GetDPIScaleFactor();
-                        WindowDpiScale = DpiScale;
-                        const FVector2f ClientOrigin = FVector2f(ClientRect.Left, ClientRect.Top);
-                        const FVector2f LocalCursorPos = (CursorPos - ClientOrigin) / DpiScale;
-                        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
-                        // Use DPI-scaled client size for display
-                        DisplaySize = FVector2f(ClientRect.GetSize()) / DpiScale;
+                        if (const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(Widget))
+                        {
+                                WindowDpiScale = Window->GetDPIScaleFactor();
+                        }
                 }
-                else
-                {
-                        const FVector2f LocalCursorPos = FVector2f(AllottedGeometry.AbsoluteToLocal(CursorPos));
-                        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
-                }
+
                 IO.MouseDown[0] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
                 IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
                 IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
@@ -1058,11 +1108,18 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         // rather than wherever this happens to sit on the ID stack.
                         ImGui::PushOverrideID(CurrentPlot->ID);
 
+                        // "##Mobius…" NOT ImPlot's own "##PlotContext"/"##XContext"/"##YContext".
+                        // ImPlotFlags_NoMenus gates only the OpenPopup calls in EndPlot — the matching
+                        // `if (ImGui::BeginPopup("##PlotContext"))` runs UNCONDITIONALLY. Under the same
+                        // PushOverrideID, reusing the name meant EndPlot re-entered the popup this block
+                        // had just opened and drew ShowPlotContextMenu a SECOND time, which Dear ImGui
+                        // reports as "2 visible items with conflicting ID". Distinct names leave ImPlot's
+                        // BeginPopup returning false, as NoMenus intends.
                         if (bCanOpenContext && CurrentPlot->Hovered)
                         {
-                                ImGui::OpenPopup("##PlotContext");
+                                ImGui::OpenPopup("##MobiusPlotContext");
                         }
-                        if (ImGui::BeginPopup("##PlotContext"))
+                        if (ImGui::BeginPopup("##MobiusPlotContext"))
                         {
                                 if (ImGui::MenuItem("Copy chart"))
                                 {
@@ -1090,9 +1147,9 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                 ImPlotAxis& XAxis = CurrentPlot->XAxis(AxisIndex);
                                 if (bCanOpenContext && XAxis.Hovered && XAxis.HasMenus())
                                 {
-                                        ImGui::OpenPopup("##XContext");
+                                        ImGui::OpenPopup("##MobiusXContext");
                                 }
-                                if (ImGui::BeginPopup("##XContext"))
+                                if (ImGui::BeginPopup("##MobiusXContext"))
                                 {
                                         ImGui::TextUnformatted(XAxis.HasLabel()
                                                 ? CurrentPlot->GetAxisLabel(XAxis) : "X-Axis");
@@ -1108,9 +1165,9 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                                 ImPlotAxis& YAxis = CurrentPlot->YAxis(AxisIndex);
                                 if (bCanOpenContext && YAxis.Hovered && YAxis.HasMenus())
                                 {
-                                        ImGui::OpenPopup("##YContext");
+                                        ImGui::OpenPopup("##MobiusYContext");
                                 }
-                                if (ImGui::BeginPopup("##YContext"))
+                                if (ImGui::BeginPopup("##MobiusYContext"))
                                 {
                                         ImGui::TextUnformatted(YAxis.HasLabel()
                                                 ? CurrentPlot->GetAxisLabel(YAxis) : "Y-Axis");

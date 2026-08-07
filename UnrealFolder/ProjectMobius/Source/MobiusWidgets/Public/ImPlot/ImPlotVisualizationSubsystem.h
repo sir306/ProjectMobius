@@ -278,6 +278,9 @@ private:
         UPROPERTY(Transient)
         TObjectPtr<UTextureRenderTarget2D> CaptureRenderTarget;
 
+        /** Gamma flag CaptureRenderTarget was built with, so moving the console lever rebuilds it. */
+        bool bCaptureTargetLinearGamma = true;
+
         ImFontAtlas* SharedFontAtlas = nullptr;
         TSharedPtr<FSlateDynamicImageBrush> SharedFontBrush;
         FName SharedFontTextureName;
