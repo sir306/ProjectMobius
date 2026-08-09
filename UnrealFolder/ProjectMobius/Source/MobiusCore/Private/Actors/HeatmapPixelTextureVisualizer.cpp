@@ -388,6 +388,38 @@ void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands() const
 	}
 }
 
+void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
+{
+	// D9 / 2026-08-10 — DERIVE the Route Usage band edges from the grid actually in force.
+	//
+	// An edge means "N + 0.5 crossings", and one crossing is one cell side of person-metres, so the edges
+	// are only correct for one cell size. This is the only place that size is known: TrajectoryLOSBands'
+	// UPROPERTY initialiser runs at construction, long before the field is sized, so a default can never
+	// be a crossing-count set. Derivation and its error bars: FHeatmapLOSBands::TrajectoryCrossings.
+	//
+	// GetEffectiveCmPerTexel(), NOT TrajectoryWorldCmPerTexel: Initialise may have RAISED cm/texel to
+	// honour TrajectoryMaxGridDim (D2b), and banding a coarsened grid against the requested cell size
+	// would misstate every colour by that ratio with nothing to flag it.
+	//
+	// This deliberately OVERWRITES the UPROPERTY. The edges are a computed contract, not a preference: a
+	// value typed into the details panel cannot know the cell size, and honouring it would reintroduce the
+	// very defect this replaces — band meaning drifting with building size. Route Exposure keeps its own
+	// set (TrajectoryExposureLOSBands): different quantity, different reference, not touched here.
+	//
+	// An unsized field reports 0 cm/texel; TrajectoryCrossings guards that and returns a well-formed
+	// placeholder rather than a collapsed chain, so this is safe to call before Initialise has run.
+	TrajectoryLOSBands = FHeatmapLOSBands::TrajectoryCrossings(
+		TrajectoryField.GetEffectiveCmPerTexel() / 100.0f, // cm/texel -> cell side in metres
+		TrajectoryField.GetConfig().ReferenceUsageDensity);
+
+	// Push immediately rather than leaving it to the ApplyTrajectoryLOSBands() at the end of
+	// EnsureTrajectoryFieldSized: that call sits inside the texture-resize branch and is skipped whenever
+	// the render target is already the right square, which would leave both consumers banding against the
+	// previous grid's edges. Both targets are null-checked inside, so calling before they exist is
+	// harmless and the later sites re-push the same struct.
+	ApplyTrajectoryLOSBands();
+}
+
 void AHeatmapPixelTextureVisualizer::SetTrajectoryMapMode(ETrajectoryMapMode NewMode)
 {
 	if (TrajectoryMapMode == NewMode)
@@ -429,6 +461,14 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 		// Initialise() resets every accumulator, so re-running it on an unchanged floor would erase the
 		// accumulated surface. Only the display width is cheap to re-apply.
 		TrajectoryField.SetDisplayPathWidthCm(TrajectoryDisplayPathWidthCm);
+
+		// Re-derive the bands here too. The effective cell size cannot have changed on this branch, so
+		// this is idempotent — but it is a divide and four clamps, and paying it removes the need to prove
+		// a negative every time this function is touched. bAlreadySized is judged on the REQUESTED
+		// cm/texel, so anything that resets TrajectoryLOSBands while leaving the field valid (actor
+		// re-construction, a details-panel edit, a level reload) would otherwise strand the surface on the
+		// quantile placeholder with no way back until the floor changed.
+		RefreshTrajectoryCrossingBands();
 		return;
 	}
 
@@ -441,6 +481,8 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 	// Initialise resets the presentation selection, so re-assert the actor's mode: it decides which
 	// quantity the incremental splat maintains, and a mismatch would cost a full rebuild on first encode.
 	TrajectoryField.SetPresentationMode(TrajectoryMapMode);
+	RefreshTrajectoryCrossingBands();
+
 	TrajectoryFieldExtentCm = HeatmapMeshSize2D;
 	TrajectoryFieldOriginCm = OriginCm;
 	TrajectoryFieldSizedCmPerTexel = TrajectoryWorldCmPerTexel;

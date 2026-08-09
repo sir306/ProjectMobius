@@ -607,6 +607,17 @@ private:
 	void ApplyTrajectoryLOSBands() const;
 
 	/**
+	 * Recomputes TrajectoryLOSBands from the field's EFFECTIVE cell size and pushes it to both consumers.
+	 *
+	 * Separate from ApplyTrajectoryLOSBands, which only pushes what is already stored. Deriving inside
+	 * that function instead would be wrong in a subtle way: it is called from six sites, several of them
+	 * before the field is sized, and it is const — so it would silently turn the TrajectoryLOSBands
+	 * UPROPERTY into a value nothing can ever set. Keeping the derivation here means there is exactly one
+	 * writer, and it runs exactly where the cell size becomes known.
+	 */
+	void RefreshTrajectoryCrossingBands();
+
+	/**
 	 * Sizes/allocates the canonical field from the mesh's world extent and origin, and resizes the
 	 * accumulation texture to match. Idempotent: re-initialising only happens when the extent, origin or
 	 * sizing policy actually changed, because FTrajectoryField::Initialise resets every accumulator and a

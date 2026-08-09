@@ -296,8 +296,19 @@ namespace TrajectoryRealData
 
 	static FRealDataStats Measure(const UDynamicPixelRenderingTexture& Texture)
 	{
-		// LOS_A edge for the trajectory surface, mirrored from FHeatmapLOSBands::Trajectory().
-		constexpr float TrajectoryLOS_A = 24.5f / 255.0f;
+		// LOS_A edge, read from the texture rather than mirrored as a literal.
+		//
+		// This was `constexpr float TrajectoryLOS_A = 24.5f / 255.0f` until 2026-08-10 — a hand-copied
+		// mirror of an edge the shipping struct had ALREADY replaced with 0.5/255 when the seed-and-brush
+		// rasteriser was deleted. So the diagnostic below was counting bytes 1..24 as "below the first
+		// band" when the band in force put only byte 0 there: it had been measuring nothing real. A copy
+		// cannot be kept honest, so take the value from the object that actually bands the pixels —
+		// ApplyTrajectoryLOSBands pushes the identical struct to this texture and to the material.
+		//
+		// Under the crossing-count contract this is expected to report ZERO by construction: the loop
+		// already skips Red == 0, and BandA is half a byte, so no positive byte can fall below it. A
+		// non-zero reading means the pushed BandA is not the no-data edge, which is worth seeing.
+		const float TrajectoryLOS_A = Texture.GetLOSBands().BandA;
 
 		FRealDataStats Stats;
 		const FVector2D Dimensions = Texture.GetDynamicTextureSize();

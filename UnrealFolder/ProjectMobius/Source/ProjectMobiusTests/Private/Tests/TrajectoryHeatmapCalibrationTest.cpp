@@ -53,6 +53,11 @@
 // For the two public static mesh-sizing helpers that T-OFFSET-2 asserts against. Header only -- this
 // test never spawns the actor, so it stays a Tier A case with no world.
 #include "Actors/HeatmapPixelTextureVisualizer.h"
+// For UDynamicPixelRenderingTexture::BandColourForRedValue -- the static the T-BAND cases below drive to
+// assert which COLOUR a crossing count actually renders. The header pulls OpenCV, which is why
+// HeatmapLOSBands.h deliberately does not; that is fine here, and TrajectoryHeatmapRealDatasetTest.cpp
+// already includes it from this same module. Still no world and no RHI, so these stay Tier A.
+#include "DynamicPixelRenderingTexture.h"
 #if WITH_EDITOR
 // The blur gate inspects the material graph, which is editor-only data.
 #include "Materials/Material.h"
@@ -2178,5 +2183,356 @@ bool FTrajMaterialIsUnlitTest::RunTest(const FString& Parameters)
 	return true;
 }
 #endif // WITH_EDITOR
+
+// =====================================================================================================
+// CROSSING-COUNT BANDS (T-BAND-*)  -- added 2026-08-10
+//
+// These cover FHeatmapLOSBands::TrajectoryCrossings, which replaced the frozen quantile edges as the
+// Route Usage band contract. The whole point of that change is that a colour on the trajectory surface
+// means a COUNTABLE number of crossings, so the assertions below are about countability:
+//
+//   T-BAND-1  one axial crossing of a cell deposits exactly one cell-side of person-metres
+//   T-BAND-2  a cell holding EXACTLY N crossings renders band N's colour, not N+-1  (the equality tie)
+//   T-BAND-3  the edges move with the cell size, i.e. they are computed and not a literal table
+//   T-BAND-4  a degenerate cell size still yields a strictly monotonic, in-range chain
+//   T-BAND-5  the shipping width/cell pair collapses the splat to one tap, which is what makes the
+//             counts literal rather than spread across a kernel
+// =====================================================================================================
+
+namespace TrajectoryBandOracle
+{
+	// The shipping configuration, named once. s = 0.1 m and Reference = 100 person/m give a denominator of
+	// exactly 10, so an edge at (N + 0.5) crossings sits at (N + 0.5)/10.
+	constexpr float ShippingCellSideMetres = 0.1f;
+	constexpr float ShippingReferenceUsage = 100.0f;
+
+	// Tight, because these are single float divisions of exactly-representable operands; 1e-6 is slack.
+	constexpr float EdgeTol = 1.0e-6f;
+
+	/**
+	 * The six band colours, mirrored from the LOS_*_COLOR macros in DynamicPixelRenderingTexture.cpp.
+	 *
+	 * Duplicated deliberately: the macros are private to that .cpp, and pinning them here means T-BAND-2
+	 * also guards the RAMP the owner specified (0 = blue, 1 = cyan, 2 = green, 3 = yellow, 4 = orange,
+	 * 5+ = red). If someone re-orders or re-tints the ramp, this reddens.
+	 */
+	static const FLinearColor BandColours[6] = {
+		FLinearColor(0.0f, 0.0f, 1.0f, 1.0f),  // A blue   - no data
+		FLinearColor(0.0f, 1.0f, 1.0f, 1.0f),  // B cyan   - ~1 crossing
+		FLinearColor(0.0f, 1.0f, 0.0f, 1.0f),  // C green  - ~2
+		FLinearColor(1.0f, 1.0f, 0.0f, 1.0f),  // D yellow - ~3
+		FLinearColor(1.0f, 0.25f, 0.0f, 1.0f), // E orange - ~4
+		FLinearColor(1.0f, 0.0f, 0.0f, 1.0f)   // F red    - 5+
+	};
+
+	static const TCHAR* BandNames[6] = { TEXT("A/blue"), TEXT("B/cyan"), TEXT("C/green"),
+	                                     TEXT("D/yellow"), TEXT("E/orange"), TEXT("F/red") };
+
+	/** Normalised red channel for a cell holding exactly N crossings: N / (s * Reference). */
+	static float RedForCrossings(double Crossings, float CellSideMetres, float Reference)
+	{
+		return static_cast<float>(Crossings / (static_cast<double>(CellSideMetres) * Reference));
+	}
+
+	static bool EdgesStrictlyIncrease(const FHeatmapLOSBands& B)
+	{
+		return B.BandA < B.BandB && B.BandB < B.BandC && B.BandC < B.BandD && B.BandD < B.BandE;
+	}
+
+	static bool EdgesInRange(const FHeatmapLOSBands& B)
+	{
+		return B.BandA >= 0.0f && B.BandE <= 1.0f;
+	}
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-1 -- one axial crossing deposits exactly one cell side, and the derived edges are the half-steps.
+//
+// The segment runs from x = 10 cm to x = 20 cm at y = 5 cm, which is exactly the span of column 1 on a
+// 10 cm grid. So column 1 receives the whole 0.1 m and no neighbour receives anything: a clean single
+// crossing, which is the unit the entire band ladder is denominated in.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand1CrossingUnitTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_1_OneCrossingIsOneCellSide",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand1CrossingUnitTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+	using namespace TrajectoryBandOracle;
+
+	// 10 cm cells, and a 10 cm display width so the splat is the identity kernel (see T-BAND-5) and the
+	// presentation copy is the canonical one. Both matter: the encode reads PRESENTATION.
+	FTrajectoryField Field = MakeField(100.0, 100.0, 10.0f, 10.0f);
+
+	Field.DepositSegment(FVector2D(10.0, 5.0), FVector2D(20.0, 5.0), 0.1f);
+
+	const float CellSideMetres = Field.GetEffectiveCmPerTexel() / 100.0f;
+	TestEqual(TEXT("cell side is the shipping 0.1 m"), CellSideMetres, ShippingCellSideMetres, EdgeTol);
+
+	FIntPoint Cell;
+	TestTrue(TEXT("the crossed cell resolves"), Field.WorldToCell(FVector2D(15.0, 5.0), Cell));
+
+	// Pinned by value, not just "it resolved". The neighbour indices below are derived from this, so a
+	// surprise here would read out of bounds rather than fail an assertion; and stating the expected cell
+	// is what makes the segment endpoints (10 cm -> 20 cm) legible as "exactly column 1's span".
+	TestTrue(TEXT("T-BAND-1: the crossed cell is column 1, row 0"), Cell == FIntPoint(1, 0));
+	TestTrue(TEXT("T-BAND-1: the grid is big enough for the neighbour checks below"),
+		Field.GetGridDims().X >= 3 && Field.GetGridDims().Y >= 2);
+
+	const int32 Index = Cell.Y * Field.GetGridDims().X + Cell.X;
+	const double CellMetres = (double)Field.GetCanonical(ETrajectoryMapMode::RouteUsage)[Index];
+
+	// The load-bearing identity: person-metres in one cell divided by the cell side IS the crossing count.
+	TestTrue(TEXT("T-BAND-1: one axial crossing deposits exactly one cell side of person-metres"),
+		NearlyEqualHybrid(CellMetres, 0.1, RelTol1e6, Coeff(AbsCoeff2e7, 0.1)));
+
+	const double Crossings = CellMetres / CellSideMetres;
+	TestTrue(FString::Printf(TEXT("T-BAND-1: that reads as exactly 1.00 crossings (got %.9f)"), Crossings),
+		NearlyEqualAbs(Crossings, 1.0, 1.0e-6));
+
+	// Nothing leaked sideways. Asserted against the NEIGHBOURS by name rather than against the field
+	// total: a sum check is conserved by construction and would pass even if a splat regression had
+	// spread the crossing across a kernel, which is precisely the failure that would stop every band edge
+	// below from being literal. Both neighbours must be EXACTLY zero -- untouched float32, never written.
+	const TArray<float>& Metres = Field.GetCanonical(ETrajectoryMapMode::RouteUsage);
+	TestEqual(TEXT("T-BAND-1: the cell BEFORE the crossed one received nothing at all"),
+		(double)Metres[Cell.Y * Field.GetGridDims().X + (Cell.X - 1)], 0.0, 0.0);
+	TestEqual(TEXT("T-BAND-1: the cell AFTER the crossed one received nothing at all"),
+		(double)Metres[Cell.Y * Field.GetGridDims().X + (Cell.X + 1)], 0.0, 0.0);
+	TestEqual(TEXT("T-BAND-1: the row ABOVE received nothing at all"),
+		(double)Metres[(Cell.Y + 1) * Field.GetGridDims().X + Cell.X], 0.0, 0.0);
+
+	TestTrue(TEXT("T-BAND-1: and the field total is that one cell"),
+		NearlyEqualHybrid(SumCanonical(Field, ETrajectoryMapMode::RouteUsage), CellMetres, RelTol1e6,
+			Coeff(AbsCoeff2e7, 0.1)));
+
+	// Identity kernel, so the presentation the encode reads holds the same value the DDA wrote. Without
+	// this the count would be spread over 9 taps and no band edge below would be literal.
+	TestTrue(TEXT("T-BAND-1: presentation == canonical for the crossed cell (kernel is one tap)"),
+		NearlyEqualAbs((double)Field.GetPresentation(ETrajectoryMapMode::RouteUsage)[Index], CellMetres, 1.0e-9));
+
+	// And the edges themselves: (N + 0.5) / (s * Reference) = (N + 0.5) / 10.
+	const FHeatmapLOSBands Bands =
+		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, ShippingReferenceUsage);
+
+	TestEqual(TEXT("T-BAND-1: BandA is half a byte (no-data only)"), Bands.BandA, 0.5f / 255.0f, EdgeTol);
+	TestEqual(TEXT("T-BAND-1: BandB edge == 1.5 crossings"), Bands.BandB, 0.150f, EdgeTol);
+	TestEqual(TEXT("T-BAND-1: BandC edge == 2.5 crossings"), Bands.BandC, 0.250f, EdgeTol);
+	TestEqual(TEXT("T-BAND-1: BandD edge == 3.5 crossings"), Bands.BandD, 0.350f, EdgeTol);
+	TestEqual(TEXT("T-BAND-1: BandE edge == 4.5 crossings"), Bands.BandE, 0.450f, EdgeTol);
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-2 -- THE EQUALITY-TIE GUARD. This is the one that justifies the half-step edges.
+//
+// A cell holding EXACTLY N crossings must render band N's colour. Edges sit at N + 0.5 precisely so the
+// integer case is never on a boundary; put them on the integers instead and `RVal < Band` turns into an
+// exact-equality tie, dropping every whole-numbered cell one band low.
+//
+// NON-VACUITY: move the edges from (N + 0.5)/10 to N/10 and this reddens immediately -- 1 crossing would
+// render green instead of cyan, 2 yellow instead of green, and so on down the ramp.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand2IntegerTieTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_2_ExactIntegerLandsInItsOwnBand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand2IntegerTieTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryBandOracle;
+
+	const FHeatmapLOSBands Bands =
+		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, ShippingReferenceUsage);
+
+	// Index i == the band a cell holding exactly i crossings must take. 5 and anything above share LOS_F.
+	for (int32 Crossings = 0; Crossings <= 5; ++Crossings)
+	{
+		const float RVal = RedForCrossings(Crossings, ShippingCellSideMetres, ShippingReferenceUsage);
+		const FLinearColor Got = UDynamicPixelRenderingTexture::BandColourForRedValue(RVal, Bands);
+
+		TestTrue(FString::Printf(
+			TEXT("T-BAND-2: exactly %d crossing(s) -> RVal %.4f -> band %s, got (%.2f, %.2f, %.2f)"),
+			Crossings, RVal, BandNames[Crossings], Got.R, Got.G, Got.B),
+			Got.Equals(BandColours[Crossings], 1.0e-4f));
+	}
+
+	// Band F is open-ended by design: on a crossing count, "5 or more" is a true statement about 50 as
+	// well as 5, so saturation is the CORRECT reading rather than a defect to normalise away.
+	//
+	// Swept only to 10, which is where RVal reaches 1.0 at this reference. Beyond that EncodeToDisplay
+	// clamps the stored byte to 255 and every higher count arrives here as the same input, so asserting
+	// on 12 or 50 would re-run the RVal == 1.0 case under a different label rather than testing anything.
+	// That the encode clamps at all is T-SAT-1's claim, not this test's.
+	for (int32 Crossings = 6; Crossings <= 10; ++Crossings)
+	{
+		const float RVal = RedForCrossings(Crossings, ShippingCellSideMetres, ShippingReferenceUsage);
+		TestTrue(FString::Printf(TEXT("T-BAND-2: %d crossings -> RVal %.2f stays in band F/red"), Crossings, RVal),
+			UDynamicPixelRenderingTexture::BandColourForRedValue(RVal, Bands).Equals(BandColours[5], 1.0e-4f));
+	}
+
+	// Untouched floor. EncodeToDisplay floors any POSITIVE cell to byte 1, so byte 0 is the only value
+	// below BandA -- that is what reserves blue for "nobody walked here" rather than "hardly anyone did".
+	TestTrue(TEXT("T-BAND-2: byte 0 is band A/blue"),
+		UDynamicPixelRenderingTexture::BandColourForRedValue(0.0f, Bands).Equals(BandColours[0], 1.0e-4f));
+	TestTrue(TEXT("T-BAND-2: byte 1 is already ABOVE band A, i.e. real data"),
+		!UDynamicPixelRenderingTexture::BandColourForRedValue(1.0f / 255.0f, Bands)
+			.Equals(BandColours[0], 1.0e-4f));
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-3 -- the edges track the cell size, which is the entire reason they are computed.
+//
+// NON-VACUITY: replace TrajectoryCrossings' body with a frozen table and this reddens, because every
+// assertion here compares edges derived at DIFFERENT grid resolutions. It is the guard against the
+// pre-2026-08-03 defect class where band meaning silently followed building size -- FTrajectoryField's
+// D2b clamp can RAISE cm/texel on a large floor without any caller asking it to.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand3ScalingTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_3_EdgesTrackCellSizeAndReference",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand3ScalingTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryBandOracle;
+
+	const FHeatmapLOSBands Shipping =
+		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, ShippingReferenceUsage);
+	const FHeatmapLOSBands Coarse =        // 20 cm cells -- what the D2b clamp produces on a big floor
+		FHeatmapLOSBands::TrajectoryCrossings(0.2f, ShippingReferenceUsage);
+	const FHeatmapLOSBands Fine =          // 5 cm cells
+		FHeatmapLOSBands::TrajectoryCrossings(0.05f, ShippingReferenceUsage);
+	const FHeatmapLOSBands DoubleRef =     // same grid, twice the reference density
+		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, 2.0f * ShippingReferenceUsage);
+
+	// Edge = (N + 0.5)/(s * Reference), so doubling s halves the edge and halving s doubles it.
+	TestEqual(TEXT("T-BAND-3: 20 cm cells halve the BandB edge"), Coarse.BandB, 0.075f, EdgeTol);
+	TestEqual(TEXT("T-BAND-3: 5 cm cells double the BandB edge"), Fine.BandB, 0.300f, EdgeTol);
+	TestEqual(TEXT("T-BAND-3: doubling the reference halves the BandB edge"), DoubleRef.BandB, 0.075f, EdgeTol);
+
+	// The product is what matters, not either factor: 20 cm at reference 100 must equal 10 cm at 200.
+	TestEqual(TEXT("T-BAND-3: edges depend only on the product (s x Reference)"),
+		Coarse.BandE, DoubleRef.BandE, EdgeTol);
+
+	// Stated bluntly, because a frozen table would pass everything above by accident if it happened to
+	// hold the shipping numbers: a different grid MUST give different edges.
+	TestTrue(TEXT("T-BAND-3: a different cell size does not reuse the shipping edges"),
+		!FMath::IsNearlyEqual(Coarse.BandB, Shipping.BandB, EdgeTol));
+
+	// A crossing still reads as one crossing at every resolution -- that is the invariant the scaling
+	// exists to preserve. At cell side s, one crossing deposits s metres and lands at 1/(s x Reference).
+	for (const float CellSide : { 0.05f, 0.1f, 0.2f })
+	{
+		const FHeatmapLOSBands B = FHeatmapLOSBands::TrajectoryCrossings(CellSide, ShippingReferenceUsage);
+		const float OneCrossing = RedForCrossings(1.0, CellSide, ShippingReferenceUsage);
+		TestTrue(FString::Printf(TEXT("T-BAND-3: at %.0f cm cells, 1 crossing is band B/cyan"), CellSide * 100.0f),
+			UDynamicPixelRenderingTexture::BandColourForRedValue(OneCrossing, B).Equals(BandColours[1], 1.0e-4f));
+	}
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-4 -- a NON-POSITIVE grid still produces a WELL-FORMED chain.
+//
+// An uninitialised field reports GetEffectiveCmPerTexel() == 0, and EnsureTrajectoryFieldSized can reach
+// the band call before Initialise has produced a grid. Without the guard the edges evaluate to +inf,
+// clamp to 1.0, and all four collapse onto each other -- which does not crash but makes bands C..F
+// unreachable, so every drawn texel would render as band B regardless of traffic.
+//
+// SCOPE, stated precisely: this covers the GUARD path only -- cell side <= 0, reference <= 0, non-finite.
+// It does NOT cover a valid-but-tiny cell size. At s = 0.001 m the denominator is 0.1, every edge exceeds
+// 1.0 and they legitimately collapse onto the clamp; that is the documented representability limit in
+// TrajectoryCrossings ((s x Reference) >= 4.5 for the full ladder), not a defect, and the honest reading
+// there is "this grid saturates". Do not "fix" it by nudging the edges apart -- that would invent
+// separations the encode cannot represent.
+//
+// NON-VACUITY: delete the `Denominator <= 0` guard and the strict-monotonicity assertions below redden.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand4DegenerateTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_4_DegenerateCellSizeStaysWellFormed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand4DegenerateTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryBandOracle;
+
+	// Zero cell side (field never initialised) and a negative one (nonsense config).
+	for (const float CellSide : { 0.0f, -0.1f })
+	{
+		const FHeatmapLOSBands B = FHeatmapLOSBands::TrajectoryCrossings(CellSide, ShippingReferenceUsage);
+		TestTrue(FString::Printf(TEXT("T-BAND-4: cell side %.2f still gives strictly increasing edges"), CellSide),
+			EdgesStrictlyIncrease(B));
+		TestTrue(FString::Printf(TEXT("T-BAND-4: cell side %.2f still gives in-range edges"), CellSide),
+			EdgesInRange(B));
+		TestEqual(FString::Printf(TEXT("T-BAND-4: cell side %.2f keeps BandA as the no-data edge"), CellSide),
+			B.BandA, 0.5f / 255.0f, EdgeTol);
+	}
+
+	// Zero reference is the same failure through the other factor.
+	const FHeatmapLOSBands ZeroRef = FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, 0.0f);
+	TestTrue(TEXT("T-BAND-4: zero reference density still gives strictly increasing edges"),
+		EdgesStrictlyIncrease(ZeroRef));
+
+	// The healthy path must ALSO satisfy both properties, or the two assertions above would be satisfiable
+	// by a function that always returned the fallback.
+	const FHeatmapLOSBands Good =
+		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, ShippingReferenceUsage);
+	TestTrue(TEXT("T-BAND-4: the shipping configuration is strictly increasing and in range"),
+		EdgesStrictlyIncrease(Good) && EdgesInRange(Good));
+	TestTrue(TEXT("T-BAND-4: the shipping configuration is NOT the degenerate fallback"),
+		!FMath::IsNearlyEqual(Good.BandB, ZeroRef.BandB, EdgeTol));
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-5 -- the shipping width collapses the splat to ONE TAP, and that is load-bearing.
+//
+// The encode reads the PRESENTATION array, not the canonical one. A mass-conserving splat spreads a
+// crossing's person-metres across its kernel, so at a wider path the centre cell holds less than a full
+// crossing and every band edge in T-BAND-1 stops being literal. 10 cm width at 10 cm/texel puts the
+// kernel radius at exactly 0.5 texels, which FTrajectoryField::BuildKernel collapses to the identity.
+//
+// NON-VACUITY: the 20 cm case below is asserted to give 9 taps, so this cannot pass by measuring nothing.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand5IdentityKernelTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_5_ShippingWidthIsIdentityKernel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand5IdentityKernelTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+
+	// The shipping pair: AHeatmapPixelTextureVisualizer's TrajectoryDisplayPathWidthCm (10) against its
+	// TrajectoryWorldCmPerTexel (10).
+	FTrajectoryField Shipping = MakeField(1000.0, 1000.0, 10.0f, 10.0f);
+
+	TestEqual(TEXT("T-BAND-5: kernel radius is exactly 0.5 texels at 10 cm width / 10 cm cells"),
+		Shipping.GetKernelRadiusTexels(), 0.5f, 1.0e-6f);
+	TestEqual(TEXT("T-BAND-5: the splat is a SINGLE tap, so presentation == canonical"),
+		Shipping.GetKernelOffsets().Num(), 1);
+	TestEqual(TEXT("T-BAND-5: that single tap carries the whole weight"),
+		(double)Shipping.GetKernelWeights()[0], 1.0, 1.0e-6);
+	TestTrue(TEXT("T-BAND-5: and it is the centre tap"),
+		Shipping.GetKernelOffsets()[0] == FIntPoint(0, 0));
+
+	// The field's OWN default width is deliberately still 20 cm -- the oracle derivations and the width
+	// cases in this file are written against a radius of exactly 1.0 texel. Asserting the contrast keeps
+	// the two apart, and proves this test is sensitive to the width at all.
+	FTrajectoryField FieldDefault = MakeField(1000.0, 1000.0, 10.0f, 20.0f);
+	TestEqual(TEXT("T-BAND-5: 20 cm width is a 3x3 splat, NOT the identity kernel"),
+		FieldDefault.GetKernelOffsets().Num(), 9);
+
+	return true;
+}
 
 #endif // !UE_BUILD_SHIPPING
