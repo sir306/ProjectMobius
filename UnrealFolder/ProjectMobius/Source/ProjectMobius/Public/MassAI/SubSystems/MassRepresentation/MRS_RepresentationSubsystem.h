@@ -97,6 +97,19 @@ public:
 	void SetPedestrianMaterial(UMaterialInstanceDynamic* MaterialInstBody,UMaterialInstanceDynamic* MaterialInstEyes, EPedestrianGender AgentGender, EAgeDemographic AgentAgeDemographic);
 
 	/**
+	 * Set the material on the empty wheelchair mesh.
+	 *
+	 * Takes NEITHER gender nor age: one chair serves every wheelchair agent, because the occupant's
+	 * own demographic mesh carries that variation. It is a separate function rather than another
+	 * parameter on SetPedestrianMaterial above so the existing BlueprintCallable signature - and
+	 * every WBP node bound to it - stays valid.
+	 *
+	 * Body only; the chair mesh has one material slot, so there is no Eyes counterpart.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRS|Subsystem|ThesisResearch")
+	void SetWheelchairMaterial(UMaterialInstanceDynamic* MaterialInstBody);
+
+	/**
 	 * Get male material via the mobius interface, will return nullptr if the material is not set
 	 *
 	 * @return[UMaterialInstanceDynamic*] The male material instance

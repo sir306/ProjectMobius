@@ -328,6 +328,10 @@ private:
 	UPROPERTY()
 	UMaterialInstanceDynamic* SelectedChildrenEyesMaterialInstance = nullptr;
 
+	/** Empty-wheelchair body material. No Eyes counterpart: the chair mesh has one material slot. */
+	UPROPERTY()
+	UMaterialInstanceDynamic* SelectedWheelchairMaterialInstance = nullptr;
+
 #pragma endregion SIMULATION_VARIABLES
 
 #pragma endregion PRIVATE_VARIABLES
@@ -393,6 +397,10 @@ public:
 	/** Set the children pedestrian body material */
 	FORCEINLINE void SetSelectedChildrenMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedChildrenMaterialInstance = NewMaterialInstance; }
 	FORCEINLINE void SetSelectedChildrenEyesMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedChildrenEyesMaterialInstance = NewMaterialInstance; }
+
+	/** Set the empty-wheelchair body material. Setter only, matching Elderly/Children - nothing reads
+	 *  these back; only Male/Female Adult expose getters. */
+	FORCEINLINE void SetSelectedWheelchairMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedWheelchairMaterialInstance = NewMaterialInstance; }
 
 
 

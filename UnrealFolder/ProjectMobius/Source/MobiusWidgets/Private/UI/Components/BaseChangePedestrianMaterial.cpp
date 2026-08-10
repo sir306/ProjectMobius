@@ -220,6 +220,14 @@ void UBaseChangePedestrianMaterial::AssignMaterialNamesToComboBox()
 			CurrentSelectedChildMaterialInstance = ChildrenMaterialDynamicInstances[MaterialInst.Key * 2];
 			CurrentSelectedChildEyesMaterialInstance = ChildrenMaterialDynamicInstances[(MaterialInst.Key * 2) + 1];
 
+			// Empty wheelchair - RAW index, no *2: body only, there is no eyes entry.
+			// IsValidIndex rather than an assumption, because this array is populated by a separate
+			// Blueprint call that an older graph may simply not make.
+			if (WheelchairMaterialDynamicInstances.IsValidIndex(MaterialInst.Key))
+			{
+				CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[MaterialInst.Key];
+			}
+
 			
 			MaterialTypeComboBox->SetSelectedOption(MaterialInst.Value);
 		}
@@ -255,6 +263,14 @@ void UBaseChangePedestrianMaterial::OnMaterialTypeChanged(FString SelectedItem, 
 			// Children
 			CurrentSelectedChildMaterialInstance = ChildrenMaterialDynamicInstances[Index];
 			CurrentSelectedChildEyesMaterialInstance = ChildrenMaterialDynamicInstances[Index + 1];
+
+			// Empty wheelchair - Index is already the combo index doubled for the body/eyes stride,
+			// so halve it back. The chair has one material slot, so it indexes 1:1 with the options.
+			const int32 WheelchairIndex = Index / 2;
+			if (WheelchairMaterialDynamicInstances.IsValidIndex(WheelchairIndex))
+			{
+				CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[WheelchairIndex];
+			}
 
 			// Change the material of the pedestrian
 			//ChangePedestrianMaterial(SelectedMaterialInst);
@@ -423,6 +439,36 @@ void UBaseChangePedestrianMaterial::UpdateSliderProperties()
 	}
 }
 
+void UBaseChangePedestrianMaterial::ConvertWheelchairMaterialsToDynamicInstances(
+	const TArray<UMaterialInstance*>& WheelchairMaterials)
+{
+	// One MID per combo option, in the same order as the DisplayName list the five human arrays use.
+	// No body/eyes pairing and no *2 stride: the chair mesh has a single material slot, which is why
+	// this cannot simply be a sixth parameter on ConvertMaterialsToDynamicMaterialInstances - that
+	// function's length check and its i*2 indexing both assume pairs.
+	WheelchairMaterialDynamicInstances.Reset(WheelchairMaterials.Num());
+
+	for (UMaterialInstance* SourceMaterial : WheelchairMaterials)
+	{
+		if (SourceMaterial == nullptr)
+		{
+			continue;
+		}
+		WheelchairMaterialDynamicInstances.Add(UMaterialInstanceDynamic::Create(SourceMaterial, this));
+	}
+
+	// Adopt the current selection immediately, so a graph that calls this AFTER the five human arrays
+	// have already been built and selected does not leave the chair on a null material until the
+	// user next touches the combo box.
+	const int32 SelectedIndex = MaterialTypeComboBox ? MaterialTypeComboBox->GetSelectedIndex() : 0;
+	const int32 SafeIndex = WheelchairMaterialDynamicInstances.IsValidIndex(SelectedIndex) ? SelectedIndex : 0;
+	if (WheelchairMaterialDynamicInstances.IsValidIndex(SafeIndex))
+	{
+		CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[SafeIndex];
+		UpdateRepSubsystemMaterialInstances();
+	}
+}
+
 void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 {
 	// update the material on the pedestrian
@@ -436,6 +482,8 @@ void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedFemaleElderlyMaterialInstance, CurrentSelectedFemaleElderlyEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Elderly);
 			// when we do different gender for children we will need to set the gender parameter
 			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
+			// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent.
+			RepresentationSubsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
 		}
 		else
 		{
@@ -448,5 +496,7 @@ void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedFemaleElderlyMaterialInstance, CurrentSelectedFemaleEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Elderly);
 			// when we do different gender for children we will need to set the gender parameter
 			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
+			// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent.
+			RepresentationSubsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
 		}
 }

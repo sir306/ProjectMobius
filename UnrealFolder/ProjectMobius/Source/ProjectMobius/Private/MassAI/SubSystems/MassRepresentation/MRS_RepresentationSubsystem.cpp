@@ -320,6 +320,37 @@ void UMRS_RepresentationSubsystem::SetPedestrianMaterial(UMaterialInstanceDynami
 	
 }
 
+void UMRS_RepresentationSubsystem::SetWheelchairMaterial(UMaterialInstanceDynamic* MaterialInstBody)
+{
+	if (MaterialInstBody == nullptr)
+	{
+		return;
+	}
+
+	// Mirrors the age/gender overload's two-branch shape: push to the live Niagara component when the
+	// representation actor exists, and persist on the game instance either way so the choice survives
+	// a system swap (high spec <-> low spec) or a respawn.
+	//
+	// User.WheelchairMaterialBody exists on BOTH Niagara systems. It was missing on the low-spec one
+	// until 2026-08-10 - SetVariableMaterial against an absent parameter is a SILENT no-op, so the
+	// symptom would have been the translucent option working at high spec and doing nothing at low.
+	if (ANiagaraAgentRepActor* NiagaraAgentRepActor =
+		Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass())))
+	{
+		if (UNiagaraComponent* NiagaraComponent = NiagaraAgentRepActor->GetNiagaraComponent())
+		{
+			NiagaraComponent->SetVariableMaterial(TEXT("WheelchairMaterialBody"), MaterialInstBody);
+		}
+	}
+
+	// Setter only, no getter - matches the Elderly/Children pattern, where nothing reads the stored
+	// value back. Only Male/Female Adult expose getters.
+	if (UProjectMobiusGameInstance* GameInstance = GetMobiusGameInstance(GetWorld()))
+	{
+		GameInstance->SetSelectedWheelchairMaterialInstance(MaterialInstBody);
+	}
+}
+
 UMaterialInstanceDynamic* UMRS_RepresentationSubsystem::GetSelectedMaleMaterialInstance(UWorld* World)
 {
 	if(GetMobiusGameInstance(World)->GetSelectedMaleMaterialInstance() == nullptr)

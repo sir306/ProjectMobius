@@ -111,6 +111,21 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void UpdateRepSubsystemMaterialInstances();
 
+	/**
+	 * Build the empty wheelchair's dynamic material instances.
+	 *
+	 * Deliberately a SEPARATE entry point rather than a sixth array on
+	 * ConvertMaterialsToDynamicMaterialInstances: that function is BlueprintCallable, so adding a
+	 * parameter would break every WBP node calling it and force a manual re-wire. Additive costs
+	 * nothing and keeps the existing graph valid.
+	 *
+	 * @param[TArray<UMaterialInstance*>] WheelchairMaterials One material per combo option, in the
+	 *        SAME order as the DisplayName list passed to ConvertMaterialsToDynamicMaterialInstances
+	 *        (today: Solid Colour, then Translucent). One entry each, not a body/eyes pair.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void ConvertWheelchairMaterialsToDynamicInstances(const TArray<UMaterialInstance*>& WheelchairMaterials);
+
 #pragma endregion
 
 #pragma region UI_COMPONENTS
@@ -162,6 +177,13 @@ protected:
 	/** Store the current selected material instance for child eyes */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedChildEyesMaterialInstance;
+
+	/** Store the current selected material instance for the empty wheelchair.
+	 *  BODY ONLY, and deliberately so — the chair mesh has a single material slot, so there is no
+	 *  Eyes counterpart. That is why every wheelchair index below is the RAW combo index and never
+	 *  the (index * 2) body/eyes stride the demographics above use. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedWheelchairMaterialInstance;
 
 	/** Checkbox to toggle random color or grey clothing */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
@@ -222,6 +244,13 @@ public:
 	/** Materials for children */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> ChildrenMaterialDynamicInstances;
+
+	/** Materials for the empty wheelchair — ONE entry per combo option (body only), not two.
+	 *  Kept out of the Num()-equality gate that guards the five human arrays for the same reason:
+	 *  it is half their length by design, so including it there would fail the gate forever and
+	 *  silently skip creating every material. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TArray<UMaterialInstanceDynamic*> WheelchairMaterialDynamicInstances;
 
 	/** To prevent the representation subsystem from destroying and keep the spawn materials we store a ptr to it */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material|Subsystem")
