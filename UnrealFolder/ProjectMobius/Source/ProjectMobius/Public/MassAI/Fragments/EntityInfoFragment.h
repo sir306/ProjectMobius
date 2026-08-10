@@ -117,12 +117,22 @@ struct PROJECTMOBIUS_API FEntityMovementFragment: public FMassFragment
 /**
  * Niagara demographic slot routing — render dispatch only.
  * Slot order matches UNiagaraAgentRepProcessor::MapAgentCountToArray:
- * 0 = male adult, 1 = female adult, 2 = elderly male, 3 = elderly female, 4 = child.
+ * 0 = male adult, 1 = female adult, 2 = elderly male, 3 = elderly female, 4 = child,
+ * 5 = empty wheelchair (every wheelchair agent, any age, any gender).
+ *
+ * Slot 5 is NOT returned by ComputeSlot. A wheelchair agent renders TWO meshes: its human from its
+ * own demographic slot (0-4, in a seated pose) and the empty chair from slot 5. The chair is
+ * dispatched by FEntityRenderingFragment::MobilityAid in the extract, not by slot dispatch, which is
+ * why ComputeSlot's contract below is unchanged.
  */
 namespace MobiusNiagaraDemographics
 {
 	/** Number of demographic slots (and Niagara array triplets) */
-	inline constexpr uint8 NumSlots = 5;
+	inline constexpr uint8 NumSlots = 6;
+
+	/** Render slot for the empty wheelchair mesh — see the namespace comment. Reached via the
+	 *  MobilityAid branch in UNiagaraAgentRepProcessor::ExtractAgentData, never via ComputeSlot. */
+	inline constexpr uint8 WheelchairSlot = 5;
 
 	/** Sentinel for an agent that was NOT routed into any demographic array at spawn — the extract
 	 *  skips it (Slot >= NumSlots). Any value >= NumSlots works; 0xFF is chosen to be obviously invalid. */
@@ -242,6 +252,32 @@ struct PROJECTMOBIUS_API FEntityRenderingFragment: public FMassFragment
 	 *  (see MobiusNiagaraDemographics::ComputeSlot) */
 	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
 	uint8 NiagaraDemographicSlot = 0;
+
+	/**
+	 * Mobility aid — RENDER DISPATCH ONLY. Analysis must read AgeDemographic, which stays truthful
+	 * for wheelchair users (that is the whole point of EMobilityAid being a separate enum).
+	 * Written once at spawn by UAgentDataSubsystem::SetEntityRenderingByIndex.
+	 */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	EMobilityAid MobilityAid = EMobilityAid::Ema_None;
+
+	/**
+	 * Instance index within the CHAIR arrays (MobiusNiagaraDemographics::WheelchairSlot), for
+	 * wheelchair agents only.
+	 *
+	 * A wheelchair agent is the first thing in this system to render from TWO slots at once: its
+	 * human mesh from its own demographic slot at InstanceID, and the empty chair from slot 5 at
+	 * this index. The two are independent counters and will NOT match — InstanceID counts within
+	 * e.g. "female adults", this counts within "all wheelchair agents". Keeping them separate is
+	 * also what keeps the parallel extract race-free: write targets stay unique per (slot, index),
+	 * whereas reusing InstanceID would collide because two agents in different demographic slots
+	 * can hold the same InstanceID.
+	 *
+	 * -1 means "not a wheelchair agent, no chair to draw". Only meaningful when
+	 * MobilityAid == Ema_Wheelchair — branch on that, never on this being >= 0 alone.
+	 */
+	UPROPERTY(EditAnywhere, Category = "PedestrianRendering")
+	int32 ChairInstanceID = -1;
 };
 
 /**

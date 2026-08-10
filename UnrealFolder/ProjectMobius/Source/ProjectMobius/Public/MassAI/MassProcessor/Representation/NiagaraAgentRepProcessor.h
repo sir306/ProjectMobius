@@ -54,7 +54,7 @@ public:
 	/** Demographic slot count — must equal MobiusNiagaraDemographics::NumSlots (static_assert in the .cpp);
 	 *  kept as a plain literal here so the header keeps its forward declarations. Public so the file-scope
 	 *  static_assert in the .cpp can read it. */
-	static constexpr int32 DemographicSlotCount = 5;
+	static constexpr int32 DemographicSlotCount = 6;
 
 protected:
 	virtual void ConfigureQueries() override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
@@ -224,7 +224,21 @@ private:
 	/** Array of Children animation states -> we use int now as we can do the value setting of frames etc on the GPU in niagara */
 	UPROPERTY()
 	TArray<int32> ChildrenAnimationStates;
-	
+
+	/** Array of empty-wheelchair transforms — ALL wheelchair agents, any age/gender. The occupant
+	 *  renders separately from their own demographic arrays above. */
+	UPROPERTY()
+	TArray<FVector4> WheelchairLocationAndScales;
+
+	/** Array of empty-wheelchair rotations -> Niagara System Expects Quats for rotation */
+	UPROPERTY()
+	TArray<FQuat> WheelchairRotations;
+
+	/** Unused by the chair emitter (a chair does not animate); kept so the upload helper's
+	 *  (location, rotation, animation) triplet signature stays uniform across all slots. */
+	UPROPERTY()
+	TArray<int32> WheelchairAnimationStates;
+
 	/** Number of Agents */
 	UPROPERTY()
 	int32 NumberOfAgents = 0;
@@ -266,6 +280,9 @@ private:
 	 * Set (relaxed) from the parallel extract when an agent's extracted values changed — every racing
 	 * writer stores the same value (true) — and read + cleared only on the game thread when that
 	 * demographic uploads. Start dirty so the first frame always uploads.
+	 *
+	 * One initializer PER SLOT. A missing initializer value-initialises to FALSE and compiles
+	 * silently, so that slot would simply never upload on the first frame.
 	 */
-	std::atomic<bool> DemographicDirty[DemographicSlotCount] = { true, true, true, true, true };
+	std::atomic<bool> DemographicDirty[DemographicSlotCount] = { true, true, true, true, true, true };
 };

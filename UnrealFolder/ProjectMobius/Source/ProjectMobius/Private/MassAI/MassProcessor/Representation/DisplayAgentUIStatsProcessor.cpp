@@ -18,6 +18,58 @@ constexpr float AgentHeightTable[3][2] = {
 	{ 170.0f, 158.0f }   // Elderly: Male/Female
 };
 
+namespace
+{
+	/** Seated total height of a wheelchair user, cm. The occupant's mesh renders seated, so their
+	 *  standing height from AgentHeightTable is wrong here — and this value is not cosmetic: it feeds
+	 *  FAgentMeshViewer::AgentHeight, which SAgentFollowIndicator/SPedestrianAgentHoverMeshWidget use
+	 *  as the Z offset for the in-world hover card. Get it wrong and the card floats at standing
+	 *  height above a seated agent. Placeholder until the seated VAT pose is baked and a real figure
+	 *  can be measured off it. */
+	constexpr float GWheelchairSeatedHeightCm = 130.0f;
+
+	/**
+	 * Single source of truth for an agent's DISPLAY demographic string and display height.
+	 *
+	 * This exists because the two callers below — the selected-agent path and the hovered-agent path —
+	 * were verbatim copies of the same if/else chain. Editing one and not the other makes the stats
+	 * panel and the hover tooltip disagree about the same agent, silently. Route both through here;
+	 * do not re-inline it.
+	 */
+	void ResolveAgentDisplay(const FEntityRenderingFragment& Rendering,
+		FString& OutDemographicText, float& OutHeightCm)
+	{
+		int32 AgeIndex;
+		if (Rendering.AgeDemographic == EAgeDemographic::Ead_Child)
+		{
+			OutDemographicText = TEXT("Child");
+			AgeIndex = 0;
+		}
+		else if (Rendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
+		{
+			OutDemographicText = TEXT("Elderly");
+			AgeIndex = 2;
+		}
+		else
+		{
+			OutDemographicText = TEXT("Adult");
+			AgeIndex = 1;
+		}
+
+		const int32 GenderIndex = Rendering.bIsMale ? 0 : 1;
+		OutHeightCm = AgentHeightTable[AgeIndex][GenderIndex];
+
+		if (Rendering.MobilityAid == EMobilityAid::Ema_Wheelchair)
+		{
+			// The age is APPENDED to, never replaced: an agent labelled just "Adult" while a
+			// wheelchair renders on screen reads as an able-bodied pedestrian, which is the whole
+			// reason EMobilityAid is orthogonal to EAgeDemographic rather than a value inside it.
+			OutDemographicText += TEXT(" (wheelchair)");
+			OutHeightCm = GWheelchairSeatedHeightCm;
+		}
+	}
+}
+
 UDisplayAgentUIStatsProcessor::UDisplayAgentUIStatsProcessor()
 {
 	bAutoRegisterWithProcessingPhases = true;
@@ -102,29 +154,11 @@ void UDisplayAgentUIStatsProcessor::Execute(FMassEntityManager& EntityManager, F
 					// make text based on agent age demographic
 					FString AgentAgeText;
 					
-					float AgentHeight = 0.0f; // As no heights are provided in the JSON data, we will use defaults below
+					// As no heights are provided in the JSON data, defaults are used (see the table above).
 					// we may want to scale the height in a range based on known pedestrian movement bands for demographics and max speed or introduce a field
+					float AgentHeight = 0.0f;
+					ResolveAgentDisplay(EntityRendering, AgentAgeText, AgentHeight);
 
-					int32 AgeIndex = 1; // default to Adult
-					if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
-					{
-						AgentAgeText = "Child";
-						AgeIndex = 0;
-					}
-					else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
-					{
-						AgentAgeText = "Elderly";
-						AgeIndex = 2;
-					}
-					else
-					{
-						AgentAgeText = "Adult";
-						AgeIndex = 1;
-					}
-
-					int32 GenderIndex = EntityRendering.bIsMale ? 0 : 1;
-					AgentHeight = AgentHeightTable[AgeIndex][GenderIndex];
-						
 					SelectedAgentData.AgentID = EntityRendering.EntityID;
 					SelectedAgentData.AgentName = FText::FromString(EntityInfo.EntityName);
 					SelectedAgentData.Demographic = FText::FromString(AgentAgeText);
@@ -165,28 +199,11 @@ void UDisplayAgentUIStatsProcessor::UpdateUIStats(const FEntityInfoFragment& Ent
 		// make text based on agent age demographic
 		FString AgentAgeText;
 					
-		float AgentHeight = 0.0f; // As no heights are provided in the JSON data, we will use defaults below
+		// As no heights are provided in the JSON data, defaults are used (see the table above).
 		// we may want to scale the height in a range based on known pedestrian movement bands for demographics and max speed or introduce a field
+		float AgentHeight = 0.0f;
+		ResolveAgentDisplay(EntityRendering, AgentAgeText, AgentHeight);
 
-		int32 AgeIndex = 1; // default to Adult
-		if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
-		{
-			AgentAgeText = "Child";
-			AgeIndex = 0;
-		}
-		else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
-		{
-			AgentAgeText = "Elderly";
-			AgeIndex = 2;
-		}
-		else
-		{
-			AgentAgeText = "Adult";
-			AgeIndex = 1;
-		}
-
-		int32 GenderIndex = EntityRendering.bIsMale ? 0 : 1;
-		AgentHeight = AgentHeightTable[AgeIndex][GenderIndex];
 		//TODO: Moving away from the agent mesh viewer, we will need to update this to use the new system ->once we have collisions
 		// make new agent data
 		FAgentMeshViewer NewAgentData;

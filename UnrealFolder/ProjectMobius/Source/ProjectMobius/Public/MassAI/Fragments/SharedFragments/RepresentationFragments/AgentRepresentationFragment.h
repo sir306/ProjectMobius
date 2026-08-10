@@ -88,7 +88,14 @@ struct PROJECTMOBIUS_API FAgentRepresentationFragment : public FMassSharedFragme
 	/** Number of Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfChildren = 0;// TODO: Maybe do different genders
-	
+
+	/** Number of empty wheelchairs to draw — every wheelchair agent, any age, any gender.
+	 *  APPENDED, never inserted (shared fragment; inserting shifts serialized offsets).
+	 *  Defaults to 0 and stays 0 for every dataset with no wheelchair agents, which is what gates
+	 *  the chair upload and the chair emitter off entirely. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
+	int32 NumberOfWheelchairs = 0;
+
 	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
 	/** Using low spec agent render effect? */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
@@ -133,6 +140,16 @@ public:
 	/** Number of Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
 	int32 NumberOfChildren = 0;// TODO: Maybe do different genders
+
+	/** Number of empty wheelchairs to draw — every wheelchair agent, any age, any gender.
+	 *  APPENDED, never inserted (shared fragment; inserting shifts serialized offsets).
+	 *  Defaults to 0 and stays 0 for every dataset with no wheelchair agents, which is what gates
+	 *  the chair upload and the chair emitter off entirely.
+	 *  NOTE: deliberately NOT part of UAgentRepresentation_MOP's CurrentInstanceTotal sum — every
+	 *  agent still lands in exactly one HUMAN slot, so adding this would make the total exceed the
+	 *  entity count and reset the Niagara data every chunk, every Execute. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityRepresentation")
+	int32 NumberOfWheelchairs = 0;
 
 	//TODO: currently use bool to switch between low spec static effect and med VAT effect -> when we use enum we will use it here too
 	/** Using low spec agent render effect? */

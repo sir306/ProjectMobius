@@ -99,5 +99,25 @@ public:
 	/** Int Array of Animation State for Female Adults */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityNiagaraRepresentation")
 	TArray<int32> ChildrenAnimationStates;
-		
+
+	// --- Empty wheelchair (MobiusNiagaraDemographics::WheelchairSlot) ---------------------
+	// APPENDED, never inserted: this is a FMassSharedFragment, so inserting a field shifts
+	// serialized offsets in existing .uasset / Blueprint defaults.
+	//
+	// One set for ALL wheelchair agents regardless of age or gender — the chair is a single empty
+	// mesh, and the occupant renders from their own demographic arrays above.
+
+	/** Array of empty-wheelchair transforms to send to the Niagara System */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityNiagaraRepresentation")
+	TArray<FVector4> WheelchairLocationAndScales;
+
+	/** Niagara System Expects Quats for rotation */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityNiagaraRepresentation")
+	TArray<FQuat> WheelchairRotations;
+
+	/** Unused by the chair emitter (a chair does not animate); kept so the upload helper's
+	 *  (location, rotation, animation) triplet signature stays uniform across all slots. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MassEntityNiagaraRepresentation")
+	TArray<int32> WheelchairAnimationStates;
+
 };

@@ -264,6 +264,15 @@ void UAgentDataSubsystem::SetEntityRenderingByIndex(int32 Index,
 	// update gender
 	EntityRenderingFragToUpdate.bIsMale = !(AgentName.Contains("Female"));
 
+	// update mobility aid — deliberately INDEPENDENT of the age chain below rather than another
+	// branch in it, so the two never compete for the same name string and match order is irrelevant.
+	// "Adult Male Wheelchair[55]" must come out as Ead_Adult AND Ema_Wheelchair, not one or the other.
+	// FString::Contains defaults to ESearchCase::IgnoreCase, so "Wheelchair", "wheelchair" and
+	// "WHEELCHAIR" all match, and the token may appear anywhere in the name.
+	EntityRenderingFragToUpdate.MobilityAid = AgentName.Contains("Wheelchair")
+		? EMobilityAid::Ema_Wheelchair
+		: EMobilityAid::Ema_None;
+
 	// update age demographic
 	if (AgentName.Contains("Child"))
 	{

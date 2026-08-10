@@ -53,6 +53,11 @@ FAgentNiagaraDataFrag::FAgentNiagaraDataFrag()
 	ChildrenAgentLocationAndScales = TArray<FVector4>();
 	ChildrenAgentRotations = TArray<FQuat>();
 	ChildrenAnimationStates = TArray<int32>();
+
+	// Empty wheelchair (all wheelchair agents, any age/gender)
+	WheelchairLocationAndScales = TArray<FVector4>();
+	WheelchairRotations = TArray<FQuat>();
+	WheelchairAnimationStates = TArray<int32>();
 }
 
 FAgentNiagaraDataFrag::~FAgentNiagaraDataFrag()

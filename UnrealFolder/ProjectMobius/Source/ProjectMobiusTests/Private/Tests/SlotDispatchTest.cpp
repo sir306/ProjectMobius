@@ -13,7 +13,12 @@
 // actually routes: Ead_Child -> Children arrays; Ead_Elderly -> ElderlyMale/ElderlyFemale by gender;
 // Ead_Adult -> MaleAdult/FemaleAdult by gender. Slot order matches
 // UNiagaraAgentRepProcessor::MapAgentCountToArray:
-//   0 = male adult, 1 = female adult, 2 = elderly male, 3 = elderly female, 4 = child.
+//   0 = male adult, 1 = female adult, 2 = elderly male, 3 = elderly female, 4 = child,
+//   5 = empty wheelchair.
+//
+// Slot 5 is NOT reachable from ComputeSlot and so does not appear in the cases below — it is
+// dispatched by FEntityRenderingFragment::MobilityAid, additively, on top of the human slot. See
+// FWheelchairSlotDispatchTest at the bottom of this file.
 //
 // Ead_Default is the one demographic the spawn switch leaves UNROUTED (no InstanceID, no array Add), so
 // ComputeSlot returns InvalidSlot (>= NumSlots) and the extract skips it — hardening a latent, currently
@@ -80,6 +85,63 @@ bool FSlotDispatchMatchesBranchTest::RunTest(const FString& Parameters)
 				Slot < MobiusNiagaraDemographics::NumSlots);
 		}
 	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wheelchair chair-slot dispatch.
+//
+// A wheelchair agent is the first thing in this system to render from TWO slots at once: its HUMAN
+// from its own demographic slot (0-4, via ComputeSlot exactly as before) and an empty CHAIR from
+// WheelchairSlot. The chair is dispatched by FEntityRenderingFragment::MobilityAid in the
+// extract, NOT by ComputeSlot — which is why the eight cases above are untouched by this feature.
+//
+// The invariant worth guarding is that those two dispatch routes can never collide: if the chair
+// slot ever equalled a slot ComputeSlot can return, chair transforms would overwrite that
+// demographic's human transforms at matching indices, silently deleting agents from the render.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWheelchairSlotDispatchTest,
+	"ProjectMobius.Render.WheelchairSlotDispatch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FWheelchairSlotDispatchTest::RunTest(const FString& Parameters)
+{
+	// The chair slot must be a real dispatch-table index — the B5 pointer tables are sized NumSlots.
+	TestTrue(TEXT("WheelchairSlot is a valid dispatch index"),
+		MobiusNiagaraDemographics::WheelchairSlot < MobiusNiagaraDemographics::NumSlots);
+
+	// ...and must not collide with ANY slot ComputeSlot can hand back for a human.
+	const EAgeDemographic Ages[] = {
+		EAgeDemographic::Ead_Child, EAgeDemographic::Ead_Elderly,
+		EAgeDemographic::Ead_Adult, EAgeDemographic::Ead_Default };
+
+	for (const bool bIsMale : { true, false })
+	{
+		for (const EAgeDemographic Age : Ages)
+		{
+			const uint8 HumanSlot = MobiusNiagaraDemographics::ComputeSlot(bIsMale, Age);
+			TestTrue(
+				FString::Printf(TEXT("human slot %u must differ from the chair slot %u"),
+					HumanSlot, MobiusNiagaraDemographics::WheelchairSlot),
+				HumanSlot != MobiusNiagaraDemographics::WheelchairSlot);
+		}
+	}
+
+	// The unrouted sentinel must still sit outside the (now larger) slot range, or an unrouted agent
+	// would start aliasing the chair arrays instead of being skipped.
+	TestTrue(TEXT("InvalidSlot still >= NumSlots after the chair slot was added"),
+		MobiusNiagaraDemographics::InvalidSlot >= MobiusNiagaraDemographics::NumSlots);
+
+	// Fragment defaults: an agent is not a wheelchair user and has no chair until the name parser
+	// says otherwise. Ema_None must be the zero value so a zeroed fragment cannot invent a chair.
+	const FEntityRenderingFragment DefaultFragment;
+	TestEqual(TEXT("MobilityAid defaults to Ema_None"),
+		static_cast<int32>(DefaultFragment.MobilityAid), static_cast<int32>(EMobilityAid::Ema_None));
+	TestEqual(TEXT("Ema_None is the zero value, so a zeroed fragment cannot invent a chair"),
+		static_cast<int32>(EMobilityAid::Ema_None), 0);
+	TestEqual(TEXT("ChairInstanceID defaults to -1 (no chair)"),
+		DefaultFragment.ChairInstanceID, -1);
 
 	return true;
 }

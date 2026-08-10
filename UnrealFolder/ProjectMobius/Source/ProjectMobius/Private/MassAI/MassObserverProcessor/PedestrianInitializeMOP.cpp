@@ -242,17 +242,29 @@ void UPedestrianInitializeMOP::Execute(FMassEntityManager& EntityManager, FMassE
 			AgentExposure = FAgentBRiskExposureFragment();
 			AgentHealth = FAgentEgressTenabilityFragment();
 
-			switch (EntityRendering.AgeDemographic)
+			// A wheelchair occupant is seated, so their sampling height is its own configurable value
+			// rather than an age-band literal. Checked BEFORE the age switch because the aid, not the
+			// age, decides posture — and because the switch's default: arm would otherwise silently
+			// give them standing-adult height. Defaults to the same 160 cm as that arm, so this
+			// changes no published number until someone deliberately sets it. See the property doc.
+			if (EntityRendering.MobilityAid == EMobilityAid::Ema_Wheelchair)
 			{
-			case EAgeDemographic::Ead_Child:
-				AgentExposure.BreathingHeightCm = 115.0f;
-				break;
-			case EAgeDemographic::Ead_Elderly:
-				AgentExposure.BreathingHeightCm = 145.0f;
-				break;
-			default:
-				AgentExposure.BreathingHeightCm = 160.0f;
-				break;
+				AgentExposure.BreathingHeightCm = WheelchairBreathingHeightCm;
+			}
+			else
+			{
+				switch (EntityRendering.AgeDemographic)
+				{
+				case EAgeDemographic::Ead_Child:
+					AgentExposure.BreathingHeightCm = 115.0f;
+					break;
+				case EAgeDemographic::Ead_Elderly:
+					AgentExposure.BreathingHeightCm = 145.0f;
+					break;
+				default:
+					AgentExposure.BreathingHeightCm = 160.0f;
+					break;
+				}
 			}
 
 			if (BRiskEgressSubsystem)
