@@ -2225,10 +2225,19 @@ bool FTrajBand6AssetDefaultsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// The asset default has to be the SHIPPING configuration's contract: the visualizer's
-	// TrajectoryWorldCmPerTexel of 10 cm (-> s = 0.1 m) against ReferenceUsageDensity of 100 person/m.
-	// Derived here, not transcribed, so this test cannot drift from the factory the way the asset did.
-	const FHeatmapLOSBands Expected = FHeatmapLOSBands::TrajectoryCrossings(0.1f, 100.0f);
+	// The asset default has to encode the SHIPPING configuration's contract. Both inputs are read from the
+	// sources the runtime itself uses — the actor's class default for the cell size, and the field config's
+	// own default for the reference — so a change to either propagates here automatically. Transcribing
+	// them is what let the asset drift two generations without anything noticing.
+	//
+	// The effective cell size can be RAISED above this by the D2b clamp on a very large floor, in which
+	// case the runtime push and this default legitimately differ. The default can only encode one
+	// configuration, and the shipping one is the right choice.
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float ShippingCellSideMetres = Defaults->TrajectoryWorldCmPerTexel / 100.0f;
+	const float ShippingReference = FTrajectoryFieldConfig().ReferenceUsageDensity;
+	const FHeatmapLOSBands Expected =
+		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, ShippingReference);
 
 	const TCHAR* const Names[] = { TEXT("LOS_A_Band"), TEXT("LOS_B_Band"), TEXT("LOS_C_Band"),
 	                               TEXT("LOS_D_Band"), TEXT("LOS_E_Band") };
@@ -2598,12 +2607,26 @@ bool FTrajBand5IdentityKernelTest::RunTest(const FString& Parameters)
 {
 	using namespace TrajectoryOracle;
 
-	// The shipping pair: AHeatmapPixelTextureVisualizer's TrajectoryDisplayPathWidthCm (10) against its
-	// TrajectoryWorldCmPerTexel (10).
-	FTrajectoryField Shipping = MakeField(1000.0, 1000.0, 10.0f, 10.0f);
+	// Read the SHIPPING pair from the class defaults rather than hard-coding it. Hard-coded 10/10 here
+	// would have kept passing after the 2026-08-10 move to 45/45 while asserting nothing about what
+	// actually ships — the test would have been measuring a configuration no heatmap uses.
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float ShipCellCm = Defaults->TrajectoryWorldCmPerTexel;
+	const float ShipWidthCm = Defaults->TrajectoryDisplayPathWidthCm;
 
-	TestEqual(TEXT("T-BAND-5: kernel radius is exactly 0.5 texels at 10 cm width / 10 cm cells"),
-		Shipping.GetKernelRadiusTexels(), 0.5f, 1.0e-6f);
+	// The pair must be EQUAL. This is the whole contract: equal values put the radius at 0.5, which is the
+	// identity kernel, which is what makes a crossing count literal. Changing one alone silently divides
+	// every count across the splat, so assert the relationship before the consequence.
+	TestEqual(FString::Printf(
+		TEXT("T-BAND-5: shipping stroke width (%.1f cm) equals shipping cell size (%.1f cm)"),
+		ShipWidthCm, ShipCellCm), ShipWidthCm, ShipCellCm, 1.0e-4f);
+
+	// Extent big enough for a sane grid at any plausible cell size; the kernel does not depend on it.
+	FTrajectoryField Shipping = MakeField(4000.0, 4000.0, ShipCellCm, ShipWidthCm);
+
+	TestEqual(FString::Printf(
+		TEXT("T-BAND-5: kernel radius is exactly 0.5 texels at the shipping %.1f cm / %.1f cm pair"),
+		ShipWidthCm, ShipCellCm), Shipping.GetKernelRadiusTexels(), 0.5f, 1.0e-6f);
 	TestEqual(TEXT("T-BAND-5: the splat is a SINGLE tap, so presentation == canonical"),
 		Shipping.GetKernelOffsets().Num(), 1);
 	TestEqual(TEXT("T-BAND-5: that single tap carries the whole weight"),

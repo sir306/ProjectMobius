@@ -383,6 +383,14 @@ void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands() const
 		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_C_Band"), Bands.BandC);
 		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_D_Band"), Bands.BandD);
 		TrajectoryMaterialInstance->SetScalarParameterValue(FName("LOS_E_Band"), Bands.BandE);
+
+		// Pushed here rather than anywhere else so the revert switch travels with the edges it softens: a
+		// band set and its boundary treatment are one visual contract, and splitting them across two push
+		// sites is how one of them ends up stale. Setting this to 0 restores the hard comparison chain
+		// exactly — see TrajectoryBandEdgeSoftness. The CPU PNG colouriser deliberately does NOT antialias:
+		// an exported image is read per-texel and a blended boundary pixel would belong to no band at all.
+		TrajectoryMaterialInstance->SetScalarParameterValue(
+			FName("BandEdgeSoftness"), FMath::Max(0.0f, TrajectoryBandEdgeSoftness));
 	}
 
 	// The PNG export colourises on the CPU. Give it the same edges or the saved image and the in-world

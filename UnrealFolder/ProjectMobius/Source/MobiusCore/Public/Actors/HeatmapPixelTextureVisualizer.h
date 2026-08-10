@@ -466,9 +466,24 @@ public:
 	 *
 	 * May be RAISED by the field to honour TrajectoryMaxGridDim; read the result back from the field's
 	 * GetEffectiveCmPerTexel(), which is also what the export sidecar records.
+	 *
+	 * 45 cm since 2026-08-10 (owner ruling), matching TrajectoryDisplayPathWidthCm. The pair must move
+	 * together: equal values put the kernel radius at exactly 0.5 texels, which collapses the splat to the
+	 * identity and is what makes a crossing count literal rather than spread (see T-BAND-5).
+	 *
+	 * WHY 45 cm rather than a number picked by eye. It is the major axis of Fruin's body ellipse
+	 * (45.7 x 33 cm), which is already the anthropometry behind the DENSITY surface's LOS bands — so the
+	 * two surfaces now describe a person at the same scale. It also fixes a semantic problem that 10 cm
+	 * had: at 10 cm the grid measures FOOT PLACEMENT, so two people walking abreast down the same corridor
+	 * never share a cell and both read as separate single crossings. At body width they do share, and
+	 * counting them together is the physically true statement that they occupied the same floor.
+	 *
+	 * Measured on a live capture at the old 10 cm (3,775 touched texels): p50 was 1.02 crossings and p75
+	 * exactly 2.00 — i.e. the median cell was walked by one person and almost nothing accumulated, which is
+	 * what "too fine" looks like in numbers.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
-	float TrajectoryWorldCmPerTexel = 10.0f;
+	float TrajectoryWorldCmPerTexel = 45.0f;
 
 	/**
 	 * Presentation stroke WIDTH in world centimetres (replaces the old TrajectoryCircleRadius, which was a
@@ -476,21 +491,47 @@ public:
 	 * and person-seconds are unchanged by it, and Sum(presentation) == Sum(canonical) is the invariant that
 	 * proves so. This is a path width, not a body footprint.
 	 *
-	 * 10 cm (owner ruling A0-47, 2026-08-05) rather than the original 20. At the default 10 cm/texel this
-	 * puts KernelRadiusTexels at 0.5, which collapses the splat from 9 taps to 1 — so the stroke renders
-	 * one texel wide instead of ~3, roughly a 3x narrowing. That is the NARROWEST value that changes
-	 * anything here: width below one texel is not drawable, so going finer means lowering
-	 * TrajectoryWorldCmPerTexel too, at quadratic memory cost.
+	 * 45 cm (owner ruling 2026-08-10), and it MUST equal TrajectoryWorldCmPerTexel. That ratio is the whole
+	 * contract: width / (2 * cm-per-texel) = 0.5, which BuildKernel collapses to the identity kernel, which
+	 * is what makes Presentation == Canonical and a crossing count literal instead of spread across a
+	 * kernel. Widen this ALONE and the mass-conserving splat divides one crossing's person-metres over 9
+	 * taps — at 25 cm on a 10 cm cell the centre would hold 0.20 of a crossing and every band would collapse
+	 * toward cyan, needing 22 real crossings to reach red. Change the two together or not at all.
 	 *
-	 * Deliberately NOT changed on FTrajectoryFieldConfig::DisplayPathWidthCm, which stays at 20: the
-	 * oracle derivations and the calibration tests are written against a 20 cm / 10 cm-per-texel radius of
-	 * exactly 1.0 texel, and those must not be re-tuned to match a display preference.
+	 * History: 20 cm originally, 10 cm at A0-47 (2026-08-05) when the goal was a footfall trace, now 45 cm
+	 * with the cell — see TrajectoryWorldCmPerTexel for why body width is the right scale.
+	 *
+	 * Deliberately NOT changed on FTrajectoryFieldConfig::DisplayPathWidthCm, which stays at 20: the oracle
+	 * derivations and the calibration tests are written against a radius of exactly 1.0 texel and must not
+	 * be re-tuned to match a display preference. Those tests pass their own explicit values.
 	 *
 	 * EditAnywhere + BlueprintReadWrite is the hook for the eventual sizing UI — a widget can drive this
 	 * directly with no C++ change.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
-	float TrajectoryDisplayPathWidthCm = 10.0f;
+	float TrajectoryDisplayPathWidthCm = 45.0f;
+
+	/**
+	 * How far the material softens each band BOUNDARY, in screen pixels. 0 = the hard comparison chain.
+	 *
+	 * THE REVERT SWITCH. The shader computes the transition width as fwidth(RVal) * 0.5 * this, so at 0 the
+	 * smoothstep degenerates to a step and the output is the same hard-banded image as before the change —
+	 * no shader edit, no rebuild, just set this to 0 (here, on the material instance, or from Blueprint).
+	 * That is deliberate: edge softening is a taste call and it needed to be reversible without a code
+	 * round trip.
+	 *
+	 * WHAT IT DOES AND DOES NOT FIX. It antialiases the one-pixel jaggies along a cell edge. It does NOT
+	 * remove the STAIRCASE a diagonal route makes across a square grid — that shape is the grid itself, not
+	 * a sampling artefact, and the only things that soften it are smaller cells (finer steps) or blending
+	 * values between cells, which is exactly what TF_Bilinear did and what made the counts unreadable.
+	 * Expect this to take the harshness off the edges, not to turn the surface into a smooth contour.
+	 *
+	 * Under TF_Nearest the sampled value is piecewise constant, so fwidth is ~0 inside a texel and spikes
+	 * only at texel boundaries — which is precisely where the jaggies are and the only place any softening
+	 * happens. That is why this is safe: it cannot blur a value across the interior of a cell.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0", ClampMax = "4.0"))
+	float TrajectoryBandEdgeSoftness = 1.0f;
 
 	/**
 	 * D2b — hard ceiling on either grid axis. Exceeding it coarsens cm/texel rather than stretching the
