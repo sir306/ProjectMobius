@@ -46,7 +46,32 @@ protected:
 	/** Theme toggled — re-state the row visual. Replaces the hand-rolled HandleThemeChanged. */
 	virtual void ApplyMobiusTheme_Implementation() override;
 
+	/**
+	 * Re-read this row's checkbox and repaint its highlight to match.
+	 *
+	 * Call this on the row that is being DESELECTED whenever selection is moved from Blueprint, because
+	 * UMG's UCheckBox::SetIsChecked does not broadcast OnCheckStateChanged — so a programmatic untick is
+	 * invisible to the row and it keeps painting itself selected. Cheap and idempotent; safe to call on
+	 * every row after a selection change rather than tracking which one lost it.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|FlowCounter")
+	void RefreshSelectionVisual();
+
 private:
+	/**
+	 * Live row-highlight colour: selected → `ListSelectedBg`, hovered → `HoverBg`, otherwise transparent.
+	 *
+	 * BOUND to Image_48's ColorAndOpacity rather than written into the brush, and that is the whole point.
+	 * A written value only changes when something calls ApplyRowVisual, and nothing does when a row is
+	 * DESELECTED from Blueprint — `UCheckBox::SetIsChecked` does not broadcast `OnCheckStateChanged`, so the
+	 * losing row never hears about it and keeps painting itself selected. A binding is re-evaluated every
+	 * paint, so the highlight cannot disagree with the checkbox, and hover comes free from the same read.
+	 * Same "bind, don't bake" fix as the combo-box row text (2026-08-10).
+	 */
+	/** Not const: BindDynamic requires a non-const member. It mutates nothing. */
+	UFUNCTION()
+	FLinearColor GetRowHighlightColour();
+
 	/** Checkbox (SELECT column) toggled — refresh the row visual to match. */
 	UFUNCTION()
 	void HandleSelectChanged(bool bIsChecked);
