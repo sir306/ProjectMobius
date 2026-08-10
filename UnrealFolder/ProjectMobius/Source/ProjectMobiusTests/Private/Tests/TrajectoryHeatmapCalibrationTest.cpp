@@ -1923,8 +1923,10 @@ bool FTrajStrokeCentroidBiasTest::RunTest(const FString& Parameters)
 // and sampled through a shared sampler is filtered by the texture group, not by us: the C++ setting becomes
 // a dead parameter, and someone reading only the code would report a smoothing fix that never shipped. It
 // cuts the other way too - a FromTextureAsset material sampling a TF_Nearest texture renders blocky. The
-// runtime half is gated by Mobius.InGame.TrajectoryHeatmap.Texture.FiltersBilinear; neither test can see
-// the other's half.
+// runtime half is gated by Mobius.InGame.TrajectoryHeatmap.Texture.FilterPerSurface; neither test can see
+// the other's half. (That gate asserts a DIFFERENT filter per surface since 2026-08-10 - density bilinear,
+// trajectory nearest - but this precondition applies to both equally: a shared world-group sampler
+// discards whichever filter we set.)
 //
 // It cannot be fixed from C++ (sampler source is a property of the node, not of the texture) and it cannot
 // be fixed by a script anybody has to remember to run - the asset is committed, so the asset is the fix.

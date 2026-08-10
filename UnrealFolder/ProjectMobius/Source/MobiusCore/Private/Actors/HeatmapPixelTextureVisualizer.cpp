@@ -149,19 +149,24 @@ void AHeatmapPixelTextureVisualizer::PostInitializeComponents()
 	//#endif
 }
 
+UMaterialInstanceDynamic* AHeatmapPixelTextureVisualizer::SelectSurfaceMaterial() const
+{
+	// Trajectory mode only replaces the banded surface. The voronoi material has no band chain at all —
+	// it saturates the raw channel — so it needs no trajectory variant and stays as-is.
+	if (bTrajectoryHeatmap && HeatmapType && TrajectoryMaterialInstance)
+	{
+		return TrajectoryMaterialInstance.Get();
+	}
+	return HeatmapType ? HeatmapMaterialInstance.Get() : VoronoiMaterialInstance.Get();
+}
+
 void AHeatmapPixelTextureVisualizer::AssignMaterialInstanceToMesh() const
 {
 	if (!RuntimeHeatmapMeshComponent)
 	{
 		return;
 	}
-	// Trajectory mode only replaces the banded surface. The voronoi material has no band chain at all —
-	// it saturates the raw channel — so it needs no trajectory variant and stays as-is.
-	UMaterialInstanceDynamic* Target = HeatmapType ? HeatmapMaterialInstance.Get() : VoronoiMaterialInstance.Get();
-	if (bTrajectoryHeatmap && HeatmapType && TrajectoryMaterialInstance)
-	{
-		Target = TrajectoryMaterialInstance.Get();
-	}
+	UMaterialInstanceDynamic* Target = SelectSurfaceMaterial();
 	if (!Target)
 	{
 		if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
@@ -512,15 +517,28 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 		return; // SetupDynamicTexture creates it and calls back through UpdateHeatmapMeshBounds.
 	}
 
-	// TF_BILINEAR, NOT the TF_Nearest default. Owner ruling 2026-08-05: smooth LOS band edges on both
-	// surfaces. This is safe here in a way it would NOT be for a colourised texture, and the reason is the
-	// channel layout: this texture carries the accumulated value in RED (plus alpha), and the material bands
-	// it with a `RVal < BAND` comparison chain AFTER sampling. So bilinear interpolates the SCALAR, and the
-	// band lookup still returns one of the discrete band colours -- no blended colours, no mush. What changes
-	// is that each band boundary becomes a smooth sub-texel iso-contour instead of a texel-aligned staircase.
-	// Interpolating an already-colourised RGB texture would smear band colours together; that is the exported
-	// PNG's job and it stays per-texel exact on the CPU, untouched by this.
-	TrajectoryAccumulationTexture->InitializeTexture(SquareSide, SquareSide, InitialColorValue, TF_Bilinear);
+	// TF_NEAREST on the TRAJECTORY surface. Owner ruling 2026-08-10, reversing the 2026-08-05 ruling for
+	// this surface only — the density surface keeps TF_Bilinear (see SetupDynamicTexture).
+	//
+	// The 2026-08-05 reasoning was sound for a CONTINUOUS field: this texture carries a scalar in RED, the
+	// material bands it with `RVal < BAND` AFTER sampling, so bilinear interpolates the value and the band
+	// lookup still returns a discrete colour. No mush — each boundary just becomes a smooth sub-texel
+	// iso-contour instead of a texel staircase.
+	//
+	// That reasoning does not survive the crossing-count contract. Route Usage is now a COUNT, and the
+	// stroke is one texel wide (10 cm width at 10 cm/texel = identity kernel). Interpolating a one-texel
+	// line toward its zero neighbours means the sampled value only holds the true count at the texel
+	// centre: for a 2-crossing stroke at byte 51, the sample falls below the band-C floor (0.15) at just
+	// ±0.25 texel, so roughly 75% of the drawn width renders one or more bands LOW. A surface whose whole
+	// claim is "this colour means N people walked here" cannot show the wrong N across three quarters of
+	// itself. Smoothing a measurement you are asking someone to read as a number is a lie, however pretty.
+	//
+	// 📌 REVISIT (owner note, 2026-08-10): the smooth iso-contour look may be wanted back, possibly paired
+	// with a WIDER stroke to compensate for the harder edge. Both are live options — but note a wider
+	// stroke re-engages the mass-conserving splat, which spreads one crossing's person-metres across the
+	// kernel and stops the crossing-count bands being literal (SPEC §7.1). Width and filtering cannot be
+	// chosen independently of the band contract.
+	TrajectoryAccumulationTexture->InitializeTexture(SquareSide, SquareSide, InitialColorValue, TF_Nearest);
 	ApplyTrajectoryLOSBands();
 
 	// InitializeTexture builds a brand new UTexture2D, so every material instance still pointing at the
@@ -683,10 +701,12 @@ void AHeatmapPixelTextureVisualizer::SetupDynamicTexture()
 	// EnsureTrajectoryFieldSized re-creates it a moment later.
 	{
 		const int32 TrajectorySide = TrajectoryTextureSize > 0 ? TrajectoryTextureSize : TextureWidth;
-		// Keep this in step with the other two call sites: every heatmap texture is TF_Bilinear. A texture
-		// created here with the TF_Nearest default would render blocky while its sibling rendered smooth,
-		// which is a difference nobody would think to look for. Texture.FiltersBilinear gates all of them.
-		TrajectoryAccumulationTexture->InitializeTexture(TrajectorySide, TrajectorySide, InitialColorValue, TF_Bilinear);
+		// TF_Nearest, matching the other trajectory site in EnsureTrajectoryFieldSized. The two surfaces
+		// now DIVERGE deliberately — density stays bilinear, trajectory does not — because trajectory
+		// carries a discrete crossing count and interpolation makes ~75% of a one-texel stroke read a band
+		// low. Full reasoning at the other call site. Keep the two trajectory sites in step with each
+		// other; do NOT "restore consistency" by matching the density texture.
+		TrajectoryAccumulationTexture->InitializeTexture(TrajectorySide, TrajectorySide, InitialColorValue, TF_Nearest);
 		TrajectoryPreviousRed.Reset();
 	}
 	ApplyTrajectoryLOSBands();
@@ -2003,7 +2023,17 @@ bool AHeatmapPixelTextureVisualizer::EmitNextTileSection(float /*DeltaTime*/)
 
 	// Pick the material up-front so we can set it per section as each tile goes live, rather than
 	// shipping tiles with default material until FinalizeTileEmit runs one pass at the end.
-	UMaterialInstanceDynamic* TargetMaterial = HeatmapType ? HeatmapMaterialInstance.Get() : VoronoiMaterialInstance.Get();
+	//
+	// THROUGH SelectSurfaceMaterial, not a second hand-written ternary. This line used to read
+	// `HeatmapType ? HeatmapMaterialInstance : VoronoiMaterialInstance` with no bTrajectoryHeatmap term,
+	// so while a floor streamed in with the trajectory surface active every tile was bound to the DENSITY
+	// instance — which by then already points at the trajectory accumulation texture. The result was
+	// crossing counts banded against Fruin's density edges: one crossing (byte 26) is below the density
+	// LOS_A edge of 0.1419, so single-crossing routes rendered as bare floor until emission finished.
+	// Self-correcting (FinalizeTileEmit calls AssignMaterialInstanceToMesh) and therefore transient, which
+	// is exactly why it survived — it only shows while tiles are still arriving. Two copies of the same
+	// selection rule is the actual defect; there is now one.
+	UMaterialInstanceDynamic* TargetMaterial = SelectSurfaceMaterial();
 
 	UMobiusCustomLoggerSubsystem* StartupLogger =
 		GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;

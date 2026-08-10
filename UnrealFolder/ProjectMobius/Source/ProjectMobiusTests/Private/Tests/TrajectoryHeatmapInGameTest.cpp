@@ -939,28 +939,41 @@ bool FTrajectoryExportRenderShareInputsTest::RunTest(const FString& Parameters)
 }
 
 // -------------------------------------------------------------------------------------------------
-// THE FILTER GATE. Owner ruling 2026-08-05: both heatmap surfaces render with smooth LOS band edges, so
-// both textures are created TF_Bilinear rather than taking InitializeTexture's TF_Nearest default.
+// THE FILTER GATE. The two surfaces now take DIFFERENT filters, deliberately, and this is what holds
+// them apart.
 //
-// Why this needs a gate at all: the two textures are created at THREE separate call sites in
-// HeatmapPixelTextureVisualizer.cpp (the density one, and the trajectory one twice - once in
-// EnsureTrajectoryFieldSized and once in SetupDynamicTexture). Passing the filter at two of the three
-// leaves one surface blocky beside a smooth sibling, and nothing else in the suite looks at a sampler
-// setting, so it would ship. Reverting to the default is a silent one-token edit.
+// Owner ruling 2026-08-05 made both TF_Bilinear for smooth LOS band edges. Owner ruling 2026-08-10
+// reversed that for the TRAJECTORY surface only:
 //
-// This asserts the FILTER only. Whether the filter is honoured at all depends on the MATERIAL's Sampler
-// Source, which is an asset property and is gated separately by
-// ProjectMobius.Heatmap.*.Material.SamplesWithTextureOwnSampler in TrajectoryHeatmapCalibrationTest.cpp.
-// Both gates are required: a bilinear texture sampled through a shared world-group sampler ignores this
-// setting entirely, and a FromTextureAsset material sampling a TF_Nearest texture renders blocky. Neither
-// test can see the other's half.
+//   density     TF_Bilinear  - a continuous field; interpolating the scalar smooths band edges and
+//                              invents nothing, and it is the fix for the pixelated look (A0-72).
+//   trajectory  TF_Nearest   - a discrete CROSSING COUNT drawn one texel wide. Interpolating toward the
+//                              zero neighbours drops the sample below the band floor at +-0.25 texel, so
+//                              about 75% of a stroke renders at least one band LOW. A surface that says
+//                              "this colour means N people walked here" must not show the wrong N.
+//
+// So "make them match" is now the WRONG instinct, and this gate exists to say so in a failure message
+// rather than in a comment nobody reads.
+//
+// Why a gate at all: the textures are created at THREE call sites in HeatmapPixelTextureVisualizer.cpp
+// (density once in SetupDynamicTexture; trajectory twice - EnsureTrajectoryFieldSized and again in
+// SetupDynamicTexture). Getting two of three right leaves one surface visibly out of step, nothing else
+// in the suite looks at a sampler setting, and reverting is a silent one-token edit.
+//
+// This asserts the FILTER only. Whether it is honoured depends on the MATERIAL's Sampler Source, an asset
+// property gated separately by ProjectMobius.Heatmap.*.Material.SamplesWithTextureOwnSampler in
+// TrajectoryHeatmapCalibrationTest.cpp. Both are required: any texture sampled through a shared
+// world-group sampler ignores this setting entirely. Neither test can see the other's half.
+//
+// RENAMED 2026-08-10 from ...Texture.FiltersBilinear - that name asserted the very thing that is no
+// longer true of both surfaces.
 // -------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FTrajectoryTextureFiltersBilinearTest,
-	"Mobius.InGame.TrajectoryHeatmap.Texture.FiltersBilinear",
+	FTrajectoryTextureFilterPerSurfaceTest,
+	"Mobius.InGame.TrajectoryHeatmap.Texture.FilterPerSurface",
 	EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 
-bool FTrajectoryTextureFiltersBilinearTest::RunTest(const FString& Parameters)
+bool FTrajectoryTextureFilterPerSurfaceTest::RunTest(const FString& Parameters)
 {
 	using namespace TrajectoryInvariance;
 
@@ -980,10 +993,16 @@ bool FTrajectoryTextureFiltersBilinearTest::RunTest(const FString& Parameters)
 	{
 		const TCHAR* Name;
 		const UDynamicPixelRenderingTexture* Texture;
+		TextureFilter ExpectedFilter;
+		const TCHAR* Why;
 	};
 	const FSurface Surfaces[] = {
-		{ TEXT("trajectory accumulation"), Heatmap->GetTrajectoryAccumulationTextureForTesting() },
-		{ TEXT("density"),                 Heatmap->GetDensityDynamicTextureForTesting() },
+		{ TEXT("trajectory accumulation"), Heatmap->GetTrajectoryAccumulationTextureForTesting(), TF_Nearest,
+		  TEXT("it carries a discrete crossing count on a one-texel stroke; interpolation makes ~75% of the ")
+		  TEXT("drawn width read at least one band low") },
+		{ TEXT("density"), Heatmap->GetDensityDynamicTextureForTesting(), TF_Bilinear,
+		  TEXT("it carries a continuous density field; point sampling draws every texel as a hard square, ")
+		  TEXT("which is what made it look pixelated (A0-72)") },
 	};
 
 	for (const FSurface& Surface : Surfaces)
@@ -997,20 +1016,23 @@ bool FTrajectoryTextureFiltersBilinearTest::RunTest(const FString& Parameters)
 		{
 			continue;
 		}
-		if (Texture2D->Filter != TF_Bilinear)
+		if (Texture2D->Filter != Surface.ExpectedFilter)
 		{
 			AddError(FString::Printf(
-				TEXT("the %s texture is Filter = %d, expected TF_Bilinear (%d). Point sampling draws every ")
-				TEXT("texel as a hard square, which is what made the density heatmap look pixelated ")
-				TEXT("(A0-72) - the Gaussian blur was never the cause. FIX: pass TF_Bilinear at the ")
-				TEXT("InitializeTexture call in HeatmapPixelTextureVisualizer.cpp for this surface. There ")
-				TEXT("are THREE such call sites; check all of them."),
-				Surface.Name, static_cast<int32>(Texture2D->Filter), static_cast<int32>(TF_Bilinear)));
+				TEXT("the %s texture is Filter = %d, expected %d. It must be this filter because %s. ")
+				TEXT("NOTE the two surfaces deliberately DIFFER since 2026-08-10 - do not 'fix' this by ")
+				TEXT("making them match. FIX: pass the right filter at the InitializeTexture call in ")
+				TEXT("HeatmapPixelTextureVisualizer.cpp for this surface. There are THREE such call sites ")
+				TEXT("(density once, trajectory twice); check all of them."),
+				Surface.Name, static_cast<int32>(Texture2D->Filter),
+				static_cast<int32>(Surface.ExpectedFilter), Surface.Why));
 		}
 
 		// TA_Clamp matters more once filtering is on, not less: a transient texture defaults to TA_Wrap, so
 		// without the clamp a bilinear sample at the texture edge blends in the OPPOSITE edge's texels.
-		// Under TF_Nearest that was a one-texel curiosity; under TF_Bilinear it is a visible wrap seam.
+		// Under TF_Nearest that is a one-texel curiosity; under TF_Bilinear it is a visible wrap seam. Both
+		// surfaces are asserted regardless - the trajectory one is TF_Nearest today, and leaving it TA_Wrap
+		// would arm the seam for whenever the filter ruling is revisited.
 		TestEqual(*FString::Printf(TEXT("%s texture clamps rather than wraps"), Surface.Name),
 			static_cast<int32>(Texture2D->AddressX), static_cast<int32>(TA_Clamp));
 		TestEqual(*FString::Printf(TEXT("%s texture clamps rather than wraps (Y)"), Surface.Name),

@@ -73,6 +73,16 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 	virtual void PostInitializeComponents() override;
+	/**
+	 * The ONE place that decides which material instance the banded surface should be wearing.
+	 *
+	 * Exists because the rule was written out twice — here and in EmitNextTileSection — and the copies
+	 * drifted: the tile-emit copy lacked the bTrajectoryHeatmap term, so tiles streaming in during
+	 * trajectory mode were bound to the density instance and banded against Fruin edges. Any new site
+	 * that needs a material must call this rather than re-derive it.
+	 */
+	UMaterialInstanceDynamic* SelectSurfaceMaterial() const;
+
 	void AssignMaterialInstanceToMesh() const;
 
 protected:
@@ -488,6 +498,24 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "16", ClampMax = "8192"))
 	int32 TrajectoryMaxGridDim = 2048;
+
+	// TODO(perf, owner-flagged 2026-08-10): reduce the trajectory field's memory footprint by condensing
+	// overlapping data points, rather than by coarsening the grid.
+	//
+	// Context, so this is not re-litigated. 10 cm cells were CHOSEN over 25/50 cm on 2026-08-10: the width
+	// matches an agent's outer foot-to-foot distance, and precision was ruled more valuable than memory.
+	// The cost is real - two floats per cell across the whole floor, and at 10 cm a 100 m x 100 m floor is
+	// 1000x1000 cells, so ~8 MB per floor per accumulator pair, before the square render target.
+	//
+	// The suspected win is that the field is extremely SPARSE and highly repetitive: crowds funnel down the
+	// same routes, so most cells are zero and the occupied ones cluster. Candidates worth measuring before
+	// picking one - a sparse/tiled representation that only allocates touched blocks; quantising the stored
+	// accumulators (float32 -> float16 or a fixed-point count) now that the display quantises to a byte
+	// anyway; or sharing structure between floors that overlap.
+	//
+	// Do NOT "solve" this by raising TrajectoryWorldCmPerTexel. That trades away the precision the owner
+	// explicitly bought, and it silently changes what every band means (the edges are derived from the
+	// effective cell size - see RefreshTrajectoryCrossingBands).
 
 	/**
 	 * Dead under the field pipeline — kept only because they are BlueprintReadWrite and may be referenced
