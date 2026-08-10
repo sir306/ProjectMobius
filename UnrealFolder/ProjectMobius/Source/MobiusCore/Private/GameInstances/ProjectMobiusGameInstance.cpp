@@ -60,6 +60,10 @@ void UProjectMobiusGameInstance::Init()
 	// Push the persisted user UI-scale multiplier into Slate (composes with UMobiusUIScalingRule).
 	ProjectUserSettings->ApplyUIScaleFactorToSlate();
 
+	// Push the persisted sim-cache preferences into their console variables (S14). Console variables do not
+	// survive a restart, so without this the user's choice would apply only in the session that made it.
+	ProjectUserSettings->ApplySimCacheSettingsToCVars();
+
 	// log the custom config variables
 	bool bStartLoggerAtStartup = ProjectUserSettings->GetEnableMobiusLoggerAtStartup();
 

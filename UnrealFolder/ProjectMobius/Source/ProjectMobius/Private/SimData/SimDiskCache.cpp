@@ -490,35 +490,101 @@ namespace MobiusSimCache
 		}
 		return !Reader.IsError();
 	}
+
+	// ONE definition of "what the cache is on disk", shared by the size readout and the clear operation.
+	// They must stay in lockstep: if the size counted a file Clear does not delete, the panel would show a
+	// non-zero cache that the button cannot clear, and the user would press it repeatedly for no effect.
+	// Names are prefixed rather than bare (FindCacheFiles, CacheFileGlobs) because internal-linkage symbols
+	// in a named namespace still collide across a unity-build blob.
+	static const TCHAR* const SimCacheFileGlobs[] = { TEXT("*.msc"), TEXT("*.tmp") };
+
+	/** Full paths of every cache artefact in GetCacheDir(). Empty when the directory does not exist. */
+	static void FindSimCacheFiles(TArray<FString>& OutFullPaths)
+	{
+		IFileManager& FileManager = IFileManager::Get();
+		const FString CacheDir = GetCacheDir();
+		OutFullPaths.Reset();
+
+		if (!FileManager.DirectoryExists(*CacheDir))
+		{
+			return;
+		}
+
+		for (const TCHAR* Glob : SimCacheFileGlobs)
+		{
+			TArray<FString> Names; // FindFiles returns leaf names, not paths — combine before use.
+			FileManager.FindFiles(Names, *FPaths::Combine(CacheDir, Glob), /*Files*/ true, /*Dirs*/ false);
+			for (const FString& Name : Names)
+			{
+				OutFullPaths.Add(FPaths::Combine(CacheDir, Name));
+			}
+		}
+	}
+
+	int64 GetCacheSizeOnDisk(int32* OutFileCount)
+	{
+		IFileManager& FileManager = IFileManager::Get();
+
+		TArray<FString> Files;
+		FindSimCacheFiles(Files);
+
+		int64 TotalBytes = 0;
+		int32 Count = 0;
+		for (const FString& File : Files)
+		{
+			// FileSize returns -1 for anything that disappeared between the listing and the stat — an
+			// import worker completing its .tmp -> .msc rename mid-walk is the realistic case. Skipping
+			// keeps the total honest; accumulating -1 would silently understate the cache.
+			const int64 Size = FileManager.FileSize(*File);
+			if (Size > 0)
+			{
+				TotalBytes += Size;
+				++Count;
+			}
+		}
+
+		if (OutFileCount != nullptr)
+		{
+			*OutFileCount = Count;
+		}
+		return TotalBytes;
+	}
+
+	int32 ClearCache()
+	{
+		IFileManager& FileManager = IFileManager::Get();
+
+		TArray<FString> Files;
+		FindSimCacheFiles(Files);
+		if (Files.Num() == 0)
+		{
+			UE_LOG(LogMobiusSimCache, Log, TEXT("[SimCache] Clear: nothing to remove in '%s'"), *GetCacheDir());
+			return 0;
+		}
+
+		int32 Removed = 0;
+		for (const FString& File : Files)
+		{
+			if (FileManager.Delete(*File, /*RequireExists*/ false, /*EvenReadOnly*/ true))
+			{
+				++Removed;
+			}
+		}
+		UE_LOG(LogMobiusSimCache, Log, TEXT("[SimCache] Clear: removed %d file(s) from '%s'"), Removed, *GetCacheDir());
+		return Removed;
+	}
 }
 
 // ---------------------------------------------------------------------------------------------------
 // Console command: mobius.SimCache.Clear — delete every cached .msc (and any leftover .tmp) so a stale
 // or unwanted cache can be discarded without hand-deleting files. (PRD A3 "console command to clear cache dir".)
+// The body lives in MobiusSimCache::ClearCache so this command and the S14 settings-panel button share one
+// implementation; before S14 this logic existed only here and was unreachable from the UI.
 // ---------------------------------------------------------------------------------------------------
 static FAutoConsoleCommand GClearSimCacheCmd(
 	TEXT("mobius.SimCache.Clear"),
 	TEXT("Delete all cached .msc simulation files in <ProjectSaved>/MobiusSimCache."),
 	FConsoleCommandDelegate::CreateLambda([]()
 	{
-		IFileManager& FileManager = IFileManager::Get();
-		const FString CacheDir = MobiusSimCache::GetCacheDir();
-		if (!FileManager.DirectoryExists(*CacheDir))
-		{
-			UE_LOG(LogMobiusSimCache, Log, TEXT("[SimCache] Clear: no cache dir at '%s'"), *CacheDir);
-			return;
-		}
-
-		int32 Removed = 0;
-		TArray<FString> Files;
-		FileManager.FindFiles(Files, *FPaths::Combine(CacheDir, TEXT("*.msc")), /*Files*/ true, /*Dirs*/ false);
-		FileManager.FindFiles(Files, *FPaths::Combine(CacheDir, TEXT("*.tmp")), /*Files*/ true, /*Dirs*/ false);
-		for (const FString& File : Files)
-		{
-			if (FileManager.Delete(*FPaths::Combine(CacheDir, File), /*RequireExists*/ false, /*EvenReadOnly*/ true))
-			{
-				++Removed;
-			}
-		}
-		UE_LOG(LogMobiusSimCache, Log, TEXT("[SimCache] Clear: removed %d file(s) from '%s'"), Removed, *CacheDir);
+		MobiusSimCache::ClearCache();
 	}));

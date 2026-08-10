@@ -148,6 +148,27 @@ namespace MobiusSimCache
 	PROJECTMOBIUS_API bool IsFastReloadEnabled();
 
 	/**
+	 * Total bytes of every cache artefact in GetCacheDir(), and optionally how many files that was.
+	 * Counts exactly the set ClearCache() deletes, so a size the user cannot clear can never be shown.
+	 *
+	 * Returns 0 when the directory is absent — "never cached anything" and "cache is empty" are
+	 * deliberately indistinguishable here, because both mean "nothing to clear".
+	 *
+	 * A directory walk plus one stat per file; no file is opened. Cheap enough to call when a settings
+	 * panel opens or after an import, but S14 is push-on-change by design: do NOT poll it per frame.
+	 */
+	PROJECTMOBIUS_API int64 GetCacheSizeOnDisk(int32* OutFileCount = nullptr);
+
+	/**
+	 * Delete every cache artefact in GetCacheDir(); returns how many files were removed. Backs both the
+	 * mobius.SimCache.Clear console command and the S14 settings-panel button, so the two cannot diverge.
+	 *
+	 * Deletes only files matching the cache globs inside that one directory — never the directory itself,
+	 * and never recursively — so a mis-set cache dir cannot escalate into deleting unrelated files.
+	 */
+	PROJECTMOBIUS_API int32 ClearCache();
+
+	/**
 	 * Core writer: serialise SimulationData to OutFilePath in the format above (writing atomically via a
 	 * .tmp + rename). Bypasses the cvar and the reuse check — used directly by tests. Honours bShouldStop
 	 * (aborts and removes the partial .tmp). Returns true on a complete write.
