@@ -9,6 +9,7 @@
 #include "MassAI/Fragments/AgentEgressTenabilityFragments.h" // FTenabilityAnalysisSettings
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
 #include "Misc/AutomationTest.h"
+#include "UObject/UnrealType.h" // TFieldIterator, for the settings field-count drift gate
 
 namespace
 {
@@ -441,6 +442,22 @@ bool FAgentTenabilityTimelineInvalidationTest::RunTest(const FString&)
 	// are what make SettingsHash a sound Layer-2 invalidation signal. Bitwise-equal settings must
 	// hash equal so a settings rebuild is requested ONLY on a genuine change.
 	{
+		// Drift gate for the two hand-maintained field lists below and in HashTenabilitySettings. Neither is
+		// coupled to the struct at compile time, so a new UPROPERTY silently gets folded into NEITHER — and an
+		// unhashed field means MakeCurrentTimelineKey reports the precomputed timelines as current after that
+		// setting changes, i.e. displayed tenability computed from stale settings. A count check is the cheap
+		// half of the coupling; the per-field ExpectHashChange cases below are the other half. Deliberately
+		// here and not in HashTenabilitySettings itself: that hash is re-derived per agent per frame by the
+		// health processor's currency check, so it must not walk reflection.
+		int32 NumSettingsFields = 0;
+		for (TFieldIterator<FProperty> It(FTenabilityAnalysisSettings::StaticStruct()); It; ++It)
+		{
+			++NumSettingsFields;
+		}
+		TestEqual(TEXT("FTenabilityAnalysisSettings field count — a field added here must ALSO be folded into "
+			"UBRiskEgressSubsystem::HashTenabilitySettings and given an ExpectHashChange case below"),
+			NumSettingsFields, 11);
+
 		const FTenabilityAnalysisSettings A;                 // defaults
 		FTenabilityAnalysisSettings B;                       // identical copy
 		const uint32 HashA = UBRiskEgressSubsystem::HashTenabilitySettings(A);

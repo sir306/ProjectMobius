@@ -10,6 +10,46 @@
 #include "Engine/UserInterfaceSettings.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/SWindow.h"
+#include "HAL/IConsoleManager.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogMobiusUserSettings, Log, All);
+
+namespace
+{
+	/** Console-variable names for the two persisted sim-cache preferences (S14). Held as strings rather
+	 *  than as references to the TAutoConsoleVariable objects on purpose: those live in an anonymous
+	 *  namespace inside ProjectMobius/Private/SimData/SimDiskCache.cpp, and MobiusCore sits BELOW
+	 *  ProjectMobius in the module graph, so the symbols are unreachable from here by design. Lookup by
+	 *  name is the sanctioned seam across that boundary, not a workaround for a missing include. */
+	const TCHAR* const GSimCacheWriteOnImportCVarName = TEXT("mobius.SimCache.WriteOnImport");
+	const TCHAR* const GSimCacheFastReloadCVarName    = TEXT("mobius.SimCache.FastReload");
+
+	/**
+	 * Push a bool into an int32 console variable found by name.
+	 *
+	 * Deliberately uses IConsoleVariable::Set's DEFAULT priority (ECVF_SetByCode) — the same priority the
+	 * automation tests use when they set these CVars directly. Equal priority means last-writer-wins, so a
+	 * test that sets a CVar after startup takes effect as it always did. Raising the priority here
+	 * (SetByConsole) would make those test writes silently no-op; lowering it (SetByProjectSetting) would
+	 * make the USER's toggle silently no-op for the rest of any session in which a test had run. Both
+	 * failure modes are invisible at the call site, which is why the choice is spelled out.
+	 *
+	 * A missing CVar is a warning, not an error: MobiusCore must keep working when ProjectMobius is not
+	 * loaded (tooling and MobiusCore-only targets), and in that case there is no cache to configure.
+	 */
+	void PushBoolToConsoleVariable(const TCHAR* CVarName, bool bValue)
+	{
+		if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(CVarName))
+		{
+			CVar->Set(bValue ? 1 : 0);
+		}
+		else
+		{
+			UE_LOG(LogMobiusUserSettings, Warning,
+				TEXT("[SimCache] console variable '%s' not found; persisted preference not applied"), CVarName);
+		}
+	}
+}
 
 
 UUserProjectSettings::UUserProjectSettings(const FObjectInitializer& ObjectInitializer)
@@ -17,117 +57,79 @@ UUserProjectSettings::UUserProjectSettings(const FObjectInitializer& ObjectIniti
 {
 }
 
+bool UUserProjectSettings::IsEngineUserSettingsObject(const TCHAR* CallingFunction) const
+{
+	// There is only ever ONE UUserProjectSettings that matters: the engine's GameUserSettings singleton.
+	// DefaultEngine.ini sets GameUserSettingsClassName=/Script/MobiusCore.UserProjectSettings, so the object
+	// UEngine::CreateGameUserSettings news up IS of this class, and every caller in the project reaches it
+	// through GEngine->GetGameUserSettings(). This class therefore does not — and must not — mirror state
+	// into a second object.
+	//
+	// The check exists because the inherited SaveSettings() writes to the SHARED
+	// [/Script/MobiusCore.UserProjectSettings] section of GameUserSettings.ini. Calling it on a stray
+	// instance (a NewObject, the CDO, a Blueprint-constructed copy) would overwrite every persisted
+	// preference of the real settings object with that stray's constructor defaults — including
+	// AcceptedLegalNoticeVersion, i.e. it would re-prompt the legal notice. Fail loudly instead of
+	// corrupting the file.
+	if (!GEngine)
+	{
+		// No engine means no singleton to compare against and no session worth persisting.
+		UE_LOG(LogMobiusUserSettings, Error, TEXT("%s: GEngine is null; settings not touched"), CallingFunction);
+		return false;
+	}
+
+	// GetGameUserSettings() creates the singleton on demand and cannot return null, so this is a plain
+	// identity test, not a null guard.
+	if (this != GEngine->GetGameUserSettings())
+	{
+		UE_LOG(LogMobiusUserSettings, Error,
+			TEXT("%s: called on '%s', which is not the engine's GameUserSettings object. ")
+			TEXT("Reach settings via GEngine->GetGameUserSettings() instead; refusing to touch %s."),
+			CallingFunction, *GetPathName(), TEXT("GameUserSettings.ini"));
+		return false;
+	}
+
+	return true;
+}
+
 void UUserProjectSettings::SaveMobiusSettings()
 {
-	if (ProjectUserSettings != nullptr)
+	if (!IsEngineUserSettingsObject(TEXT("UUserProjectSettings::SaveMobiusSettings")))
 	{
-		ProjectUserSettings->SaveSettings();
+		return;
 	}
-	else if (GEngine)
-	{
-		auto TempSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings());
-		if (TempSettings != nullptr)
-		{
-			TempSettings->bEnableMobiusLoggerAtStartup = bEnableMobiusLoggerAtStartup;
-			TempSettings->bDisplayMobiusLogWindowAtStartup = bDisplayMobiusLogWindowAtStartup;
-			TempSettings->SaveSettings();
-		}
-		else
-		{
-			// Use MobiusUserFeedbackSubsystem for error reporting
-			UWorld* World = nullptr;
-			for (const FWorldContext& Context : GEngine->GetWorldContexts())
-			{
-				if (Context.World())
-				{
-					World = Context.World();
-					break;
-				}
-			}
 
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(World))
-			{
-				Feedback->ReportError(
-					FText::FromString("Settings Error"),
-					FText::FromString("Failed to Save Settings"),
-					FText::FromString("Could not access game user settings."),
-					FText::FromString("UserProjectSettings::SaveMobiusSettings"),
-					EMobiusErrorSeverity::Warning,
-					true
-				);
-			}
-		}
-	}
-	else
-	{
-		// GEngine not available - cannot report error properly
-		UE_LOG(LogTemp, Error, TEXT("UserProjectSettings::SaveMobiusSettings - GEngine is null"));
-	}
+	// The inherited SaveSettings() serializes EVERY UPROPERTY(Config) on this class via
+	// SaveConfig(CPF_Config, *GGameUserSettingsIni). That is the whole job.
+	//
+	// This function used to hold a hand-written fallback that copied two named fields onto the object
+	// returned by GEngine->GetGameUserSettings() before saving it. That list could only ever go stale —
+	// RenderPerformanceTierOverride, UIScaleFactor, bHasCompletedFirstRun, AcceptedLegalNoticeVersion,
+	// bWasWindowMaximized, bUseLightUITheme and the two sim-cache flags were all added afterwards and none
+	// were added to it. Do not reintroduce a field list here: adding a UPROPERTY(Config) must be sufficient.
+	SaveSettings();
 }
 
 void UUserProjectSettings::LoadMobiusSettings()
 {
-	// check that we can get the GEngine
-	if (GEngine)
+	if (!IsEngineUserSettingsObject(TEXT("UUserProjectSettings::LoadMobiusSettings")))
 	{
-		// have we got a game user setting if not we need to make one
-		if (GEngine->GetGameUserSettings() == nullptr)
-		{
-			UUserProjectSettings* NewSettings = NewObject<UUserProjectSettings>(GEngine, UUserProjectSettings::StaticClass());
-			NewSettings->SaveMobiusSettings();
-		}
-		ProjectUserSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings());
-		if (ProjectUserSettings != nullptr)
-		{
-			ProjectUserSettings->LoadSettings();
-		}
-		else
-		{
-			// Use MobiusUserFeedbackSubsystem for error reporting
-			UWorld* World = nullptr;
-			for (const FWorldContext& Context : GEngine->GetWorldContexts())
-			{
-				if (Context.World())
-				{
-					World = Context.World();
-					break;
-				}
-			}
-
-			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(World))
-			{
-				Feedback->ReportError(
-					FText::FromString("Settings Error"),
-					FText::FromString("Failed to Load Settings"),
-					FText::FromString("Could not access game user settings."),
-					FText::FromString("UserProjectSettings::LoadMobiusSettings"),
-					EMobiusErrorSeverity::Warning,
-					true
-				);
-			}
-		}
+		return;
 	}
-	else
-	{
-		// GEngine not available - cannot report error properly
-		UE_LOG(LogTemp, Error, TEXT("UserProjectSettings::LoadMobiusSettings - GEngine is null"));
-	}
-}
 
-void UUserProjectSettings::ResetConfig()
-{
-	bEnableMobiusLoggerAtStartup = true;
-	bDisplayMobiusLogWindowAtStartup = false;
-	RenderPerformanceTierOverride = ERpt_Auto;
-	bUseLightUITheme = true;
+	// Mirror of the above: LoadSettings() reads every UPROPERTY(Config) back out of GameUserSettings.ini.
+	// The old "create one if GetGameUserSettings() returns null" branch here was unreachable (the getter
+	// creates on demand) and, had it run, would have written and then dropped an object that was never
+	// installed on GEngine.
+	LoadSettings();
 }
 
 void UUserProjectSettings::SetUseLightUITheme(const bool bLight)
 {
 	bUseLightUITheme = bLight;
 
-	// Persist via SaveSettings() -> UGameUserSettings::SaveSettings -> real UObject::SaveConfig
-	// (same reasoning as SetRenderPerformanceTierOverride below).
+	// Persist via SaveSettings() -> UGameUserSettings::SaveSettings -> real UObject::SaveConfig, which
+	// serializes ALL UPROPERTY(Config) fields (same reasoning as SetRenderPerformanceTierOverride below).
 	SaveSettings();
 }
 
@@ -136,8 +138,8 @@ void UUserProjectSettings::SetRenderPerformanceTierOverride(TEnumAsByte<ERenderP
 	RenderPerformanceTierOverride = NewOverride;
 
 	// Persist via SaveSettings() -> UGameUserSettings::SaveSettings -> real UObject::SaveConfig, which
-	// serializes ALL UPROPERTY(Config) fields. (The custom no-arg SaveConfig() above only hand-copies the
-	// two logger flags through its GEngine fallback, so it would NOT persist this field.)
+	// serializes ALL UPROPERTY(Config) fields. SaveMobiusSettings() now resolves to exactly this call, so
+	// either is correct; the direct call keeps the setter independent of that wrapper.
 	SaveSettings();
 }
 
@@ -146,6 +148,30 @@ void UUserProjectSettings::SetUIScaleFactor(float NewScale)
 	UIScaleFactor = FMath::Clamp(NewScale, 0.5f, 2.0f);
 	ApplyUIScaleFactorToSlate();
 	SaveSettings();
+}
+
+void UUserProjectSettings::SetCacheSimulationsOnImport(bool bEnable)
+{
+	bCacheSimulationsOnImport = bEnable;
+	PushBoolToConsoleVariable(GSimCacheWriteOnImportCVarName, bEnable);
+	SaveSettings();
+}
+
+void UUserProjectSettings::SetReuseSimulationCacheOnReopen(bool bEnable)
+{
+	bReuseSimulationCacheOnReopen = bEnable;
+	PushBoolToConsoleVariable(GSimCacheFastReloadCVarName, bEnable);
+	SaveSettings();
+}
+
+void UUserProjectSettings::ApplySimCacheSettingsToCVars() const
+{
+	// Startup push, called once from ProjectMobiusGameInstance::Init immediately after LoadMobiusSettings()
+	// — the same place and for the same reason as ApplyUIScaleFactorToSlate. A console variable does not
+	// persist across launches, so without this the saved preference would be honoured only in the session
+	// that set it. Deliberately NOT on a tick or timer; see PushBoolToConsoleVariable for why.
+	PushBoolToConsoleVariable(GSimCacheWriteOnImportCVarName, bCacheSimulationsOnImport);
+	PushBoolToConsoleVariable(GSimCacheFastReloadCVarName, bReuseSimulationCacheOnReopen);
 }
 
 void UUserProjectSettings::ApplyUIScaleFactorToSlate() const
