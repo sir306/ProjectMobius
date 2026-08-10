@@ -81,6 +81,60 @@ namespace TrajectoryHeatmapCommands
 	{
 		return Args.IsValidIndex(Index) ? FCString::Atoi(*Args[Index]) : Fallback;
 	}
+
+	/**
+	 * One texel's reading, described against the bands ACTUALLY IN FORCE and converted to crossings.
+	 *
+	 * The band names used to come from five hard-coded literals — and they were the FRUIN DENSITY edges
+	 * (0.1419 / 0.1983 / 0.3309 / 0.4946 / 1.0), on a surface that is not banded by density. Against the
+	 * crossing contract that misreported four of six bands: one crossing (byte 26, normalised 0.102) came
+	 * back as LOS_A, i.e. "nobody walked here", about a texel somebody had demonstrably walked through.
+	 * A diagnostic that lies is worse than no diagnostic, because it gets believed — anyone checking the
+	 * surface with it would have concluded the banding was broken when it was not.
+	 *
+	 * Edges now come from the texture itself. ApplyTrajectoryLOSBands pushes the identical FHeatmapLOSBands
+	 * struct to the material and to this texture, so reading it here reports what is genuinely on screen
+	 * and cannot drift again.
+	 *
+	 * The crossing count is the number worth having: normalised = C / (s * Reference), so
+	 * C = normalised * s * Reference. Reported only in Route Usage — in Route Exposure the stored quantity
+	 * is person-seconds against a different reference and "crossings" would be meaningless.
+	 */
+	static FString DescribeTexel(const AHeatmapPixelTextureVisualizer& Heatmap,
+	                             const UDynamicPixelRenderingTexture& Texture, int32 X, int32 Y)
+	{
+		const uint8 Red = Texture.GetRawPixelRed(X, Y);
+		const float Normalised = static_cast<float>(Red) / 255.0f;
+
+		const FHeatmapLOSBands& Bands = Texture.GetLOSBands();
+		const TCHAR* BandName =
+			Normalised < Bands.BandA ? TEXT("LOS_A/blue")   :
+			Normalised < Bands.BandB ? TEXT("LOS_B/cyan")   :
+			Normalised < Bands.BandC ? TEXT("LOS_C/green")  :
+			Normalised < Bands.BandD ? TEXT("LOS_D/yellow") :
+			Normalised < Bands.BandE ? TEXT("LOS_E/orange") : TEXT("LOS_F/red");
+
+		const FTrajectoryField& Field = Heatmap.GetTrajectoryFieldForTesting();
+		const float CellSideCm = Field.GetEffectiveCmPerTexel();
+		const float Reference = Field.GetConfig().ReferenceUsageDensity;
+
+		FString Reading = FString::Printf(TEXT("red=%u  normalised=%.5f  band=%s"), Red, Normalised, BandName);
+
+		if (Heatmap.GetTrajectoryMapMode() == ETrajectoryMapMode::RouteUsage)
+		{
+			Reading += FString::Printf(TEXT("  ~%.2f crossings"),
+				Normalised * (CellSideCm / CentimetresPerMetre) * Reference);
+		}
+
+		// Echo the edges and the grid the reading was judged against. Without them a surprising band is
+		// ambiguous between "the data is odd" and "the bands are not what I assume", which is exactly the
+		// confusion this command existed to resolve and instead caused.
+		Reading += FString::Printf(
+			TEXT("   [edges %.4f/%.4f/%.4f/%.4f/%.4f, cell %.1f cm, ref %.0f]"),
+			Bands.BandA, Bands.BandB, Bands.BandC, Bands.BandD, Bands.BandE, CellSideCm, Reference);
+
+		return Reading;
+	}
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -206,18 +260,9 @@ static FAutoConsoleCommandWithWorldAndArgs GMobiusHeatmapReadTexel(
 
 			const int32 X = ArgAsInt(Args, 0, 0);
 			const int32 Y = ArgAsInt(Args, 1, 0);
-			const uint8 Red = Texture->GetRawPixelRed(X, Y);
-			const float Normalised = static_cast<float>(Red) / 255.0f;
 
-			const TCHAR* Band =
-				Normalised < 0.1419f ? TEXT("LOS_A") :
-				Normalised < 0.1983f ? TEXT("LOS_B") :
-				Normalised < 0.3309f ? TEXT("LOS_C") :
-				Normalised < 0.4946f ? TEXT("LOS_D") :
-				Normalised < 1.0f    ? TEXT("LOS_E") : TEXT("LOS_F");
-
-			UE_LOG(LogMobiusTrajectoryCmd, Display, TEXT("texel (%d,%d)  red=%u  normalised=%.5f  band=%s"),
-				X, Y, Red, Normalised, Band);
+			UE_LOG(LogMobiusTrajectoryCmd, Display, TEXT("texel (%d,%d)  %s"),
+				X, Y, *DescribeTexel(*Heatmap, *Texture, X, Y));
 		}));
 
 // -------------------------------------------------------------------------------------------------
@@ -247,8 +292,11 @@ static FAutoConsoleCommandWithWorldAndArgs GMobiusHeatmapReadWorld(
 			const FVector WorldLocation(ArgAsFloat(Args, 0, 0.0f), ArgAsFloat(Args, 1, 0.0f), Heatmap->GetActorLocation().Z);
 			const FIntPoint Texel = Heatmap->WorldToTexelForTesting(WorldLocation);
 
-			UE_LOG(LogMobiusTrajectoryCmd, Display, TEXT("world (%.1f,%.1f) -> texel (%d,%d)  red=%u"),
-				WorldLocation.X, WorldLocation.Y, Texel.X, Texel.Y, Texture->GetRawPixelRed(Texel.X, Texel.Y));
+			// Same description as ReadTexel: this one only differs in how the texel is addressed, and
+			// having the two report different amounts of detail is how you end up trusting the wrong one.
+			UE_LOG(LogMobiusTrajectoryCmd, Display, TEXT("world (%.1f,%.1f) -> texel (%d,%d)  %s"),
+				WorldLocation.X, WorldLocation.Y, Texel.X, Texel.Y,
+				*DescribeTexel(*Heatmap, *Texture, Texel.X, Texel.Y));
 		}));
 
 // -------------------------------------------------------------------------------------------------
