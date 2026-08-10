@@ -131,4 +131,23 @@ private:
 	 *  HandleGenerateWidget/EnsureThemeBound seam updates this bookkeeping (a delegate bind is not
 	 *  observable widget state). */
 	mutable bool bThemeBound = false;
+
+	/**
+	 * The subsystem this combo resolved while it still could — i.e. from RebuildWidget / EnsureThemeBound,
+	 * where GetWorld() works. Cached because a dropdown ROW is generated into the menu stack, where GetWorld()
+	 * returns null: without this, GetThemeSubsystem() had to fall back to sweeping GEngine's world contexts
+	 * and would return whichever context matched FIRST, which is not necessarily the PIE one whose theme the
+	 * user is actually looking at.
+	 *
+	 * Caching the SUBSYSTEM is safe where caching a COLOUR was not: this is a live object, so GetTheme() is
+	 * read fresh at every use. An earlier attempt cached the resolved colour instead and froze each combo at
+	 * its construct-time theme. Weak, so a torn-down PIE subsystem simply falls back to the lookups.
+	 */
+	mutable TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
+
+	// (A temporary set of reflected diagnostics lived here while the row colour was being chased. They are
+	// gone because the row now BINDS its colour rather than baking one, so there is no generation-time value
+	// left to record — the failure mode they were added to observe cannot occur.)
+
+
 };

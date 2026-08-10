@@ -24,7 +24,8 @@
 
 #include "UI/Components/MobiusThemedComboBox.h"
 
-#include "Engine/Engine.h"                    // GEngine->GetGameUserSettings()
+#include "Engine/Engine.h"                    // GEngine->GetGameUserSettings() + GetWorldContexts()
+#include "Engine/World.h"                     // FWorldContext::World() in the deep subsystem sweep
 #include "Engine/Font.h"                      // UFont (Font_Inter)
 #include "Engine/GameInstance.h"              // GetSubsystem<UUIThemeSubsystem>
 #include "Fonts/SlateFontInfo.h"
@@ -35,13 +36,94 @@
 #include "Widgets/Layout/SBox.h"              // ComboBoxContent (selected-value host)
 #include "Widgets/Text/STextBlock.h"          // SetColorAndOpacity on the selected-value block
 
+namespace
+{
+	/**
+	 * Stamp Colour on every STextBlock in a generated combo row, however deeply it is wrapped.
+	 *
+	 * The shallow `GetType() == "STextBlock"` test this replaces only ever matched the ENGINE default row.
+	 * Every Mobius combo binds OnGenerateWidgetEvent to a Blueprint generator, so the returned widget is the
+	 * BP widget's Slate (a panel, a border, or an SObjectWidget for a UUserWidget) and the text sits one or
+	 * more levels down — the stamp was skipped 100% of the time on exactly the combos that need it.
+	 *
+	 * With nothing stamping it, the text falls back to the SComboBox's ForegroundColor, and that is
+	 * CONSTRUCT-ONLY: `ComboBoxString.h:88` says "only set at construction and is not modifiable at
+	 * runtime", and RebuildWidget reads it once (`ComboBoxString.cpp:108`). A combo built while the app was
+	 * LIGHT therefore keeps InputText-light (near-black 0.016) forever, which is why the dropdown text
+	 * rendered black in dark mode while ItemStyle.TextColor / SelectedTextColor / the four button
+	 * foregrounds all measured correct at 0.624.
+	 *
+	 * Deliberately unconditional: a combo ROW is chrome, so uniform themed text is the intent. If a future
+	 * row ever needs its own colour (a coloured swatch label, say), give it an explicit opt-out rather than
+	 * restoring the type check — the type check is what hid this.
+	 */
+	void StampRowTextColour(const TSharedRef<SWidget>& Widget, const FSlateColor& Colour, const int32 Depth = 0)
+	{
+		// Combo rows are shallow; the guard exists so a pathological custom row cannot spin here.
+		if (Depth > 8)
+		{
+			return;
+		}
+		if (Widget->GetType() == TEXT("STextBlock"))
+		{
+			StaticCastSharedRef<STextBlock>(Widget)->SetColorAndOpacity(Colour);
+			return;
+		}
+		if (FChildren* Children = Widget->GetChildren())
+		{
+			for (int32 Index = 0; Index < Children->Num(); ++Index)
+			{
+				StampRowTextColour(Children->GetChildAt(Index), Colour, Depth + 1);
+			}
+		}
+	}
+}
+
 UUIThemeSubsystem* UMobiusThemedComboBox::GetThemeSubsystem() const
 {
+	// ORDER MATTERS, and getting it wrong is a hazard I introduced and then had to undo. The widget's OWN
+	// world is the only authoritative answer, so it is tried FIRST and refreshes the cache. Checking the
+	// cache first meant that one bad resolve stuck forever — and the sweep at the bottom can absolutely
+	// produce a bad resolve, because it returns whichever world context matches first, which may be a stale
+	// or non-PIE instance whose theme is not the one on screen.
 	if (const UWorld* World = GetWorld())
 	{
 		if (UGameInstance* GameInstance = World->GetGameInstance())
 		{
-			return GameInstance->GetSubsystem<UUIThemeSubsystem>();
+			if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				CachedThemeSubsystem = Theme;
+				return Theme;
+			}
+		}
+	}
+	// The instance THIS widget resolved from its own world earlier (RebuildWidget / EnsureThemeBound, where
+	// GetWorld() still worked). Correct by construction for a row generated into the menu stack.
+	if (UUIThemeSubsystem* Cached = CachedThemeSubsystem.Get())
+	{
+		return Cached;
+	}
+	// 2026-08-10: GetWorld() does NOT resolve for a combo whose row is being generated into the menu stack,
+	// and the old version returned null there — which sent ResolveIsLight() into its UUserProjectSettings
+	// branch. That flag is persisted only AFTER OnThemeChanged broadcasts, so it lags by one toggle, and the
+	// rows came out inverted rather than merely unthemed. Sweep GEngine's world contexts as well, the same
+	// fallback UFlowCounterListRow::ResolveThemeSubsystem already uses for a widget spawned into a list.
+	if (GEngine)
+	{
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			if (UWorld* World = Context.World())
+			{
+				if (UGameInstance* GameInstance = World->GetGameInstance())
+				{
+					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+					{
+						// Deliberately NOT cached: this is a guess, and caching a guess is what made a wrong
+						// resolve permanent last time.
+						return Theme;
+					}
+				}
+			}
 		}
 	}
 	return nullptr;
@@ -118,24 +200,44 @@ void UMobiusThemedComboBox::HandleThemeChanged()
 
 	// Selected-value text: the one piece that needs an explicit live set.
 	ApplySelectedTextColor();
+
+	// DROPDOWN ROWS — force regeneration, or the toggle never reaches them.
+	//
+	// This is the mechanism three earlier attempts missed. SComboBox generates each row ONCE via
+	// HandleGenerateWidget and the SListView REUSES that widget on every subsequent open, so the row's text
+	// colour is fixed at whatever theme was live the first time that combo's list was built and no later
+	// toggle can move it. Nothing about the stamp was wrong; it simply never ran again.
+	//
+	// That is also why different combos disagreed with each other rather than all being wrong the same way:
+	// each froze independently, at whatever theme happened to be current when IT was first opened. The
+	// render-mode combo froze light while the colour-mode and flow-counter-type combos froze dark, which
+	// reads like conflicting theming and is really one cache with three different birthdays.
+	//
+	// RefreshOptions() forwards to SComboBox::RefreshOptions -> RequestListRefresh, which discards the
+	// generated rows so the next open re-enters HandleGenerateWidget and re-stamps against the CURRENT
+	// theme. It refreshes the option widgets only; SelectedItem is untouched, so the closed value does not
+	// change and no OnSelectionChanged fires.
+	RefreshOptions();
 }
 
 void UMobiusThemedComboBox::ApplySelectedTextColor()
 {
-	// ComboBoxContent (protected SBox from the base) hosts the generated selected-value widget. On the
-	// default path (no OnGenerateWidgetEvent) that child is an STextBlock; recolour it directly.
+	// ComboBoxContent (protected SBox from the base) hosts the generated selected-value widget.
 	// SetColorAndOpacity Assigns + Invalidate(Paint) only — no SComboButton / SMenuAnchor involvement.
+	//
+	// 2026-08-10: this used to require the child to BE an STextBlock, which is only true on the engine
+	// default path. With OnGenerateWidgetEvent bound — as it is on every Mobius combo — the child is the
+	// Blueprint generator's widget and the text is nested inside it, so the recolour silently did nothing
+	// and the CLOSED value kept the construct-only ForegroundColor. Recurse instead, same as the row path.
 	if (!ComboBoxContent.IsValid())
 	{
 		return;
 	}
-	FChildren* Children = ComboBoxContent->GetChildren();
-	if (Children && Children->Num() > 0)
+	if (FChildren* Children = ComboBoxContent->GetChildren())
 	{
-		TSharedRef<SWidget> Content = Children->GetChildAt(0);
-		if (Content->GetType() == TEXT("STextBlock"))
+		for (int32 Index = 0; Index < Children->Num(); ++Index)
 		{
-			StaticCastSharedRef<STextBlock>(Content)->SetColorAndOpacity(ThemeTextColor);
+			StampRowTextColour(Children->GetChildAt(Index), ThemeTextColor);
 		}
 	}
 }
@@ -156,6 +258,56 @@ TSharedRef<SWidget> UMobiusThemedComboBox::HandleGenerateWidget(TSharedPtr<FStri
 	// UpdateOrGenerateWidget -> HandleGenerateWidget and never runs RebuildWidget again.
 	EnsureThemeBound();
 
+	// BUILD THE ROW OURSELVES when no Blueprint generator is bound.
+	//
+	// This is the fix after four failed attempts, all of which tried to RECOLOUR the widget the base handed
+	// back. The base's default row is SNew(STextBlock).Text(...).Font(GetFont()) with **no ColorAndOpacity**,
+	// so it resolves its colour by FOREGROUND INHERITANCE from the SComboBox — whose ForegroundColor the
+	// engine fixes at construction and never updates (ComboBoxString.h:88). Recolouring after the fact fought
+	// that inheritance instead of replacing it. Constructing the row with an explicit colour removes the
+	// inheritance from the picture entirely, which is the only version of this that cannot regress.
+	//
+	// IsBound() is the authoritative test for a Blueprint generator. Do NOT infer it from Python: the repr of
+	// OnGenerateWidgetEvent prints the delegate SIGNATURE type (FGenerateWidgetForString) and looks identical
+	// whether or not anything is bound — reading it as "bound" is what sent the earlier diagnosis wrong.
+	// A BP-supplied row is still respected, and still gets the recursive stamp below as a best effort.
+	if (!OnGenerateWidgetEvent.IsBound())
+	{
+		// BIND the colour, do not bake it.
+		//
+		// Owner, 2026-08-10: "it renders correctly for the start theme and then incorrectly when i switch."
+		// That is the whole bug in one sentence, and it invalidates every previous attempt at once — each of
+		// them computed a colour AT GENERATION TIME, and the row widget is generated once and then reused.
+		// SListView caches its generated row widgets, so RefreshOptions()/RequestListRefresh does not
+		// re-enter this function for an already-built row; whatever value was correct on the first open stays
+		// there through every later toggle. The failures were never about WHICH colour was computed.
+		//
+		// A TAttribute lambda is re-evaluated on every paint, so the row reads the CURRENT theme each frame
+		// and there is nothing left to go stale — no cache, no regeneration dependency, no construction-time
+		// snapshot. Cost is one palette lookup per visible row per paint, and only while the menu is open.
+		//
+		// Weak pointer: the menu can outlive the combo during teardown, and the lambda must not resurrect it.
+		TWeakObjectPtr<const UMobiusThemedComboBox> WeakSelf(this);
+		return SNew(STextBlock)
+			.Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty())
+			.Font(GetFont())
+			.ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([WeakSelf]() -> FSlateColor
+			{
+				const UMobiusThemedComboBox* Self = WeakSelf.Get();
+				if (!Self)
+				{
+					return FSlateColor(FLinearColor::White);
+				}
+				if (const UUIThemeSubsystem* Theme = Self->GetThemeSubsystem())
+				{
+					return FSlateColor(MobiusThemePalette::Color(
+						EMobiusPaletteRole::InputText, Theme->GetTheme() == EMobiusUITheme::Light));
+				}
+				// ThemeTextColor is re-stated on every toggle, so it still tracks the theme.
+				return Self->ThemeTextColor;
+			}));
+	}
+
 	TSharedRef<SWidget> Row = Super::HandleGenerateWidget(Item);
 
 	// The base default row is SNew(STextBlock).Text(...).Font(Font) with NO ColorAndOpacity, so it falls back
@@ -163,13 +315,38 @@ TSharedRef<SWidget> UMobiusThemedComboBox::HandleGenerateWidget(TSharedPtr<FStri
 	// Stamp the CURRENT-theme InputText colour so the programmatic SetSelectedOption "built" branch (which
 	// regenerates the selected-value block and bypasses the HandleSelectionChanged override where
 	// ApplySelectedTextColor would have run) is born correctly themed and follows every later toggle. Read the
-	// live theme directly so it is right even if a toggle happened while this combo was disabled. Skip a
-	// WBP-supplied custom row (non-STextBlock). SetColorAndOpacity Assigns + Invalidate(Paint) only.
-	if (Row->GetType() == TEXT("STextBlock"))
+	// live theme directly so it is right even if a toggle happened while this combo was disabled.
+	// SetColorAndOpacity Assigns + Invalidate(Paint) only.
+	//
+	// 2026-08-10: this used to test `Row->GetType() == "STextBlock"` and skip anything else as "a WBP-supplied
+	// custom row". Every Mobius combo binds a Blueprint generator, so that test failed on all four of them and
+	// the stamp never ran — see StampRowTextColour above for why that surfaced as black text in dark mode.
+	//
+	// Stamp ONLY from the LIVE subsystem, and only if it actually resolves.
+	//
+	// Two earlier attempts got this wrong in instructive ways. Using ResolveIsLight() inverted the colours,
+	// because in the menu stack it fell through to the UUserProjectSettings flag that lags one toggle. Using
+	// the cached ThemeTextColor moved the problem rather than fixing it: that member is only refreshed when
+	// the widget itself rebuilds or handles a toggle, so combos with different build/toggle histories froze
+	// at different values — which is why the render-mode combo was correct in light while the colour-mode and
+	// flow-counter-type combos were correct in dark. Same defect, opposite sign, one cache.
+	//
+	// Reading the subsystem here cannot go stale, now that GetThemeSubsystem sweeps GEngine's world contexts.
+	// And if it still cannot be resolved, DO NOTHING: ItemStyle.TextColor / SelectedTextColor already carry
+	// the correct per-theme value (measured 0.016 light / 0.624 dark), so leaving the row alone degrades to
+	// "correct" whereas guessing a theme degrades to "inverted".
+	if (const UUIThemeSubsystem* Theme = GetThemeSubsystem())
 	{
-		const bool bLight = ResolveIsLight();
-		StaticCastSharedRef<STextBlock>(Row)->SetColorAndOpacity(
-			FSlateColor(MobiusThemePalette::Color(EMobiusPaletteRole::InputText, bLight)));
+		const bool bLight = Theme->GetTheme() == EMobiusUITheme::Light;
+		StampRowTextColour(Row, FSlateColor(MobiusThemePalette::Color(EMobiusPaletteRole::InputText, bLight)));
+	}
+	else
+	{
+		// Last resort, and it must still be a THEMED value. Skipping the stamp entirely leaves the row on the
+		// SComboBox foreground, which RebuildWidget fixed at construct time and the engine never updates
+		// (ComboBoxString.h:88) — that is light InputText, i.e. black text on a dark dropdown. ThemeTextColor
+		// is at least re-stated on every toggle, so it is wrong only if this combo has never handled one.
+		StampRowTextColour(Row, ThemeTextColor);
 	}
 	return Row;
 }
