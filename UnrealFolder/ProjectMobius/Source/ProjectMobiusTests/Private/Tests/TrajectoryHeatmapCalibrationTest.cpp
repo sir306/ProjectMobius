@@ -2184,6 +2184,90 @@ bool FTrajMaterialIsUnlitTest::RunTest(const FString& Parameters)
 
 	return true;
 }
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-6 -- the ASSET's stored band defaults match the live crossing contract.
+//
+// Sits inside the WITH_EDITOR block deliberately: it needs Materials/Material.h, which this file includes
+// only there, and it is an EditorContext case so it never runs in a configuration that lacks it. The
+// parameter-info types arrive with it (MaterialInterface.h pulls MaterialTypes.h).
+//
+// THIS IS THE GAP THAT LET TWO GENERATIONS OF DRIFT SHIP. Every other band gate in this suite reads the
+// MATERIAL INSTANCE -- which AHeatmapPixelTextureVisualizer overwrites at runtime from
+// FHeatmapLOSBands::TrajectoryCrossings -- so all of them stayed green while M_HeatmapRT_Trajectory sat
+// on the ORIGINAL seed-and-brush byte cuts (0.096078 / 0.182353 / 0.280392 / 0.433333 / 0.688235, i.e.
+// bytes 24.5 / 46.5 / 71.5 / 110.5 / 175.5). It never even received the 2026-08-04 quantile set that
+// replaced those, because BuildTrajectoryHeatmapMaterial.py's step_add_parameters skipped parameters
+// that already existed, making a re-run a no-op. Nothing looked at the asset, so nothing noticed.
+//
+// The stored defaults are not what renders in-game, and that is exactly why this needs its own gate: a
+// wrong default is INVISIBLE in play and shows up only in a thumbnail, a material preview, or the day
+// somebody reads the asset to find out what a colour means. Discrepancies you cannot see are the ones
+// that need a test.
+//
+// Reads GetScalarParameterDefaultValue (ENGINE_API, so no editor module dependency) rather than the
+// material editor library, which lives in an editor-only module this test module does not depend on.
+//
+// TOLERANCE. Half a byte. Tighter would fail on decimal round-trip through the asset serialiser; looser
+// would let a real band-width change through, since the tightest real separation here is ~26 bytes.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand6AssetDefaultsTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_6_AssetDefaultsMatchCrossingContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand6AssetDefaultsTest::RunTest(const FString& Parameters)
+{
+	const TCHAR* const MaterialPath =
+		TEXT("/Game/01_Dev/NickMaster/Heatmaps/Materials/RenderTargetHeatmaps/M_HeatmapRT_Trajectory.M_HeatmapRT_Trajectory");
+	UMaterial* Material = LoadObject<UMaterial>(nullptr, MaterialPath);
+	if (!TestNotNull(TEXT("M_HeatmapRT_Trajectory loads"), Material))
+	{
+		return false;
+	}
+
+	// The asset default has to be the SHIPPING configuration's contract: the visualizer's
+	// TrajectoryWorldCmPerTexel of 10 cm (-> s = 0.1 m) against ReferenceUsageDensity of 100 person/m.
+	// Derived here, not transcribed, so this test cannot drift from the factory the way the asset did.
+	const FHeatmapLOSBands Expected = FHeatmapLOSBands::TrajectoryCrossings(0.1f, 100.0f);
+
+	const TCHAR* const Names[] = { TEXT("LOS_A_Band"), TEXT("LOS_B_Band"), TEXT("LOS_C_Band"),
+	                               TEXT("LOS_D_Band"), TEXT("LOS_E_Band") };
+	const float ExpectedEdges[] = { Expected.BandA, Expected.BandB, Expected.BandC,
+	                                Expected.BandD, Expected.BandE };
+	constexpr float HalfAByte = 0.5f / 255.0f;
+
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		float Stored = 0.0f;
+		const FHashedMaterialParameterInfo Info{ FMaterialParameterInfo(Names[Index]) };
+		if (!TestTrue(*FString::Printf(TEXT("T-BAND-6: %s exists on the asset"), Names[Index]),
+			Material->GetScalarParameterDefaultValue(Info, Stored)))
+		{
+			continue;
+		}
+
+		if (FMath::Abs(Stored - ExpectedEdges[Index]) > HalfAByte)
+		{
+			AddError(FString::Printf(
+				TEXT("T-BAND-6: %s default is %.6f (byte %.1f) but the crossing contract wants %.6f ")
+				TEXT("(byte %.1f). The ASSET is stale — the runtime push hides this, so play looks fine ")
+				TEXT("while thumbnails, previews and anyone reading the asset get a different meaning for ")
+				TEXT("the same colour. FIX: set the default in the material editor, or run ")
+				TEXT("MobiusPerf/BuildTrajectoryHeatmapMaterial.py. If the CONTRACT changed rather than ")
+				TEXT("the asset, update FHeatmapLOSBands::TrajectoryCrossings and the asset together."),
+				Names[Index], Stored, Stored * 255.0f,
+				ExpectedEdges[Index], ExpectedEdges[Index] * 255.0f));
+		}
+	}
+
+	// Non-vacuity: prove the comparison can actually reject. If this ever passes, the loop above is
+	// comparing something to itself and every assertion in it is decorative.
+	TestTrue(TEXT("T-BAND-6: the tolerance rejects the known-stale LOS_A of byte 24.5"),
+		FMath::Abs((24.5f / 255.0f) - Expected.BandA) > HalfAByte);
+
+	return true;
+}
+
 #endif // WITH_EDITOR
 
 // =====================================================================================================
