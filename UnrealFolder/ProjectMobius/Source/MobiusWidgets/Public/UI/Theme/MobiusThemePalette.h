@@ -111,6 +111,19 @@ enum class EMobiusPaletteRole : uint8
 	 * not a reason to risk it when appending is free.
 	 */
 	WarningText,
+	/**
+	 * SELECTED row fill in a list / dropdown (S2). Distinct from HoverBg, which stays the transient
+	 * pointer-over cue: a list needs both states legible at once, because the selected row keeps its fill
+	 * while the pointer is somewhere else entirely.
+	 *
+	 * Before S2 the combo drew hover AND selected in Accent blue (UIThemeSubsystem::StyleComboBoxForBuild),
+	 * so the two states were indistinguishable and the stakeholder asked for "light gray and slightly
+	 * darker gray for selected".
+	 *
+	 * NOT a design-tokens.json value - there is no selected token in v2, so both numbers below are new
+	 * (same situation as WarningText's light value). Appended, never inserted, per the note above.
+	 */
+	ListSelectedBg,
 	Count UMETA(Hidden)
 };
 
@@ -212,6 +225,23 @@ namespace MobiusThemePalette
 		// verified, unlike DangerText light #C42B1C whose Fluent origin is documented above. Rejected
 		// alternative: #B54708 (5.0:1) reads noticeably more orange next to DangerText.
 		/* WarningText       */ { FLinearColor(0.33705f, 0.10952f, 0.0f),        FLinearColor(0.9f, 0.35f, 0.0f) },
+		// S2 selected-row fill. HoverBg is #d9d9d9 light / #4a4a4a dark, and these are one step away from it
+		// in the direction that stays legible in each theme - which is NOT the same direction on both sides,
+		// so this is deliberately not a symmetric pair:
+		//
+		//   LIGHT #c8c8c8 - literally the stakeholder's "slightly darker grey". Sits between hover #d9d9d9
+		//   and the tabstrip line #d0d0d0/#c8c8c8 band, so it reads as a step without becoming a border.
+		//
+		//   DARK #565656 - one step LIGHTER than hover, not darker. Darker cannot work here: the dropdown
+		//   surface is InputBg #2b2b2b, so a fill below hover #4a4a4a collapses toward the background and
+		//   the selected row would read as unselected. Going lighter is also what dark UIs conventionally do
+		//   for selection. The value is ButtonHoverBg's dark literal, reused deliberately rather than
+		//   invented - roles are allowed to share a value (LabelText and InputText already do).
+		//
+		// OWNER: the light value is a direct read of the request; the DARK DIRECTION is the judgement call.
+		// If selection should instead read darker in dark theme, this is a one-line change here and nothing
+		// else moves.
+		/* ListSelectedBg    */ { FLinearColor(0.57757f, 0.57757f, 0.57757f),    FLinearColor(0.09306f, 0.09306f, 0.09306f) },
 	};
 
 	static_assert(UE_ARRAY_COUNT(GMobiusPalette) == static_cast<int32>(EMobiusPaletteRole::Count),

@@ -334,8 +334,15 @@ namespace MobiusTheme
 		return bChanged;
 	}
 
+	/**
+	 * Which button state a brush paints. Both 4-brush loops that feed ThemeIconBrush build their arrays in
+	 * this exact order, so the loop index casts straight to this.
+	 */
+	enum class EIconBrushState : uint8 { Normal = 0, Hovered = 1, Pressed = 2, Disabled = 3 };
+
 	/** Bottom-bar icon materials expose glyph/background/border params — theme via a dynamic instance. */
-	static bool ThemeIconBrush(FSlateBrush& Brush, UObject* MidOuter, const bool bLight)
+	static bool ThemeIconBrush(FSlateBrush& Brush, UObject* MidOuter, const bool bLight,
+		const EIconBrushState State = EIconBrushState::Normal)
 	{
 		UMaterialInterface* Material = Cast<UMaterialInterface>(Brush.GetResourceObject());
 		if (!Material)
@@ -359,7 +366,41 @@ namespace MobiusTheme
 		Mid->ClearParameterValues();
 		// Glyph tint = icon_tint token per theme (D24): light #3b3b3b, dark #d9d9d9 (was #0a0a0a / pure white).
 		Mid->SetVectorParameterValue(TEXT("Texture Colour"), PaletteColor(EMobiusPaletteRole::IconTint, bLight));
-		Mid->SetVectorParameterValue(TEXT("BackgroundColour"), bLight ? FLinearColor(0.9131f, 0.9131f, 0.9131f) : FLinearColor(0.007f, 0.007f, 0.009f));
+		// S10 (2026-08-10) — THE icon-hover defect. This line used to write ONE hardcoded background for
+		// every state, and the loops above call it for Normal/Hovered/Pressed/Disabled alike, so the theme
+		// pass FLATTENED every icon button's hover onto its rest colour in both themes. That is the
+		// stakeholder's "inconsistent hover affect on icon buttons": the only difference left between rest
+		// and hover was whichever NON-colour param survived ClearParameterValues() via the parent MIC
+		// (`PressT`, a 5% glyph scale) — and only 8 of the 13 icon MIs authored one, so the affordance was
+		// present on some icons and absent on others. Inconsistent, exactly as reported.
+		//
+		// Note this outranks the asset layer: because each brush gets its OWN MID above, per-state colour
+		// works even where two states share a source MI. The per-state MI wiring done alongside this row is
+		// still required, but for the params this function does NOT set — `PressT` and the pressed
+		// `MaxPressPct` / `BorderColour` come from the parent MIC, so a state pointing at the base MI has no
+		// press animation no matter what colour lands here.
+		//
+		// REST IS DELIBERATELY BYTE-UNCHANGED in both themes (light 0.9131, dark 0.007/0.007/0.009): the icon
+		// chrome is signed off, and this row is only asked for a hover. Hover/pressed use the app's existing
+		// interaction greys rather than ButtonHoverBg/ButtonPressedBg — those are BLUE-tinted in light theme
+		// (0.81485, 0.87962, 0.95597) and would restyle the chips, and their dark PressedBg (0.04971) is
+		// DARKER than the icon rest value, so pressed would move the wrong way. Light steps are the same
+		// #d9d9d9 / #c8c8c8 pair S2 gave the dropdown rows; dark steps are the icon family's own recipe,
+		// already authored in the 8 working `MI_*_Hovered` / `_Pressed` instances.
+		FLinearColor Background;
+		switch (State)
+		{
+		case EIconBrushState::Hovered:
+			Background = bLight ? FLinearColor(0.69387f, 0.69387f, 0.69387f) : FLinearColor(0.097281f, 0.097281f, 0.097281f);
+			break;
+		case EIconBrushState::Pressed:
+			Background = bLight ? FLinearColor(0.57757f, 0.57757f, 0.57757f) : FLinearColor(0.201556f, 0.201556f, 0.201556f);
+			break;
+		default:
+			Background = bLight ? FLinearColor(0.9131f, 0.9131f, 0.9131f) : FLinearColor(0.007f, 0.007f, 0.009f);
+			break;
+		}
+		Mid->SetVectorParameterValue(TEXT("BackgroundColour"), Background);
 		// BW7 (D135/Q55 — OWNER RULING): the play/pause accent-ring mockup design is OVERRULED. The play/pause
 		// MIDs get the SAME grey border as every other bottom-bar icon (no accent BorderColour, no pinned
 		// BorderThickness). The former BW3/D86 special-case (accent ring + thickness 2) is removed so a theme
@@ -1072,22 +1113,33 @@ void UUIThemeSubsystem::StyleComboBoxForBuild(UComboBoxString* Combo, const bool
 
 	// Dropdown ROW colours — flat (only visible while the menu is open). STableRow reads ItemStyle live via
 	// its const FTableRowStyle* pointer, so re-setting these on a toggle updates the rows on the next open.
+	// S2: hover and selected were BOTH Accent blue, so the two states were indistinguishable - which is what
+	// the stakeholder reported ("change drop down selected and hover colors to light gray and slightly darker
+	// gray for selected"). They are now two greys: HoverBg for the transient pointer-over, ListSelectedBg for
+	// the row that stays chosen after the pointer moves away.
 	FTableRowStyle Items = Combo->GetItemStyle();
 	const FLinearColor RowBg = PaletteColor(EMobiusPaletteRole::InputBg, bLight);
 	const FLinearColor RowText = PaletteColor(EMobiusPaletteRole::InputText, bLight);
-	const FLinearColor RowSel = PaletteColor(EMobiusPaletteRole::Accent, bLight);
+	const FLinearColor RowHover = PaletteColor(EMobiusPaletteRole::HoverBg, bLight);
+	const FLinearColor RowSel = PaletteColor(EMobiusPaletteRole::ListSelectedBg, bLight);
 	auto Row = [](FSlateBrush& B, const FLinearColor& C)
 	{
 		B.TintColor = FSlateColor(C);
 		B.DrawAs = ESlateBrushDrawType::Image;
 		B.SetResourceObject(nullptr);
 	};
-	Row(Items.EvenRowBackgroundBrush, RowBg);        Row(Items.OddRowBackgroundBrush, RowBg);
-	Row(Items.EvenRowBackgroundHoveredBrush, RowSel); Row(Items.OddRowBackgroundHoveredBrush, RowSel);
-	Row(Items.ActiveBrush, RowSel);                   Row(Items.ActiveHoveredBrush, RowSel);
-	Row(Items.InactiveBrush, RowBg);                  Row(Items.InactiveHoveredBrush, RowSel);
+	// Slate splits these six by (selected?, list focused?, hovered?). Unselected rows take the hover cue;
+	// every SELECTED variant takes the selected fill, focused or not. InactiveBrush was RowBg, which meant a
+	// selected row lost its fill entirely as soon as the list gave up focus - fixed here rather than left,
+	// since it is the same "you cannot see what is selected" defect the row was raised for.
+	Row(Items.EvenRowBackgroundBrush, RowBg);          Row(Items.OddRowBackgroundBrush, RowBg);
+	Row(Items.EvenRowBackgroundHoveredBrush, RowHover); Row(Items.OddRowBackgroundHoveredBrush, RowHover);
+	Row(Items.ActiveBrush, RowSel);                     Row(Items.ActiveHoveredBrush, RowSel);
+	Row(Items.InactiveBrush, RowSel);                   Row(Items.InactiveHoveredBrush, RowSel);
 	Items.TextColor = FSlateColor(RowText);
-	Items.SelectedTextColor = FSlateColor(FLinearColor::White);
+	// MUST move with the fill: white was legible on Accent blue and is not on a light grey (#c8c8c8 gives
+	// about 1.3:1). InputText keeps the selected row at the same contrast as every other row.
+	Items.SelectedTextColor = FSlateColor(RowText);
 	Combo->SetItemStyle(Items);
 
 	// Selected-item TEXT foreground (InputText role) is set by the subclass via the engine's protected
@@ -1345,13 +1397,16 @@ void UUIThemeSubsystem::StyleButtonForTheme(UButton* Button, const bool bLight)
 
 	FButtonStyle Style = Button->GetStyle();
 	bool bChanged = false;
+	// Index rather than range-for: ThemeIconBrush needs to know WHICH state it is painting, or every icon
+	// button's hover collapses onto its rest colour (S10). Array order is the enum order.
 	FSlateBrush* Brushes[] = { &Style.Normal, &Style.Hovered, &Style.Pressed, &Style.Disabled };
-	for (FSlateBrush* Brush : Brushes)
+	for (int32 StateIndex = 0; StateIndex < UE_ARRAY_COUNT(Brushes); ++StateIndex)
 	{
+		FSlateBrush* Brush = Brushes[StateIndex];
 		// Button (not Style) is the MID outer, exactly as the walk passed it: the icon/pill/background
 		// helpers create their MIDs against it, and an outer that dies takes the themed material with it.
 		bChanged |= RemapBrush(*Brush, bLight);
-		bChanged |= ThemeIconBrush(*Brush, Button, bLight);
+		bChanged |= ThemeIconBrush(*Brush, Button, bLight, static_cast<EIconBrushState>(StateIndex));
 		bChanged |= ThemeBackgroundBrush(*Brush, Button, bLight);
 		bChanged |= ThemePillBrush(*Brush, Button, bLight); // agent-visibility pill toggle (D51)
 	}
@@ -1899,11 +1954,16 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 			bool bChanged = false;
 			if (FButtonStyle* ButtonStyle = const_cast<FButtonStyle*>(StyleAsset->GetStyle<FButtonStyle>()))
 			{
+				// Indexed for the same reason as StyleButtonForTheme: this is the path that themes
+				// SWS_PlayButtonActive / SWS_PlayButtonPaused, whose Hovered brush is the play/pause
+				// button's ONLY hover (USimulationPlayBar::SetPlayButtonStyle swaps the whole style from
+				// these assets), so a state-blind call here silently flattens it.
 				FSlateBrush* Brushes[] = { &ButtonStyle->Normal, &ButtonStyle->Hovered, &ButtonStyle->Pressed, &ButtonStyle->Disabled };
-				for (FSlateBrush* Brush : Brushes)
+				for (int32 StateIndex = 0; StateIndex < UE_ARRAY_COUNT(Brushes); ++StateIndex)
 				{
+					FSlateBrush* Brush = Brushes[StateIndex];
 					bChanged |= RemapBrush(*Brush, bLight);
-					bChanged |= ThemeIconBrush(*Brush, StyleAsset, bLight);
+					bChanged |= ThemeIconBrush(*Brush, StyleAsset, bLight, static_cast<EIconBrushState>(StateIndex));
 					bChanged |= ThemeBackgroundBrush(*Brush, StyleAsset, bLight);
 				}
 				// Round 11: EXPLICIT foregrounds. The authored values on these SWS assets are magenta
