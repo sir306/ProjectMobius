@@ -1009,17 +1009,83 @@ bool FTrajOracleWidth2Test::RunTest(const FString& Parameters)
 	TestTrue(TEXT("(b) presentation peak ratio (R=1.0 / R=2.5) == 6.25 (REL 1e-5)"),
 		NearlyEqualRel((double)PresR1[CentreIdx] / (double)PresR2[CentreIdx], 6.25, RelTol1e5));
 
-	// Sub-texel identity: 25 cm/texel, 20 cm display width -> R = 0.4 texel < 0.5 -> identity kernel.
+	// Sub-texel radius: 25 cm/texel, 20 cm display width -> R = 0.4 texel < 0.5.
+	//
+	// ⚠️ REWRITTEN 2026-08-10 (D-D), and the old claim was retired rather than relaxed. It asserted
+	// "Presentation == Canonical bitwise" for ANY deposit at R < 0.5, which held only because the splat
+	// was forced onto the cell CENTRE. That forcing was the defect: it quantised the drawn stroke to the
+	// lattice and put it up to half a cell from the agent. With the deposit now placed sub-cell, a 20 cm
+	// stroke whose centre sits 0.32 of a 25 cm cell off-centre — which is where this test's own segment
+	// lands — genuinely overlaps the neighbour, and refusing to draw that would be the bug.
+	//
+	// So the claim splits into the part that survives and the part that replaces it.
 	FTrajectoryField SubTexel = MakeField(1000.0, 1000.0, 25.0f, /*DisplayPathWidthCm*/ 20.0f);
-	SubTexel.DepositSegment(FVector2D(302, 303), FVector2D(307, 308), 0.1f);
-	const TArray<float>& SubCanon = SubTexel.GetCanonical(ETrajectoryMapMode::RouteUsage);
-	const TArray<float>& SubPres = SubTexel.GetPresentation();
-	bool bIdentity = SubCanon.Num() == SubPres.Num();
-	for (int32 i = 0; bIdentity && i < SubCanon.Num(); ++i)
+
+	// (i) SURVIVES — a CELL-CENTRED deposit at R < 0.5 is still the identity. Midpoint (312.5, 312.5) is
+	// exactly the centre of cell (12,12) at 25 cm/texel, so the phase is (0,0) and the disc fits inside
+	// one cell. This is the original property, stated at the only position where it was ever true.
+	SubTexel.DepositSegment(FVector2D(310, 310), FVector2D(315, 315), 0.1f);
 	{
-		bIdentity = (SubCanon[i] == SubPres[i]);
+		const TArray<float>& Canon = SubTexel.GetCanonical(ETrajectoryMapMode::RouteUsage);
+		const TArray<float>& Pres = SubTexel.GetPresentation();
+		bool bIdentity = Canon.Num() == Pres.Num();
+		for (int32 i = 0; bIdentity && i < Canon.Num(); ++i)
+		{
+			bIdentity = (Canon[i] == Pres[i]);
+		}
+		TestTrue(TEXT("sub-texel radius, CELL-CENTRED deposit: Presentation == Canonical bitwise"), bIdentity);
 	}
-	TestTrue(TEXT("sub-texel radius: Presentation == Canonical bitwise (identity kernel)"), bIdentity);
+
+	// (ii) REPLACES — for an OFF-CENTRE deposit the stroke may spill, but only into immediate neighbours,
+	// and not one person-metre may be created or lost doing it. Those are the two things that actually
+	// matter, and bitwise identity was never the way to state either.
+	FTrajectoryField OffCentre = MakeField(1000.0, 1000.0, 25.0f, /*DisplayPathWidthCm*/ 20.0f);
+	OffCentre.DepositSegment(FVector2D(302, 303), FVector2D(307, 308), 0.1f);
+	{
+		const TArray<float>& Canon = OffCentre.GetCanonical(ETrajectoryMapMode::RouteUsage);
+		const TArray<float>& Pres = OffCentre.GetPresentation();
+		const FIntPoint Dims2 = OffCentre.GetGridDims();
+
+		double CanonSum = 0.0;
+		double PresSum = 0.0;
+		for (int32 i = 0; i < Canon.Num(); ++i)
+		{
+			CanonSum += static_cast<double>(Canon[i]);
+			PresSum += static_cast<double>(Pres[i]);
+		}
+		TestTrue(TEXT("sub-texel radius, off-centre: the splat conserves mass (REL 1e-5)"),
+			NearlyEqualRel(PresSum, CanonSum, RelTol1e5));
+
+		// Confinement: every lit cell must be within one cell of a cell the DDA actually crossed. At
+		// R < 0.5 the disc cannot reach further however it is phased, so a hit here means the phase table
+		// is addressing the wrong neighbourhood — which a mass check alone would not notice.
+		bool bConfined = true;
+		for (int32 Idx = 0; Idx < Pres.Num() && bConfined; ++Idx)
+		{
+			if (Pres[Idx] == 0.0f)
+			{
+				continue;
+			}
+			const int32 PX = Idx % Dims2.X;
+			const int32 PY = Idx / Dims2.X;
+			bool bNearCrossed = false;
+			for (int32 DY = -1; DY <= 1 && !bNearCrossed; ++DY)
+			{
+				for (int32 DX = -1; DX <= 1 && !bNearCrossed; ++DX)
+				{
+					const int32 QX = PX + DX;
+					const int32 QY = PY + DY;
+					if (QX >= 0 && QX < Dims2.X && QY >= 0 && QY < Dims2.Y
+						&& Canon[QY * Dims2.X + QX] != 0.0f)
+					{
+						bNearCrossed = true;
+					}
+				}
+			}
+			bConfined = bNearCrossed;
+		}
+		TestTrue(TEXT("sub-texel radius, off-centre: every lit cell adjoins a crossed cell"), bConfined);
+	}
 	return true;
 }
 
@@ -2226,18 +2292,26 @@ bool FTrajBand6AssetDefaultsTest::RunTest(const FString& Parameters)
 	}
 
 	// The asset default has to encode the SHIPPING configuration's contract. Both inputs are read from the
-	// sources the runtime itself uses — the actor's class default for the cell size, and the field config's
-	// own default for the reference — so a change to either propagates here automatically. Transcribing
-	// them is what let the asset drift two generations without anything noticing.
+	// sources the runtime itself uses — the actor's class default for the stroke width, and the field
+	// config's own default for the reference — so a change to either propagates here automatically.
+	// Transcribing them is what let the asset drift two generations without anything noticing.
 	//
-	// The effective cell size can be RAISED above this by the D2b clamp on a very large floor, in which
-	// case the runtime push and this default legitimately differ. The default can only encode one
-	// configuration, and the shipping one is the right choice.
+	// STROKE WIDTH, not cell size, since the 2026-08-10 decoupling: RefreshTrajectoryCrossingBands derives
+	// the edges from TrajectoryDisplayPathWidthCm, so reading the cell here would gate the asset against a
+	// quantity the runtime no longer uses — and would redden the moment the cell was dialled, which is
+	// exactly the freedom the decoupling was for. This argument replaces the old D2b caveat: the width is
+	// never raised by the grid clamp, so shipping default and runtime push cannot legitimately differ.
+	//
+	// D-E: the 0/1 edge is the derived ROUTE THRESHOLD, so the expectation has to derive it too — from the
+	// shipping width and the shipping cell, exactly as RefreshTrajectoryCrossingBands does. Passing 0 here
+	// would gate the asset against the old is-it-nonzero edge and redden the moment the threshold moved.
 	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
-	const float ShippingCellSideMetres = Defaults->TrajectoryWorldCmPerTexel / 100.0f;
+	const float ShippingWidthMetres = Defaults->TrajectoryDisplayPathWidthCm / 100.0f;
 	const float ShippingReference = FTrajectoryFieldConfig().ReferenceUsageDensity;
-	const FHeatmapLOSBands Expected =
-		FHeatmapLOSBands::TrajectoryCrossings(ShippingCellSideMetres, ShippingReference);
+	const float ShippingRouteThreshold = FTrajectoryField::DeriveRouteThresholdCrossings(
+		Defaults->TrajectoryDisplayPathWidthCm, Defaults->TrajectoryWorldCmPerTexel);
+	const FHeatmapLOSBands Expected = FHeatmapLOSBands::TrajectoryCrossings(
+		ShippingWidthMetres, ShippingReference, ShippingRouteThreshold);
 
 	const TCHAR* const Names[] = { TEXT("LOS_A_Band"), TEXT("LOS_B_Band"), TEXT("LOS_C_Band"),
 	                               TEXT("LOS_D_Band"), TEXT("LOS_E_Band") };
@@ -2589,57 +2663,591 @@ bool FTrajBand4DegenerateTest::RunTest(const FString& Parameters)
 }
 
 // -----------------------------------------------------------------------------------------------------
-// T-BAND-5 -- the shipping width collapses the splat to ONE TAP, and that is load-bearing.
+// T-BAND-5 -- the band edges track the STROKE WIDTH, and the cell is free to move underneath them.
 //
-// The encode reads the PRESENTATION array, not the canonical one. A mass-conserving splat spreads a
-// crossing's person-metres across its kernel, so at a wider path the centre cell holds less than a full
-// crossing and every band edge in T-BAND-1 stops being literal. 10 cm width at 10 cm/texel puts the
-// kernel radius at exactly 0.5 texels, which FTrajectoryField::BuildKernel collapses to the identity.
+// RENAMED 2026-08-10 from T_BAND_5_ShippingWidthIsIdentityKernel, which asserted the OPPOSITE contract:
+// that TrajectoryDisplayPathWidthCm had to EQUAL TrajectoryWorldCmPerTexel so the kernel radius sat at
+// exactly 0.5 texels and BuildKernel collapsed to the identity, making Presentation == Canonical. That
+// lock is gone. RefreshTrajectoryCrossingBands derives the edges from the WIDTH, which compensates the
+// mass-conserving splat exactly -- the cellSide cancels out of (N + 0.5)/(cellSide x Ref) x (cellSide /
+// width) -- so the cell became pure sampling resolution. The old ID is deliberately NOT kept, unlike
+// T-OFFSET-1's: a name asserting "identity kernel" would now assert something the shipping config
+// deliberately does not do, which is worse than losing report comparability.
 //
-// NON-VACUITY: the 20 cm case below is asserted to give 9 taps, so this cannot pass by measuring nothing.
+// Three properties, in the order a regression would hit them:
+//
+//   1. The two candidate bases are now DIFFERENT NUMBERS. Anyone "simplifying" RefreshTrajectoryCrossing-
+//      Bands back to GetEffectiveCmPerTexel() moves every edge by width/cell, and this catches it. Under
+//      the old locked pair that check was impossible -- the two bases were equal by construction, which
+//      is precisely why the cell basis survived so long unquestioned.
+//   2. The edges are INVARIANT to the cell. Sweep it across an order of magnitude, holding the width.
+//   3. The shipping pair sits COMFORTABLY INSIDE a 9-tap kernel, not on a boundary. BuildKernel's half
+//      extent is ceil(R - 0.5), so tap count steps at R = 0.5, 1.5, 2.5 ... and D-A snaps the effective
+//      cell slightly DOWN to make the major axis divide evenly. A cell of 15 at width 45 puts R on
+//      exactly 1.5, so the snap would flip it to 25 taps on most floors and 9 on the few that divide
+//      exactly -- a per-building tap count. Swept over deliberately awkward extents to prove 20 cm cannot.
+//
+// NON-VACUITY: the width sweep at the end is asserted to MOVE the edges, so none of this can pass by
+// comparing something to itself.
 // -----------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FTrajBand5IdentityKernelTest,
-	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_5_ShippingWidthIsIdentityKernel",
+	FTrajBand5EdgesTrackWidthTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_5_BandEdgesTrackWidthNotCell",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FTrajBand5IdentityKernelTest::RunTest(const FString& Parameters)
+bool FTrajBand5EdgesTrackWidthTest::RunTest(const FString& Parameters)
 {
 	using namespace TrajectoryOracle;
 
-	// Read the SHIPPING pair from the class defaults rather than hard-coding it. Hard-coded 10/10 here
-	// would have kept passing after the 2026-08-10 move to 45/45 while asserting nothing about what
-	// actually ships — the test would have been measuring a configuration no heatmap uses.
+	// Read the SHIPPING pair from the class defaults rather than hard-coding it. Hard-coded values here
+	// would keep passing after a dial change while asserting nothing about what actually ships.
 	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
 	const float ShipCellCm = Defaults->TrajectoryWorldCmPerTexel;
 	const float ShipWidthCm = Defaults->TrajectoryDisplayPathWidthCm;
+	const float Reference = FTrajectoryFieldConfig().ReferenceUsageDensity;
 
-	// The pair must be EQUAL. This is the whole contract: equal values put the radius at 0.5, which is the
-	// identity kernel, which is what makes a crossing count literal. Changing one alone silently divides
-	// every count across the splat, so assert the relationship before the consequence.
-	TestEqual(FString::Printf(
-		TEXT("T-BAND-5: shipping stroke width (%.1f cm) equals shipping cell size (%.1f cm)"),
-		ShipWidthCm, ShipCellCm), ShipWidthCm, ShipCellCm, 1.0e-4f);
+	// -- 1. The bases are distinguishable, so a revert to the cell basis is detectable at all.
+	const FHeatmapLOSBands FromWidth = FHeatmapLOSBands::TrajectoryCrossings(ShipWidthCm / 100.0f, Reference);
+	const FHeatmapLOSBands FromCell = FHeatmapLOSBands::TrajectoryCrossings(ShipCellCm / 100.0f, Reference);
+	TestTrue(FString::Printf(
+		TEXT("T-BAND-5: width %.1f cm and cell %.1f cm are different banding bases, so this test can fail"),
+		ShipWidthCm, ShipCellCm),
+		!FMath::IsNearlyEqual(FromWidth.BandB, FromCell.BandB, 1.0e-6f));
 
-	// Extent big enough for a sane grid at any plausible cell size; the kernel does not depend on it.
-	FTrajectoryField Shipping = MakeField(4000.0, 4000.0, ShipCellCm, ShipWidthCm);
+	// -- 2. Sweeping the cell must not move an edge. The width is the only input that may.
+	for (const float CellCm : { 5.0f, 10.0f, ShipCellCm, 45.0f, 90.0f })
+	{
+		FTrajectoryField Field = MakeField(4000.0, 4000.0, CellCm, ShipWidthCm);
+		const FHeatmapLOSBands Edges = FHeatmapLOSBands::TrajectoryCrossings(
+			ShipWidthCm / 100.0f, Field.GetConfig().ReferenceUsageDensity);
 
-	TestEqual(FString::Printf(
-		TEXT("T-BAND-5: kernel radius is exactly 0.5 texels at the shipping %.1f cm / %.1f cm pair"),
-		ShipWidthCm, ShipCellCm), Shipping.GetKernelRadiusTexels(), 0.5f, 1.0e-6f);
-	TestEqual(TEXT("T-BAND-5: the splat is a SINGLE tap, so presentation == canonical"),
-		Shipping.GetKernelOffsets().Num(), 1);
-	TestEqual(TEXT("T-BAND-5: that single tap carries the whole weight"),
-		(double)Shipping.GetKernelWeights()[0], 1.0, 1.0e-6);
-	TestTrue(TEXT("T-BAND-5: and it is the centre tap"),
-		Shipping.GetKernelOffsets()[0] == FIntPoint(0, 0));
+		TestEqual(*FString::Printf(
+			TEXT("T-BAND-5: band B is unchanged at a %.0f cm cell (effective %.4f)"),
+			CellCm, Field.GetEffectiveCmPerTexel()), Edges.BandB, FromWidth.BandB, 1.0e-6f);
+		TestEqual(*FString::Printf(TEXT("T-BAND-5: band E is unchanged at a %.0f cm cell"), CellCm),
+			Edges.BandE, FromWidth.BandE, 1.0e-6f);
+	}
+
+	// -- 3. The shipping pair holds a 9-tap kernel on extents chosen to divide badly, so D-A's snap
+	// cannot walk it over a boundary. 4548.9 x 3977.4 is the real floor the misalignment was measured on.
+	const TArray<FVector2D> AwkwardExtentsCm = {
+		FVector2D(4548.9, 3977.4), FVector2D(5000.0, 3000.0),
+		FVector2D(2537.0, 2537.0), FVector2D(12345.6, 7890.1)
+	};
+	// ⚠️ This block used to assert "9 taps" and "R clear of the 0.5 / 1.5 boundaries". Both were written
+	// for the brief 20 cm cell and are now WRONG TO ASSERT, not merely stale: the tap-count boundary was
+	// the entire reason 20 cm was chosen over 15, and D-D voided that reasoning by moving the deposit onto
+	// the phase table, whose footprint is ceil(R + 0.5) at every cell size. Pinning a tap count here would
+	// re-freeze a decision that has been reversed on purpose. What is worth asserting is the property that
+	// motivated it — the cost must not vary with BUILDING SIZE — so the count is compared across extents
+	// rather than against a number.
+	TArray<int32> TapCounts;
+	for (const FVector2D& Ext : AwkwardExtentsCm)
+	{
+		FTrajectoryField Field = MakeField(Ext.X, Ext.Y, ShipCellCm, ShipWidthCm);
+		const float R = Field.GetKernelRadiusTexels();
+
+		// The PHASE table, not GetKernelOffsets(). The centred reference table drops taps whose disc area
+		// happens to be zero, so its count genuinely wobbles 13..15 as D-A nudges R between extents — but
+		// nothing deposits through it. The phase table stores its whole footprint and is the per-deposit
+		// cost. Asserting the reference table here was measuring a number no frame pays.
+		TapCounts.Add(Field.GetPhaseKernelTapCount());
+
+		TestEqual(*FString::Printf(
+			TEXT("T-BAND-5: %.1f x %.1f -- kernel radius follows width/(2*cell) (R = %.4f)"), Ext.X, Ext.Y, R),
+			static_cast<double>(R),
+			static_cast<double>(ShipWidthCm) / (2.0 * static_cast<double>(Field.GetEffectiveCmPerTexel())),
+			1.0e-4);
+
+		double WeightSum = 0.0;
+		for (const float W : Field.GetKernelWeights())
+		{
+			WeightSum += static_cast<double>(W);
+		}
+		TestEqual(*FString::Printf(
+			TEXT("T-BAND-5: the splat still conserves mass on %.1f x %.1f"), Ext.X, Ext.Y),
+			WeightSum, 1.0, 1.0e-6);
+	}
+
+	int32 MinTaps = TapCounts[0];
+	int32 MaxTaps = TapCounts[0];
+	for (const int32 Count : TapCounts)
+	{
+		MinTaps = FMath::Min(MinTaps, Count);
+		MaxTaps = FMath::Max(MaxTaps, Count);
+	}
+	TestEqual(*FString::Printf(
+		TEXT("T-BAND-5: the tap count does not vary with building size (saw %d..%d across %d extents)"),
+		MinTaps, MaxTaps, AwkwardExtentsCm.Num()), MinTaps, MaxTaps);
+
+	// -- NON-VACUITY. Width is the live input: double it and the edges must halve.
+	const FHeatmapLOSBands DoubleWidth =
+		FHeatmapLOSBands::TrajectoryCrossings((2.0f * ShipWidthCm) / 100.0f, Reference);
+	TestEqual(TEXT("T-BAND-5: doubling the stroke width halves band B, so the edges do track it"),
+		DoubleWidth.BandB, 0.5f * FromWidth.BandB, 1.0e-6f);
 
 	// The field's OWN default width is deliberately still 20 cm -- the oracle derivations and the width
-	// cases in this file are written against a radius of exactly 1.0 texel. Asserting the contrast keeps
-	// the two apart, and proves this test is sensitive to the width at all.
+	// cases in this file are written against a radius of exactly 1.0 texel and must not be re-tuned to
+	// match a display preference. Asserting the contrast keeps the two apart.
 	FTrajectoryField FieldDefault = MakeField(1000.0, 1000.0, 10.0f, 20.0f);
-	TestEqual(TEXT("T-BAND-5: 20 cm width is a 3x3 splat, NOT the identity kernel"),
+	TestEqual(TEXT("T-BAND-5: the field's own 20 cm default on a 10 cm cell is still a 3x3 splat"),
 		FieldDefault.GetKernelOffsets().Num(), 9);
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-OFFSET-2 -- the field's grid spans EXACTLY the mesh extent on the major axis.
+//
+// THE GATE THAT WOULD HAVE CAUGHT D-A. T-OFFSET-1 settles stage A (the DDA) and says of stage B: "the
+// RENDER -- texel -> UV -> mesh mapping putting cell 0 at a texel EDGE rather than its CENTRE. Not
+// reachable from here." This is that stage, made reachable by testing the INVARIANT the render depends on
+// instead of the render itself.
+//
+// BuildTileBuffers maps the mesh extent onto the FULL texture (UVx = x / ExtX). The field maps world to
+// cell through a cm/texel that DimsForExtent ceil()s, so W texels used to represent W x Cm cm -- MORE
+// world than the mesh spans. The two bases disagreed by that overhang and the drawn stroke was displaced
+// toward the floor's minimum-XY corner, growing with distance from it: measured 18.3 cm at the min
+// corner, 41.7 cm mid-floor and 68.1 cm at the far corner on the real 4548.9 x 3977.4 floor at 45 cm --
+// 151% of a cell. Across 2000 random floors the median worst case was 40 cm.
+//
+// D-A snaps Cm to MajorExt / MajorDim, which makes the major axis exact BY CONSTRUCTION. So the whole
+// defect reduces to one checkable equation, MajorDim x EffectiveCmPerTexel == MajorExt, with no world, no
+// mesh component and no render target -- which is why this is a plain static case rather than the editor
+// fixture the "not reachable" note assumed it would need.
+//
+// The MINOR axis is deliberately NOT required to be exact: its overhang IS the letterbox margin that
+// TrajectoryTexelOffset centres. It is bounded here at under one cell, which is all the render needs.
+//
+// NON-VACUITY: the un-snapped ceil basis is recomputed alongside and asserted to MISS on at least one
+// fixture, so these cannot pass by asserting an identity.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajOffset2GridSpansMeshTest,
+	"ProjectMobius.Heatmap.Trajectory.Offset.GridSpansMeshExtent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajOffset2GridSpansMeshTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float RequestedCm = Defaults->TrajectoryWorldCmPerTexel;
+	const float WidthCm = Defaults->TrajectoryDisplayPathWidthCm;
+
+	// Chosen to divide badly. The first is the floor the misalignment was actually measured on; the last
+	// is deliberately long and thin, where the letterbox margin is largest.
+	const TArray<FVector2D> ExtentsCm = {
+		FVector2D(4548.9, 3977.4),
+		FVector2D(5000.0, 3000.0),
+		FVector2D(2537.0, 2537.0),
+		FVector2D(12345.6, 7890.1),
+		FVector2D(1999.9, 407.3),
+	};
+
+	int32 UnsnappedMisses = 0;
+
+	for (const FVector2D& Ext : ExtentsCm)
+	{
+		FTrajectoryField Field = MakeField(Ext.X, Ext.Y, RequestedCm, WidthCm);
+
+		const double MajorExt = FMath::Max(Ext.X, Ext.Y);
+		const FIntPoint Dims = Field.GetGridDims();
+		const int32 MajorDim = FMath::Max(Dims.X, Dims.Y);
+		const double Cm = static_cast<double>(Field.GetEffectiveCmPerTexel());
+
+		// Absolute slack for the float cm/texel plus the bounded (1 + 1e-6) nudge Initialise may apply.
+		// Two orders of magnitude tighter than the smallest overhang this is meant to catch.
+		const double Tol = 0.05 + 1.0e-5 * MajorExt;
+
+		const double Span = MajorDim * Cm;
+		TestTrue(*FString::Printf(
+			TEXT("T-OFFSET-2: %.1f x %.1f cm -- the grid spans %.4f cm on the major axis against a mesh ")
+			TEXT("extent of %.4f cm (overhang %.4f cm = %.1f%% of a %.4f cm cell)"),
+			Ext.X, Ext.Y, Span, MajorExt, Span - MajorExt, 100.0 * (Span - MajorExt) / Cm, Cm),
+			FMath::Abs(Span - MajorExt) <= Tol);
+
+		// The minor overhang is the letterbox and is expected, but never a whole cell: more than that
+		// would mean DimsForExtent returned a dimension the extent does not need.
+		const double MinorExt = FMath::Min(Ext.X, Ext.Y);
+		const int32 MinorDim = FMath::Min(Dims.X, Dims.Y);
+		const double MinorOverhang = (MinorDim * Cm) - MinorExt;
+		TestTrue(*FString::Printf(
+			TEXT("T-OFFSET-2: %.1f x %.1f cm -- minor overhang %.4f cm is inside one %.4f cm cell"),
+			Ext.X, Ext.Y, MinorOverhang, Cm),
+			MinorOverhang >= -Tol && MinorOverhang < Cm + Tol);
+
+		// What the un-snapped ceil basis would have produced on this same extent.
+		const int32 RawMajorDim = FMath::CeilToInt32(MajorExt / static_cast<double>(RequestedCm));
+		if (FMath::Abs((RawMajorDim * static_cast<double>(RequestedCm)) - MajorExt) > Tol)
+		{
+			++UnsnappedMisses;
+		}
+	}
+
+	TestTrue(TEXT("T-OFFSET-2: the un-snapped ceil basis misses on at least one fixture, so the span ")
+		TEXT("assertions above are not identities"), UnsnappedMisses > 0);
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-BAND-7 -- the derived route threshold renders the stroke at its ACTUAL WIDTH, at every sub-cell phase.
+//
+// THE DEFECT. The display classifies each texel into one band, so a stroke is always a whole number of
+// cells wide. The 0/1 edge used to be half a BYTE — an is-it-nonzero test — so every cell the kernel tail
+// grazed painted at full band-B colour and the drawn stroke was as wide as the kernel SUPPORT rather than
+// as wide as the stroke: 60 cm for a 45 cm path on 20 cm cells, swinging by a whole cell as the path slid
+// across the lattice. The owner's report was simply "the big problem is how wide it is".
+//
+// WHAT IS ASSERTED, and why it is not a re-implementation of the derivation. This measures the OUTCOME —
+// lay a straight path down at each sub-cell phase and count the lit rows — using the shipping kernel maths
+// and the shipping threshold. It would still redden if DeriveRouteThresholdCrossings returned a plausible
+// but wrong number, which a test that re-derived the threshold and compared could not.
+//
+// 45 / 15 == 3 exactly, so the shipping pair has an exact answer and the width must be CONSTANT. The test
+// states that as a property of the configuration rather than hard-coding 45 cm, so dialling the cell to
+// another exact divisor keeps it honest instead of reddening.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand7RouteThresholdWidthTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_7_RouteThresholdRendersTrueWidth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand7RouteThresholdWidthTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float WidthCm = Defaults->TrajectoryDisplayPathWidthCm;
+	const float CellCm = Defaults->TrajectoryWorldCmPerTexel;
+	const float Reference = FTrajectoryFieldConfig().ReferenceUsageDensity;
+
+	const float Threshold = FTrajectoryField::DeriveRouteThresholdCrossings(WidthCm, CellCm);
+	TestTrue(*FString::Printf(
+		TEXT("T-BAND-7: the derived route threshold is a real crossing count, not the old half-byte test ")
+		TEXT("(%.4f crossings at %.0f cm / %.0f cm)"), Threshold, WidthCm, CellCm),
+		Threshold > 0.0f);
+
+	const FHeatmapLOSBands Bands =
+		FHeatmapLOSBands::TrajectoryCrossings(WidthCm / 100.0f, Reference, Threshold);
+	TestTrue(TEXT("T-BAND-7: the route threshold sits strictly below the 1-crossing edge"),
+		Bands.BandA < Bands.BandB);
+
+	// Lay a straight axial path across the middle of a field and count the rows that clear the threshold.
+	// Sweeping the path's lateral position across one whole cell is the point: the old behaviour was stable
+	// at some offsets and a cell wider at others, so a single position could not have seen it.
+	const double ExtentCm = 3000.0;
+	TArray<int32> WidthsInCells;
+	for (int32 Step = 0; Step < 9; ++Step)
+	{
+		FTrajectoryField Field = MakeField(ExtentCm, ExtentCm, CellCm, WidthCm);
+		const double Cell = static_cast<double>(Field.GetEffectiveCmPerTexel());
+
+		// Lateral offset walked across one full cell, in ninths.
+		const double LateralCm = 1500.0 + (static_cast<double>(Step) / 9.0) * Cell;
+		Field.DepositSegment(FVector2D(600.0, LateralCm), FVector2D(2400.0, LateralCm), 1.0f);
+
+		const TArray<float>& Pres = Field.GetPresentation();
+		const FIntPoint Dims = Field.GetGridDims();
+		const double CellAreaM2 = (Cell / 100.0) * (Cell / 100.0);
+		const double CrossingScale = (static_cast<double>(WidthCm) / 100.0) / CellAreaM2;
+
+		// Column through the middle of the run, clear of both ends.
+		const int32 Column = Dims.X / 2;
+		int32 Lit = 0;
+		for (int32 Row = 0; Row < Dims.Y; ++Row)
+		{
+			const double Crossings = static_cast<double>(Pres[Row * Dims.X + Column]) * CrossingScale;
+			if (Crossings >= static_cast<double>(Threshold))
+			{
+				++Lit;
+			}
+		}
+		WidthsInCells.Add(Lit);
+	}
+
+	int32 MinLit = WidthsInCells[0];
+	int32 MaxLit = WidthsInCells[0];
+	for (const int32 Lit : WidthsInCells)
+	{
+		MinLit = FMath::Min(MinLit, Lit);
+		MaxLit = FMath::Max(MaxLit, Lit);
+	}
+
+	TestTrue(TEXT("T-BAND-7: the stroke lights at least one row at every phase"), MinLit >= 1);
+	TestEqual(*FString::Printf(
+		TEXT("T-BAND-7: the drawn width is CONSTANT across sub-cell phases (saw %d..%d rows)"),
+		MinLit, MaxLit), MinLit, MaxLit);
+
+	// And it is the right width. Stated as the configuration's own exact answer, so this follows the dial.
+	const int32 ExpectedRows = FMath::Max(1, FMath::RoundToInt32(WidthCm / CellCm));
+	TestEqual(*FString::Printf(
+		TEXT("T-BAND-7: %.0f cm of stroke on %.0f cm cells draws %d rows (%.1f cm)"),
+		WidthCm, CellCm, ExpectedRows, ExpectedRows * CellCm), MaxLit, ExpectedRows);
+
+	// NON-VACUITY: the OLD half-byte edge must give a different, wider answer on at least one phase, or
+	// this whole case is measuring something the threshold does not control.
+	{
+		// Swept over the same phases as above, not measured at one. The old edge happens to agree with the
+		// new one at some sub-cell positions — that agreement IS the old behaviour's problem (its width
+		// depended on where the path sat), so a single-phase probe can land on a passing case and prove
+		// nothing. The first version of this check did exactly that.
+		int32 WorstLitOld = 0;
+		const double OldEdgeCrossings =
+			(0.5 / 255.0) * ((static_cast<double>(WidthCm) / 100.0) * static_cast<double>(Reference));
+		for (int32 Step = 0; Step < 9; ++Step)
+		{
+			FTrajectoryField Field = MakeField(ExtentCm, ExtentCm, CellCm, WidthCm);
+			const double Cell = static_cast<double>(Field.GetEffectiveCmPerTexel());
+			const double LateralCm = 1500.0 + (static_cast<double>(Step) / 9.0) * Cell;
+			Field.DepositSegment(FVector2D(600.0, LateralCm), FVector2D(2400.0, LateralCm), 1.0f);
+
+			const TArray<float>& Pres = Field.GetPresentation();
+			const FIntPoint Dims = Field.GetGridDims();
+			const double CrossingScale = (static_cast<double>(WidthCm) / 100.0)
+				/ ((Cell / 100.0) * (Cell / 100.0));
+			int32 LitOld = 0;
+			for (int32 Row = 0; Row < Dims.Y; ++Row)
+			{
+				if (static_cast<double>(Pres[Row * Dims.X + Dims.X / 2]) * CrossingScale >= OldEdgeCrossings)
+				{
+					++LitOld;
+				}
+			}
+			WorstLitOld = FMath::Max(WorstLitOld, LitOld);
+		}
+		TestTrue(*FString::Printf(
+			TEXT("T-BAND-7: the old half-byte edge draws a WIDER stroke at its worst phase (%d rows ")
+			TEXT("against %d), so the threshold is what is being measured"), WorstLitOld, ExpectedRows),
+			WorstLitOld > ExpectedRows);
+	}
+
+	return true;
+}
+
+// -----------------------------------------------------------------------------------------------------
+// T-OFFSET-3 -- the texel the field WRITES is the texel the render SAMPLES. Exactly. Every cell.
+//
+// This is the alignment contract itself, and the one the owner could still see failing after D-A and D-B:
+// the stroke sat beside the agent, and it moved to the other axis when the floor was rotated.
+//
+// THE DEFECT IT GATES (D-C). HeatmapMeshUV letterboxes the MINOR axis by a REAL-valued margin of
+// 0.5 * S * (1 - minorExt / majorExt) texels. The field can only write at INTEGER texels, so the
+// fractional part of that margin is a permanent sub-texel offset between write and sample. On the real
+// 4548.9 x 3977.4 floor the margin is 14.3224 texels and the 0.3224 put 32% OF THE FLOOR in the wrong
+// texel. Because it lives on whichever axis is minor, rotating the floor moved the error to the other
+// axis -- and floors whose extents divide evenly showed nothing at all, which is what made it look
+// intermittent rather than structural.
+//
+// HOW IT IS MEASURED, and why this cannot pass vacuously:
+//   * Sampled at SEVERAL FIXED SUB-CELL OFFSETS, spread across each cell and deliberately away from its
+//     edges. Cell centres alone are USELESS here and the first version of this test made that mistake:
+//     at a centre, floor(x/C + M) == floor(x/C) + round(M) is an ALGEBRAIC IDENTITY for any margin M, so
+//     a centre-only sweep agrees whether or not the phasing is applied and proves nothing. The error
+//     appears at offset f exactly when f >= 1 - frac(M) — the last 32% of each cell on the real floor.
+//     The offsets are irregular so that f + frac(M) is not landing on an integer, which is the only place
+//     a float tie could make an exact comparison flap.
+//   * The render side calls AHeatmapPixelTextureVisualizer::HeatmapMeshUV -- the SAME function
+//     BuildTileBuffers uses per vertex, not a re-derivation. A0-79 is why: a gate that owns a private copy
+//     of the formula can pass while the shipping path is broken, and did, for two days.
+//   * The field side calls PlanTrajectoryLatticePhase, likewise the shipping planner.
+//   * Every fixture is run in BOTH orientations. An axis-symmetric bug would otherwise hide.
+//   * NON-VACUITY: the same comparison is re-run with the phase removed (integer margin, no origin shift)
+//     and asserted to FAIL on at least one fixture. Without that, a mapping that agreed trivially would
+//     look like a pass.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajOffset3LatticePhaseTest,
+	"ProjectMobius.Heatmap.Trajectory.Offset.WrittenTexelIsSampledTexel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajOffset3LatticePhaseTest::RunTest(const FString& Parameters)
+{
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+
+	FTrajectoryFieldConfig Config;
+	Config.WorldCmPerTexel = Defaults->TrajectoryWorldCmPerTexel;
+	Config.DisplayPathWidthCm = Defaults->TrajectoryDisplayPathWidthCm;
+	Config.MaxGridDim = Defaults->TrajectoryMaxGridDim;
+
+	// Deliberately awkward, and each one is also run rotated 90 degrees. The first is the floor the
+	// misalignment was measured on; 5000 x 3000 divides evenly and is the control that showed nothing.
+	const TArray<FVector2D> BaseExtentsCm = {
+		FVector2D(4548.9, 3977.4),
+		FVector2D(5000.0, 3000.0),
+		FVector2D(12345.6, 7890.1),
+		FVector2D(1999.9, 407.3),
+		FVector2D(2537.0, 2536.4),
+	};
+
+	int32 UnphasedFailures = 0;
+
+	for (const FVector2D& Base : BaseExtentsCm)
+	{
+		for (int32 Rotate = 0; Rotate < 2; ++Rotate)
+		{
+			const FVector2D Ext = Rotate ? FVector2D(Base.Y, Base.X) : Base;
+
+			const AHeatmapPixelTextureVisualizer::FTrajectoryLatticePhase Phase =
+				AHeatmapPixelTextureVisualizer::PlanTrajectoryLatticePhase(Ext, Config);
+
+			const int32 S = Phase.SquareSide;
+			const double C = static_cast<double>(Phase.CmPerTexel);
+			const FIntPoint Padded(Phase.GridDims.X + Phase.ExtraGridCells.X,
+			                       Phase.GridDims.Y + Phase.ExtraGridCells.Y);
+			if (!TestTrue(TEXT("T-OFFSET-3: the plan produced a usable grid"), S > 0 && C > 0.0))
+			{
+				continue;
+			}
+
+			// COVERAGE. The origin shift moves the lattice; the pad cells are what stop it uncovering a
+			// strip of real floor. Deposits are never clamped into range, so an uncovered strip is a piece
+			// of the building that silently stops accumulating.
+			for (int32 Axis = 0; Axis < 2; ++Axis)
+			{
+				const double ExtCm = Axis ? Ext.Y : Ext.X;
+				const double ShiftCm = Axis ? Phase.OriginShiftCm.Y : Phase.OriginShiftCm.X;
+				const int32 Dim = Axis ? Padded.Y : Padded.X;
+				TestTrue(*FString::Printf(
+					TEXT("T-OFFSET-3: %.1f x %.1f axis %d -- the padded grid covers the mesh ")
+					TEXT("(grid [%.3f, %.3f] vs mesh [0, %.3f])"),
+					Ext.X, Ext.Y, Axis, ShiftCm, ShiftCm + Dim * C, ExtCm),
+					ShiftCm <= UE_DOUBLE_KINDA_SMALL_NUMBER && (ShiftCm + Dim * C) >= ExtCm - UE_DOUBLE_KINDA_SMALL_NUMBER);
+			}
+
+			// The MAJOR axis is exact from D-A alone and must need no phasing at all. If this ever fires,
+			// the snap regressed and T-OFFSET-2 should have caught it first.
+			const bool bXMajor = Ext.X >= Ext.Y;
+			TestTrue(*FString::Printf(
+				TEXT("T-OFFSET-3: %.1f x %.1f -- the major axis needs no shift and no pad"), Ext.X, Ext.Y),
+				FMath::IsNearlyZero(bXMajor ? Phase.OriginShiftCm.X : Phase.OriginShiftCm.Y, 1.0e-6)
+				&& (bXMajor ? Phase.ExtraGridCells.X : Phase.ExtraGridCells.Y) == 0);
+
+			// THE CONTRACT. Walk every cell centre that lands on the mesh and require the render to sample
+			// the very texel the field wrote.
+			int32 Mismatches = 0;
+			int32 Checked = 0;
+			int32 UnphasedMismatches = 0;
+			FString FirstFailure;
+
+			// Irregular on purpose — see the header note. A centre-only sweep is an identity.
+			static const double SubCellOffsets[] = { 0.113, 0.317, 0.5, 0.661, 0.887 };
+			const double MajorExt = FMath::Max(Ext.X, Ext.Y);
+			const FIntPoint UnphasedOffset(
+				FMath::RoundToInt32(0.5 * S * (1.0 - Ext.X / MajorExt)),
+				FMath::RoundToInt32(0.5 * S * (1.0 - Ext.Y / MajorExt)));
+
+			for (int32 J = 0; J < Padded.Y; ++J)
+			{
+				for (int32 I = 0; I < Padded.X; ++I)
+				{
+					for (const double FX : SubCellOffsets)
+					{
+						for (const double FY : SubCellOffsets)
+						{
+							// Offset from the MESH's minimum corner.
+							const FVector2D LocalCm(Phase.OriginShiftCm.X + (I + FX) * C,
+							                        Phase.OriginShiftCm.Y + (J + FY) * C);
+							if (LocalCm.X < 0.0 || LocalCm.Y < 0.0
+								|| LocalCm.X >= Ext.X || LocalCm.Y >= Ext.Y)
+							{
+								continue; // Pad cell hanging off the floor. Nothing renders there.
+							}
+							++Checked;
+
+							const FVector2D UV = AHeatmapPixelTextureVisualizer::HeatmapMeshUV(LocalCm, Ext);
+							const FIntPoint Sampled(
+								FMath::FloorToInt32(UV.X * S), FMath::FloorToInt32(UV.Y * S));
+							const FIntPoint Written(I + Phase.TexelOffset.X, J + Phase.TexelOffset.Y);
+
+							if (Sampled != Written)
+							{
+								if (Mismatches == 0)
+								{
+									FirstFailure = FString::Printf(
+										TEXT("cell (%d,%d) at sub-cell (%.3f,%.3f) -> world (%.3f,%.3f) is ")
+										TEXT("written to texel (%d,%d) but sampled at (%d,%d)"),
+										I, J, FX, FY, LocalCm.X, LocalCm.Y,
+										Written.X, Written.Y, Sampled.X, Sampled.Y);
+								}
+								++Mismatches;
+							}
+
+							// The same comparison WITHOUT the phasing: integer margin, no origin shift.
+							// This is what shipped before D-C and it must disagree somewhere, or the sweep
+							// above is passing for reasons that have nothing to do with the fix.
+							const FVector2D UnphasedLocal((I + FX) * C, (J + FY) * C);
+							if (UnphasedLocal.X < Ext.X && UnphasedLocal.Y < Ext.Y)
+							{
+								const FVector2D UnphasedUV =
+									AHeatmapPixelTextureVisualizer::HeatmapMeshUV(UnphasedLocal, Ext);
+								if (FIntPoint(FMath::FloorToInt32(UnphasedUV.X * S),
+								              FMath::FloorToInt32(UnphasedUV.Y * S))
+									!= FIntPoint(I + UnphasedOffset.X, J + UnphasedOffset.Y))
+								{
+									++UnphasedMismatches;
+								}
+							}
+						}
+					}
+				}
+			}
+
+			UnphasedFailures += UnphasedMismatches;
+
+			if (Phase.bPhaseAbandoned)
+			{
+				// Near-square floor: the extents differ by less than one cell, so there is no room to pad
+				// and the planner deliberately keeps the un-phased offset. This fixture is here to EXERCISE
+				// that path, so demanding exactness of it would be asserting the fallback does not exist.
+				// What is required is that it stays BOUNDED — the ideal margin is under half a texel here
+				// by construction, so no cell may be more than one texel out.
+				int32 WorstOut = 0;
+				for (int32 J = 0; J < Padded.Y; ++J)
+				{
+					for (int32 I = 0; I < Padded.X; ++I)
+					{
+						for (const double FX : SubCellOffsets)
+						{
+							for (const double FY : SubCellOffsets)
+							{
+								const FVector2D LocalCm(Phase.OriginShiftCm.X + (I + FX) * C,
+								                        Phase.OriginShiftCm.Y + (J + FY) * C);
+								if (LocalCm.X < 0.0 || LocalCm.Y < 0.0
+									|| LocalCm.X >= Ext.X || LocalCm.Y >= Ext.Y)
+								{
+									continue;
+								}
+								const FVector2D UV =
+									AHeatmapPixelTextureVisualizer::HeatmapMeshUV(LocalCm, Ext);
+								WorstOut = FMath::Max3(WorstOut,
+									FMath::Abs(FMath::FloorToInt32(UV.X * S) - (I + Phase.TexelOffset.X)),
+									FMath::Abs(FMath::FloorToInt32(UV.Y * S) - (J + Phase.TexelOffset.Y)));
+							}
+						}
+					}
+				}
+				TestTrue(*FString::Printf(
+					TEXT("T-OFFSET-3: %.1f x %.1f is the near-square FALLBACK -- error stays within one ")
+					TEXT("texel (worst %d)"), Ext.X, Ext.Y, WorstOut), WorstOut <= 1);
+			}
+			else
+			{
+				TestTrue(*FString::Printf(
+					TEXT("T-OFFSET-3: %.1f x %.1f -- checked %d cell centres, %d landed in the wrong texel. %s"),
+					Ext.X, Ext.Y, Checked, Mismatches, Mismatches > 0 ? *FirstFailure : TEXT("")),
+					Mismatches == 0);
+			}
+			TestTrue(*FString::Printf(TEXT("T-OFFSET-3: %.1f x %.1f -- the sweep actually visited cells"),
+				Ext.X, Ext.Y), Checked > 0);
+		}
+	}
+
+	// NON-VACUITY. Removing the phase must break the comparison; otherwise the assertions above hold for
+	// reasons unrelated to D-C and would keep passing through a regression.
+	TestTrue(TEXT("T-OFFSET-3: without the origin phasing at least one fixture lands in the wrong texel, ")
+		TEXT("so this gate can actually fail"), UnphasedFailures > 0);
 
 	return true;
 }

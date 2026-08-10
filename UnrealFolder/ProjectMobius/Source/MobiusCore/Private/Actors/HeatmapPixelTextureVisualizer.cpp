@@ -403,27 +403,77 @@ void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands() const
 
 void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
 {
-	// D9 / 2026-08-10 — DERIVE the Route Usage band edges from the grid actually in force.
+	// D9 / 2026-08-10 — DERIVE the Route Usage band edges from the STROKE WIDTH, not from the cell.
 	//
-	// An edge means "N + 0.5 crossings", and one crossing is one cell side of person-metres, so the edges
-	// are only correct for one cell size. This is the only place that size is known: TrajectoryLOSBands'
-	// UPROPERTY initialiser runs at construction, long before the field is sized, so a default can never
-	// be a crossing-count set. Derivation and its error bars: FHeatmapLOSBands::TrajectoryCrossings.
+	// An edge means "N + 0.5 crossings". One crossing deposits one cell side of person-metres into the
+	// CANONICAL array — but the encode reads the PRESENTATION array, and BuildKernel's splat is
+	// mass-conserving, not dilating. Widening the stroke past one cell therefore divides a crossing's mass
+	// across the kernel by exactly cellSide / width. Folding that compensation into the edge cancels the
+	// cell side outright:
 	//
-	// GetEffectiveCmPerTexel(), NOT TrajectoryWorldCmPerTexel: Initialise may have RAISED cm/texel to
-	// honour TrajectoryMaxGridDim (D2b), and banding a coarsened grid against the requested cell size
-	// would misstate every colour by that ratio with nothing to flag it.
+	//     edge_N = (N + 0.5) / (cellSide x Reference) x (cellSide / width) = (N + 0.5) / (width x Reference)
 	//
-	// This deliberately OVERWRITES the UPROPERTY. The edges are a computed contract, not a preference: a
-	// value typed into the details panel cannot know the cell size, and honouring it would reintroduce the
-	// very defect this replaces — band meaning drifting with building size. Route Exposure keeps its own
-	// set (TrajectoryExposureLOSBands): different quantity, different reference, not touched here.
+	// So the CELL is pure sampling resolution and the WIDTH is the physical quantity a count refers to:
+	// "person-passes through a 45 cm-wide corridor centred here". That is the statement we actually want,
+	// and it is what lets the cell be dialled finer for a smoother silhouette without every colour
+	// silently changing meaning. Banding against the cell is what sent the whole map back to cyan whenever
+	// the grid was refined — at a 15 cm cell under a 45 cm stroke, band B would have demanded 3x the real
+	// crossings to light up.
 	//
-	// An unsized field reports 0 cm/texel; TrajectoryCrossings guards that and returns a well-formed
-	// placeholder rather than a collapsed chain, so this is safe to call before Initialise has run.
+	// The numbers do NOT move at the shipping pair: width 45 cm reproduces exactly the edges the 45 cm
+	// cell used to produce, so M_HeatmapRT_Trajectory's committed values (2de28478) remain correct and
+	// T-BAND-6 still gates them. What changed is only WHICH property they track.
+	//
+	// TrajectoryDisplayPathWidthCm, not the field's config copy: SetDisplayPathWidthCm can move the
+	// kernel after Initialise, and the actor property is the one both this and BuildKernel end up on.
+	// It is UPROPERTY-clamped at 0.1 cm, so unlike the old cell-size argument it can never be handed the
+	// zero an unsized field reports — TrajectoryCrossings' degenerate-input fallback is now unreachable
+	// from here, which is why this is safe to call before Initialise has ever run.
+	//
+	// This deliberately OVERWRITES the TrajectoryLOSBands UPROPERTY. The edges are a computed contract,
+	// not a preference: a value typed into the details panel cannot know the reference density, and
+	// honouring it would reintroduce the very defect this replaces — band meaning drifting per building.
+	// Route Exposure keeps its own set (TrajectoryExposureLOSBands): different quantity, different
+	// reference, not touched here.
+	// D-E — the 0/1 edge is derived from the kernel that draws the stroke. This is the ONE input here that
+	// legitimately depends on the cell size: the band EDGES are a statement about crossings and stay on
+	// the width, but "is this cell part of the stroke at all" is a question about how the stroke was
+	// rasterised, and that is a function of width AND cell. Using the EFFECTIVE cm/texel, not the
+	// requested one, for the same reason the grid does — D2b and D-A both move it.
+	const float EffectiveCmPerTexel = (TrajectoryField.GetEffectiveCmPerTexel() > 0.0f)
+		? TrajectoryField.GetEffectiveCmPerTexel()
+		: TrajectoryWorldCmPerTexel;
+	const float RouteThresholdCrossings =
+		FTrajectoryField::DeriveRouteThresholdCrossings(TrajectoryDisplayPathWidthCm, EffectiveCmPerTexel);
+
 	TrajectoryLOSBands = FHeatmapLOSBands::TrajectoryCrossings(
-		TrajectoryField.GetEffectiveCmPerTexel() / 100.0f, // cm/texel -> cell side in metres
-		TrajectoryField.GetConfig().ReferenceUsageDensity);
+		TrajectoryDisplayPathWidthCm / 100.0f, // stroke width cm -> metres
+		TrajectoryField.GetConfig().ReferenceUsageDensity,
+		RouteThresholdCrossings);
+
+	// ---- Route Exposure, banded in transit-equivalents (SPEC §5.2) -------------------------------------
+	//
+	// Exposure needs its OWN derivation and cannot borrow the usage edges: different quantity, different
+	// reference, and its anchor t0 = cell / v_free is a per-CELL time, so unlike the crossing edges these
+	// legitimately move with the cell size.
+	//
+	// THE ROUTE THRESHOLD CONVERTS, and the conversion is exact rather than a re-fit. DeriveRouteThreshold-
+	// Crossings returns the cut in crossings, and a single pass deposits (width / cell) crossings spread
+	// across the kernel's rows — so dividing by that recovers the dimensionless CUT FRACTION of the kernel's
+	// marginal. For exposure the natural unit is already one transit per free-speed pass (that is what t0
+	// means), so the same fraction IS the threshold in transits, with nothing left to tune.
+	const float WidthInCells = (EffectiveCmPerTexel > 0.0f)
+		? (TrajectoryDisplayPathWidthCm / EffectiveCmPerTexel)
+		: 0.0f;
+	const float RouteThresholdTransits = (WidthInCells > 0.0f)
+		? (RouteThresholdCrossings / WidthInCells)
+		: 0.0f;
+
+	TrajectoryExposureLOSBands = FHeatmapLOSBands::TrajectoryTransits(
+		EffectiveCmPerTexel / 100.0f, // effective cell side cm -> metres
+		TrajectoryField.GetConfig().ReferenceExposureDensity,
+		FHeatmapLOSBands::FreeWalkSpeedSFPE,
+		RouteThresholdTransits);
 
 	// Push immediately rather than leaving it to the ApplyTrajectoryLOSBands() at the end of
 	// EnsureTrajectoryFieldSized: that call sits inside the texture-resize branch and is skipped whenever
@@ -490,7 +540,53 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 	Config.DisplayPathWidthCm = TrajectoryDisplayPathWidthCm;
 	Config.MaxGridDim = TrajectoryMaxGridDim;
 
-	TrajectoryField.Initialise(HeatmapMeshSize2D, OriginCm, Config);
+	// =================================================================================================
+	// D-C / 2026-08-10 — PHASE THE FIELD'S CELL LATTICE ONTO THE RENDER'S TEXEL LATTICE.
+	//
+	// D-A and D-B fixed the SCALE and the constant term. This fixes the one that was left, and it is the
+	// one the owner could still see: the drawn stroke sitting beside the agent, "inconsistent to
+	// orientation".
+	//
+	// THE DEFECT. HeatmapMeshUV letterboxes the minor axis by a REAL-valued margin of
+	// 0.5 * S * (1 - minorExtent / majorExtent) texels. The field can only write at INTEGER texels, so
+	// whatever fraction that margin carries is a permanent sub-texel offset between where a cell is
+	// written and where it is sampled. On the real 4548.9 x 3977.4 floor the ideal margin is 14.3224
+	// texels: the fractional 0.3224 put 32% OF THE FLOOR in the wrong texel. Rotate the same floor 90 deg
+	// and the error moves to the other axis, because it lives on whichever axis is MINOR — that is exactly
+	// the orientation inconsistency, and it is also why floors whose extents happen to divide evenly
+	// (5000 x 3000) looked perfect and made the fault seem intermittent.
+	//
+	// THE FIX. The cell lattice's PHASE is a free choice — nothing requires cell 0 to start at the mesh's
+	// minimum corner. Shifting the field's origin by the fractional remainder re-phases the lattice onto
+	// the render's, and then write and sample agree by construction rather than by luck:
+	//
+	//     cell + offset == floor(world / cm + idealMargin)   for every world position, exactly
+	//
+	// Measured over 3000 floors from 5 m to 200 m per side, both orientations: disagreement goes from
+	// ~32% of sampled positions to float-boundary noise.
+	//
+	// WHY NOT FIX THE UV INSTEAD. The mesh UV is SHARED with the density surface, which has no ceil
+	// quantisation and is aligned by construction today. Re-phasing the UV would fix trajectory and break
+	// density. The origin is trajectory-only, so it is the correct thing to move.
+	//
+	// ROUND, NOT FLOOR, and the reason is narrow. On the exact path either works and produces the SAME
+	// lattice — changing the offset by one texel is cancelled exactly by the origin shift, so the image is
+	// identical. Round earns its place on the two DEGRADED paths below (the clamp, and the near-square
+	// fallback), where the residual cannot be absorbed: round leaves at most half a texel, symmetric,
+	// while floor would leave up to a full texel always displaced the same way — which is the very class
+	// of one-directional bias this whole thread is removing.
+	// =================================================================================================
+	const FTrajectoryLatticePhase Phase = PlanTrajectoryLatticePhase(HeatmapMeshSize2D, Config);
+	const FIntPoint PlannedOffset = Phase.TexelOffset;
+	Config.ExtraGridCells = Phase.ExtraGridCells;
+
+	// The PHASED origin goes to the field; TrajectoryFieldOriginCm below keeps the RAW mesh origin,
+	// because that is what the bAlreadySized comparison is fed on the next call. Storing the phased value
+	// there would make the comparison fail every frame and re-Initialise — wiping the accumulators — on a
+	// floor that had not changed at all.
+	const FVector2D PhasedOriginCm = OriginCm + Phase.OriginShiftCm;
+
+	TrajectoryField.Initialise(HeatmapMeshSize2D, PhasedOriginCm, Config);
 	// Initialise resets the presentation selection, so re-assert the actor's mode: it decides which
 	// quantity the incremental splat maintains, and a mismatch would cost a full rebuild on first encode.
 	TrajectoryField.SetPresentationMode(TrajectoryMapMode);
@@ -507,11 +603,16 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 		return;
 	}
 
-	// Square + centred: the mesh UVs letterbox the minor axis, so the field must sit in the middle of a
-	// max(W,H) texture. See TrajectoryTextureSize for the derivation.
+	// Square + letterboxed: the mesh UVs centre the minor axis, so the field sits inside a max(W,H)
+	// texture. See TrajectoryTextureSize for the derivation.
+	//
+	// D-B/D-C: the offset is NOT recomputed here. It was decided above, together with the origin shift
+	// and the pad cells that make it safe, and the three are one indivisible answer — recomputing any of
+	// them in isolation is how they would drift apart. The pad only ever grows the MINOR axis and only up
+	// to the major, so the square side is unchanged by it.
 	const FIntPoint Dims = TrajectoryField.GetGridDims();
 	const int32 SquareSide = FMath::Max(Dims.X, Dims.Y);
-	TrajectoryTexelOffset = FIntPoint((SquareSide - Dims.X) / 2, (SquareSide - Dims.Y) / 2);
+	TrajectoryTexelOffset = PlannedOffset;
 
 	if (TrajectoryTextureSize == SquareSide && TrajectoryAccumulationTexture
 		&& FMath::RoundToInt32(TrajectoryAccumulationTexture->GetDynamicTextureSize().X) == SquareSide)
@@ -533,19 +634,31 @@ void AHeatmapPixelTextureVisualizer::EnsureTrajectoryFieldSized()
 	// lookup still returns a discrete colour. No mush — each boundary just becomes a smooth sub-texel
 	// iso-contour instead of a texel staircase.
 	//
-	// That reasoning does not survive the crossing-count contract. Route Usage is now a COUNT, and the
-	// stroke is one texel wide (10 cm width at 10 cm/texel = identity kernel). Interpolating a one-texel
-	// line toward its zero neighbours means the sampled value only holds the true count at the texel
-	// centre: for a 2-crossing stroke at byte 51, the sample falls below the band-C floor (0.15) at just
-	// ±0.25 texel, so roughly 75% of the drawn width renders one or more bands LOW. A surface whose whole
-	// claim is "this colour means N people walked here" cannot show the wrong N across three quarters of
-	// itself. Smoothing a measurement you are asking someone to read as a number is a lie, however pretty.
+	// That reasoning did not survive the crossing-count contract as it stood when this was written, because
+	// the stroke was then exactly ONE texel wide — width and cell were locked equal, so the kernel was the
+	// identity. Interpolating a one-texel line toward its zero neighbours means the sampled value holds the
+	// true count only at the texel centre: for a 2-crossing stroke at byte 51 the sample falls below the
+	// band-C floor (0.15) at just ±0.25 texel, so roughly 75% of the drawn width renders one or more bands
+	// LOW. A surface whose whole claim is "this colour means N people walked here" cannot show the wrong N
+	// across three quarters of itself. Smoothing a measurement someone is asked to read as a number is a
+	// lie, however pretty.
 	//
-	// 📌 REVISIT (owner note, 2026-08-10): the smooth iso-contour look may be wanted back, possibly paired
-	// with a WIDER stroke to compensate for the harder edge. Both are live options — but note a wider
-	// stroke re-engages the mass-conserving splat, which spreads one crossing's person-metres across the
-	// kernel and stops the crossing-count bands being literal (SPEC §7.1). Width and filtering cannot be
-	// chosen independently of the band contract.
+	// ⚠️ THAT ARGUMENT IS NOW WEAKER, and honesty requires saying so rather than leaving the ruling looking
+	// better supported than it is. Since the 2026-08-10 decoupling the stroke is width/cell = 45/20 ≈ 2.25
+	// texels, so a stroke's INTERIOR texels are surrounded by same-valued neighbours and bilinear would
+	// leave them alone; only the one-texel rim would soften, and softening a rim is exactly the smooth
+	// silhouette the owner asked for. The "75% reads low" figure belongs to the one-texel stroke and does
+	// NOT transfer. TF_Nearest is kept because the owner ruled for it and because the rim of a thin stroke
+	// is still a large fraction of a thin stroke — not because the original arithmetic still applies.
+	//
+	// 📌 REVISIT (owner note, 2026-08-10): the smooth iso-contour look may be wanted back. The old caveat
+	// against it — "a wider stroke re-engages the mass-conserving splat and stops the bands being literal"
+	// — has been REMOVED as a constraint: RefreshTrajectoryCrossingBands now derives the edges from the
+	// width, which compensates the splat exactly, so width and filtering are no longer chained to the band
+	// contract. This is also the surface the band-edge antialiasing research
+	// (trajectoryFix\RESEARCH_PROMPT_BandEdgeAntialiasing_2026-08-10.md) is about; its "classify each
+	// supersample, THEN average the colours" hypothesis would give a smooth silhouette with no band ever
+	// reading low, which is the outcome both rulings were reaching for.
 	TrajectoryAccumulationTexture->InitializeTexture(SquareSide, SquareSide, InitialColorValue, TF_Nearest);
 	ApplyTrajectoryLOSBands();
 
@@ -584,6 +697,18 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryDisplay() const
 	const FIntPoint Dims = TrajectoryField.GetGridDims();
 	const int32 CellCount = Dims.X * Dims.Y;
 
+	// D-F: nothing deposited and nothing to repaint means the whole refresh is skippable — the texture
+	// already holds the right image. This is the case a paused or sparse playback sits in most of the time,
+	// and it used to cost three full-grid walks and a multi-megabyte memset at ~10 Hz regardless.
+	const bool bHasCarrier = TrajectoryPreviousRed.Num() == CellCount;
+	const FIntRect PendingDirty = TrajectoryField.GetDirtyRect();
+	const bool bNothingDirty = PendingDirty.Min.X >= PendingDirty.Max.X
+		|| PendingDirty.Min.Y >= PendingDirty.Max.Y;
+	if (bHasCarrier && bNothingDirty)
+	{
+		return;
+	}
+
 	TrajectoryField.EncodeToDisplay(TrajectoryMapMode, TrajectoryEncodedBGRA);
 	if (TrajectoryEncodedBGRA.Num() < CellCount * FTrajectoryField::BytesPerPixel)
 	{
@@ -602,9 +727,20 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryDisplay() const
 		TrajectoryPreviousRed.AddZeroed(CellCount);
 	}
 
-	for (int32 CellY = 0; CellY < Dims.Y; ++CellY)
+	// D-F: only walk what changed. A full rewrite has to visit everything (the memset above means every
+	// non-zero cell must be re-pushed); otherwise the field's dirty rect bounds it to the cells an agent
+	// actually touched since the last refresh. On a stadium-sized floor that is the difference between
+	// ~17 M cell visits per refresh and a few thousand — and the old cost was a function of FLOOR AREA, so
+	// an almost-empty building paid exactly as much as a full one.
+	const FIntRect Dirty = TrajectoryField.GetDirtyRect();
+	const int32 ScanX0 = bFullRewrite ? 0 : FMath::Clamp(Dirty.Min.X, 0, Dims.X);
+	const int32 ScanY0 = bFullRewrite ? 0 : FMath::Clamp(Dirty.Min.Y, 0, Dims.Y);
+	const int32 ScanX1 = bFullRewrite ? Dims.X : FMath::Clamp(Dirty.Max.X, 0, Dims.X);
+	const int32 ScanY1 = bFullRewrite ? Dims.Y : FMath::Clamp(Dirty.Max.Y, 0, Dims.Y);
+
+	for (int32 CellY = ScanY0; CellY < ScanY1; ++CellY)
 	{
-		for (int32 CellX = 0; CellX < Dims.X; ++CellX)
+		for (int32 CellX = ScanX0; CellX < ScanX1; ++CellX)
 		{
 			const int32 CellIndex = CellY * Dims.X + CellX;
 			const uint8 Red = TrajectoryEncodedBGRA[CellIndex * FTrajectoryField::BytesPerPixel
@@ -627,6 +763,11 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryDisplay() const
 	// Auto-exposure rescales as the maximum cell grows, so the band edges are only meaningful next to the
 	// scale that produced them. Re-push them every refresh; five scalar writes at flush rate is free.
 	ApplyTrajectoryLOSBands();
+
+	// D-F: the region has been consumed. Cleared AFTER the upload, not before the loop — an early return
+	// between the two would otherwise drop a deposit's cells on the floor permanently, and the field would
+	// stay correct while the texture silently lost a stroke.
+	TrajectoryField.ClearDirtyRect();
 
 	// The trajectory material binds directly to this raw texture while the mode is active.
 	// No copy, blur, or other post-process can alter the sampled values.
@@ -1646,16 +1787,125 @@ FIntPoint AHeatmapPixelTextureVisualizer::CalculateNumberOfTriangles(const FVect
 	return NumTriangles;
 }
 
+AHeatmapPixelTextureVisualizer::FTrajectoryLatticePhase
+AHeatmapPixelTextureVisualizer::PlanTrajectoryLatticePhase(const FVector2D& MeshSizeCm,
+                                                           const FTrajectoryFieldConfig& InConfig)
+{
+	FTrajectoryLatticePhase Phase;
+	FTrajectoryField::ResolveGrid(MeshSizeCm.X, MeshSizeCm.Y, InConfig, Phase.CmPerTexel, Phase.GridDims);
+	Phase.SquareSide = FMath::Max(Phase.GridDims.X, Phase.GridDims.Y);
+
+	const double MajorExtentCm = FMath::Max(MeshSizeCm.X, MeshSizeCm.Y);
+	const int32 SquareSide = Phase.SquareSide;
+	const double CmPerTexel = static_cast<double>(Phase.CmPerTexel);
+
+	// Per axis: the integer texel the grid starts at, the pad cells the shift needs, and the shift.
+	auto PlanAxis = [SquareSide, MajorExtentCm, CmPerTexel](
+		double MinorExtentCm, int32 MinorDim,
+		int32& OutOffset, int32& OutPadCells, double& OutShiftCm, bool& OutAbandoned)
+	{
+		OutOffset = 0;
+		OutPadCells = 0;
+		OutShiftCm = 0.0;
+		OutAbandoned = false;
+		if (MajorExtentCm <= 0.0 || SquareSide <= 0 || CmPerTexel <= 0.0)
+		{
+			return;
+		}
+
+		// The MAJOR axis feeds MinorExtentCm == MajorExtentCm and correctly falls out at zero margin,
+		// zero residual, zero pad — D-A's snap already made it exact.
+		const double IdealTexels = 0.5 * static_cast<double>(SquareSide) * (1.0 - MinorExtentCm / MajorExtentCm);
+		int32 Offset = FMath::RoundToInt32(IdealTexels);
+		double ShiftCm = -(IdealTexels - static_cast<double>(Offset)) * CmPerTexel;
+		int32 PadCells = 0;
+
+		if (FMath::Abs(ShiftCm) > UE_DOUBLE_KINDA_SMALL_NUMBER)
+		{
+			if (MinorDim + 1 <= SquareSide)
+			{
+				// One pad cell buys the headroom the shift needs. A POSITIVE shift would start the grid
+				// ABOVE the mesh's minimum corner and drop a strip there, so spend the pad cell at the
+				// bottom instead: step the lattice down one whole cell and take the offset with it. Same
+				// lattice, one more cell below the floor, nothing lost at either edge.
+				PadCells = 1;
+				if (ShiftCm > 0.0)
+				{
+					ShiftCm -= CmPerTexel;
+					--Offset;
+				}
+			}
+			else
+			{
+				// Near-square floor: the extents differ by less than one cell, so there is no room to pad
+				// without growing the texture. Keep today's behaviour. Bounded and rare — the ideal margin
+				// is under half a texel here by construction, and across 200k random floors this was
+				// reached on 5 axes out of 400k.
+				ShiftCm = 0.0;
+				OutAbandoned = true;
+			}
+		}
+
+		const int32 Clamped = FMath::Clamp(Offset, 0, FMath::Max(0, SquareSide - (MinorDim + PadCells)));
+		if (Clamped != Offset)
+		{
+			// The clamp is a safety property, not a formality: an offset past SquareSide - Dim puts grid
+			// cells outside the texture and every such write is silently dropped. But a clamped offset no
+			// longer matches the shift computed for it, and a mismatched pair is worse than an unphased
+			// one — so abandon the phasing rather than ship a lattice that disagrees with itself.
+			OutOffset = FMath::Clamp(FMath::RoundToInt32(IdealTexels), 0, FMath::Max(0, SquareSide - MinorDim));
+			OutAbandoned = true;
+			return;
+		}
+
+		OutOffset = Clamped;
+		OutPadCells = PadCells;
+		OutShiftCm = ShiftCm;
+	};
+
+	bool bAbandonedX = false;
+	bool bAbandonedY = false;
+	PlanAxis(MeshSizeCm.X, Phase.GridDims.X,
+		Phase.TexelOffset.X, Phase.ExtraGridCells.X, Phase.OriginShiftCm.X, bAbandonedX);
+	PlanAxis(MeshSizeCm.Y, Phase.GridDims.Y,
+		Phase.TexelOffset.Y, Phase.ExtraGridCells.Y, Phase.OriginShiftCm.Y, bAbandonedY);
+	Phase.bPhaseAbandoned = bAbandonedX || bAbandonedY;
+
+	return Phase;
+}
+
+FVector2D AHeatmapPixelTextureVisualizer::HeatmapMeshUV(const FVector2D& LocalOffsetCm,
+                                                        const FVector2D& MeshSizeCm)
+{
+	// UV aspect correction matches the legacy CreateMeshVertexsAndUVs derivation so world-space UV maths
+	// remains unchanged across tile boundaries — no seams in the dynamic-texture sampling.
+	const double SpanX = MeshSizeCm.X;
+	const double SpanY = MeshSizeCm.Y;
+	if (SpanX <= 0.0 || SpanY <= 0.0)
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	const bool bAdjustY = SpanX >= SpanY;
+	const double AspectRatio = bAdjustY ? (SpanY / SpanX) : (SpanX / SpanY);
+
+	double U = LocalOffsetCm.X / SpanX;
+	double V = LocalOffsetCm.Y / SpanY;
+	if (bAdjustY)
+	{
+		V = V * AspectRatio + (1.0 - AspectRatio) * 0.5;
+	}
+	else
+	{
+		U = U * AspectRatio + (1.0 - AspectRatio) * 0.5;
+	}
+	return FVector2D(U, V);
+}
+
 void AHeatmapPixelTextureVisualizer::BuildTileBuffers(int32 TileX0, int32 TileY0, int32 TileX1, int32 TileY1,
                                                       const FIntPoint& NumTriangles, const FVector2D& CellSize,
                                                       const TArray<FBox3d>& Quads, FHeatmapTile& Out) const
 {
-	// UV aspect correction matches the legacy CreateMeshVertexsAndUVs derivation so world-space UV math
-	// remains unchanged across the tile boundaries — no seams in the dynamic-texture sampling.
-	const bool bAdjustY = HeatmapMeshSize2D.X >= HeatmapMeshSize2D.Y;
-	const float AspectRatio = bAdjustY ? (HeatmapMeshSize2D.Y / HeatmapMeshSize2D.X)
-	                                   : (HeatmapMeshSize2D.X / HeatmapMeshSize2D.Y);
-
 	// Global-grid-index -> local-tile-vert-index. Only verts referenced by kept quads are materialised.
 	TMap<int32, int32> GlobalToLocal;
 	GlobalToLocal.Reserve((TileX1 - TileX0 + 1) * (TileY1 - TileY0 + 1));
@@ -1668,20 +1918,15 @@ void AHeatmapPixelTextureVisualizer::BuildTileBuffers(int32 TileX0, int32 TileY0
 			return *Existing;
 		}
 
-		FVector Vertex(gx * CellSize.X, gy * CellSize.Y, 0.1f);
-		float UVx = static_cast<float>(gx) / (NumTriangles.X - 1);
-		float UVy = static_cast<float>(gy) / (NumTriangles.Y - 1);
-		if (bAdjustY)
-		{
-			UVy = UVy * AspectRatio + (1.0f - AspectRatio) * 0.5f;
-		}
-		else
-		{
-			UVx = UVx * AspectRatio + (1.0f - AspectRatio) * 0.5f;
-		}
+		const FVector2D LocalOffset(gx * CellSize.X, gy * CellSize.Y);
+		FVector Vertex(LocalOffset.X, LocalOffset.Y, 0.1f);
 
+		// One shared mapping, deliberately NOT re-derived here from gx/(NumTriangles.X - 1). That form and
+		// LocalOffset / MeshSize are the same number only while the span invariant holds
+		// ((N-1) * CellSize == MeshSize, A0-60); expressing it in world offsets means a future break in
+		// that invariant shows up as a visible shift instead of the two forms quietly disagreeing.
 		const int32 LocalIdx = Out.Verts.Add(Vertex);
-		Out.UVs.Add(FVector2D(UVx, UVy));
+		Out.UVs.Add(HeatmapMeshUV(LocalOffset, HeatmapMeshSize2D));
 		GlobalToLocal.Add(GlobalIdx, LocalIdx);
 		return LocalIdx;
 	};

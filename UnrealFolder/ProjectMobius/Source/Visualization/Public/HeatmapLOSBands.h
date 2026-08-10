@@ -159,12 +159,21 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 * into the neighbouring band. Half-step edges make that tie unreachable. Same defect class as the
 	 * A0-80 staircase statistic.
 	 *
-	 * WHY THIS IS COMPUTED RATHER THAN A TABLE OF LITERALS. The edges depend on the product of cell size
-	 * and reference. Freezing them would make a colour mean a different number of crossings the moment
-	 * TrajectoryWorldCmPerTexel changed - or, worse, the moment FTrajectoryField's D2b clamp silently
-	 * RAISED cm/texel to honour MaxGridDim on a large floor, which no caller asks for and nothing would
-	 * flag. That is exactly the defect class removed on 2026-08-03, where band meaning tracked building
-	 * size. Pass the EFFECTIVE cell size (GetEffectiveCmPerTexel() / 100), never the requested one.
+	 * WHY THIS IS COMPUTED RATHER THAN A TABLE OF LITERALS. The edges depend on the product of the scale
+	 * argument and the reference. Freezing them would make a colour mean a different number of crossings
+	 * the moment either moved, which is exactly the defect class removed on 2026-08-03, where band meaning
+	 * tracked building size.
+	 *
+	 * WHAT TO PASS, AND THIS CHANGED ON 2026-08-10. The live caller
+	 * (AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands) passes the STROKE WIDTH in metres,
+	 * NOT the cell size. The encode reads the PRESENTATION array, and BuildKernel's splat is
+	 * mass-conserving, so a stroke wider than one cell divides a crossing's mass by cellSide / width;
+	 * folding that in cancels the cell side out of the edge entirely. The width is therefore the physical
+	 * quantity a count refers to - "person-passes through a width-wide corridor" - and the cell is free to
+	 * be dialled for silhouette quality without moving a colour. Passing the effective cell size instead
+	 * was correct only while the two were locked equal, and reverting to it now would rescale every edge
+	 * by width/cell; T-BAND-5 gates that. The parameter keeps its CellSideMetres name because the algebra
+	 * below is unchanged and the two arguments are dimensionally identical.
 	 *
 	 * REPRESENTABILITY. The top edge is 4.5 / (s * Reference), so the full ladder fits the [0,1] channel
 	 * only when (s * Reference) >= 4.5. At the shipping configuration - s = 0.1 m, Reference = 100
@@ -187,7 +196,8 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 * @param ReferenceUsageDensity  The person/m that EncodeToDisplay maps to byte 255, i.e.
 	 *                               FTrajectoryFieldConfig::ReferenceUsageDensity.
 	 */
-	static FHeatmapLOSBands TrajectoryCrossings(float CellSideMetres, float ReferenceUsageDensity)
+	static FHeatmapLOSBands TrajectoryCrossings(float CellSideMetres, float ReferenceUsageDensity,
+	                                            float RouteThresholdCrossings = 0.0f)
 	{
 		FHeatmapLOSBands Bands;
 
@@ -208,12 +218,134 @@ struct VISUALIZATION_API FHeatmapLOSBands
 		// chain is evaluated in order, so a non-monotonic set would make a band unreachable rather than
 		// merely misplaced. Written out rather than looped: four lines is fewer than the loop that would
 		// replace them, and the numerators are the half-steps the derivation above names.
+		// D-E — the 0/1 edge is the ROUTE THRESHOLD, not an is-it-nonzero test.
+		//
+		// Every other edge here is a half-step on the crossing scale. This one was not: it was half a BYTE,
+		// which only ever asked "is this cell zero". So a cell holding a sliver of kernel spill painted the
+		// same colour as one holding a full crossing, and the drawn stroke was as wide as the kernel's
+		// support rather than as wide as the stroke — 60 cm for a 45 cm path on 20 cm cells, swinging by a
+		// whole cell as the path slid across the lattice.
+		//
+		// The replacement is DERIVED from the kernel that draws the stroke, not fitted to one configuration
+		// — see FTrajectoryField::DeriveRouteThresholdCrossings. A caller that passes 0 keeps the old
+		// is-it-nonzero behaviour, which is what the degenerate and legacy paths want.
+		//
+		// Floored at half a byte so byte 0, and only byte 0, is guaranteed to read as "no data" whatever
+		// the threshold works out to. Clamped under BandB so the chain cannot invert.
+		if (RouteThresholdCrossings > 0.0f)
+		{
+			Bands.BandA = FMath::Max(Bands.BandA, RouteThresholdCrossings / Denominator);
+		}
+
 		Bands.BandB = FMath::Clamp(1.5f / Denominator, Bands.BandA, 1.0f); // ~1 crossing
 		Bands.BandC = FMath::Clamp(2.5f / Denominator, Bands.BandB, 1.0f); // ~2
 		Bands.BandD = FMath::Clamp(3.5f / Denominator, Bands.BandC, 1.0f); // ~3
 		Bands.BandE = FMath::Clamp(4.5f / Denominator, Bands.BandD, 1.0f); // ~4; at/above this is LOS_F, 5+
 
 		return Bands;
+	}
+
+	/**
+	 * Free walking speed on the level, metres/second. NAMED, not a literal, because which one is correct
+	 * is set by JURISDICTION and not by preference — see TrajectoryTransits.
+	 *
+	 * SFPE: Nelson & MacLennan, SFPE Handbook, "Emergency Movement", S = k(1 - 0.266 D), k = 1.40 m/s level.
+	 * The Mobius audience is NZ fire engineering under C/VM2, which expects the SFPE hydraulic model, and
+	 * the tenability pipeline already imports from the same handbook.
+	 */
+	static constexpr float FreeWalkSpeedSFPE = 1.40f;
+
+	/**
+	 * The EU / DACH alternative, kept documented beside the shipping value so the anchor can be swapped if
+	 * the audience ever changes. Weidmann (1993), Transporttechnik der Fussgaenger, ETH Zuerich:
+	 * v = v_free * [1 - exp(-1.913 * (1/rho - 1/5.4))], v_free = 1.34 m/s. Entrenched in the EU via RiMEA.
+	 * Swapping to it moves t0 and the person-second column by about 4%. IMO rejects both.
+	 */
+	static constexpr float FreeWalkSpeedWeidmann = 1.34f;
+
+	/**
+	 * Route Exposure banded in TRANSIT-EQUIVALENTS (SPEC_TrajectorySurfaces §5.2).
+	 *
+	 * A cell accrues person-seconds whenever anyone is inside it, moving or not, so raw seconds are not
+	 * comparable between captures of different length or between cells of different size. The anchor that
+	 * fixes that is the time ONE person at free walking speed takes to cross ONE cell:
+	 *
+	 *     t0       = CellSideMetres / v_free
+	 *     Transits = PersonSeconds / t0
+	 *
+	 * One transit reads as "one person crossed this cell at normal walking pace". Two is either two people
+	 * or one person at half speed — the same countable UX as crossings, anchored on a published free speed.
+	 *
+	 * ⚠️ **THE ANCHOR IS PRINCIPLED; THE LADDER IS NOT, AND THE UI MUST SAY SO.** Crossings work because a
+	 * crossing is a discrete countable event. Person-seconds is a product of count x time and no physical
+	 * principle fixes the count, so the STEPS below (roughly x3, geometric because a standing agent racks up
+	 * hundreds of transits while a crossing is one) are a readability choice. There is no published standard
+	 * for this surface. Do not let the legend imply otherwise.
+	 *
+	 *   A  0        nobody was ever here      D  <= 15   noticeably delayed
+	 *   B  <= 2     free-flow pass-through    E  <= 50   queueing
+	 *   C  <= 5     light use / slight slow   F  >  50   stationary / blocked
+	 *
+	 * DERIVATION OF THE EDGE. EncodeToDisplay normalises a cell's DENSITY against the reference, so
+	 * RVal = PersonSeconds / (s^2 * Ref), and substituting Transits = PersonSeconds * v_free / s gives
+	 *
+	 *     edge(T) = T / (s * Ref * v_free)
+	 *
+	 * 🚩 REPRESENTABILITY, and it bites at the shipping configuration. The top edge fits the [0,1] channel
+	 * only when s * Ref * v_free >= 50. At s = 0.15 m and v_free = 1.40 that needs Ref >= 238.1 — which is
+	 * why FTrajectoryFieldConfig::ReferenceExposureDensity ships at 240 rather than the old capture-derived
+	 * 200. Below that the top edge clamps to 1.0 and band F becomes UNREACHABLE, so queueing and blocked
+	 * render identically — silently, since the clamp keeps the chain monotonic and nothing else complains.
+	 * That is the whole point of the surface, so it is worth the reference moving.
+	 *
+	 * @param CellSideMetres    EFFECTIVE cell side. Exposure edges DO depend on it: t0 is a per-cell time.
+	 * @param ReferenceExposureDensity  person*s/m^2 that EncodeToDisplay maps to byte 255.
+	 * @param FreeWalkSpeed     v_free. Pass FreeWalkSpeedSFPE unless the audience is EU.
+	 * @param RouteThresholdTransits  D-E route threshold in transits; 0 keeps the is-it-nonzero edge.
+	 */
+	static FHeatmapLOSBands TrajectoryTransits(float CellSideMetres, float ReferenceExposureDensity,
+	                                           float FreeWalkSpeed = FreeWalkSpeedSFPE,
+	                                           float RouteThresholdTransits = 0.0f)
+	{
+		FHeatmapLOSBands Bands;
+		Bands.BandA = 0.5f / 255.0f;
+
+		const float Denominator = CellSideMetres * ReferenceExposureDensity * FreeWalkSpeed;
+		if (!FMath::IsFinite(Denominator) || Denominator <= 0.0f)
+		{
+			// No valid cell size or anchor means there is no transit to count. The frozen quantile set is
+			// at least monotonic and in range; a caller landing here is banding an unsized field.
+			return TrajectoryExposure();
+		}
+
+		// Same reasoning as TrajectoryCrossings: the 0/1 edge is the ROUTE THRESHOLD, not an is-it-nonzero
+		// test, or every cell the splat kernel grazes paints at full band-B colour and the drawn stroke is
+		// as wide as the kernel support instead of as wide as the stroke.
+		if (RouteThresholdTransits > 0.0f)
+		{
+			Bands.BandA = FMath::Max(Bands.BandA, RouteThresholdTransits / Denominator);
+		}
+
+		// Geometric, and clamped against the previous edge so a degenerate configuration yields an
+		// unreachable-free monotonic chain rather than a scrambled one.
+		Bands.BandB = FMath::Clamp(2.0f / Denominator, Bands.BandA, 1.0f);
+		Bands.BandC = FMath::Clamp(5.0f / Denominator, Bands.BandB, 1.0f);
+		Bands.BandD = FMath::Clamp(15.0f / Denominator, Bands.BandC, 1.0f);
+		Bands.BandE = FMath::Clamp(50.0f / Denominator, Bands.BandD, 1.0f);
+
+		return Bands;
+	}
+
+	/**
+	 * The smallest ReferenceExposureDensity at which TrajectoryTransits' full ladder fits the [0,1]
+	 * channel, i.e. band F stays reachable. Exposed so a gate can assert the shipping default clears it
+	 * rather than transcribing a number that goes stale the moment the cell is dialled.
+	 */
+	static float MinimumExposureReferenceForFullLadder(float CellSideMetres,
+	                                                   float FreeWalkSpeed = FreeWalkSpeedSFPE)
+	{
+		const float Divisor = CellSideMetres * FreeWalkSpeed;
+		return (Divisor > 0.0f) ? (50.0f / Divisor) : 0.0f;
 	}
 
 	/**

@@ -186,6 +186,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
 	void SetTrajectoryHeatmapsEnabled(bool bEnabled);
 
+	/**
+	 * Selects Route Exposure (person-seconds) over Route Usage (person-metres) for every registered
+	 * heatmap actor. Only meaningful while trajectory-path mode is on; harmless otherwise, since the
+	 * mode is stored and applied when the trajectory view is next enabled.
+	 *
+	 * Display-only: both canonical accumulators are maintained unconditionally, so this re-encodes and
+	 * never re-walks or discards a segment. Safe to call mid-playback.
+	 *
+	 * Takes a bool rather than ETrajectoryMapMode deliberately — the checkbox that drives this should
+	 * not have to name the enum, and a bool pin needs no literal, which keeps the widget graph
+	 * scriptable (the MCP bridge cannot write enum pin defaults).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
+	void SetTrajectoryRouteExposureEnabled(bool bEnabled);
+
 
 	void UpdateHeatmapTextureRender();
 

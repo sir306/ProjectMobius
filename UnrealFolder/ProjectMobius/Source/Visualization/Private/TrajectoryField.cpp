@@ -195,26 +195,16 @@ void FTrajectoryField::Initialise(const FVector2D& FloorExtentCm, const FVector2
 	const double ExtX = FMath::Max(0.0, static_cast<double>(FloorExtentCm.X));
 	const double ExtY = FMath::Max(0.0, static_cast<double>(FloorExtentCm.Y));
 
-	// D2 then D2b: honour cm/texel if it fits, otherwise RAISE it to the smallest value that does. The
-	// division is done in float because the reported EffectiveCmPerTexel is float and the grid must be
-	// consistent with the value the caller can read back. The bounded nudge loop only fires if the exact
-	// quotient rounds such that ceil() still overshoots by one - at 25000 cm / 2048 it does not
-	// (3125/256 is binary-exact), but a non-round extent can.
 	float Cm = Config.WorldCmPerTexel;
-	FIntPoint Dims = DimsForExtent(ExtX, ExtY, Cm);
-	if (FMath::Max(Dims.X, Dims.Y) > Config.MaxGridDim)
-	{
-		const double MaxExtent = FMath::Max(ExtX, ExtY);
-		Cm = static_cast<float>(MaxExtent / static_cast<double>(Config.MaxGridDim));
-		Cm = FMath::Max(Cm, MinCmPerTexel);
-		Dims = DimsForExtent(ExtX, ExtY, Cm);
+	FIntPoint Dims = FIntPoint::ZeroValue;
+	ResolveGrid(ExtX, ExtY, Config, Cm, Dims);
 
-		for (int32 Guard = 0; Guard < 16 && FMath::Max(Dims.X, Dims.Y) > Config.MaxGridDim; ++Guard)
-		{
-			Cm *= (1.0f + 1.0e-6f);
-			Dims = DimsForExtent(ExtX, ExtY, Cm);
-		}
-	}
+	// D-C: additive padding, applied only here so it cannot reach ResolveGrid's decision. The visualizer
+	// asks for one extra cell on whichever axis it re-phases, because the origin shift it applies can
+	// leave the grid up to half a cell short of the mesh at one edge and this codebase drops off-grid
+	// deposits rather than clamping them onto the border row.
+	Dims.X = FMath::Max(0, Dims.X + FMath::Max(0, Config.ExtraGridCells.X));
+	Dims.Y = FMath::Max(0, Dims.Y + FMath::Max(0, Config.ExtraGridCells.Y));
 
 	GridDims = Dims;
 	EffectiveCmPerTexel = Cm;
@@ -238,6 +228,196 @@ void FTrajectoryField::Initialise(const FVector2D& FloorExtentCm, const FVector2
 
 	// A re-initialise on floor change that kept stale mass would be a silent bug.
 	Clear();
+}
+
+void FTrajectoryField::ResolveGrid(double ExtentXCm, double ExtentYCm, const FTrajectoryFieldConfig& InConfig,
+                                   float& OutCmPerTexel, FIntPoint& OutDims)
+{
+	const double ExtX = FMath::Max(0.0, ExtentXCm);
+	const double ExtY = FMath::Max(0.0, ExtentYCm);
+
+	FTrajectoryFieldConfig Config = InConfig;
+	Config.WorldCmPerTexel = FMath::Max(Config.WorldCmPerTexel, MinCmPerTexel);
+	Config.MaxGridDim = FMath::Clamp(Config.MaxGridDim, 1, AbsoluteMaxGridDim);
+
+	// D2 then D2b: honour cm/texel if it fits, otherwise RAISE it to the smallest value that does. The
+	// division is done in float because the reported EffectiveCmPerTexel is float and the grid must be
+	// consistent with the value the caller can read back. The bounded nudge loop only fires if the exact
+	// quotient rounds such that ceil() still overshoots by one - at 25000 cm / 2048 it does not
+	// (3125/256 is binary-exact), but a non-round extent can.
+	float Cm = Config.WorldCmPerTexel;
+	FIntPoint Dims = DimsForExtent(ExtX, ExtY, Cm);
+	if (FMath::Max(Dims.X, Dims.Y) > Config.MaxGridDim)
+	{
+		const double MaxExtent = FMath::Max(ExtX, ExtY);
+		Cm = static_cast<float>(MaxExtent / static_cast<double>(Config.MaxGridDim));
+		Cm = FMath::Max(Cm, MinCmPerTexel);
+		Dims = DimsForExtent(ExtX, ExtY, Cm);
+
+		for (int32 Guard = 0; Guard < 16 && FMath::Max(Dims.X, Dims.Y) > Config.MaxGridDim; ++Guard)
+		{
+			Cm *= (1.0f + 1.0e-6f);
+			Dims = DimsForExtent(ExtX, ExtY, Cm);
+		}
+	}
+
+	// D-A / 2026-08-10 — SNAP cm/texel so the MAJOR axis divides its extent EVENLY.
+	//
+	// DimsForExtent ceil()s, so W texels represent W*Cm cm of world while the mesh spans only ExtX. The
+	// render maps mesh extent onto the FULL texture (BuildTileBuffers letterboxes on the world-extent
+	// ratio ExtY/ExtX) while the texel offset is computed from the CEIL'D grid-dims ratio H/W. Two
+	// different numbers, so the drawn stroke is displaced toward the floor's minimum-XY corner by an error
+	// that GROWS with distance from it. Measured on the real 4548.9 x 3977.4 cm floor at 45 cm/texel:
+	// 18.3 cm at the min corner, 41.7 cm mid-floor, 68.1 cm at the far corner = 151% of a cell. Across
+	// 2000 random floors the median worst case is 40 cm and 37% exceed a full cell, so this is structural
+	// rather than a bad-luck extent. It is what "the path lands beside the agent, not under it" was.
+	//
+	// Dividing the major extent by its already-ceil'd dimension makes that axis exact by construction and
+	// removes the scale term outright. The MINOR axis may gain one texel from the slightly smaller Cm;
+	// that is only letterbox margin, which the offset rounding at the call site bounds to half a texel.
+	// It can never overtake the major axis: MinorExt <= MajorExt and ceil() is monotonic, so
+	// ceil(MinorExt/Cm) <= ceil(MajorExt/Cm) == MajorDim.
+	//
+	// Cm falling BELOW the requested value is the whole point, so this runs after the MaxGridDim raise
+	// above and is deliberately not re-clamped against Config.WorldCmPerTexel. It only ever decreases Cm,
+	// so the D2b ceiling cannot be breached except by float rounding, which the guard below absorbs.
+	const double MajorExt = FMath::Max(ExtX, ExtY);
+	const int32 MajorDim = FMath::Max(Dims.X, Dims.Y);
+	if (MajorDim > 0 && MajorExt > 0.0)
+	{
+		const float SnappedCm = static_cast<float>(MajorExt / static_cast<double>(MajorDim));
+		// Below the floor the snap would have to be clamped back UP, which would re-grow the grid it was
+		// meant to leave alone. A sub-micron cell is degenerate anyway; leave Cm as it was.
+		if (SnappedCm >= MinCmPerTexel)
+		{
+			Cm = SnappedCm;
+			Dims = DimsForExtent(ExtX, ExtY, Cm);
+
+			// The double -> float cast can land a hair below the exact quotient, which turns ceil() into
+			// MajorDim + 1. Same bounded nudge as the D2b block above, and for the same reason.
+			for (int32 Guard = 0; Guard < 16 && FMath::Max(Dims.X, Dims.Y) > MajorDim; ++Guard)
+			{
+				Cm *= (1.0f + 1.0e-6f);
+				Dims = DimsForExtent(ExtX, ExtY, Cm);
+			}
+		}
+	}
+
+	OutCmPerTexel = Cm;
+	OutDims = Dims;
+}
+
+void FTrajectoryField::MarkCellDirty(int32 I, int32 J) const
+{
+	const int32 Half = (PhaseKernelOffsets.Num() > 0) ? PhaseKernelOffsets.Last().X : 0;
+	const int32 X0 = FMath::Clamp(I - Half, 0, GridDims.X);
+	const int32 Y0 = FMath::Clamp(J - Half, 0, GridDims.Y);
+	const int32 X1 = FMath::Clamp(I + Half + 1, 0, GridDims.X);
+	const int32 Y1 = FMath::Clamp(J + Half + 1, 0, GridDims.Y);
+
+	if (DirtyRect.Min.X >= DirtyRect.Max.X || DirtyRect.Min.Y >= DirtyRect.Max.Y)
+	{
+		DirtyRect = FIntRect(X0, Y0, X1, Y1);
+		return;
+	}
+	// A bounding box, not a tile set. Deliberate: a crowd's deposits are spatially coherent within a tick,
+	// and a box costs four compares per deposit against a tile set's hashing. If a capture ever has two
+	// crowds at opposite corners the box degenerates to the full grid, which is exactly today's cost and
+	// so cannot be a regression.
+	DirtyRect.Min.X = FMath::Min(DirtyRect.Min.X, X0);
+	DirtyRect.Min.Y = FMath::Min(DirtyRect.Min.Y, Y0);
+	DirtyRect.Max.X = FMath::Max(DirtyRect.Max.X, X1);
+	DirtyRect.Max.Y = FMath::Max(DirtyRect.Max.Y, Y1);
+}
+
+float FTrajectoryField::DeriveRouteThresholdCrossings(float DisplayPathWidthCm, float CmPerTexel)
+{
+	// Legacy behaviour for a degenerate configuration: "anything nonzero is on the route". Half a byte is
+	// the smallest positive an encoded cell can hold, so this is the is-it-zero test the threshold
+	// replaces — the right answer when there is no kernel to reason about.
+	constexpr float NoDataOnlyCrossings = 0.0f;
+	if (!(DisplayPathWidthCm > 0.0f) || !(CmPerTexel > 0.0f))
+	{
+		return NoDataOnlyCrossings;
+	}
+
+	const double Radius = static_cast<double>(DisplayPathWidthCm) / (2.0 * static_cast<double>(CmPerTexel));
+	const double WidthInCells = static_cast<double>(DisplayPathWidthCm) / static_cast<double>(CmPerTexel);
+
+	// The nearest honest whole-cell rendering of the stroke. At 45/15 this is 3 and the width comes out
+	// exactly right; at 45/20 it is 2, i.e. 40 cm — wrong by 5 cm but STABLE, which the 40-or-60 flicker
+	// was not.
+	const int32 TargetRows = FMath::Max(1, FMath::RoundToInt32(WidthInCells));
+
+	// Same footprint rule as BuildPhaseKernel: a disc pushed half a cell off centre reaches one ring more.
+	const int32 HalfExtent = FMath::Max(1, static_cast<int32>(FMath::CeilToDouble(Radius + 0.5)));
+	constexpr int32 Bins = KernelPhaseBinsPerAxis;
+
+	// Window: everything the stroke must KEEP has to sit above everything it must DROP, at every phase.
+	double WorstDropped = 0.0;          // highest value that must NOT light
+	double WorstKept = TNumericLimits<double>::Max(); // lowest value that MUST light
+
+	TArray<double> RowCrossings;
+	RowCrossings.Reserve(2 * HalfExtent + 1);
+
+	for (int32 Bin = 0; Bin < Bins; ++Bin)
+	{
+		// Only the ACROSS-path phase matters: the marginal sums along the path, so the along-path phase
+		// cancels. One sweep of Bins instead of Bins^2.
+		const double Phase = (static_cast<double>(Bin) + 0.5) / Bins - 0.5;
+
+		RowCrossings.Reset();
+		double RawTotal = 0.0;
+		for (int32 DY = -HalfExtent; DY <= HalfExtent; ++DY)
+		{
+			// Marginal of the disc in this row: the full-width strip, which is exactly the sum over the
+			// row's cells of the per-cell areas BuildPhaseKernel computes.
+			const double Area = TrajectoryFieldPrivate::DiscAreaInRect(
+				-Radius - 1.0, Radius + 1.0,
+				static_cast<double>(DY) - 0.5 - Phase, static_cast<double>(DY) + 0.5 - Phase, Radius);
+			RowCrossings.Add(Area);
+			RawTotal += Area;
+		}
+		if (!(RawTotal > 0.0))
+		{
+			continue;
+		}
+
+		// Normalise the marginal to 1.0 (as the kernel is), then convert to crossings. The cell area and
+		// the reference density cancel out of that conversion, which is why this needs neither.
+		for (double& Value : RowCrossings)
+		{
+			Value = (Value / RawTotal) * WidthInCells;
+		}
+
+		// Descending, so element [TargetRows - 1] is the dimmest row that must light and [TargetRows] is
+		// the brightest that must not.
+		RowCrossings.Sort([](const double& A, const double& B) { return A > B; });
+
+		WorstKept = FMath::Min(WorstKept, RowCrossings[FMath::Min(TargetRows - 1, RowCrossings.Num() - 1)]);
+		if (TargetRows < RowCrossings.Num())
+		{
+			WorstDropped = FMath::Max(WorstDropped, RowCrossings[TargetRows]);
+		}
+	}
+
+	if (WorstKept == TNumericLimits<double>::Max())
+	{
+		return NoDataOnlyCrossings;
+	}
+
+	if (WorstDropped < WorstKept)
+	{
+		// A real window exists: the width is constant at TargetRows cells across every phase. Midpoint,
+		// so float noise in either bound cannot tip a row across.
+		return static_cast<float>(0.5 * (WorstDropped + WorstKept));
+	}
+
+	// No window — the kept and dropped populations overlap, so SOME phase must render a row wide or narrow
+	// whatever we choose. Sit on the dimmest kept row: that keeps the stroke from ever being narrower than
+	// TargetRows, and lets it widen only on the phases that genuinely cannot be resolved. Widening is the
+	// safer failure for a route surface, since a missing cell reads as "nobody walked here".
+	return static_cast<float>(WorstKept);
 }
 
 void FTrajectoryField::BuildKernel()
@@ -344,6 +524,112 @@ void FTrajectoryField::BuildKernel()
 		WeightSum += static_cast<double>(Weight);
 	}
 	KernelWeights[KernelCentreIndex] += static_cast<float>(1.0 - WeightSum);
+
+	BuildPhaseKernel(Radius);
+}
+
+void FTrajectoryField::BuildPhaseKernel(double Radius)
+{
+	// D-D — the same analytic disc-area coverage as above, evaluated at every sub-cell phase instead of
+	// only at the cell centre. See the PhaseKernel* declarations for why this exists at all.
+	PhaseKernelOffsets.Reset();
+	PhaseKernelWeights.Reset();
+	PhaseKernelTapCount = 0;
+
+	constexpr int32 Bins = KernelPhaseBinsPerAxis;
+
+	// A disc displaced by up to half a cell reaches one ring further than a centred one: cell dx holds
+	// area when dx - 0.5 < R + 0.5, i.e. dx < R + 1. Half extent ceil(R + 0.5), against the centred
+	// table's ceil(R - 0.5). Sizing to the CENTRED extent instead would clip the leading edge of every
+	// off-centre phase — mass-conserving because of the renormalise below, so it would not fail any
+	// conservation gate, but the stroke would narrow as it moved off centre. A moving-width stroke is
+	// exactly the kind of fault that reads as "the renderer is fine, the data is odd".
+	int32 HalfExtent = FMath::Max(0, static_cast<int32>(FMath::CeilToDouble(Radius + 0.5)));
+	const int32 MaxHalf = FMath::Max(0, FMath::Min(GridDims.X, GridDims.Y) / 2);
+	HalfExtent = FMath::Clamp(HalfExtent, 0, MaxHalf);
+
+	for (int32 DY = -HalfExtent; DY <= HalfExtent; ++DY)
+	{
+		for (int32 DX = -HalfExtent; DX <= HalfExtent; ++DX)
+		{
+			PhaseKernelOffsets.Add(FIntPoint(DX, DY));
+		}
+	}
+	PhaseKernelTapCount = PhaseKernelOffsets.Num();
+
+	// R == 0 has no area at any phase. Identity kernel is the correct limit, as for the centred table.
+	if (Radius <= 0.0 || PhaseKernelTapCount == 0)
+	{
+		PhaseKernelOffsets.Reset();
+		PhaseKernelOffsets.Add(FIntPoint(0, 0));
+		PhaseKernelTapCount = 1;
+		PhaseKernelWeights.Init(1.0f, Bins * Bins);
+		return;
+	}
+
+	// The footprint is shared across phases and every tap is stored, including the zeros an outer-ring
+	// cell has at phases that lean away from it. Storing a per-phase compacted list would save a handful
+	// of multiply-adds and cost a per-deposit indirection plus a second offsets table; at 25 taps that
+	// trade is not worth the second way for the two tables to disagree.
+	PhaseKernelWeights.SetNumZeroed(Bins * Bins * PhaseKernelTapCount);
+
+	for (int32 BinY = 0; BinY < Bins; ++BinY)
+	{
+		for (int32 BinX = 0; BinX < Bins; ++BinX)
+		{
+			// Bin centres, so the worst placement error is half a bin rather than a whole one, and bin
+			// (Bins/2) is NOT exactly zero — deliberate. Sampling bin EDGES would put one phase exactly on
+			// the cell centre and make a cell-centred deposit a special case that behaves differently from
+			// its neighbours by a whole bin.
+			const double PhaseX = (static_cast<double>(BinX) + 0.5) / Bins - 0.5;
+			const double PhaseY = (static_cast<double>(BinY) + 0.5) / Bins - 0.5;
+
+			const int32 Base = (BinY * Bins + BinX) * PhaseKernelTapCount;
+
+			double RawSum = 0.0;
+			for (int32 Tap = 0; Tap < PhaseKernelTapCount; ++Tap)
+			{
+				const FIntPoint& Offset = PhaseKernelOffsets[Tap];
+				// Shift the RECT by -Phase rather than the disc by +Phase: DiscAreaInRect centres the disc
+				// at the origin, and the two are the same integral.
+				const double Area = TrajectoryFieldPrivate::DiscAreaInRect(
+					static_cast<double>(Offset.X) - 0.5 - PhaseX, static_cast<double>(Offset.X) + 0.5 - PhaseX,
+					static_cast<double>(Offset.Y) - 0.5 - PhaseY, static_cast<double>(Offset.Y) + 0.5 - PhaseY,
+					Radius);
+				PhaseKernelWeights[Base + Tap] = static_cast<float>(Area);
+				RawSum += Area;
+			}
+
+			if (RawSum <= 0.0)
+			{
+				// Cannot happen for R > 0 with this footprint, but a zero row would silently delete mass
+				// rather than misplace it, so fall back to the centre tap instead of dividing by zero.
+				const int32 Centre = PhaseKernelTapCount / 2;
+				FMemory::Memzero(&PhaseKernelWeights[Base], PhaseKernelTapCount * sizeof(float));
+				PhaseKernelWeights[Base + Centre] = 1.0f;
+				continue;
+			}
+
+			// Normalise, then fold the residual into the LARGEST tap. The centred table folds into the
+			// centre tap, which is safe there because the centre always dominates; off centre it may not,
+			// and adding a residual to a near-zero outer tap is how a faint halo appears at the stroke's
+			// edge.
+			const double InvRawSum = 1.0 / RawSum;
+			double Sum = 0.0;
+			int32 LargestTap = 0;
+			for (int32 Tap = 0; Tap < PhaseKernelTapCount; ++Tap)
+			{
+				const float W = static_cast<float>(static_cast<double>(PhaseKernelWeights[Base + Tap]) * InvRawSum);
+				PhaseKernelWeights[Base + Tap] = W;
+				Sum += static_cast<double>(W);
+				if (W > PhaseKernelWeights[Base + LargestTap])
+				{
+					LargestTap = Tap;
+				}
+			}
+			PhaseKernelWeights[Base + LargestTap] += static_cast<float>(1.0 - Sum);
+		}
+	}
 }
 
 void FTrajectoryField::Clear()
@@ -363,6 +649,10 @@ void FTrajectoryField::Clear()
 
 	// Canonical and presentation are both empty, so the cache is consistent - not dirty.
 	bPresentationDirty = false;
+	// D-F: a clear is the one thing that LOWERS the presentation, which is exactly what the monotonic
+	// running maximum cannot survive. Reset it and repaint everything.
+	RunningMaxPresentation = 0.0f;
+	MarkAllDirty();
 	LastEncodeScale = 0.0f;
 	LastEncodeMaxDensity = 0.0f;
 	LastEncodeReferenceDensity = 0.0f;
@@ -450,6 +740,13 @@ void FTrajectoryField::RebuildPresentation(ETrajectoryMapMode Mode) const
 
 	FMemory::Memzero(Presentation.GetData(), Presentation.Num() * sizeof(float));
 
+	// D-F: a rebuild replaces every presentation value and can LOWER any of them — the two modes have
+	// entirely different magnitudes — which is precisely what a MONOTONIC running maximum cannot survive.
+	// Reset it and repaint the whole grid. Const because the presentation cache is a mutable cache; both
+	// members are mutable for the same reason.
+	RunningMaxPresentation = 0.0f;
+	MarkAllDirty();
+
 	const TArray<float>& Source = GetCanonical(Mode);
 	const int32 Width = GridDims.X;
 	const int32 Height = GridDims.Y;
@@ -465,27 +762,66 @@ void FTrajectoryField::RebuildPresentation(ETrajectoryMapMode Mode) const
 			const float Value = Source[RowBase + I];
 			if (Value != 0.0f)
 			{
-				SplatInto(Presentation, I, J, static_cast<double>(Value));
+				// 🚩 D-D LIMITATION, and the one place sub-cell placement cannot be recovered. A rebuild
+				// reads the CANONICAL arrays, which are cell-resolution by design — the sub-cell position
+				// each deposit carried is not stored anywhere, so this can only stamp on the cell centre.
+				//
+				// Consequence: the incremental picture (sub-cell placed) and a rebuilt one (cell-centred)
+				// are not identical, and a mode switch rebuilds. Expect the surface to shift by up to half
+				// a cell when toggling Route Usage <-> Route Exposure.
+				// T_SEM_3_ModeSwitchInvariant is the gate that will say so.
+				//
+				// The fix, if that shift is unacceptable, is two more float arrays holding the mass-weighted
+				// sub-cell centroid per cell, so a rebuild can restore placement exactly. Deliberately NOT
+				// done on a guess: it is +67% field memory, which at the 8192 grid ceiling is hundreds of
+				// megabytes, to remove an artefact only visible on a mode toggle. Owner call.
+				SplatInto(Presentation, I, J, static_cast<double>(Value), 0.0, 0.0);
 			}
 		}
 	}
 }
 
-void FTrajectoryField::SplatInto(TArray<float>& Target, int32 I, int32 J, double Value) const
+void FTrajectoryField::SplatInto(TArray<float>& Target, int32 I, int32 J, double Value,
+                                 double SubCellX, double SubCellY) const
 {
 	const int32 Width = GridDims.X;
 	const int32 Height = GridDims.Y;
-	const int32 NumTaps = KernelOffsets.Num();
+
+	// D-D: select the sub-cell phase. SubCell is measured from the cell CENTRE and lives in [-0.5, +0.5];
+	// a caller that has no sub-cell information passes (0,0) and lands on the middle bin, which is the
+	// cell-centred stamp this used to do unconditionally.
+	constexpr int32 Bins = KernelPhaseBinsPerAxis;
+	const int32 BinX = FMath::Clamp(
+		static_cast<int32>(FMath::FloorToDouble((SubCellX + 0.5) * Bins)), 0, Bins - 1);
+	const int32 BinY = FMath::Clamp(
+		static_cast<int32>(FMath::FloorToDouble((SubCellY + 0.5) * Bins)), 0, Bins - 1);
+
+	const int32 NumTaps = PhaseKernelTapCount;
+	if (NumTaps <= 0)
+	{
+		return;
+	}
+	const float* const Weights = &PhaseKernelWeights[(BinY * Bins + BinX) * NumTaps];
+	const FIntPoint* const Offsets = PhaseKernelOffsets.GetData();
+
+	// The phase footprint is one ring wider than the centred one, so it needs its own bounds test —
+	// reusing KernelHalfExtent here would take the fast path while writing outside the array.
+	const int32 HalfExtent = PhaseKernelOffsets.Last().X;
 
 	// Fast path: the whole footprint is interior, so the precomputed weights apply verbatim.
-	if (I - KernelHalfExtent >= 0 && I + KernelHalfExtent < Width &&
-	    J - KernelHalfExtent >= 0 && J + KernelHalfExtent < Height)
+	if (I - HalfExtent >= 0 && I + HalfExtent < Width &&
+	    J - HalfExtent >= 0 && J + HalfExtent < Height)
 	{
 		for (int32 Tap = 0; Tap < NumTaps; ++Tap)
 		{
-			const FIntPoint& Offset = KernelOffsets[Tap];
+			const float W = Weights[Tap];
+			if (W == 0.0f)
+			{
+				continue; // Outer-ring taps are zero at phases leaning away from them.
+			}
+			const FIntPoint& Offset = Offsets[Tap];
 			Target[(J + Offset.Y) * Width + (I + Offset.X)] +=
-				static_cast<float>(Value * static_cast<double>(KernelWeights[Tap]));
+				static_cast<float>(Value * static_cast<double>(W));
 		}
 		return;
 	}
@@ -497,12 +833,12 @@ void FTrajectoryField::SplatInto(TArray<float>& Target, int32 I, int32 J, double
 	double InBoundsWeight = 0.0;
 	for (int32 Tap = 0; Tap < NumTaps; ++Tap)
 	{
-		const FIntPoint& Offset = KernelOffsets[Tap];
+		const FIntPoint& Offset = Offsets[Tap];
 		const int32 X = I + Offset.X;
 		const int32 Y = J + Offset.Y;
 		if (X >= 0 && X < Width && Y >= 0 && Y < Height)
 		{
-			InBoundsWeight += static_cast<double>(KernelWeights[Tap]);
+			InBoundsWeight += static_cast<double>(Weights[Tap]);
 		}
 	}
 	if (InBoundsWeight <= 0.0)
@@ -513,13 +849,13 @@ void FTrajectoryField::SplatInto(TArray<float>& Target, int32 I, int32 J, double
 	const double Renormalise = 1.0 / InBoundsWeight;
 	for (int32 Tap = 0; Tap < NumTaps; ++Tap)
 	{
-		const FIntPoint& Offset = KernelOffsets[Tap];
+		const FIntPoint& Offset = Offsets[Tap];
 		const int32 X = I + Offset.X;
 		const int32 Y = J + Offset.Y;
 		if (X >= 0 && X < Width && Y >= 0 && Y < Height)
 		{
 			Target[Y * Width + X] +=
-				static_cast<float>(Value * static_cast<double>(KernelWeights[Tap]) * Renormalise);
+				static_cast<float>(Value * static_cast<double>(Weights[Tap]) * Renormalise);
 		}
 	}
 }
@@ -541,18 +877,29 @@ bool FTrajectoryField::ContainingCell(const FVector2D& WorldCm, FIntPoint& OutCe
 	return true;
 }
 
-void FTrajectoryField::DepositCell(int32 I, int32 J, double AddPersonMetres, double AddPersonSeconds)
+void FTrajectoryField::DepositCell(int32 I, int32 J, double AddPersonMetres, double AddPersonSeconds,
+                                   double SubCellX, double SubCellY)
 {
+	// CANONICAL IS CELL-EXACT AND STAYS THAT WAY. The sub-cell position deliberately does not reach these
+	// two arrays: they are the measurement, the DDA already apportioned this segment's length and time to
+	// this cell exactly, and smearing them across neighbours would make the analysis quantity depend on a
+	// display kernel. Only the PRESENTATION is placed sub-cell.
 	const int32 Index = J * GridDims.X + I;
 	PersonMetres[Index] += static_cast<float>(AddPersonMetres);
 	PersonSeconds[Index] += static_cast<float>(AddPersonSeconds);
+
+	// D-F: mark BEFORE the splat, and mark the whole footprint rather than the cell — the kernel writes a
+	// ring of neighbours, and a dirty rect that covered only the centre would leave the outermost ring of
+	// every stroke un-uploaded. That is a stale-texture bug the conservation gates cannot see, because the
+	// field itself would be perfectly correct.
+	MarkCellDirty(I, J);
 
 	const double PresentationValue = (PresentationMode == ETrajectoryMapMode::RouteUsage)
 		? AddPersonMetres
 		: AddPersonSeconds;
 	if (PresentationValue != 0.0)
 	{
-		SplatInto(Presentation, I, J, PresentationValue);
+		SplatInto(Presentation, I, J, PresentationValue, SubCellX, SubCellY);
 	}
 }
 
@@ -654,7 +1001,16 @@ void FTrajectoryField::DepositSegment(const FVector2D& StartCm, const FVector2D&
 			PersonSeconds[Cell.Y * GridDims.X + Cell.X] += static_cast<float>(Delta);
 			if (PresentationMode == ETrajectoryMapMode::RouteExposure)
 			{
-				SplatInto(Presentation, Cell.X, Cell.Y, Delta);
+				// D-D: a standing agent has a position too, and it is the one place sub-cell placement
+				// matters MOST — a queue is a cluster of stationary agents, and rounding each to its cell
+				// centre is what turns a queue into a chequerboard.
+				const double GMidX = (static_cast<double>(MidCm.X) - static_cast<double>(OriginCm.X))
+					* InvEffectiveCmPerTexel;
+				const double GMidY = (static_cast<double>(MidCm.Y) - static_cast<double>(OriginCm.Y))
+					* InvEffectiveCmPerTexel;
+				SplatInto(Presentation, Cell.X, Cell.Y, Delta,
+					GMidX - (static_cast<double>(Cell.X) + 0.5),
+					GMidY - (static_cast<double>(Cell.Y) + 0.5));
 			}
 		}
 		else
@@ -755,7 +1111,18 @@ void FTrajectoryField::DepositSegment(const FVector2D& StartCm, const FVector2D&
 
 		if (Fraction > 0.0)
 		{
-			DepositCell(I, J, LengthMetres * Fraction, Delta * Fraction);
+			// D-D — hand the deposit's position WITHIN this cell to the splat. The DDA has always known
+			// it: the segment occupies [TCurrent, TCurrent + Fraction] of the parametric range, so its
+			// midpoint in grid space is exact. Discarding it and stamping on the cell centre is what
+			// quantised the drawn stroke to the lattice and put it up to half a cell off the agent.
+			//
+			// Midpoint rather than entry point: a segment that crosses most of a cell should draw where
+			// its mass actually is, and the midpoint is the centroid of a uniform-density chord.
+			const double TMid = TCurrent + 0.5 * Fraction;
+			const double SubCellX = (G0X + TMid * DirX) - (static_cast<double>(I) + 0.5);
+			const double SubCellY = (G0Y + TMid * DirY) - (static_cast<double>(J) + 0.5);
+
+			DepositCell(I, J, LengthMetres * Fraction, Delta * Fraction, SubCellX, SubCellY);
 		}
 
 		if (bLastCell)
@@ -794,15 +1161,21 @@ void FTrajectoryField::EncodeToDisplay(ETrajectoryMapMode Mode, TArray<uint8>& O
 {
 	const int32 NumCells = GridDims.X * GridDims.Y;
 
-	OutBGRA8.Reset();
 	if (NumCells <= 0 || Presentation.Num() < NumCells)
 	{
+		OutBGRA8.Reset();
 		LastEncodeScale = 0.0f;
 		LastEncodeMaxDensity = 0.0f;
 		return;
 	}
 
-	OutBGRA8.SetNumZeroed(NumCells * BytesPerPixel);
+	// D-F: grow but never Reset(). Reset()+SetNumZeroed() memset several megabytes on EVERY refresh, and
+	// every byte of it was about to be overwritten or skipped. The buffer is the actor's persistent scratch.
+	if (OutBGRA8.Num() != NumCells * BytesPerPixel)
+	{
+		OutBGRA8.Reset();
+		OutBGRA8.SetNumZeroed(NumCells * BytesPerPixel);
+	}
 
 	EnsurePresentation(Mode);
 
@@ -812,11 +1185,26 @@ void FTrajectoryField::EncodeToDisplay(ETrajectoryMapMode Mode, TArray<uint8>& O
 	// bytes per physical unit rather than bytes per raw cell total.
 	const double InvCellArea = (CellAreaSquareMetres > 0.0f) ? (1.0 / static_cast<double>(CellAreaSquareMetres)) : 0.0;
 
-	float MaxRaw = 0.0f;
-	for (int32 Index = 0; Index < NumCells; ++Index)
+	// D-F: fold the DIRTY region's maximum into the running one instead of sweeping the grid.
+	//
+	// This is exact, not an approximation, and the reason is narrow: deposits only ever ADD to a cell, so
+	// the presentation is monotonically non-decreasing between clears and a maximum can never go stale by
+	// missing a DECREASE. Every path that can lower a cell — Clear, Initialise, a mode rebuild — resets
+	// RunningMaxPresentation and marks the whole grid dirty, so the next encode re-establishes it.
 	{
-		MaxRaw = FMath::Max(MaxRaw, Presentation[Index]);
+		const FIntRect Scan = (DirtyRect.Min.X < DirtyRect.Max.X && DirtyRect.Min.Y < DirtyRect.Max.Y)
+			? DirtyRect
+			: FIntRect(0, 0, 0, 0);
+		for (int32 Y = Scan.Min.Y; Y < Scan.Max.Y; ++Y)
+		{
+			const int32 RowBase = Y * GridDims.X;
+			for (int32 X = Scan.Min.X; X < Scan.Max.X; ++X)
+			{
+				RunningMaxPresentation = FMath::Max(RunningMaxPresentation, Presentation[RowBase + X]);
+			}
+		}
 	}
+	const float MaxRaw = RunningMaxPresentation;
 
 	const double MaxDensity = static_cast<double>(MaxRaw) * InvCellArea;
 	LastEncodeMaxDensity = static_cast<float>(MaxDensity);

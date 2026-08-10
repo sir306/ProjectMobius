@@ -97,7 +97,19 @@ struct FTrajectoryFieldConfig
 	 * is what analysis reads (AC9), while the display is allowed to top out.
 	 */
 	float ReferenceUsageDensity = 100.0f;    // person/m
-	float ReferenceExposureDensity = 200.0f; // person*s/m^2
+
+	/**
+	 * 240 since 2026-08-10, up from the capture-derived 200, and it is DERIVED not fitted. Route Exposure
+	 * is banded in transit-equivalents whose top edge is 50 transits, and that edge fits the [0,1] display
+	 * channel only when CellSide * Reference * v_free >= 50 — at the shipping 15 cm cell and SFPE's
+	 * 1.40 m/s that needs >= 238.1. Below it the top edge clamps to 1.0 and band F becomes UNREACHABLE, so
+	 * queueing and blocked render identically and nothing complains, because the clamp keeps the chain
+	 * monotonic. Distinguishing those two is the entire purpose of the surface.
+	 *
+	 * See FHeatmapLOSBands::MinimumExposureReferenceForFullLadder, which is what a gate should read rather
+	 * than transcribing 238.
+	 */
+	float ReferenceExposureDensity = 240.0f; // person*s/m^2
 
 	/**
 	 * Legacy per-capture auto-exposure, opt-in. Useful for eyeballing a sparse capture where everything
@@ -130,6 +142,28 @@ struct FTrajectoryFieldConfig
 	 * MaxPlausibleSpeedCmPerSec * MaxPlausibleDeltaSeconds = 100 m.
 	 */
 	float MaxPlausibleDeltaSeconds = 5.0f;
+
+	/**
+	 * D-C — extra grid cells appended per axis AFTER the extent-derived dimensions are resolved. Zero for
+	 * every caller except the trajectory visualizer, and it is not a quality or resolution knob.
+	 *
+	 * WHY IT EXISTS. The render's texel lattice and this field's cell lattice must be the SAME lattice or
+	 * the drawn stroke sits beside the agent. The mesh UV letterboxes the minor axis by a REAL-valued
+	 * margin of 0.5 * S * (1 - minorExtent / majorExtent) texels, while the field can only write at
+	 * integer texels; the difference is a permanent sub-texel phase error that put 32% of the real test
+	 * floor in the wrong texel, on whichever axis happened to be minor — which is why it looked
+	 * orientation-dependent. The visualizer removes it by shifting this field's ORIGIN by the fractional
+	 * remainder, which re-phases the lattice to match the render exactly.
+	 *
+	 * That shift is up to half a cell in EITHER direction, so the grid can then fall short of the mesh by
+	 * up to half a cell at one edge. One extra cell on the shifted axis covers it. Deposits are never
+	 * clamped into range in this codebase — an off-grid sample is dropped and reported — so without the
+	 * pad a strip of real floor would silently stop accumulating.
+	 *
+	 * Applied additively to the resolved dims. It does NOT feed ResolveGrid, so it cannot perturb
+	 * EffectiveCmPerTexel, the major-axis snap, or which axis is major.
+	 */
+	FIntPoint ExtraGridCells = FIntPoint::ZeroValue;
 };
 
 /**
@@ -202,6 +236,70 @@ public:
 
 	/** Absolute ceiling on MaxGridDim, to keep W*H inside int32 and the allocation sane. */
 	static constexpr int32 AbsoluteMaxGridDim = 8192;
+
+	/**
+	 * The grid-sizing decision, on its own, with no allocation and no object state — D2b's cm/texel raise
+	 * followed by D-A's major-axis snap. Initialise() is its only in-class caller and does exactly this
+	 * before it allocates, so the two can never disagree.
+	 *
+	 * PUBLIC because the render side has to know the outcome BEFORE the field exists. The visualizer needs
+	 * EffectiveCmPerTexel and the grid dims to work out the letterbox phase it must cancel, and it has to
+	 * apply that as an origin shift passed INTO Initialise — a chicken-and-egg that would otherwise force
+	 * two Initialise calls and two allocations on every floor change. It is also what lets a test assert
+	 * the sizing contract without spawning a world.
+	 *
+	 * Does NOT apply Config.ExtraGridCells: that is additive padding on top of this answer, deliberately
+	 * outside it so padding can never perturb cm/texel, the snap, or which axis is major.
+	 *
+	 * @param ExtentXCm/ExtentYCm  Floor extent. Negatives are treated as zero.
+	 * @param InConfig             Read for WorldCmPerTexel and MaxGridDim only.
+	 * @param OutCmPerTexel        The EFFECTIVE cm/texel: >= MinCmPerTexel, and exactly
+	 *                             majorExtent / majorDim so the major axis divides evenly.
+	 * @param OutDims              Grid dimensions in cells, before ExtraGridCells.
+	 */
+	static void ResolveGrid(double ExtentXCm, double ExtentYCm, const FTrajectoryFieldConfig& InConfig,
+	                        float& OutCmPerTexel, FIntPoint& OutDims);
+
+	/**
+	 * D-E — the ROUTE THRESHOLD in crossings: below this a cell is not part of the drawn stroke.
+	 *
+	 * WHAT IT FIXES. The display classifies each texel into one band, so a stroke's width can only ever be
+	 * a whole number of cells — and with the old threshold (half a byte, i.e. "is it nonzero") EVERY cell
+	 * the kernel tail touched painted at full band-B colour. A 45 cm stroke on 20 cm cells rendered 60 cm
+	 * wide, and the width swung by a whole cell as the path slid across the lattice, because a sliver of
+	 * kernel spill counts the same as a direct hit.
+	 *
+	 * WHY IT IS DERIVED AND NOT A CONSTANT. There IS a threshold that renders exactly 45 cm at every
+	 * sub-cell phase — but only for one (width, cell, kernel) triple, and it is a fitted number with no
+	 * meaning if any of the three moves. Owner ruling #3 on the trajectory spec is "derive, don't fit".
+	 * So this reads the kernel's own lateral marginal profile and places the threshold in the gap between
+	 * the rows that belong to the stroke and the first row that does not:
+	 *
+	 *     crossings(row, phase) = marginal(row, phase) * (width / cell)
+	 *
+	 * That identity is exact and reference-free — the cell area and ReferenceUsageDensity cancel — so the
+	 * threshold depends only on the kernel geometry it is protecting.
+	 *
+	 * The target row count is round(width / cell), which is the honest nearest whole-cell rendering of the
+	 * stroke. The window is [max over phases of the first EXCLUDED row, min over phases of the last
+	 * INCLUDED row]; the midpoint is returned. When the window is empty — no threshold can hold the width
+	 * constant at this width/cell pair, which is the case at 45/20 — the best available compromise is
+	 * returned instead and the caller gets a stable, if not exact, width.
+	 *
+	 * IT IS NOT AN ARBITRARY RULE, and this is the check that says so: at width == cell — the old shipping
+	 * pair, where the kernel collapses to the identity — it returns exactly 0.5 crossings, which is the
+	 * (N + 0.5) half-step every other band edge already uses. So it GENERALISES the ladder rule to a spread
+	 * kernel and reduces to it when there is no spread. The 0/1 edge was the one rung that had been left
+	 * off that scale (it was half a BYTE), and this puts it back on.
+	 *
+	 * Worked values, cross-checked against an independent sweep of the rendered width:
+	 *   45 / 15 -> window 0.277..0.383, returns 0.330  (3 rows, exactly 45 cm at every phase)
+	 *   45 / 20 -> window empty,        returns 0.510  (2 rows = 40 cm, stable but not exact)
+	 *   45 / 45 -> window 0.429..0.571, returns 0.500  (1 row, the identity case above)
+	 *
+	 * @return Threshold in CROSSINGS. Convert to an RVal band edge by dividing by (widthMetres * Reference).
+	 */
+	static float DeriveRouteThresholdCrossings(float DisplayPathWidthCm, float CmPerTexel);
 
 	/**
 	 * Sizes the grid from the floor's world extent and allocates. Also resets every accumulator and
@@ -322,9 +420,48 @@ public:
 	/** DisplayPathWidthCm / (2 * EffectiveCmPerTexel). 1.0 at defaults. */
 	float GetKernelRadiusTexels() const { return KernelRadiusTexels; }
 
-	/** Integer texel offsets of the splat kernel, and their weights. Weights sum to 1. */
+	/**
+	 * Integer texel offsets of the CELL-CENTRED splat kernel, and their weights. Weights sum to 1.
+	 *
+	 * ⚠️ This is the analytic REFERENCE table, not what the deposit path splats — that is the D-D phase
+	 * table, and its footprint is one ring wider. Reading these to reason about per-deposit COST is the
+	 * A0-79 mistake in miniature: it answers a question about a table nothing writes through. Use
+	 * GetPhaseKernelTapCount() for cost.
+	 */
 	const TArray<FIntPoint>& GetKernelOffsets() const { return KernelOffsets; }
 	const TArray<float>& GetKernelWeights() const { return KernelWeights; }
+
+	/**
+	 * Taps per deposit on the SHIPPING path — the D-D phase table's footprint. Unlike the centred table
+	 * above this holds every cell in the footprint including the ones a given phase weights at zero, so it
+	 * is deterministic in R alone and does NOT drift with the extent. That is the property worth gating:
+	 * per-deposit cost must not vary with building size.
+	 */
+	int32 GetPhaseKernelTapCount() const { return PhaseKernelTapCount; }
+
+	/**
+	 * D-F — the half-open cell rectangle touched since the last ClearDirtyRect(), or an empty rect when
+	 * nothing has moved.
+	 *
+	 * WHY. The texture WRITES were already incremental (the actor diffs against TrajectoryPreviousRed), but
+	 * the work in front of them was not: every refresh allocated and zeroed a full NumCells*4 buffer, swept
+	 * the grid for the maximum, encoded every cell, and then swept it again to find the handful that
+	 * changed. Three full-grid walks at ~10 Hz, and the cost is a function of FLOOR AREA rather than of how
+	 * many agents moved — a stadium with three people in it paid the same as a full one. At a 4096 grid
+	 * that is ~50 M cell visits per refresh.
+	 *
+	 * Agents occupy a tiny fraction of a large floor per tick, so bounding the work to what actually
+	 * changed turns O(area) into O(active area) — and an idle field costs nothing at all, because an empty
+	 * rect lets the whole refresh be skipped.
+	 */
+	FIntRect GetDirtyRect() const { return DirtyRect; }
+
+	/**
+	 * Called by the display path once it has consumed the region. Const, and DirtyRect is mutable, for the
+	 * same reason the presentation cache is: the refresh path is const and this is bookkeeping about a
+	 * cache, not about the measured field.
+	 */
+	void ClearDirtyRect() const { DirtyRect = FIntRect(0, 0, 0, 0); }
 
 	/** Bytes per unit density applied by the last EncodeToDisplay, and the maximum density present. */
 	float GetLastEncodeScale() const { return LastEncodeScale; }
@@ -359,11 +496,26 @@ private:
 	/** Cell containing a world point, using the zero-direction (lower-index-owns) rule. */
 	bool ContainingCell(const FVector2D& WorldCm, FIntPoint& OutCell) const;
 
-	/** Adds to both canonical arrays and splats the active mode's share into the presentation. */
-	void DepositCell(int32 I, int32 J, double AddPersonMetres, double AddPersonSeconds);
+	/**
+	 * Adds to both canonical arrays and splats the active mode's share into the presentation.
+	 *
+	 * SubCellX/Y are the deposit's position INSIDE cell (I,J), each in [-0.5, +0.5] measured from the cell
+	 * CENTRE. The canonical arrays ignore them — those are cell-exact by DDA and are what analysis reads.
+	 * The presentation splat uses them so the drawn stroke's centroid lands on the real path rather than
+	 * snapping to the nearest cell centre. See BuildKernel's phase table (D-D).
+	 */
+	void DepositCell(int32 I, int32 J, double AddPersonMetres, double AddPersonSeconds,
+	                 double SubCellX, double SubCellY);
 
-	/** Distributes Value over the kernel about (I,J), renormalising over in-bounds taps at the edge. */
-	void SplatInto(TArray<float>& Target, int32 I, int32 J, double Value) const;
+	/**
+	 * Distributes Value over the kernel about (I,J), renormalising over in-bounds taps at the edge.
+	 * SubCellX/Y select the phase bin; (0,0) reproduces a cell-centred stamp.
+	 */
+	void SplatInto(TArray<float>& Target, int32 I, int32 J, double Value,
+	               double SubCellX, double SubCellY) const;
+
+	/** Builds the D-D sub-cell phase table. Called by BuildKernel; never per segment. */
+	void BuildPhaseKernel(double Radius);
 
 	/** Rebuilds the offset/weight table. Called on Initialise only - never per segment. */
 	void BuildKernel();
@@ -391,12 +543,72 @@ private:
 	TArray<float> PersonMetres;
 	TArray<float> PersonSeconds;
 
-	/** Splat kernel, built once. */
+	/**
+	 * Splat kernel, built once. This is the CELL-CENTRED table: the analytic reference the oracle tests are
+	 * written against, and the limit the phase table below reproduces at phase (0,0). It is no longer what
+	 * the deposit path uses.
+	 */
 	TArray<FIntPoint> KernelOffsets;
 	TArray<float> KernelWeights;
 	int32 KernelHalfExtent = 0;
 	int32 KernelCentreIndex = INDEX_NONE;
 	float KernelRadiusTexels = 0.0f;
+
+	/**
+	 * D-D — the SUB-CELL PHASE TABLE, and what the deposit path actually splats.
+	 *
+	 * THE DEFECT IT REMOVES. The DDA knows exactly where inside a cell a segment ran, but the old
+	 * DepositCell took only the integer index, so every stamp was centred on a CELL CENTRE. The drawn
+	 * stroke's centroid was therefore quantised to the lattice — up to half a cell (10 cm at the shipping
+	 * 20 cm) from the agent, in either direction. That is a rendering error, not a measurement one: the
+	 * canonical accumulators were always right, the picture was not. It is what remained visible after the
+	 * D-A/D-B/D-C alignment work, and no amount of lattice alignment can remove it, because it is not a
+	 * lattice offset — it is the loss of the position WITHIN a cell.
+	 *
+	 * HOW. BuildKernel evaluates the same analytic disc-area coverage at KernelPhaseBinsPerAxis^2 sub-cell
+	 * offsets instead of once at the centre, and the deposit picks the bin nearest its true position. The
+	 * per-deposit cost is one splat exactly as before — the phase is a table lookup, not extra work — and
+	 * every phase normalises to 1.0, so Sum(Presentation) == Sum(Canonical) still holds bin by bin.
+	 *
+	 * WHAT IT COSTS. The footprint grows: a disc offset by up to half a cell reaches one ring further, so
+	 * the half extent is ceil(R + 0.5) rather than ceil(R - 0.5) — 25 taps instead of 9 at the shipping
+	 * R = 1.125. Memory is nothing (64 phases x 25 floats).
+	 *
+	 * RESIDUAL. Placement is quantised to a bin, so the centroid error falls from half a cell to half a
+	 * bin — cell / (2 * Bins), i.e. 10 cm -> 1.1 cm at 9 bins on a 20 cm cell. Raise the bin count if that
+	 * ever matters; it costs only build time and memory, and nothing per deposit.
+	 *
+	 * All phases share PhaseKernelOffsets; PhaseKernelWeights is Bins^2 blocks of PhaseKernelTapCount,
+	 * indexed (BinY * Bins + BinX) * TapCount + Tap.
+	 *
+	 * ⚠️ MUST BE ODD. Bins are sampled at their CENTRES, so an odd count puts one bin at phase exactly
+	 * (0,0) and a cell-centred deposit then reproduces the centred table BIT FOR BIT — which is what keeps
+	 * the hand-derived oracle weights (T-CONV-3, Kernel.BorderTapsRenormalise) and the identity-kernel
+	 * contract (T-BAND-1, T-WIDTH-2) valid. An even count has no zero phase: 8 bins rendered a centred
+	 * deposit at (+0.0625, +0.0625) and reddened all four of those gates. The outer ring is exactly zero
+	 * at phase (0,0) and is skipped by the splat, so the wider footprint costs nothing there either.
+	 */
+	static constexpr int32 KernelPhaseBinsPerAxis = 9;
+	TArray<FIntPoint> PhaseKernelOffsets;
+	TArray<float> PhaseKernelWeights;
+	int32 PhaseKernelTapCount = 0;
+
+	/** D-F dirty region, half-open [Min, Max). Empty means nothing changed since the last encode. */
+	mutable FIntRect DirtyRect = FIntRect(0, 0, 0, 0);
+
+	/** Expands DirtyRect to cover the splat footprint centred on (I,J), clipped to the grid. */
+	void MarkCellDirty(int32 I, int32 J) const;
+
+	/** Whole grid dirty — after Initialise, Clear, or a presentation rebuild. */
+	void MarkAllDirty() const { DirtyRect = FIntRect(0, 0, GridDims.X, GridDims.Y); }
+
+	/**
+	 * Running maximum of the presentation array, so EncodeToDisplay need not sweep the grid for it.
+	 * MONOTONIC AND THEREFORE EXACT between clears: deposits only ever ADD to a cell, so a maximum taken
+	 * over the dirty region and folded into the previous maximum equals a full-grid maximum. Reset
+	 * wherever the presentation can go DOWN — Clear, Initialise, and a mode rebuild.
+	 */
+	mutable float RunningMaxPresentation = 0.0f;
 
 	/**
 	 * Presentation cache. Maintained incrementally inside the DDA walk for PresentationMode, and

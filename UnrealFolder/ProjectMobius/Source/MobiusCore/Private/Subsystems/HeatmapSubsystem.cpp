@@ -423,6 +423,20 @@ void UHeatmapSubsystem::SetTrajectoryHeatmapsEnabled(bool bEnabled)
 	}
 }
 
+void UHeatmapSubsystem::SetTrajectoryRouteExposureEnabled(bool bEnabled)
+{
+	const ETrajectoryMapMode NewMode =
+		bEnabled ? ETrajectoryMapMode::RouteExposure : ETrajectoryMapMode::RouteUsage;
+
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap))
+		{
+			Heatmap->SetTrajectoryMapMode(NewMode);
+		}
+	}
+}
+
 void UHeatmapSubsystem::UpdateHeatmapTextureRender()
 {
 	if(Heatmaps.Num() > 0)

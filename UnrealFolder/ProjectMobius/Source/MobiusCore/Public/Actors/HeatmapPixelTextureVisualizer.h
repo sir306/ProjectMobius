@@ -131,6 +131,69 @@ public:
 	 */
 	static FIntPoint ComputeHeatmapVertexGrid(const FVector2D& MeshSizeCm);
 
+	/**
+	 * THE render-side world -> texture-UV mapping, in one place. `BuildTileBuffers` calls this for every
+	 * vertex it emits, so this function IS the shipping behaviour rather than a description of it.
+	 *
+	 * Extracted 2026-08-10 (D-C) for one reason: the trajectory field has to write into the same texel the
+	 * render will sample, and a gate that asserts they agree must not be allowed to re-implement this
+	 * formula. A0-79 is the precedent — `Offset.MeshSpanMatchesExtent` asserted a function nothing called
+	 * for two days while the shipping path went unguarded, and the only reason it could was that the test
+	 * had its own copy of the maths.
+	 *
+	 * The mapping: the MAJOR axis fills 0..1, and the minor axis is scaled by the world-extent aspect
+	 * ratio and centred — which is what letterboxes a non-square floor into a square texture.
+	 *
+	 * @param LocalOffsetCm Offset from the mesh's MINIMUM corner, i.e. vertex position before
+	 *                      MeshOriginLocation is added.
+	 * @param MeshSizeCm    Floor extent. A non-positive axis yields 0 on that axis rather than a NaN.
+	 */
+	static FVector2D HeatmapMeshUV(const FVector2D& LocalOffsetCm, const FVector2D& MeshSizeCm);
+
+	/**
+	 * The complete answer to "where does the trajectory grid sit inside the square texture" — the texel
+	 * offset, the origin shift that phases the cell lattice onto the render's texel lattice, and the pad
+	 * cells that keep the shifted grid covering the whole mesh. See PlanTrajectoryLatticePhase.
+	 */
+	struct FTrajectoryLatticePhase
+	{
+		/** Texel of grid cell (0,0) inside the square texture. */
+		FIntPoint TexelOffset = FIntPoint::ZeroValue;
+
+		/** Extra cells the shift needs, for FTrajectoryFieldConfig::ExtraGridCells. 0 or 1 per axis. */
+		FIntPoint ExtraGridCells = FIntPoint::ZeroValue;
+
+		/** Added to the mesh origin before Initialise. |shift| <= one cell; zero on the major axis. */
+		FVector2D OriginShiftCm = FVector2D::ZeroVector;
+
+		/** ResolveGrid's effective cm/texel, before padding. */
+		float CmPerTexel = 0.0f;
+
+		/** ResolveGrid's dims, BEFORE ExtraGridCells. */
+		FIntPoint GridDims = FIntPoint::ZeroValue;
+
+		/** max(GridDims) — the square texture side. Padding never changes it. */
+		int32 SquareSide = 0;
+
+		/** True when an axis hit the near-square fallback and kept the un-phased (sub-texel-wrong) offset. */
+		bool bPhaseAbandoned = false;
+	};
+
+	/**
+	 * Works out how the trajectory field must be positioned so that the texel it WRITES is the texel the
+	 * render SAMPLES. Pure maths over the arguments — no actor state, no allocation, no world — which is
+	 * what lets the alignment contract be gated from ProjectMobiusTests directly against the shipping
+	 * function instead of against a re-derivation of it.
+	 *
+	 * `EnsureTrajectoryFieldSized` is its only production caller and applies the result verbatim. The
+	 * three outputs are ONE answer and must be applied together: the offset alone, without the shift, is
+	 * the D-C defect; the shift without the pad drops a strip of floor at one edge.
+	 *
+	 * Full derivation and the measured before/after are in the D-C comment block at the call site.
+	 */
+	static FTrajectoryLatticePhase PlanTrajectoryLatticePhase(const FVector2D& MeshSizeCm,
+	                                                          const FTrajectoryFieldConfig& InConfig);
+
 
 	/** Creates and assigns the materials to the instances if not already done */
 	void CreateMaterialInstances();
@@ -464,42 +527,70 @@ public:
 	 * The old path pinned the render target to 1024x1024 and let cm/texel float with floor size, which is
 	 * why one walk measured 5.9 cm wide on a 20 m floor and 73 cm on a 250 m one.
 	 *
-	 * May be RAISED by the field to honour TrajectoryMaxGridDim; read the result back from the field's
-	 * GetEffectiveCmPerTexel(), which is also what the export sidecar records.
+	 * May be RAISED by the field to honour TrajectoryMaxGridDim, then LOWERED a hair so the major axis
+	 * divides its extent evenly (D-A, the fix for the stroke landing beside the agent). So this property is
+	 * the REQUEST, not the outcome — read the outcome back from the field's GetEffectiveCmPerTexel(),
+	 * which is also what the export sidecar records.
 	 *
-	 * 45 cm since 2026-08-10 (owner ruling), matching TrajectoryDisplayPathWidthCm. The pair must move
-	 * together: equal values put the kernel radius at exactly 0.5 texels, which collapses the splat to the
-	 * identity and is what makes a crossing count literal rather than spread (see T-BAND-5).
+	 * 15 cm since 2026-08-10 (was 20 for part of that day), and now PURE SAMPLING RESOLUTION: DECOUPLED from
+	 * TrajectoryDisplayPathWidthCm. The Route Usage band edges derive from the stroke WIDTH
+	 * (RefreshTrajectoryCrossingBands), so refining the cell buys a smoother silhouette without changing
+	 * what a single colour means. Before that decoupling the two had to be EQUAL — equal values put the
+	 * kernel radius at exactly 0.5 texels, collapsing the splat to the identity — and refining the cell
+	 * alone would have divided each crossing across a mass-conserving kernel and sent the map back to cyan.
+	 *
+	 * WHY 15, AND WHY IT WAS BRIEFLY 20. 15 was rejected earlier the same day because BuildKernel's half
+	 * extent is ceil(R - 0.5), which steps the tap count at R = 0.5, 1.5, 2.5 ...; at width 45, 15 cm puts
+	 * R on exactly 1.5, the knife edge between a 9- and a 25-tap kernel, and D-A's snap pushes it over. 20
+	 * cm sat safely at R = 1.125. **D-D voided that objection**: the deposit now splats the PHASE table,
+	 * whose footprint is ceil(R + 0.5), and that is 25 taps at 15 cm and 25 taps at 20 cm alike. There is
+	 * no boundary left to fall off, and 15 costs only 1.78x the cells of 20 — not more taps.
+	 *
+	 * WHAT 15 BUYS, and it is the whole reason: the drawn stroke is finally the right WIDTH. The display
+	 * classifies each texel into one band, so a stroke can only be a whole number of cells wide. 45 / 15
+	 * is exactly 3, so with the D-E route threshold the stroke renders exactly 45 cm at EVERY sub-cell
+	 * phase. 45 / 20 is 2.25 — no threshold exists that renders 45, and the width swung between 40 and 60
+	 * as the path slid across the lattice. Swept over all 9 phases: 15 cm admits a threshold window of
+	 * 0.278-0.382 crossings; 20 cm and 11.25 cm admit none.
+	 *
+	 * Cost: 15 cm holds ~9x the cells of 45 cm, at 25 taps against 1 — per deposited cell, per segment,
+	 * per frame, at ~17k agents. 🚩 NOT measured on this hardware. Measure before a demo, and note
+	 * TrajectoryMaxGridDim starts binding on large plans well before 5 cm.
+	 *
+	 * Residual MISALIGNMENT no longer scales with this value either: D-D placed the deposit sub-cell, so
+	 * the centroid error is half a phase BIN (~0.8 cm here), not half a cell. The systematic 18-68 cm bias
+	 * toward the floor's minimum corner went with D-A/D-B/D-C. So this property now trades frame cost for
+	 * exactly two things — stroke-width fidelity (see above) and silhouette smoothness.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
+	float TrajectoryWorldCmPerTexel = 15.0f;
+
+	/**
+	 * Presentation stroke WIDTH in world centimetres (replaces the old TrajectoryCircleRadius, which was a
+	 * radius and doubled as a deposition brush). It feeds the splat kernel and — since 2026-08-10 — the
+	 * Route Usage band edges. Canonical person-metres and person-seconds are unchanged by it, and
+	 * Sum(presentation) == Sum(canonical) is the invariant that proves so. This is a path width, not a
+	 * body footprint.
+	 *
+	 * 45 cm (owner ruling 2026-08-10). It is now the PHYSICAL BASIS of a crossing count: an edge means
+	 * "N + 0.5 person-passes through a 45 cm-wide corridor centred here", and RefreshTrajectoryCrossingBands
+	 * derives the edges from THIS rather than from the cell. Widening it alone no longer collapses the
+	 * bands toward cyan — the edges widen with it, so the change restates what is being counted instead of
+	 * silently rescaling it. That is what decoupled it from TrajectoryWorldCmPerTexel; see that property.
 	 *
 	 * WHY 45 cm rather than a number picked by eye. It is the major axis of Fruin's body ellipse
 	 * (45.7 x 33 cm), which is already the anthropometry behind the DENSITY surface's LOS bands — so the
 	 * two surfaces now describe a person at the same scale. It also fixes a semantic problem that 10 cm
-	 * had: at 10 cm the grid measures FOOT PLACEMENT, so two people walking abreast down the same corridor
+	 * had: at 10 cm the count measures FOOT PLACEMENT, so two people walking abreast down the same corridor
 	 * never share a cell and both read as separate single crossings. At body width they do share, and
 	 * counting them together is the physically true statement that they occupied the same floor.
 	 *
 	 * Measured on a live capture at the old 10 cm (3,775 touched texels): p50 was 1.02 crossings and p75
 	 * exactly 2.00 — i.e. the median cell was walked by one person and almost nothing accumulated, which is
 	 * what "too fine" looks like in numbers.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.1"))
-	float TrajectoryWorldCmPerTexel = 45.0f;
-
-	/**
-	 * Presentation stroke WIDTH in world centimetres (replaces the old TrajectoryCircleRadius, which was a
-	 * radius and doubled as a deposition brush). It feeds only the splat kernel: canonical person-metres
-	 * and person-seconds are unchanged by it, and Sum(presentation) == Sum(canonical) is the invariant that
-	 * proves so. This is a path width, not a body footprint.
 	 *
-	 * 45 cm (owner ruling 2026-08-10), and it MUST equal TrajectoryWorldCmPerTexel. That ratio is the whole
-	 * contract: width / (2 * cm-per-texel) = 0.5, which BuildKernel collapses to the identity kernel, which
-	 * is what makes Presentation == Canonical and a crossing count literal instead of spread across a
-	 * kernel. Widen this ALONE and the mass-conserving splat divides one crossing's person-metres over 9
-	 * taps — at 25 cm on a 10 cm cell the centre would hold 0.20 of a crossing and every band would collapse
-	 * toward cyan, needing 22 real crossings to reach red. Change the two together or not at all.
-	 *
-	 * History: 20 cm originally, 10 cm at A0-47 (2026-08-05) when the goal was a footfall trace, now 45 cm
-	 * with the cell — see TrajectoryWorldCmPerTexel for why body width is the right scale.
+	 * History: 20 cm originally, 10 cm at A0-47 (2026-08-05) when the goal was a footfall trace, 45 cm
+	 * locked to the cell 2026-08-10, then decoupled from it later the same day.
 	 *
 	 * Deliberately NOT changed on FTrajectoryFieldConfig::DisplayPathWidthCm, which stays at 20: the oracle
 	 * derivations and the calibration tests are written against a radius of exactly 1.0 texel and must not
@@ -513,6 +604,13 @@ public:
 
 	/**
 	 * How far the material softens each band BOUNDARY, in screen pixels. 0 = the hard comparison chain.
+	 *
+	 * 🛑 **0 BY OWNER RULING, 2026-08-10 — it was observed to INTRODUCE ARTEFACTS on screen and is off.**
+	 * It shipped at 1.0 on the argument recorded below, which was reasoned from the shader's behaviour and
+	 * never checked against the rendered surface. Do not raise it back without a look in the app: the
+	 * argument for it is theory, the ruling against it is observation, and observation wins. Everything
+	 * from here down is the ORIGINAL rationale, kept because it explains what the knob does and why the
+	 * mechanism cannot blur a cell interior — not because it justifies turning it on.
 	 *
 	 * THE REVERT SWITCH. The shader computes the transition width as fwidth(RVal) * 0.5 * this, so at 0 the
 	 * smoothstep degenerates to a step and the output is the same hard-banded image as before the change —
@@ -531,7 +629,7 @@ public:
 	 * happens. That is why this is safe: it cannot blur a value across the interior of a cell.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory", meta = (ClampMin = "0.0", ClampMax = "4.0"))
-	float TrajectoryBandEdgeSoftness = 1.0f;
+	float TrajectoryBandEdgeSoftness = 0.0f;
 
 	/**
 	 * D2b — hard ceiling on either grid axis. Exceeding it coarsens cm/texel rather than stretching the
@@ -859,7 +957,12 @@ private:
 	 */
 	int32 TrajectoryTextureSize = 0;
 
-	/** Texel offset of grid cell (0,0) inside the square texture — the letterbox margin, ((S-W)/2, (S-H)/2). */
+	/**
+	 * Texel offset of grid cell (0,0) inside the square texture — the letterbox margin. Since D-B
+	 * (2026-08-10) it is 0.5 * S * (1 - minorExt / majorExt), ROUNDED and clamped into [0, S - Dim], not
+	 * the old (S - Dim) / 2 integer division: that truncated, and measured the margin against the ceil'd
+	 * grid dims while the mesh UVs letterbox against the world-extent ratio.
+	 */
 	FIntPoint TrajectoryTexelOffset = FIntPoint::ZeroValue;
 
 	/** Extent/origin the field was last sized against, so EnsureTrajectoryFieldSized can no-op. */
