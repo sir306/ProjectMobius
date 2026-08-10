@@ -27,6 +27,8 @@
 #include "Components/CanvasPanel.h" // UCanvasPanel component
 #include "Components/Button.h" // UButton component
 #include "Components/TextBlock.h" // UTextBlock component
+#include "UI/Theme/MobiusThemePalette.h" // EMobiusPaletteRole - S1 pulls InputText / LabelText
+#include "Engine/Font.h" // UFont - S1 pins the path field to the composite Font_Inter so faces resolve
 // headers for opening file dialogs
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
@@ -143,6 +145,26 @@ void ULoadDataParentWidget::OnSelectFileButtonClicked()
 	// back to window and contained in it without allowing the application to capture the mouse correctly again??
 }
 
+void ULoadDataParentWidget::ApplyMobiusTheme_Implementation()
+{
+	Super::ApplyMobiusTheme_Implementation();
+
+	// Value: the path sits on an InputBg surface (the row's UMobiusThemedBorder), so it takes InputText -
+	// the same role "Mobius.Text.Field" is retinted to for every other value readout in the app.
+	if (DataFileTextBlock)
+	{
+		DataFileTextBlock->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::InputText)));
+	}
+
+	// Label: standard UI copy, so LabelText. Same values as InputText in the palette today, but the two are
+	// separate roles and the label is not a value - naming the right one is what keeps that true if they
+	// ever diverge.
+	if (TextBlock_127)
+	{
+		TextBlock_127->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::LabelText)));
+	}
+}
+
 void ULoadDataParentWidget::SetupTextBlocks()
 {
 	// Ensure all file names and paths have been set
@@ -151,6 +173,34 @@ void ULoadDataParentWidget::SetupTextBlocks()
 	// Set the DataFileTextBlock and any other setting for DataFileTextBlock
 	if (DataFileTextBlock->IsValidLowLevel())
 	{
+		// S1 (font half): the path field is authored Font_Inter MONO 11 and is the only widget on the files
+		// panel that is neither Regular/SemiBold nor size 10 - measured, not assumed:
+		//
+		//   fhdr_geo_lbl / fhdr_ped_lbl / fhdr_sim_lbl / fhdr_smoke_lbl   SemiBold 10   (section headers)
+		//   GeomLabel / TimingLabel / ShowClosedOpeningsLabel / the row's own label   Regular 10
+		//   DataFileTextBlock                                             Mono 11      <- the odd one out
+		//
+		// So it takes Regular 10, which is both the panel's body face and "Mobius.Text.Field", the app-wide
+		// value-readout token. Worth recording WHY it was Mono, because it looks deliberate and half is: a
+		// file path is the same content class as the numeric/path inputs that StyleEditableTextBoxForTheme
+		// gives Font_Inter Mono 11 (UIThemeSubsystem.cpp:1617-1631). That token is right for a
+		// UEditableTextBox and wrong here - this is a read-only label sitting among Regular-10 siblings, and
+		// the owner's ruling is that it should match its panel rather than the input ramp. Do not "restore"
+		// Mono by arguing from that comment.
+		//
+		// Set from the owner rather than authored per-asset (three .uassets, public repo) or bolted onto the
+		// generic UTextBlock pass (there is none, and adding one would restyle every text block in the app).
+		// Theme-INDEPENDENT, so it belongs here on the construct path and not in ApplyMobiusTheme.
+		if (UFont* Inter = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter")))
+		{
+			const FSlateFontInfo& Current = DataFileTextBlock->GetFont();
+			if (Current.FontObject != Inter
+				|| Current.TypefaceFontName != FName(TEXT("Regular"))
+				|| Current.Size != 10)
+			{
+				DataFileTextBlock->SetFont(FSlateFontInfo(Inter, 10, FName(TEXT("Regular"))));
+			}
+		}
 
 		DataFileTextBlock->SetVisibility(ESlateVisibility::Visible);
 	}
