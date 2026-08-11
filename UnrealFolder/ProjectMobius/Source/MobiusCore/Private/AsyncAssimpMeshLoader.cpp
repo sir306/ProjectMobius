@@ -132,6 +132,13 @@ void SplitSubmeshByTriCap(const FAssimpSubmeshBuffers& In, int32 MaxTris, TArray
 		const int32 ChunkTriCount = FMath::Min(MaxTris, TotalTris - TriCursor);
 
 		FAssimpSubmeshBuffers& Chunk = Out.AddDefaulted_GetRef();
+		// Every chunk of one submesh came from the same source entity, so the provenance is copied,
+		// not split. Without this a chunked IFC product loses its GUID/class and the section->entity
+		// map silently goes blank for exactly the large products most worth identifying.
+		Chunk.SourceGuid = In.SourceGuid;
+		Chunk.SourceIfcClass = In.SourceIfcClass;
+		Chunk.SourceMaterialName = In.SourceMaterialName;
+		Chunk.Material = In.Material;
 		Chunk.Vertices.Reserve(ChunkTriCount * 3);
 		Chunk.Faces.Reserve(ChunkTriCount * 3);
 		if (bHasNormals) { Chunk.Normals.Reserve(ChunkTriCount * 3); }
@@ -192,7 +199,9 @@ FAssimpMeshLoaderRunnable::FAssimpMeshLoaderRunnable(const FString InPathToMesh,
 	PathToMesh = InPathToMesh;
 	// if file has .wkt extension then it is a WKT file
 	bIsWktExtension = PathToMesh.EndsWith(TEXT(".wkt"), ESearchCase::IgnoreCase);
-	
+	// .ifc goes to IFC++ via the MobiusIfcBridge shim, never to Assimp (its IFCLoader is IFC2X3-only)
+	bIsIfcExtension = PathToMesh.EndsWith(TEXT(".ifc"), ESearchCase::IgnoreCase);
+
 
 	// Create the thread -- The thread priority is set to TPri_Normal this may need to be adjusted based on the application
 	Thread = FRunnableThread::Create(this, TEXT("FAssimpMeshLoaderRunnable"), 0, TPri_Normal);
@@ -213,7 +222,11 @@ FAssimpMeshLoaderRunnable::~FAssimpMeshLoaderRunnable()
 
 uint32 FAssimpMeshLoaderRunnable::Run()
 {
-	if (bIsWktExtension || PathToMesh.EndsWith(".h5", ESearchCase::IgnoreCase))
+	if (bIsIfcExtension)
+	{
+		ProcessIfcFromFile();
+	}
+	else if (bIsWktExtension || PathToMesh.EndsWith(".h5", ESearchCase::IgnoreCase))
 	{
 		ProcessMeshFromString();
 	}
@@ -268,6 +281,47 @@ void FAssimpMeshLoaderRunnable::ProcessMeshFromFile()
 
 	FillDataFromScene(Scene);
 }
+void FAssimpMeshLoaderRunnable::ProcessIfcFromFile()
+{
+	// Runs on this runnable's worker thread. FMobiusIfcMeshLoader touches no UObject and no game
+	// thread state; the finished buffers are marshalled back by Run()'s existing GameThread broadcast,
+	// exactly as the Assimp path does.
+	FString IfcError;
+	if (!FMobiusIfcMeshLoader::LoadIfcFile(PathToMesh, Submeshes, IfcLoadStats, IfcError))
+	{
+		ErrorMessageCode = IfcError;
+
+		// Surface it to the user the same way every other loader failure in this file does. This is a
+		// one-shot, load-time report -- not a per-product or tick-path log.
+		FMobiusErrorMessage Payload;
+		Payload.TitleBarText = FText::FromString("Mesh Load Error");
+		Payload.ErrorTitle = FText::FromString("IFC load failed");
+		Payload.ErrorMessage = FText::FromString(IfcError);
+		Payload.ErrorLocation = FText::FromString("AsyncAssimpMeshLoader");
+		UMobiusUserFeedbackSubsystem::ReportErrorFromAnyThread(WorldContextObject, Payload);
+
+		Submeshes.Reset();
+		return;
+	}
+
+	// Mirror into the flat aggregate buffers, matching FillDataFromScene's tail so transitional
+	// callers that still read Vertices/Faces/Normals see IFC geometry too.
+	Vertices.Empty();
+	Faces.Empty();
+	Normals.Empty();
+	for (const FAssimpSubmeshBuffers& Sub : Submeshes)
+	{
+		const int32 VertexBase = Vertices.Num();
+		Vertices.Append(Sub.Vertices);
+		Normals.Append(Sub.Normals);
+		Faces.Reserve(Faces.Num() + Sub.Faces.Num());
+		for (int32 Idx : Sub.Faces)
+		{
+			Faces.Add(VertexBase + Idx);
+		}
+	}
+}
+
 // this version loads boundaries correctly and shows where holes are needed
 void FAssimpMeshLoaderRunnable::ProcessMeshFromString()
 {
@@ -975,6 +1029,53 @@ void FAssimpMeshLoaderRunnable::FillDataFromScene(const aiScene* Scene)
 	{
 		const aiMesh* Mesh = Scene->mMeshes[MIndex];
 		FAssimpSubmeshBuffers& Sub = Submeshes.AddDefaulted_GetRef();
+
+		// ---- Source material for fbx/obj ------------------------------------------------------
+		// Until 2026-08-12 this loader ignored mMaterialIndex entirely, so every fbx and obj rendered
+		// in one flat colour no matter what the file said. One aiMesh has exactly one material, so the
+		// mapping onto FAssimpSubmeshBuffers is 1:1 with no splitting -- unlike IFC, where styles attach
+		// per geometric item and a product has to be split by appearance.
+		//
+		// aiProcess_PreTransformVertices (used above) can MERGE meshes that share a material, which is
+		// harmless here and in fact helps: fewer, larger submeshes with one material each.
+		if (Scene->mMaterials && Mesh->mMaterialIndex < Scene->mNumMaterials)
+		{
+			if (const aiMaterial* Material = Scene->mMaterials[Mesh->mMaterialIndex])
+			{
+				aiString MaterialName;
+				if (Material->Get(AI_MATKEY_NAME, MaterialName) == AI_SUCCESS)
+				{
+					Sub.SourceMaterialName = UTF8_TO_TCHAR(MaterialName.C_Str());
+					Sub.Material.Name = Sub.SourceMaterialName;
+				}
+
+				// Diffuse is the channel every format in use here actually carries (obj's Kd, fbx's
+				// DiffuseColor). BASE_COLOR is deliberately not consulted as a fallback: assimp only
+				// populates it for genuinely PBR sources, and quietly mixing the two would make the
+				// colour's provenance unclear when it looks wrong.
+				aiColor4D Diffuse;
+				if (Material->Get(AI_MATKEY_COLOR_DIFFUSE, Diffuse) == AI_SUCCESS)
+				{
+					float Opacity = 1.0f;
+					if (Material->Get(AI_MATKEY_OPACITY, Opacity) != AI_SUCCESS)
+					{
+						// No explicit opacity: fall back to the diffuse alpha, which obj/fbx sometimes
+						// carry instead, and treat a zero as fully opaque rather than invisible -- an
+						// unset alpha reading 0 would otherwise erase the mesh.
+						Opacity = (Diffuse.a > 0.0f) ? Diffuse.a : 1.0f;
+					}
+
+					Sub.Material.BaseColour = FLinearColor(Diffuse.r, Diffuse.g, Diffuse.b, Opacity);
+					Sub.Material.bHasMaterial = true;
+				}
+
+				float Shininess = 0.0f;
+				if (Material->Get(AI_MATKEY_SHININESS, Shininess) == AI_SUCCESS)
+				{
+					Sub.Material.SpecularExponent = Shininess;
+				}
+			}
+		}
 		Sub.Vertices.Reserve(Mesh->mNumVertices);
 		Sub.Normals.Reserve(Mesh->mNumVertices);
 		Sub.Faces.Reserve(Mesh->mNumFaces * 3);
