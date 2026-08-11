@@ -23,10 +23,19 @@ public class UeHdf5Library : ModuleRules
         string Hdf5Root = Path.Combine(ModuleDirectory, "hdf5-2.0.0", "install");
         string IncludeDir = Path.Combine(Hdf5Root, "include");
         
-        // check include dir exists
+        // check include dir exists.
+        //
+        // The whole install/ tree is CMake install output and is gitignored, so a fresh checkout
+        // has none of it. Name the remedy: without it this reads as a broken repository rather
+        // than a build step that has not been run yet.
+        const string SuperbuildRemedy =
+            "Run the superbuild first: from UnrealFolder/ProjectMobius, `python superbuild.py`. " +
+            "It builds and installs HDF5, Assimp and the IFC bridge into the layouts this module " +
+            "reads. None of those outputs are committed.";
+
         if (!Directory.Exists(IncludeDir))
         {
-            throw new BuildException($"HDF5 include dir not found: {IncludeDir}");
+            throw new BuildException($"HDF5 include dir not found: {IncludeDir}. {SuperbuildRemedy}");
         }
         // Add include path to public include paths for hdf5
         PublicIncludePaths.Add(IncludeDir);
@@ -37,9 +46,9 @@ public class UeHdf5Library : ModuleRules
             string LibDir = Path.Combine(Hdf5Root, "lib");;
             string BinDir = Path.Combine(Hdf5Root, "bin");// may not need bin as we link statically TBD
             
-            if (!Directory.Exists(LibDir)) throw new BuildException($"HDF5 lib dir not found: {LibDir}");
-            if (!Directory.Exists(BinDir)) throw new BuildException($"HDF5 bin dir not found: {BinDir}");
-            
+            if (!Directory.Exists(LibDir)) throw new BuildException($"HDF5 lib dir not found: {LibDir}. {SuperbuildRemedy}");
+            if (!Directory.Exists(BinDir)) throw new BuildException($"HDF5 bin dir not found: {BinDir}. {SuperbuildRemedy}");
+
             // Static libraries to link (HDF5 core, HL, and zlib for compression)
             string[] Hdf5Libs = new string[]
             {
@@ -75,7 +84,7 @@ public class UeHdf5Library : ModuleRules
         {
             string LibDir = Path.Combine(Hdf5Root, "lib");
             
-            if (!Directory.Exists(LibDir)) throw new BuildException($"HDF5 lib dir not found: {LibDir}");
+            if (!Directory.Exists(LibDir)) throw new BuildException($"HDF5 lib dir not found: {LibDir}. {SuperbuildRemedy}");
             
             // Static libraries to link (HDF5 core, HL, and zlib for compression)
             string[] Hdf5Libs = new string[]

@@ -70,13 +70,19 @@ public class MobiusIfcLibrary : ModuleRules
 		string IfcRoot = Path.Combine(ModuleDirectory, "install");
 		string IncludeDir = Path.Combine(IfcRoot, "include");
 
+		// One remedy string for every check below. The superbuild is the supported entry point --
+		// it drives Build-MobiusIfcBridge.ps1 itself and resolves the Visual Studio generator and
+		// MSVC toolset, which running the script by hand does not require you to think about but a
+		// raw `cmake -G "Visual Studio 17 2022"` very much does.
+		const string SuperbuildRemedy =
+			"Run the superbuild first: from UnrealFolder/ProjectMobius, `python superbuild.py`. " +
+			"It populates install/include, install/lib and install/bin. The whole install tree is " +
+			"gitignored, so a fresh checkout never has it. To rebuild only this dependency: " +
+			"`python superbuild.py --skip-assimp --skip-hdf5 --force-ifc`.";
+
 		if (!Directory.Exists(IncludeDir))
 		{
-			throw new BuildException(
-				$"MobiusIfcLibrary include dir not found: {IncludeDir}. Run " +
-				"Source\\ThirdParty\\IfcBridgeSource\\Build-MobiusIfcBridge.ps1 to populate " +
-				"install/include, install/lib and install/bin before building (the DLL and import " +
-				"lib are gitignored, so a fresh checkout never has them).");
+			throw new BuildException($"MobiusIfcLibrary include dir not found: {IncludeDir}. {SuperbuildRemedy}");
 		}
 
 		// Only the pure-C public header goes on the include path. IFC++/Carve headers stay inside
@@ -109,8 +115,8 @@ public class MobiusIfcLibrary : ModuleRules
 			string LibDir = Path.Combine(IfcRoot, "lib");
 			string BinDir = Path.Combine(IfcRoot, "bin");
 
-			if (!Directory.Exists(LibDir)) throw new BuildException($"MobiusIfcLibrary lib dir not found: {LibDir}. Run the CMake install step.");
-			if (!Directory.Exists(BinDir)) throw new BuildException($"MobiusIfcLibrary bin dir not found: {BinDir}. Run the CMake install step.");
+			if (!Directory.Exists(LibDir)) throw new BuildException($"MobiusIfcLibrary lib dir not found: {LibDir}. {SuperbuildRemedy}");
+			if (!Directory.Exists(BinDir)) throw new BuildException($"MobiusIfcLibrary bin dir not found: {BinDir}. {SuperbuildRemedy}");
 
 			// Named explicitly (not globbed) — we build this DLL ourselves, so the filenames are
 			// fixed and known ahead of time. A glob like assimp's Directory.GetFiles(...)[0] would
@@ -119,8 +125,8 @@ public class MobiusIfcLibrary : ModuleRules
 			string DllPath = Path.Combine(BinDir, "MobiusIfcBridge.dll");
 			string DllName = Path.GetFileName(DllPath);
 
-			if (!File.Exists(ImportLib)) throw new BuildException($"MobiusIfcLibrary import lib not found: {ImportLib}. Run the CMake install step.");
-			if (!File.Exists(DllPath)) throw new BuildException($"MobiusIfcLibrary DLL not found: {DllPath}. Run the CMake install step.");
+			if (!File.Exists(ImportLib)) throw new BuildException($"MobiusIfcLibrary import lib not found: {ImportLib}. {SuperbuildRemedy}");
+			if (!File.Exists(DllPath)) throw new BuildException($"MobiusIfcLibrary DLL not found: {DllPath}. {SuperbuildRemedy}");
 
 			PublicAdditionalLibraries.Add(ImportLib);
 			PublicDelayLoadDLLs.Add(DllName); // filename only

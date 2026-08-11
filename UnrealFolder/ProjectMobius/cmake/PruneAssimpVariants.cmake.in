@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MIT
+#
+# Removes previously-installed Assimp toolset variants from the install tree, so that the install
+# step that follows leaves exactly ONE assimp-vcNNN-mt.{lib,dll,pdb} set behind.
+#
+# WHY: UE_AssimpLibrary.Build.cs picks its import lib and its DLL with two INDEPENDENT
+# `Directory.GetFiles(dir, "assimp*.lib")[0]` / `("assimp*.dll")[0]` calls. Directory.GetFiles makes
+# no ordering guarantee, so once a tree contains both (say) assimp-vc143-mt.* and assimp-vc145-mt.*
+# -- which happens the moment the superbuild is run under a second MSVC toolset -- UBT can pair the
+# import lib of one toolset with the DLL of the other. Keeping the install tree to a single variant
+# removes the ambiguity at the source rather than papering over it in Build.cs.
+#
+# Only files this superbuild itself installs are touched. The UE plugin's own compiled binaries live
+# elsewhere (Plugins/UE4_Assimp/Binaries/<Platform>) and are never matched by these patterns.
+
+set(_dirs @ASSIMP_PRUNE_DIRS@)
+set(_patterns @ASSIMP_PRUNE_PATTERNS@)
+
+foreach(_dir IN LISTS _dirs)
+  if(NOT EXISTS "${_dir}")
+    continue()
+  endif()
+  foreach(_pattern IN LISTS _patterns)
+    file(GLOB _stale "${_dir}/${_pattern}")
+    foreach(_file IN LISTS _stale)
+      message(STATUS "Pruning previously-installed Assimp variant: ${_file}")
+      file(REMOVE "${_file}")
+    endforeach()
+  endforeach()
+endforeach()

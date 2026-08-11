@@ -26,16 +26,24 @@ Common:
 
 - Git
 - Unreal Engine 5.5
-- CMake 3.21 or newer
+- CMake 3.21 or newer (3.24+ to use `cmake --fresh`)
+- Python 3.8 or newer — for `superbuild.py`, and for the JSON-to-HDF5
+  conversion script
 - Internet access during the first superbuild so HDF5 can fetch `zlib-1.3.1`
   for compression support
-- Python if you plan to use the JSON-to-HDF5 conversion script
 
 <details open>
 <summary><strong>Windows</strong></summary>
 
 - Windows 10 or 11
-- Visual Studio 2022 with C++ tooling
+- Visual Studio 2022 or 2026 with the **Desktop development with C++** workload.
+  The superbuild detects which one you have — nothing is hardcoded to a
+  particular Visual Studio version.
+- Optional but recommended: the **MSVC v143 14.38.33130** toolset (Visual Studio
+  Installer → Individual components). That is the toolset Unreal Engine 5.5
+  itself builds with, and the superbuild prefers it when present so the
+  dependency DLLs link the same CRT as the engine. If it is missing the
+  superbuild uses the newest installed toolset and says so.
 
 </details>
 
@@ -47,7 +55,9 @@ Common:
 - Unreal Engine 5.5 in the local engine source supports Xcode `15.2.0`
   through `16.9.0`
 - These notes were last tested with `Xcode 16.4`
-- Ninja
+- Ninja is optional. With none installed CMake falls back to Unix Makefiles,
+  which works; to prefer Ninja pass `--generator Ninja` to `superbuild.py` (or
+  export `CMAKE_GENERATOR=Ninja` for the plain-CMake route).
 
 macOS support exists in parts of the codebase, but Windows is still the
 primary development and validation target.
@@ -71,57 +81,137 @@ No submodules are required for the standard source checkout.
 
 ## Build
 
-The superbuild compiles the vendored HDF5 and Assimp dependencies into the
-locations expected by the Unreal project. No separate HDF5 installation is
+The superbuild compiles the vendored Assimp, HDF5 and IFC++ dependencies into
+the locations expected by the Unreal project:
+
+| Dependency | Installed to |
+| --- | --- |
+| Assimp | `Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp/{include,lib,bin}` |
+| HDF5 | `Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/{include,lib}` |
+| MobiusIfcBridge | `Source/ThirdParty/MobiusIfcLibrary/install/{include,lib,bin}` (Win64 only) |
+
+None of those outputs are committed, so **a fresh checkout must run the
+superbuild once before opening the `.uproject`.** What is excluded differs per
+dependency, because the vendored trees differ:
+
+- **Assimp** — the upstream source *including* `include/` is vendored and
+  tracked; `lib/`, `bin/` and the CMake-generated `include/assimp/config.h` and
+  `revision.h` are ignored (the last two by assimp's own nested `.gitignore`).
+- **HDF5** — the upstream source is tracked; the entire `install/` tree is
+  ignored. It used to be half-tracked, which meant 69 generated headers were
+  committed and could drift against the libs beside them.
+- **MobiusIfcBridge** — `IfcBridgeSource/` (the vendored IFC++ plus the shim's
+  own `.h`/`.cpp`) is tracked; the entire `MobiusIfcLibrary/install/` tree is
+  ignored.
+
+The `_superbuild/` build tree is ignored in full. No separate HDF5 installation is
 required, but the first HDF5 build downloads `zlib-1.3.1` unless that archive
 is already cached or redirected locally.
 
-<details open>
-<summary><strong>Windows</strong></summary>
+Run from `UnrealFolder/ProjectMobius`. The same command works on every
+platform:
 
 ```bash
-cmake -S . -B _superbuild -G "Visual Studio 17 2022" -A x64
+python superbuild.py
+```
+
+(`python3` on macOS/Linux. Needs Python 3.8+ and CMake 3.21+.)
+
+That is the whole thing. It detects your compiler — on Windows, your Visual
+Studio and MSVC toolset — discards a `_superbuild/` tree that cannot be reused,
+builds and installs every dependency, then verifies that each file
+UnrealBuildTool will look for is actually on disk. The IFC++ bridge is Win64-only
+today and is skipped automatically elsewhere.
+
+You should never need to clean the build tree by hand. It is discarded and
+regenerated automatically when it was created on a different machine, by a
+different CMake, or for a different generator or MSVC toolset — and it says
+which of those happened.
+
+Useful switches:
+
+| Switch | Effect |
+| --- | --- |
+| `--clean` | Discard the CMake build tree first |
+| `--rebuild` | Also discard the installed dependency trees |
+| `--skip-ifc` | Skip the IFC++ pass (by far the longest) |
+| `--force-ifc` | Rebuild `MobiusIfcBridge` after editing its `.cpp`/`.h` |
+| `--generator` / `--toolset` | Override the auto-detected toolchain |
+| `--help` | Everything else |
+
+### Plain CMake
+
+Equally supported — the script is a convenience layer, not a requirement:
+
+```bash
+cmake --fresh -S . -B _superbuild -DCMAKE_BUILD_TYPE=Release
 cmake --build _superbuild --config Release --parallel
 ```
 
-Build the Unreal target after the superbuild:
+`--fresh` (CMake 3.24+) is the "clear the old build files" half: it drops the
+existing cache and reconfigures. Omit it for an ordinary incremental build.
+
+Note the absence of `-G`. CMake picks the newest installed Visual Studio itself,
+and the platform default for VS 2019+ generators is already the host
+architecture. Hardcoding `-G "Visual Studio 17 2022"` — as these docs used to —
+fails on any machine with a different Visual Studio, with an error that never
+says what *is* installed.
+
+What plain CMake gives up: the MSVC toolset is not pinned to `14.38.33130`. To
+pin it by hand, note the version alone is **not** enough — the VS 2026 generator
+pairs it with its own default `v145` and rejects it. Name the platform toolset:
+
+```bash
+cmake --fresh -S . -B _superbuild -T v143,version=14.38.33130
+```
+
+If no usable Visual Studio is found, `superbuild.py` distinguishes the three
+cases — none installed, one without the C++ workload, or one newer than its
+detection table — lists what *is* installed, and prints the exact `--generator`
+override. New Visual Studio releases need one row added to
+`VS_MAJOR_TO_GENERATOR` in `superbuild.py` (and its PowerShell twin in
+`cmake/Resolve-MsvcToolchain.ps1`, used only when
+`Build-MobiusIfcBridge.ps1` is run by hand).
+
+### Then build the Unreal target
 
 1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
 2. If Unreal prompts to rebuild missing modules, let it compile the editor
    target.
 3. If you want IDE integration, open the `.uproject` directly in an IDE that
-   supports it, or generate Visual Studio project files if your setup requires
-   them. Build `ProjectMobiusEditor` manually only if the automatic rebuild
-   fails.
-
-</details>
-
-<details>
-<summary><strong>macOS (Apple Silicon)</strong></summary>
-
-```bash
-cmake -S . -B _superbuild -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build _superbuild --parallel
-```
-
-Build the Unreal target after the superbuild:
-
-1. Open `UnrealFolder/ProjectMobius/ProjectMobius.uproject` in Unreal Engine 5.5.
-2. If Unreal prompts to rebuild missing modules, let it compile the editor
-   target.
-3. If you want IDE integration, generate the Xcode project or workspace from
-   the `.uproject` if your setup requires it. Build `ProjectMobiusEditor`
-   manually only if the automatic rebuild fails.
-
-</details>
+   supports it, or generate the Visual Studio / Xcode project files if your
+   setup requires them. Build `ProjectMobiusEditor` manually only if the
+   automatic rebuild fails.
 
 ## Run Tests
 
 ### Superbuild tests
 
+These run automatically at the end of `superbuild.py`. To re-run them on
+their own:
+
 ```bash
-ctest -C Release --output-on-failure
+ctest --test-dir _superbuild -C Release --output-on-failure
 ```
+
+Each check names exactly one file, and they are the same files UnrealBuildTool
+probes. A failure here is the same failure you would otherwise hit twenty
+minutes into an Unreal build.
+
+### Troubleshooting
+
+**`Unable to instantiate module 'MobiusIfcLibrary': ... lib dir not found ... Run the CMake install step.`**
+(or the same message for `UE_AssimpLibrary` / HDF5) — the superbuild has not
+been run, or its IFC pass was skipped. Run `python superbuild.py`. The final
+summary lists every dependency as `[ok]` or `[MISSING]`.
+
+**`Generator "Visual Studio 17 2022" could not find any instance of Visual Studio.`**
+— you invoked CMake directly with a generator that does not match your
+installed Visual Studio. Drop the `-G` (CMake picks it), or use `superbuild.py`.
+
+**`The current CMakeCache.txt directory ... is different than the directory ... where CMakeCache.txt was created`**
+— the `_superbuild/` folder came from another machine (a backup restore or a
+copied tree). Re-run with `cmake --fresh`, or let `superbuild.py` detect and replace it.
 
 ### Unreal automation tests
 
