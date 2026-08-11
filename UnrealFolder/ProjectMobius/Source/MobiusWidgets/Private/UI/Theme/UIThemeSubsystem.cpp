@@ -1710,8 +1710,29 @@ void UUIThemeSubsystem::StyleEditableTextBoxForTheme(UEditableTextBox* EditBox, 
 			Brush->TintColor = FSlateColor(InputBg);
 			bStyleChanged = true;
 		}
-		if (Brush->OutlineSettings.Width > 0.0f
-			&& !Brush->OutlineSettings.Color.GetSpecifiedColor().Equals(InputBorderColor, 0.004f))
+		// 2026-08-11 (owner: "no outline/border on text input to indicate it clickable in light mode"). This
+		// used to recolour an outline ONLY where one already existed (`Width > 0`), so an input authored with
+		// no outline — the playback speed box, and every box authored from the engine default — stayed a
+		// borderless white rectangle on the light card, i.e. invisible as a control. GIVE it the border
+		// instead of merely tinting it, matching the closed-combo surface convention (InputBg fill, 1px
+		// InputBorder, 3u radius) so an edit box and a combo read as the same kind of control.
+		//
+		// Width is only ever RAISED to 1: an asset that deliberately authored a heavier rule keeps it.
+		// RoundedBox is set only on brushes that are already flat colour — the texture/material guard above
+		// has returned by this point, so authored input art is untouched.
+		if (Brush->DrawAs != ESlateBrushDrawType::RoundedBox)
+		{
+			Brush->DrawAs = ESlateBrushDrawType::RoundedBox;
+			Brush->OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+			Brush->OutlineSettings.CornerRadii = FVector4(3.0, 3.0, 3.0, 3.0);
+			bStyleChanged = true;
+		}
+		if (Brush->OutlineSettings.Width < 1.0f)
+		{
+			Brush->OutlineSettings.Width = 1.0f;
+			bStyleChanged = true;
+		}
+		if (!Brush->OutlineSettings.Color.GetSpecifiedColor().Equals(InputBorderColor, 0.004f))
 		{
 			Brush->OutlineSettings.Color = FSlateColor(InputBorderColor);
 			bStyleChanged = true;

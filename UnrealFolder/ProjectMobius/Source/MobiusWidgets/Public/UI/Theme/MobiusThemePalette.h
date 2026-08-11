@@ -166,9 +166,29 @@ namespace MobiusThemePalette
 		/* ButtonBg          */ { FLinearColor(0.93869f, 0.93869f, 0.93869f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
 		/* ButtonBorder      */ { FLinearColor(0.41789f, 0.41789f, 0.41789f),     FLinearColor(0.10224f, 0.10224f, 0.10224f) },
 		/* ButtonText        */ { FLinearColor(0.016f, 0.016f, 0.016f),           FLinearColor(0.7454f, 0.7454f, 0.7454f) },
-		/* ButtonHoverBg     */ { FLinearColor(0.81485f, 0.87962f, 0.95597f),     FLinearColor(0.09306f, 0.09306f, 0.09306f) },
-		/* ButtonHoverBorder */ { FLinearColor(0.25415f, 0.47932f, 0.72306f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
-		/* ButtonPressedBg   */ { FLinearColor(0.69387f, 0.7991f, 0.9131f),       FLinearColor(0.04971f, 0.04971f, 0.04971f) },
+		// HOVER/PRESSED REVISED 2026-08-11 (owner: "hover color for all is too subtle needs darkening towards
+		// accent probably half way between now and accent in light mode and the equivalent grey increase in
+		// dark mode"). Light moves HALFWAY TO Accent, dark steps up the grey by the same perceptual amount.
+		//
+		// 🔑 The midpoints are taken in **sRGB**, not in the linear values stored here. Halving a linear value
+		// is not halving the perceived step — lerping ButtonHoverBg's linear 0.81485 to Accent's 0.0 lands on
+		// #4C5F86-dark, far past "halfway" to the eye. So: convert → average in 8-bit sRGB → convert back.
+		//   ButtonHoverBg     light #E9F1FA + Accent #0067C0 → #75ACDD   (dark #565656 → #6E6E6E)
+		//   ButtonHoverBorder light #8AB8DD + Accent #0067C0 → #458FCE   (dark #6A6A6A → #808080)
+		//   ButtonPressedBg   must stay DARKER than hover, so it takes the midpoint of the NEW hover and
+		//                     Accent: #3A89CE. Its old value (#D9E8F4) is lighter than the new hover and
+		//                     would have inverted the press feedback.  (dark #3F3F3F → #565656, keeping the
+		//                     pressed-darker-than-hover relationship the dark theme already had.)
+		// ButtonText light (#0A0A0A) on the new hover fill measures ~8:1, so AA is not at risk.
+		// 🚩 Three linear literals were re-derived 2026-08-12 after MEASURING the hovered button in PIE:
+		// #75B6DD came back where #75ACDD was intended. Each of these is `((s/255 + 0.055)/1.055)^2.4` and
+		// the round-trip is worth re-checking rather than trusting, because the error is one channel wide and
+		// reads as a hue shift, not as a brightness mistake: ButtonHoverBg G 0.4693 → **0.4125** (was 182,
+		// wanted 172), ButtonHoverBorder R 0.0677 → **0.0595** (74 → 69), ButtonPressedBg R 0.0482 →
+		// **0.0423** (62 → 58). Verify by sampling a hovered button, not by reading the literal.
+		/* ButtonHoverBg     */ { FLinearColor(0.1779f, 0.4125f, 0.7230f),        FLinearColor(0.156f, 0.156f, 0.156f) },
+		/* ButtonHoverBorder */ { FLinearColor(0.0595f, 0.2746f, 0.6172f),        FLinearColor(0.2159f, 0.2159f, 0.2159f) },
+		/* ButtonPressedBg   */ { FLinearColor(0.0423f, 0.2502f, 0.6172f),        FLinearColor(0.09306f, 0.09306f, 0.09306f) },
 		/* CheckboxBg        */ { FLinearColor(1.0f, 1.0f, 1.0f),                 FLinearColor(0.02416f, 0.02416f, 0.02416f) },
 		/* CheckboxBorder    */ { FLinearColor(0.19462f, 0.19462f, 0.19462f),     FLinearColor(0.13287f, 0.13287f, 0.13287f) },
 		/* CheckboxCheckedBg */ { FLinearColor(0.0f, 0.13563f, 0.52712f),         FLinearColor(0.10224f, 0.32778f, 0.66539f) },
@@ -184,7 +204,12 @@ namespace MobiusThemePalette
 		/* ChipOutline       */ { FLinearColor(0.0f, 0.0f, 0.0f, 0.25f),          FLinearColor(1.0f, 1.0f, 1.0f, 0.30f) },
 		/* WellBg            */ { FLinearColor(0.85499f, 0.87137f, 0.88792f),     FLinearColor(0.05286f, 0.05286f, 0.05286f) },
 		/* IconTint          */ { FLinearColor(0.04374f, 0.04374f, 0.04374f),     FLinearColor(0.69387f, 0.69387f, 0.69387f) },
-		/* HoverBg           */ { FLinearColor(0.69387f, 0.69387f, 0.69387f),     FLinearColor(0.06848f, 0.06848f, 0.06848f) },
+		// HoverBg REVISED 2026-08-11 with ButtonHoverBg above, same owner note ("hover color for all"). This
+		// is the generic ROW hover (Q11), so it stays NEUTRAL rather than going blue — a row is a large area
+		// and an accent-tinted fill there reads as selection, which is what ListSelectedBg is for. Light
+		// #D9D9D9 → #BFBFBF and dark #4A4A4A → #5E5E5E: the same perceptual step the button roles took, in
+		// grey. Selected-vs-hover still separate: ListSelectedBg is one step further again.
+		/* HoverBg           */ { FLinearColor(0.521f, 0.521f, 0.521f),           FLinearColor(0.1119f, 0.1119f, 0.1119f) },
 		/* HintText          */ { FLinearColor(0.31855f, 0.31855f, 0.31855f),     FLinearColor(0.14413f, 0.14413f, 0.14413f) },
 		/* WindowBorder      */ { FLinearColor(0.43415f, 0.43415f, 0.43415f),     FLinearColor(0.01033f, 0.01033f, 0.01033f) },
 		// DangerText — DARK REVISED 2026-07-28 to #FF6B5E after the owner saw #FF8A80 in PIE: "the removal
@@ -241,7 +266,14 @@ namespace MobiusThemePalette
 		// OWNER: the light value is a direct read of the request; the DARK DIRECTION is the judgement call.
 		// If selection should instead read darker in dark theme, this is a one-line change here and nothing
 		// else moves.
-		/* ListSelectedBg    */ { FLinearColor(0.57757f, 0.57757f, 0.57757f),    FLinearColor(0.09306f, 0.09306f, 0.09306f) },
+		//
+		// ⚠️ REVISED 2026-08-11, forced by the HoverBg change above — NOT a retune of selection itself. The
+		// old pair (#c8c8c8 / #565656) was one step from the OLD hover (#d9d9d9 / #4a4a4a); once hover moved
+		// to #bfbfbf / #5e5e5e, light selected became LIGHTER than hover and dark selected became DARKER,
+		// i.e. both inverted. Re-derived to keep the documented relationship in each theme: light one step
+		// DARKER than hover (#ababab), dark one step LIGHTER than hover (#767676). The reasoning above still
+		// holds; only the anchors moved.
+		/* ListSelectedBg    */ { FLinearColor(0.4073f, 0.4073f, 0.4073f),      FLinearColor(0.1811f, 0.1811f, 0.1811f) },
 	};
 
 	static_assert(UE_ARRAY_COUNT(GMobiusPalette) == static_cast<int32>(EMobiusPaletteRole::Count),
