@@ -119,6 +119,15 @@ elseif(APPLE)
     -DCMAKE_OSX_ARCHITECTURES=arm64
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
+    # Assimp 5.4.3 predates AppleClang's -Wnontrivial-memcall, which its own
+    # -Werror then turns into a hard failure in SceneCombiner.cpp.
+    -DASSIMP_WARNINGS_AS_ERRORS=OFF
+
+    # Use the bundled contrib/unzip rather than pkg-config's minizip, which on a
+    # machine with an Intel Homebrew prefix resolves to an x86_64 library and
+    # fails to link against this arm64 build.
+    -DASSIMP_BUILD_MINIZIP=ON
+
     # Assimp on UNIX derives ASSIMP_LIB_INSTALL_DIR from CMAKE_INSTALL_LIBDIR.
     # Force libs into lib/Mac to match UE_Assimp expectations.
     -DCMAKE_INSTALL_LIBDIR=lib/Mac
@@ -171,13 +180,10 @@ if(WIN32)
     COMMENT "Staging Assimp DLLs to ${ASSIMP_STAGE_DIR}"
   )
 elseif(APPLE)
-  # Assimp 5.x layouts differ a bit between versions.
-  # Prefer lib/Mac if it exists (old layout), otherwise fall back to lib/.
-  if(EXISTS "${ASSIMP_INST}/lib/Mac")
-    set(ASSIMP_MAC_LIB_DIR "${ASSIMP_INST}/lib/Mac")
-  else()
-    set(ASSIMP_MAC_LIB_DIR "${ASSIMP_INST}/lib")
-  endif()
+  # CMAKE_INSTALL_LIBDIR is forced to lib/Mac above, so the layout is known.
+  # An EXISTS check here would run at configure time, before Assimp is installed,
+  # and on a clean tree would fall back to lib/ and stage a nested Mac/ folder.
+  set(ASSIMP_MAC_LIB_DIR "${ASSIMP_INST}/lib/Mac")
 
   add_custom_command(TARGET assimp_stage POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${ASSIMP_STAGE_DIR}"
