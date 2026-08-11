@@ -96,6 +96,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MobiusController|Methods|CameraSave")
 	void CycleCameraSavePoints();
 
+	/** Console fallback for the red select-mode button: fires the ActivateCollisions signal. */
+	UFUNCTION(Exec) void MobiusActivateCollisions();
+	/** Toggle the native left-click agent selection (on by default). */
+	UFUNCTION(Exec) void MobiusToggleClickSelect();
+
+private:
+	/** Route plain LMB clicks into the C++ selection trace; the BP click path is unreliable */
+	bool bClickSelectsAgent = true;
+
+public:
 #pragma region PROPERTIES
 	/** Ptr to the Time dialation subsystem to get the current simulation time */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusController|Properties")

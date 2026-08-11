@@ -24,7 +24,7 @@ UMassEntitySpawnSubsystem* UPedestrianSignalSubsystem::GetSpawnSubsystem()
 
 void UPedestrianSignalSubsystem::CollisionsSettingChanged(uint8 EnableDisable)
 {
-	UE_LOG(LogTemp, Display, TEXT("Pedestrian CollisionsSettingChanged"));
+	UE_LOG(LogTemp, Display, TEXT("Pedestrian CollisionsSettingChanged value=%d"), EnableDisable);
 	if (EnableDisable == 0)
 	{
 		DeactivateCollisions();

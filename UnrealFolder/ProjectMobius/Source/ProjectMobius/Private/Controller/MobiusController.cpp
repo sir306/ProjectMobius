@@ -29,6 +29,7 @@
 #include "IXRTrackingSystem.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/MobiusControllerSubsystem.h"
+#include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 #include "SubSystems/TimeDilationSubSystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Util/FrameGrabberHelper.h"
@@ -109,6 +110,16 @@ void AMobiusController::Tick(float DeltaTime)
 	if (FrameGrabberHelper)
 	{
 		FrameGrabberHelper->Tick(DeltaTime);
+	}
+
+	// Native click-to-select: runs the same trace the BP click path should trigger.
+	// Selecting is a no-op until collisions are activated, so this is safe by default.
+	if (bClickSelectsAgent && WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	{
+		if (UMobiusControllerSubsystem* ControllerSub = GetWorld()->GetSubsystem<UMobiusControllerSubsystem>())
+		{
+			ControllerSub->SelectPedestrianFromMousePosition();
+		}
 	}
 }
 
@@ -498,6 +509,24 @@ void AMobiusController::InterpolateCameraToTransform(const FTransform& TargetTra
 	}
 }
 
+void AMobiusController::MobiusActivateCollisions()
+{
+	if (UPedestrianSignalSubsystem* SignalSub = GetWorld()->GetSubsystem<UPedestrianSignalSubsystem>())
+	{
+		UE_LOG(LogTemp, Display, TEXT("MobiusActivateCollisions: firing CollisionsSettingChanged(1)"));
+		SignalSub->CollisionsSettingChanged(1);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MobiusActivateCollisions: PedestrianSignalSubsystem not found"));
+	}
+}
+
+void AMobiusController::MobiusToggleClickSelect()
+{
+	bClickSelectsAgent = !bClickSelectsAgent;
+	UE_LOG(LogTemp, Display, TEXT("Native click-select: %s"), bClickSelectsAgent ? TEXT("on") : TEXT("off"));
+}
 
 void AMobiusController::CycleCameraSavePoints()
 {
