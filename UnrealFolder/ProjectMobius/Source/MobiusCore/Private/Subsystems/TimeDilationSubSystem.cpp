@@ -164,6 +164,25 @@ void UTimeDilationSubSystem::GetUpdatedTimeDilation()
 	if (GetWorld())
 	{
 		TimeDialation = IProjectMobiusInterface::GetMobiusGameInstanceSimulationTimeDilatationFactor(GetWorld());
+
+		// RE-BASE THE CLOCK, or a speed change rewrites the PAST (owner-reported 2026-08-11: raise the speed,
+		// then lower it, and the current time goes NEGATIVE).
+		//
+		// GetGameElapsedTime() derives sim time as an ABSOLUTE product, `wallclock * TimeDialation`, not as an
+		// integral of speed over time — so the factor applies retroactively to every second already played.
+		// Run 60 s at 5x and CurrentSimulationTime is ~300; drop to 2x and the product becomes ~120, so
+		// `ElapsedTime = 120 - 300 = -180` and UpdateSimulationTime()'s `CurrentSimulationTime += NewTime`
+		// drives the clock backwards, through zero.
+		//
+		// AmountOfTimePaused is already the offset term that absorbs discontinuities (the paused branch below
+		// sets it with this exact expression). Re-basing it here makes the NEXT sample come out at the sim
+		// time we are already at, so the new factor governs only time from now on. Rate changes, position
+		// does not — which is what a playback-speed control means.
+		if (const UWorld* World = GetWorld())
+		{
+			const float RealtimeSecondsAtNewRate = UGameplayStatics::GetTimeSeconds(World) * TimeDialation;
+			AmountOfTimePaused = CurrentSimulationTime - RealtimeSecondsAtNewRate;
+		}
 	}
 }
 

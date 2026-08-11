@@ -367,9 +367,27 @@ void USimulationPlayBar::DecrementPlayback(int32 DecrementAmount)
 
 void USimulationPlayBar::AdjustPlaybackSteps(int32 NumSteps)
 {
+	// Scale the jump by the PLAYBACK SPEED (owner-reported 2026-08-11: the arrow / shift+arrow skip keys
+	// moved time at the default rate and ignored time dilation).
+	//
+	// StepSize below is TimeBetweenData — one DATA FRAME — so a keypress always advanced exactly one frame of
+	// simulation time no matter how fast playback was running. At 5x the world is moving five times as fast
+	// and a one-frame nudge reads as the key having done nothing. Scaling the STEP COUNT rather than StepSize
+	// is deliberate: every index calculation below rounds against StepSize, so changing that would desync the
+	// step arithmetic; multiplying whole steps keeps every jump frame-aligned.
+	//
+	// Applied here, in the single choke point both directions funnel through, so Increment and Decrement (and
+	// the shift variants, which just pass a larger amount from WBP_MobiusBottomBar's input graph) all scale.
+	// Rounded and floored at 1 so a sub-1x speed still moves at least one frame instead of stalling.
+	if (TimeDilationSubsystem)
+	{
+		const int32 SpeedMultiplier = FMath::Max(1, FMath::RoundToInt(TimeDilationSubsystem->TimeDialation));
+		NumSteps *= SpeedMultiplier;
+	}
+
 	// prepare update and get current values
 	PauseSimulationAndUpdateTimeBegin();
-	
+
 	const float StepSize = PlaybackSlider->GetStepSize();
 	const float Current  = PlaybackSlider->GetValue();
 
