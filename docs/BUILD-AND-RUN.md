@@ -151,6 +151,12 @@ cmake --build _superbuild --config Release --parallel
 `--fresh` (CMake 3.24+) is the "clear the old build files" half: it drops the
 existing cache and reconfigures. Omit it for an ordinary incremental build.
 
+It is **not** "rebuild everything": it removes `CMakeCache.txt` and
+`CMakeFiles/`, but the ExternalProject stamps survive, so Assimp and HDF5 are
+still considered built. For a genuine from-scratch build — which is what you
+want when changing MSVC toolsets, since the installed `.lib`/`.dll` filenames
+themselves move — use `python superbuild.py --rebuild`.
+
 Note the absence of `-G`. CMake picks the newest installed Visual Studio itself,
 and the platform default for VS 2019+ generators is already the host
 architecture. Hardcoding `-G "Visual Studio 17 2022"` — as these docs used to —

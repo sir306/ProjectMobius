@@ -288,9 +288,12 @@ DerivedData/
 #
 #     cd UnrealFolder/ProjectMobius && .\run-superbuild.bat
 #
-# CMake build trees
+# CMake build trees. The _*/ rule is the general case: any underscore-prefixed directory directly
+# under the project root is a scratch build tree (superbuild.py --build-dir, or a hand-rolled
+# `cmake -B _whatever`). Nothing tracked has ever lived under such a path, so this cannot hide
+# real sources.
 /UnrealFolder/ProjectMobius/_superbuild
-/UnrealFolder/ProjectMobius/_superbuild*/
+/UnrealFolder/ProjectMobius/_*/
 /UnrealFolder/ProjectMobius/Intermediate/IfcBridgeBuild/
 
 # Generic CMake residue, wherever it lands (a build tree configured in the wrong directory is a
