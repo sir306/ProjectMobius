@@ -1298,11 +1298,6 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 
 	// --- Incomplete data detection ---
 	int32 ActualTimestepCount = MaxTimestepIndex + 1;
-	int32 PeakEntityCount = 0;
-	for (int32 Count : NumOfAgentsPerTimeStep)
-	{
-		PeakEntityCount = FMath::Max(PeakEntityCount, Count);
-	}
 
 	// Timestep mismatch: metadata says more timesteps than we actually loaded
 	if (Hdf5Data.Meta.Duration > 0 && Hdf5Data.Meta.SamplingRate > 0)
@@ -1318,14 +1313,31 @@ void FProcessSimulationDataRunnable::RunHdf5SimDataGatheringLoop(bool bCalculate
 		}
 	}
 
-	// Entity count mismatch: fewer entities observed than metadata declares
-	if (MaxAgents > 0 && PeakEntityCount > 0 && PeakEntityCount < MaxAgents)
+	// Entity coverage: every entity the metadata declares should appear in at least one
+	// timestep. This deliberately does not compare against the busiest timestep, because
+	// agents enter and leave over the course of a simulation, so the peak concurrent count
+	// is legitimately lower than the total number of distinct entities.
+	if (MaxAgents > 0)
 	{
-		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
-			TEXT("Incomplete entity data"),
-			FString::Printf(TEXT("HDF5: peak entity count %d < MaxAgents %d. Some entities may be missing."),
-				PeakEntityCount, MaxAgents),
-			TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+		TBitArray<> ObservedEntities(false, MaxAgents);
+		int32 ObservedEntityCount = 0;
+		for (const FHdf5SampleData& Sample : Hdf5Data.Samples)
+		{
+			if (ObservedEntities.IsValidIndex(Sample.EntityId) && !ObservedEntities[Sample.EntityId])
+			{
+				ObservedEntities[Sample.EntityId] = true;
+				++ObservedEntityCount;
+			}
+		}
+
+		if (ObservedEntityCount < MaxAgents)
+		{
+			ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+				TEXT("Incomplete entity data"),
+				FString::Printf(TEXT("HDF5: %d of %d entities have no samples. Data may be incomplete."),
+					MaxAgents - ObservedEntityCount, MaxAgents),
+				TEXT("AgentDataSubsystem - RunHdf5SimDataGatheringLoop"));
+		}
 	}
 }
 
