@@ -132,7 +132,7 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 			Feedback->ReportError(
 				FText::FromString("Invalid Agent Data File"),
 				FText::FromString("Unsupported agent data file type selected."),
-				FText::FromString("Supported types: .json"),
+				FText::FromString("Supported types: .json, .h5"),
 				FText::FromString("Load Agent Data"));
 		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));
