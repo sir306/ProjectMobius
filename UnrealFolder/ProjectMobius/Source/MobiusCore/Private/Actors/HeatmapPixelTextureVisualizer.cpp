@@ -454,8 +454,30 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
 	// ---- Route Exposure, banded in transit-equivalents (SPEC §5.2) -------------------------------------
 	//
 	// Exposure needs its OWN derivation and cannot borrow the usage edges: different quantity, different
-	// reference, and its anchor t0 = cell / v_free is a per-CELL time, so unlike the crossing edges these
-	// legitimately move with the cell size.
+	// reference.
+	//
+	// CORRECTED 2026-08-11 — this used to pass the effective CELL SIDE, on the reasoning that "t0 =
+	// cell / v_free is a per-CELL time, so unlike the crossing edges these legitimately move with the cell
+	// size". That reasoning is wrong, and it made every exposure edge (width / cell) = 3x too demanding at
+	// the shipping 45 cm / 15 cm. The published derivation assumes RVal is built from the CANONICAL cell
+	// value, but EncodeToDisplay reads the PRESENTATION, which the mass-conserving splat has already
+	// diluted by (s / w) — exactly as it dilutes Route Usage. Carrying that through:
+	//
+	//     RVal      = Presented / (s^2 * Ref),  Presented = P * (s / w)   =>  RVal = P / (s * w * Ref)
+	//     Transits  = P * v_free / s                                     =>  P    = T * s / v_free
+	//     edge(T)   = T / (w * Ref * v_free)
+	//
+	// The cell side CANCELS: t0's per-cell dependence is exactly undone by the per-cell dilution. So the
+	// length scale here is the STROKE WIDTH, the same scale the crossing edges use, and for the same
+	// underlying reason. Both surfaces now answer "per body-width of route", which is also what makes the
+	// two ladders comparable to each other.
+	//
+	// Side effect worth knowing: the representability squeeze documented on TrajectoryTransits disappears.
+	// The full ladder needs w * Ref * v_free >= 50, i.e. Ref >= 79.4 at w = 0.45 — cleared by the shipping
+	// 240 with room to spare, and by the pre-2026-08-10 200 as well. ReferenceExposureDensity was raised
+	// 200 -> 240 SOLELY to keep band F reachable under the old cell-side denominator; that constraint is
+	// gone, so whether 240 stays is now a presentation choice rather than a forced one. Left at 240
+	// deliberately — moving it in the same change would confound verifying this one.
 	//
 	// THE ROUTE THRESHOLD CONVERTS, and the conversion is exact rather than a re-fit. DeriveRouteThreshold-
 	// Crossings returns the cut in crossings, and a single pass deposits (width / cell) crossings spread
@@ -470,7 +492,7 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
 		: 0.0f;
 
 	TrajectoryExposureLOSBands = FHeatmapLOSBands::TrajectoryTransits(
-		EffectiveCmPerTexel / 100.0f, // effective cell side cm -> metres
+		TrajectoryDisplayPathWidthCm / 100.0f, // stroke width cm -> metres (see the derivation above)
 		TrajectoryField.GetConfig().ReferenceExposureDensity,
 		FHeatmapLOSBands::FreeWalkSpeedSFPE,
 		RouteThresholdTransits);

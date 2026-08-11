@@ -1001,6 +1001,19 @@ void FTrajectoryField::DepositSegment(const FVector2D& StartCm, const FVector2D&
 			PersonSeconds[Cell.Y * GridDims.X + Cell.X] += static_cast<float>(Delta);
 			if (PresentationMode == ETrajectoryMapMode::RouteExposure)
 			{
+				// D-F: this branch changes the PRESENTATION, so it must dirty the rect exactly as
+				// DepositCell does — the only other writer. Without it a queue accrues person-seconds that
+				// never reach the texture: RefreshTrajectoryDisplay early-returns on an empty rect, so a
+				// fully blocked queue renders frozen while the field underneath keeps rising. Queues are
+				// the entire reason Route Exposure exists, so this was the one path that had to mark and
+				// did not. Marked BEFORE the splat and via MarkCellDirty (which expands by the phase
+				// kernel's half extent) so the ring of neighbours the splat writes is covered too.
+				//
+				// Deliberately INSIDE the mode test: in RouteUsage a stationary agent changes no presented
+				// value, and a mode switch rebuilds the presentation wholesale and forces a full rewrite,
+				// so nothing is lost by staying quiet there.
+				MarkCellDirty(Cell.X, Cell.Y);
+
 				// D-D: a standing agent has a position too, and it is the one place sub-cell placement
 				// matters MOST — a queue is a cluster of stationary agents, and rounding each to its cell
 				// centre is what turns a queue into a chequerboard.

@@ -188,8 +188,12 @@ public:
 
 	/**
 	 * Selects Route Exposure (person-seconds) over Route Usage (person-metres) for every registered
-	 * heatmap actor. Only meaningful while trajectory-path mode is on; harmless otherwise, since the
-	 * mode is stored and applied when the trajectory view is next enabled.
+	 * heatmap actor, and REMEMBERS the selection so an actor registering later inherits it.
+	 *
+	 * The "stored and applied when the trajectory view is next enabled" claim this comment used to make
+	 * was FALSE until 2026-08-11 — nothing stored it and AddHeatmapActor applied no trajectory state at
+	 * all, so the mode was silently lost for any heatmap spawned after the toggle. That sentence is what
+	 * made the dead path look legitimate, which is why it is called out rather than quietly corrected.
 	 *
 	 * Display-only: both canonical accumulators are maintained unconditionally, so this re-encodes and
 	 * never re-walks or discards a segment. Safe to call mid-playback.
@@ -300,6 +304,20 @@ protected:
 
 
 private:
+	/**
+	 * The trajectory view state the subsystem believes is selected, so an actor registering LATER inherits
+	 * it (AddHeatmapActor applies both). Before 2026-08-11 neither was stored: the setters only forwarded
+	 * to actors already in Heatmaps, so a heatmap spawned after the user made a selection — which is the
+	 * normal order, since heatmaps are created per floor when a dataset loads — came up in the default
+	 * Route Usage with trajectory off, while the checkboxes still showed the user's choice.
+	 *
+	 * These mirror UI intent, NOT actor truth. AHeatmapPixelTextureVisualizer remains the authority on its
+	 * own state and both of its setters early-out on no-change, so re-applying here is idempotent and
+	 * cannot re-trigger the ClearTexture() that entering trajectory mode performs.
+	 */
+	bool bTrajectoryHeatmapsEnabled = false;
+	bool bRouteExposureEnabled = false;
+
 	/** Set by RequestTrajectoryTrackingReset, cleared by ConsumeTrajectoryTrackingReset. Game thread only. */
 	bool bTrajectoryTrackingResetPending = false;
 

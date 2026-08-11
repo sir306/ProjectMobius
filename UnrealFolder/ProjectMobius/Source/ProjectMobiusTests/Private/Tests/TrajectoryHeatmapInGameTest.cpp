@@ -846,9 +846,14 @@ bool FTrajectoryExportRenderShareInputsTest::RunTest(const FString& Parameters)
 		const TCHAR* Name;
 		float ExpectedReference;
 	};
+	// Read from the shipping config rather than transcribed. The exposure figure was hard-coded 200.0f and
+	// went stale the moment ReferenceExposureDensity moved to 240 — silently, because this is a Tier B
+	// in-game case that needs PIE and a dataset, so it does not run in the editor-context sweep that gates
+	// most changes. A literal here asserts what someone once typed; this asserts what ships.
+	const FTrajectoryFieldConfig ShippingConfig;
 	const FModeCase Cases[] = {
-		{ ETrajectoryMapMode::RouteUsage,    TEXT("RouteUsage"),    100.0f },
-		{ ETrajectoryMapMode::RouteExposure, TEXT("RouteExposure"), 200.0f },
+		{ ETrajectoryMapMode::RouteUsage,    TEXT("RouteUsage"),    ShippingConfig.ReferenceUsageDensity },
+		{ ETrajectoryMapMode::RouteExposure, TEXT("RouteExposure"), ShippingConfig.ReferenceExposureDensity },
 	};
 
 	float FirstModeEdges[5] = { 0, 0, 0, 0, 0 };

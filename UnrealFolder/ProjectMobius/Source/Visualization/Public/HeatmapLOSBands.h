@@ -192,11 +192,18 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 * every corridor, and corridors are where the traffic is. Label the output "approximately N
 	 * crossings", never "exactly N"; the quantity is an axial-equivalent crossing count.
 	 *
-	 * @param CellSideMetres         Effective cell side in metres. Must be finite and > 0.
+	 * @param StrokeWidthMetres      The DISPLAY STROKE WIDTH in metres, NOT the cell side. Renamed
+	 *                               2026-08-11: it was called CellSideMetres, the shipping call site has
+	 *                               passed TrajectoryDisplayPathWidthCm since the kernel was decoupled from
+	 *                               the grid, and the stale name is what led the Route Exposure twin below
+	 *                               to be wired with the cell side and come out 3x too demanding. The width
+	 *                               is correct because EncodeToDisplay reads the splat-DILUTED presentation,
+	 *                               not the canonical cell: the dilution is (s / w), so s cancels and the
+	 *                               surviving length scale is w. Must be finite and > 0.
 	 * @param ReferenceUsageDensity  The person/m that EncodeToDisplay maps to byte 255, i.e.
 	 *                               FTrajectoryFieldConfig::ReferenceUsageDensity.
 	 */
-	static FHeatmapLOSBands TrajectoryCrossings(float CellSideMetres, float ReferenceUsageDensity,
+	static FHeatmapLOSBands TrajectoryCrossings(float StrokeWidthMetres, float ReferenceUsageDensity,
 	                                            float RouteThresholdCrossings = 0.0f)
 	{
 		FHeatmapLOSBands Bands;
@@ -205,7 +212,7 @@ struct VISUALIZATION_API FHeatmapLOSBands
 		// byte 0 - falls below half a byte. Independent of the grid, so it is set before the guard.
 		Bands.BandA = 0.5f / 255.0f;
 
-		const float Denominator = CellSideMetres * ReferenceUsageDensity;
+		const float Denominator = StrokeWidthMetres * ReferenceUsageDensity;
 		if (!FMath::IsFinite(Denominator) || Denominator <= 0.0f)
 		{
 			// Arithmetic cannot recover this: with no valid cell size there is no crossing to count. Fall
@@ -286,31 +293,41 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 *   B  <= 2     free-flow pass-through    E  <= 50   queueing
 	 *   C  <= 5     light use / slight slow   F  >  50   stationary / blocked
 	 *
-	 * DERIVATION OF THE EDGE. EncodeToDisplay normalises a cell's DENSITY against the reference, so
-	 * RVal = PersonSeconds / (s^2 * Ref), and substituting Transits = PersonSeconds * v_free / s gives
+	 * DERIVATION OF THE EDGE. CORRECTED 2026-08-11 — the version below used to stop at the canonical cell
+	 * and concluded edge(T) = T / (s * Ref * v_free), which made every edge (w / s) too demanding: 3x at
+	 * the shipping 45 cm stroke on 15 cm cells. EncodeToDisplay does not read the canonical array. It reads
+	 * the PRESENTATION, which the mass-conserving splat has already diluted by (s / w) — the same dilution
+	 * Route Usage gets, because it is the same kernel. Carrying that through:
 	 *
-	 *     edge(T) = T / (s * Ref * v_free)
+	 *     RVal     = Presented / (s^2 * Ref),  Presented = P * (s / w)  =>  RVal = P / (s * w * Ref)
+	 *     Transits = P * v_free / s                                    =>  P    = T * s / v_free
+	 *     edge(T)  = T / (w * Ref * v_free)
 	 *
-	 * 🚩 REPRESENTABILITY, and it bites at the shipping configuration. The top edge fits the [0,1] channel
-	 * only when s * Ref * v_free >= 50. At s = 0.15 m and v_free = 1.40 that needs Ref >= 238.1 — which is
-	 * why FTrajectoryFieldConfig::ReferenceExposureDensity ships at 240 rather than the old capture-derived
-	 * 200. Below that the top edge clamps to 1.0 and band F becomes UNREACHABLE, so queueing and blocked
-	 * render identically — silently, since the clamp keeps the chain monotonic and nothing else complains.
-	 * That is the whole point of the surface, so it is worth the reference moving.
+	 * The cell side CANCELS. t0's per-cell dependence is exactly undone by the per-cell dilution, so the
+	 * surviving length scale is the STROKE WIDTH — the same scale TrajectoryCrossings uses, which is also
+	 * what makes the two ladders comparable to one another.
 	 *
-	 * @param CellSideMetres    EFFECTIVE cell side. Exposure edges DO depend on it: t0 is a per-cell time.
+	 * REPRESENTABILITY — no longer binding, kept because the number moved. The top edge fits the [0,1]
+	 * channel when w * Ref * v_free >= 50, i.e. Ref >= 79.4 at w = 0.45 m and v_free = 1.40. Cleared
+	 * comfortably by the shipping 240 AND by the pre-2026-08-10 200. Under the old cell-side denominator
+	 * the same test read Ref >= 238.1, which is the ONLY reason
+	 * FTrajectoryFieldConfig::ReferenceExposureDensity was raised 200 -> 240; that constraint is gone, so
+	 * the reference is now a presentation choice. Left at 240 for continuity, not necessity.
+	 *
+	 * @param StrokeWidthMetres The DISPLAY STROKE WIDTH, not the cell side — see the derivation above.
+	 *                          Passing the cell side is the defect this rename exists to prevent.
 	 * @param ReferenceExposureDensity  person*s/m^2 that EncodeToDisplay maps to byte 255.
 	 * @param FreeWalkSpeed     v_free. Pass FreeWalkSpeedSFPE unless the audience is EU.
 	 * @param RouteThresholdTransits  D-E route threshold in transits; 0 keeps the is-it-nonzero edge.
 	 */
-	static FHeatmapLOSBands TrajectoryTransits(float CellSideMetres, float ReferenceExposureDensity,
+	static FHeatmapLOSBands TrajectoryTransits(float StrokeWidthMetres, float ReferenceExposureDensity,
 	                                           float FreeWalkSpeed = FreeWalkSpeedSFPE,
 	                                           float RouteThresholdTransits = 0.0f)
 	{
 		FHeatmapLOSBands Bands;
 		Bands.BandA = 0.5f / 255.0f;
 
-		const float Denominator = CellSideMetres * ReferenceExposureDensity * FreeWalkSpeed;
+		const float Denominator = StrokeWidthMetres * ReferenceExposureDensity * FreeWalkSpeed;
 		if (!FMath::IsFinite(Denominator) || Denominator <= 0.0f)
 		{
 			// No valid cell size or anchor means there is no transit to count. The frozen quantile set is
@@ -341,10 +358,14 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 * channel, i.e. band F stays reachable. Exposed so a gate can assert the shipping default clears it
 	 * rather than transcribing a number that goes stale the moment the cell is dialled.
 	 */
-	static float MinimumExposureReferenceForFullLadder(float CellSideMetres,
+	static float MinimumExposureReferenceForFullLadder(float StrokeWidthMetres,
 	                                                   float FreeWalkSpeed = FreeWalkSpeedSFPE)
 	{
-		const float Divisor = CellSideMetres * FreeWalkSpeed;
+		// Takes the SAME length scale as TrajectoryTransits, and must keep doing so — a gate that fed this
+		// the cell side while the ladder used the width would compute a threshold for a configuration that
+		// does not exist and pass while band F was unreachable. That is precisely the failure it exists to
+		// catch. At w = 0.45 and v_free = 1.40 this returns 79.4.
+		const float Divisor = StrokeWidthMetres * FreeWalkSpeed;
 		return (Divisor > 0.0f) ? (50.0f / Divisor) : 0.0f;
 	}
 

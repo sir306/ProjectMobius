@@ -171,6 +171,19 @@ void UHeatmapSubsystem::AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapA
 
 	// add the actor to the array
 	Heatmaps.Add(HeatmapActor);
+
+	// Inherit the trajectory view state the user already selected. Heatmaps are created per floor when a
+	// dataset loads, so registering AFTER a toggle is the normal order, not an edge case — without this a
+	// newly loaded dataset came up in Route Usage with trajectory off while the checkboxes still showed
+	// the user's choice. Mode BEFORE enable: SetTrajectoryHeatmapEnabled calls ClearTexture() and sizes the
+	// field on the way in, so selecting the mode first means the first encode is already the right one
+	// rather than a Usage frame that is immediately thrown away. Both setters early-out on no-change, so
+	// the default (false, false) case costs two compares and touches nothing.
+	HeatmapActor->SetTrajectoryMapMode(bRouteExposureEnabled
+		? ETrajectoryMapMode::RouteExposure
+		: ETrajectoryMapMode::RouteUsage);
+	HeatmapActor->SetTrajectoryHeatmapEnabled(bTrajectoryHeatmapsEnabled);
+
 	OnHeatmapAdded.Broadcast(HeatmapActor);
 
 	// log the number of heatmaps
@@ -414,6 +427,8 @@ bool UHeatmapSubsystem::ConsumeTrajectoryTrackingReset()
 
 void UHeatmapSubsystem::SetTrajectoryHeatmapsEnabled(bool bEnabled)
 {
+	bTrajectoryHeatmapsEnabled = bEnabled; // remembered for actors that register later; see AddHeatmapActor
+
 	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
 	{
 		if (IsValid(Heatmap))
@@ -425,6 +440,8 @@ void UHeatmapSubsystem::SetTrajectoryHeatmapsEnabled(bool bEnabled)
 
 void UHeatmapSubsystem::SetTrajectoryRouteExposureEnabled(bool bEnabled)
 {
+	bRouteExposureEnabled = bEnabled; // remembered for actors that register later; see AddHeatmapActor
+
 	const ETrajectoryMapMode NewMode =
 		bEnabled ? ETrajectoryMapMode::RouteExposure : ETrajectoryMapMode::RouteUsage;
 
