@@ -54,20 +54,40 @@ void UProjectMobiusGameInstance::Init()
 {
 	const double InitStartSeconds = FPlatformTime::Seconds();
 
-	UUserProjectSettings* ProjectUserSettings = Cast<UUserProjectSettings>(GEngine->GetGameUserSettings());
-	ProjectUserSettings->LoadMobiusSettings();
+	// Mirror UUserProjectSettings' own defaults, so a missing settings object behaves like a fresh config
+	// rather than silently turning startup logging off — the log is how the miss below gets noticed.
+	bool bStartLoggerAtStartup = true;
+	bool bShowLogWindowAtStartup = false;
 
-	// Push the persisted user UI-scale multiplier into Slate (composes with UMobiusUIScalingRule).
-	ProjectUserSettings->ApplyUIScaleFactorToSlate();
+	// Guarded the same way as the OnStart() acquisitions below: the cast returns null if
+	// GameUserSettingsClassName in DefaultEngine.ini stops naming /Script/MobiusCore.UserProjectSettings,
+	// and an unguarded dereference here is a crash on the first statement of Init. The rest of Init must
+	// still run, so guard the settings-dependent block rather than returning.
+	UUserProjectSettings* ProjectUserSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
+	if (ProjectUserSettings)
+	{
+		ProjectUserSettings->LoadMobiusSettings();
 
-	// Push the persisted sim-cache preferences into their console variables (S14). Console variables do not
-	// survive a restart, so without this the user's choice would apply only in the session that made it.
-	ProjectUserSettings->ApplySimCacheSettingsToCVars();
+		// Push the persisted user UI-scale multiplier into Slate (composes with UMobiusUIScalingRule).
+		ProjectUserSettings->ApplyUIScaleFactorToSlate();
 
-	// log the custom config variables
-	bool bStartLoggerAtStartup = ProjectUserSettings->GetEnableMobiusLoggerAtStartup();
+		// Push the persisted sim-cache preferences into their console variables (S14). Console variables do not
+		// survive a restart, so without this the user's choice would apply only in the session that made it.
+		ProjectUserSettings->ApplySimCacheSettingsToCVars();
 
-	bool bShowLogWindowAtStartup = ProjectUserSettings->GetDisplayMobiusLogWindowAtStartup();
+		// log the custom config variables
+		bStartLoggerAtStartup = ProjectUserSettings->GetEnableMobiusLoggerAtStartup();
+
+		bShowLogWindowAtStartup = ProjectUserSettings->GetDisplayMobiusLogWindowAtStartup();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("ProjectMobiusGameInstance::Init: game user settings are not a UUserProjectSettings ")
+			TEXT("(GEngine %s). Check GameUserSettingsClassName in DefaultEngine.ini still names ")
+			TEXT("/Script/MobiusCore.UserProjectSettings — no persisted Mobius setting is applied this session."),
+			GEngine ? TEXT("valid") : TEXT("null"));
+	}
 
 	UMobiusCustomLoggerSubsystem* StartupLogger = GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	if (StartupLogger)
