@@ -23,8 +23,25 @@
 
 #include "Hdf5SimulationReader.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeLock.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHdf5SimulationReader, Log, All);
+
+namespace
+{
+	/**
+	 * The bundled HDF5 library is built without thread safety (Threadsafety: OFF in
+	 * libhdf5.settings), so no two threads may execute HDF5 code concurrently.
+	 * Geometry and trajectory loading both read the same .h5 from different threads,
+	 * so every public reader method serializes on this process-wide lock.
+	 * The lock is recursive on all UE platforms, so public methods may call each other.
+	 */
+	FCriticalSection& GetHdf5LibraryLock()
+	{
+		static FCriticalSection Hdf5LibraryLock;
+		return Hdf5LibraryLock;
+	}
+}
 
 FHdf5SimulationReader::FHdf5SimulationReader()
 {
@@ -37,6 +54,8 @@ FHdf5SimulationReader::~FHdf5SimulationReader()
 
 bool FHdf5SimulationReader::OpenFile(const FString& FilePath)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	// Close any previously open file
 	CloseFile();
 
@@ -58,7 +77,8 @@ bool FHdf5SimulationReader::OpenFile(const FString& FilePath)
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("Failed to open HDF5 file: %s"), *FilePath);
-		H5close();
+		// Do not call H5close() here: it tears down the HDF5 library process-wide,
+		// crashing any other reader that is mid-operation.
 		return false;
 	}
 
@@ -111,10 +131,13 @@ bool FHdf5SimulationReader::OpenFile(const FString& FilePath)
 
 void FHdf5SimulationReader::CloseFile()
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId >= 0)
 	{
 		H5Fclose(FileId);
-		H5close();
+		// Deliberately no H5close(): that shuts down the HDF5 library for the whole
+		// process, not just this file, and other readers may still be active.
 		FileId = -1;
 		DetectedFormat = EHdf5FormatType::Unknown;
 		TimestepCount = 0;
@@ -276,6 +299,8 @@ bool FHdf5SimulationReader::ReadStringAttribute(hid_t GroupId, const char* AttrN
 
 bool FHdf5SimulationReader::ReadMetadata(FHdf5SimulationMetadata& OutMetadata)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -320,6 +345,8 @@ bool FHdf5SimulationReader::ReadMetadata(FHdf5SimulationMetadata& OutMetadata)
 
 bool FHdf5SimulationReader::ReadEntities(TArray<FHdf5EntityData>& OutEntities)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -417,6 +444,8 @@ bool FHdf5SimulationReader::ReadEntities(TArray<FHdf5EntityData>& OutEntities)
 
 bool FHdf5SimulationReader::ReadTimesteps(TArray<float>& OutTimesteps)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -453,6 +482,8 @@ bool FHdf5SimulationReader::ReadTimesteps(TArray<float>& OutTimesteps)
 
 bool FHdf5SimulationReader::ReadSamplesPerTimestep(TArray<int32>& OutSamplesPerTimestep)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -496,6 +527,8 @@ bool FHdf5SimulationReader::ReadSamplesPerTimestep(TArray<int32>& OutSamplesPerT
 
 bool FHdf5SimulationReader::ReadAllSamples(TArray<FHdf5SampleData>& OutSamples, bool* OutHasRotationField, bool* OutHasSpeedField)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -608,6 +641,8 @@ bool FHdf5SimulationReader::ReadAllSamples(TArray<FHdf5SampleData>& OutSamples, 
 
 bool FHdf5SimulationReader::ReadSamplesForTimestepRange(int32 StartTimestep, int32 EndTimestep, TArray<FHdf5SampleData>& OutSamples)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -718,6 +753,8 @@ EHdf5FormatType FHdf5SimulationReader::DetectFormat(const FString& FilePath)
 		return EHdf5FormatType::Unknown;
 	}
 
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	FTCHARToUTF8 FilePathUtf8(*FilePath);
 
 	// Check if it's a valid HDF5 file
@@ -731,7 +768,6 @@ EHdf5FormatType FHdf5SimulationReader::DetectFormat(const FString& FilePath)
 	hid_t TempFileId = H5Fopen(FilePathUtf8.Get(), H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (TempFileId < 0)
 	{
-		H5close();
 		return EHdf5FormatType::Unknown;
 	}
 
@@ -750,7 +786,6 @@ EHdf5FormatType FHdf5SimulationReader::DetectFormat(const FString& FilePath)
 	}
 
 	H5Fclose(TempFileId);
-	H5close();
 
 	return Result;
 }
@@ -759,6 +794,8 @@ EHdf5FormatType FHdf5SimulationReader::DetectFormat(const FString& FilePath)
 
 bool FHdf5SimulationReader::ReadJuelichMetadata(FHdf5JuelichMetadata& OutMetadata)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -845,6 +882,8 @@ bool FHdf5SimulationReader::ReadJuelichMetadata(FHdf5JuelichMetadata& OutMetadat
 
 bool FHdf5SimulationReader::ReadJuelichTrajectories(TArray<FHdf5JuelichTrajectoryRecord>& OutRecords)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
@@ -924,6 +963,8 @@ bool FHdf5SimulationReader::ReadJuelichTrajectories(TArray<FHdf5JuelichTrajector
 
 bool FHdf5SimulationReader::ReadWktGeometry(FString& OutWktGeometry)
 {
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5SimulationReader, Error, TEXT("No file is open"));
