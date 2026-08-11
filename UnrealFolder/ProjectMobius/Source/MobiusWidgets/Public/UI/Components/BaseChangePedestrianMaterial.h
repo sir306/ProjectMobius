@@ -126,6 +126,34 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void ConvertWheelchairMaterialsToDynamicInstances(const TArray<UMaterialInstance*>& WheelchairMaterials);
 
+	/**
+	 * Build the low-spec (SimpleAgent) dynamic material instances.
+	 *
+	 * The low-spec Niagara system draws all five human demographics from one SimpleAgent mesh, so this
+	 * takes ONE material per combo option — not five, and not body/eyes pairs. Pass
+	 * MI_SimpleAgentSolid then MI_SimpleAgentTransparent, matching the DisplayName order used by
+	 * ConvertMaterialsToDynamicMaterialInstances.
+	 *
+	 * Until this is wired, the material combo does nothing at low spec: the five human arrays hold
+	 * MakeHuman materials, which belong to the high-spec system only.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void ConvertLowSpecMaterialsToDynamicInstances(const TArray<UMaterialInstance*>& LowSpecMaterials);
+
+	/**
+	 * One-shot sanity check that the owning graph called BOTH conversion entry points.
+	 *
+	 * The failure this exists to catch is a graph that calls ConvertMaterialsToDynamicMaterialInstances
+	 * and not ConvertWheelchairMaterialsToDynamicInstances: every human demographic swaps material
+	 * correctly, the chair silently keeps its mesh-slot material, and nothing anywhere complains. That
+	 * reads as "the wheelchair feature is broken" rather than "one node is missing".
+	 *
+	 * Deferred to the next tick because the two calls are separate Blueprint nodes and either order is
+	 * legal - checking inline would fire spuriously on a graph that simply wires the chair second.
+	 * Runs once per widget construct, never on a tick path.
+	 */
+	void ValidateMaterialArrayWiring();
+
 #pragma endregion
 
 #pragma region UI_COMPONENTS
@@ -184,6 +212,12 @@ protected:
 	 *  the (index * 2) body/eyes stride the demographics above use. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedWheelchairMaterialInstance;
+
+	/** Store the current selected low-spec (SimpleAgent) material instance. Shared by all five human
+	 *  demographics — the low-spec system has one human mesh — and, like the wheelchair above, indexed
+	 *  by the RAW combo index with no body/eyes stride. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedLowSpecMaterialInstance;
 
 	/** Checkbox to toggle random color or grey clothing */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
@@ -251,6 +285,12 @@ public:
 	 *  silently skip creating every material. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> WheelchairMaterialDynamicInstances;
+
+	/** Materials for the low-spec SimpleAgent human mesh — ONE entry per combo option, shared across
+	 *  all five demographics. Half the length of the human arrays by design, so it is kept out of their
+	 *  Num()-equality gate for the same reason the wheelchair array is. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TArray<UMaterialInstanceDynamic*> LowSpecMaterialDynamicInstances;
 
 	/** To prevent the representation subsystem from destroying and keep the spawn materials we store a ptr to it */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material|Subsystem")

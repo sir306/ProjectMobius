@@ -639,6 +639,11 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 		Dirty.store(true, std::memory_order_relaxed);
 	}
 
+	// A swapped-in system comes up on its asset-default materials, so the user's colour choice has to be
+	// pushed again here or it silently reverts on every spec change. Must run BEFORE Activate.
+	RepresentationSubsystem->ReapplyStoredMaterials(
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent());
+
 	// Activate the Niagara System
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);
 }

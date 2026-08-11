@@ -54,7 +54,15 @@ void UMRS_RepresentationSubsystem::SetPedestrianMaterial(UMaterialInstanceDynami
 		UGameplayStatics::GetAllActorsOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass(), FoundActors);
 
 		// if we have found actors get the first one and cast to the agent representation actor ism
-		if(FoundActors.Num() > 0)
+		//
+		// LOW-SPEC GATE. At low spec the live system draws humans from the SimpleAgent mesh and its
+		// User.*MaterialBody parameters belong to SetLowSpecPedestrianMaterial - pushing these high-spec
+		// MakeHuman instances would overwrite them. Falling through to the else branch stores the
+		// selection without pushing it, which is exactly the wanted behaviour: the choice is remembered
+		// and ReapplyStoredMaterials restores it the moment the high-spec system is swapped back in.
+		// Gate the PUSH only, never the store - gating the store would lose the selection on a
+		// low -> high -> low round trip.
+		if(FoundActors.Num() > 0 && !IsCurrentPedestrianAvatarTypeLowSpec())
 		{
 			// if the agent representation actor ism is valid then we can set the material
 			if(ANiagaraAgentRepActor* NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(FoundActors[0]))
@@ -131,7 +139,8 @@ void UMRS_RepresentationSubsystem::SetPedestrianMaterial(UMaterialInstanceDynami
 		UGameplayStatics::GetAllActorsOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass(), FoundActors);
 
 		// if we have found actors get the first one and cast to the agent representation actor ism
-		if(FoundActors.Num() > 0)
+		// Low-spec gate - see the single-argument overload above for why.
+		if(FoundActors.Num() > 0 && !IsCurrentPedestrianAvatarTypeLowSpec())
 		{
 			// if the agent representation actor ism is valid then we can set the material
 			if(ANiagaraAgentRepActor* NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(FoundActors[0]))
@@ -211,7 +220,10 @@ void UMRS_RepresentationSubsystem::SetPedestrianMaterial(UMaterialInstanceDynami
 		UGameplayStatics::GetAllActorsOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass(), FoundActors);
 
 		// if we have found actors get the first one and cast to the agent representation actor ism
-		if(FoundActors.Num() > 0)
+		// Low-spec gate - see the single-argument overload above for why. The Ead_Adult case delegates
+		// to the two-argument overload, which re-tests the same condition; that is harmless, since the
+		// value cannot change between the two calls.
+		if(FoundActors.Num() > 0 && !IsCurrentPedestrianAvatarTypeLowSpec())
 		{
 			// if the agent representation actor ism is valid then we can set the material
 			if(ANiagaraAgentRepActor* NiagaraAgentRepActor = Cast<ANiagaraAgentRepActor>(FoundActors[0]))
@@ -331,9 +343,13 @@ void UMRS_RepresentationSubsystem::SetWheelchairMaterial(UMaterialInstanceDynami
 	// representation actor exists, and persist on the game instance either way so the choice survives
 	// a system swap (high spec <-> low spec) or a respawn.
 	//
-	// User.WheelchairMaterialBody exists on BOTH Niagara systems. It was missing on the low-spec one
-	// until 2026-08-10 - SetVariableMaterial against an absent parameter is a SILENT no-op, so the
-	// symptom would have been the translucent option working at high spec and doing nothing at low.
+	// User.WheelchairMaterialBody must exist, spelled EXACTLY like this, on BOTH Niagara systems.
+	// SetVariableMaterial does an exact FName lookup with no trimming, so a name that merely LOOKS
+	// right fails silently: the low-spec system carried "WheelchairMaterialBody " (trailing space)
+	// and the swap did nothing there while working perfectly at high spec.
+	// Occurrence-counting the name inside the .uasset does NOT catch this - it proves a parameter was
+	// added, not what it is called. The cheap oracle is nwiro read_niagara_system, which prints the
+	// name verbatim; compare it character for character against the literal below.
 	if (ANiagaraAgentRepActor* NiagaraAgentRepActor =
 		Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass())))
 	{
@@ -349,6 +365,103 @@ void UMRS_RepresentationSubsystem::SetWheelchairMaterial(UMaterialInstanceDynami
 	{
 		GameInstance->SetSelectedWheelchairMaterialInstance(MaterialInstBody);
 	}
+}
+
+void UMRS_RepresentationSubsystem::SetLowSpecPedestrianMaterial(UMaterialInstanceDynamic* MaterialInstBody)
+{
+	if (MaterialInstBody == nullptr)
+	{
+		return;
+	}
+
+	// Mirror of the high-spec gate, inverted: push into the live component only while the low-spec
+	// system is the one on screen, but always store, so the choice survives a spec round trip.
+	if (IsCurrentPedestrianAvatarTypeLowSpec())
+	{
+		if (ANiagaraAgentRepActor* NiagaraAgentRepActor =
+			Cast<ANiagaraAgentRepActor>(UGameplayStatics::GetActorOfClass(GetWorld(), ANiagaraAgentRepActor::StaticClass())))
+		{
+			if (UNiagaraComponent* NiagaraComponent = NiagaraAgentRepActor->GetNiagaraComponent())
+			{
+				ApplyLowSpecMaterialToComponent(NiagaraComponent, MaterialInstBody);
+			}
+		}
+	}
+
+	if (UProjectMobiusGameInstance* GameInstance = GetMobiusGameInstance(GetWorld()))
+	{
+		GameInstance->SetSelectedLowSpecMaterialInstance(MaterialInstBody);
+	}
+}
+
+void UMRS_RepresentationSubsystem::ApplyLowSpecMaterialToComponent(UNiagaraComponent* NiagaraComponent,
+                                                                   UMaterialInstanceDynamic* MaterialInstBody)
+{
+	// One instance into all ten human parameters. Eyes deliberately gets the same instance as Body:
+	// leaving Eyes untouched would strand the high-spec MakeHuman eyes material there after a switch
+	// down, and it would render on the low-poly agents.
+	static const TCHAR* LowSpecHumanParameters[] = {
+		TEXT("MaleMaterialBody"),          TEXT("MaleMaterialEyes"),
+		TEXT("FemaleMaterialBody"),        TEXT("FemaleMaterialEyes"),
+		TEXT("ElderlyMaleMaterialBody"),   TEXT("ElderlyMaleMaterialEyes"),
+		TEXT("ElderlyFemaleMaterialBody"), TEXT("ElderlyFemaleMaterialEyes"),
+		TEXT("ChildrenMaterialBody"),      TEXT("ChildrenMaterialEyes")
+	};
+
+	for (const TCHAR* ParameterName : LowSpecHumanParameters)
+	{
+		NiagaraComponent->SetVariableMaterial(ParameterName, MaterialInstBody);
+	}
+}
+
+void UMRS_RepresentationSubsystem::ReapplyStoredMaterials(UNiagaraComponent* NiagaraComponent)
+{
+	if (NiagaraComponent == nullptr)
+	{
+		return;
+	}
+
+	UProjectMobiusGameInstance* GameInstance = GetMobiusGameInstance(GetWorld());
+	if (GameInstance == nullptr)
+	{
+		return;
+	}
+
+	// Every push below is null-guarded individually. That is what makes this safe on the initial spawn
+	// path, where nothing has been selected yet: a null would otherwise clear the asset default and
+	// render the agents with no material at all, which reads as "rendering is broken" rather than
+	// "no selection yet".
+	const auto PushIfSet = [NiagaraComponent](const TCHAR* ParameterName, UMaterialInstanceDynamic* Instance)
+	{
+		if (Instance != nullptr)
+		{
+			NiagaraComponent->SetVariableMaterial(ParameterName, Instance);
+		}
+	};
+
+	if (IsCurrentPedestrianAvatarTypeLowSpec())
+	{
+		if (UMaterialInstanceDynamic* LowSpecInstance = GameInstance->GetSelectedLowSpecMaterialInstance())
+		{
+			ApplyLowSpecMaterialToComponent(NiagaraComponent, LowSpecInstance);
+		}
+	}
+	else
+	{
+		PushIfSet(TEXT("MaleMaterialBody"),          GameInstance->GetSelectedMaleMaterialInstance());
+		PushIfSet(TEXT("MaleMaterialEyes"),          GameInstance->GetSelectedMaleEyesMaterialInstance());
+		PushIfSet(TEXT("FemaleMaterialBody"),        GameInstance->GetSelectedFemaleMaterialInstance());
+		PushIfSet(TEXT("FemaleMaterialEyes"),        GameInstance->GetSelectedFemaleEyesMaterialInstance());
+		PushIfSet(TEXT("ElderlyMaleMaterialBody"),   GameInstance->GetSelectedMaleElderlyMaterialInstance());
+		PushIfSet(TEXT("ElderlyMaleMaterialEyes"),   GameInstance->GetSelectedMaleElderlyEyesMaterialInstance());
+		PushIfSet(TEXT("ElderlyFemaleMaterialBody"), GameInstance->GetSelectedFemaleElderlyMaterialInstance());
+		PushIfSet(TEXT("ElderlyFemaleMaterialEyes"), GameInstance->GetSelectedFemaleElderlyEyesMaterialInstance());
+		PushIfSet(TEXT("ChildrenMaterialBody"),      GameInstance->GetSelectedChildrenMaterialInstance());
+		PushIfSet(TEXT("ChildrenMaterialEyes"),      GameInstance->GetSelectedChildrenEyesMaterialInstance());
+	}
+
+	// Spec-independent: both systems draw the chair from the same SM_WheelchairPlaceholder mesh.
+	PushIfSet(TEXT("WheelchairMaterialBody"), GameInstance->GetSelectedWheelchairMaterialInstance());
 }
 
 UMaterialInstanceDynamic* UMRS_RepresentationSubsystem::GetSelectedMaleMaterialInstance(UWorld* World)

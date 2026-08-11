@@ -332,6 +332,14 @@ private:
 	UPROPERTY()
 	UMaterialInstanceDynamic* SelectedWheelchairMaterialInstance = nullptr;
 
+	/** Low-spec (SimpleAgent) body material — ONE instance shared by all five human demographics.
+	 *  The low-spec system renders every human from the same SimpleAgent mesh, so there is no
+	 *  per-demographic material and no eyes variant; this single instance is pushed to all ten
+	 *  User.*MaterialBody/Eyes parameters. Stored separately from the high-spec selections rather
+	 *  than replacing them so switching spec level back and forth does not lose either choice. */
+	UPROPERTY()
+	UMaterialInstanceDynamic* SelectedLowSpecMaterialInstance = nullptr;
+
 #pragma endregion SIMULATION_VARIABLES
 
 #pragma endregion PRIVATE_VARIABLES
@@ -375,6 +383,18 @@ public:
 	UMaterialInstanceDynamic* GetSelectedFemaleMaterialInstance() const { return SelectedFemaleAdultMaterialInstance; }
 
 	UMaterialInstanceDynamic* GetSelectedFemaleEyesMaterialInstance() const { return SelectedFemaleAdultEyesMaterialInstance; }
+
+	// The getters below were added so UMRS_RepresentationSubsystem::ReapplyStoredMaterials can restore
+	// every demographic after a Niagara system swap. A swapped-in system starts on its asset-default
+	// materials, so without a full re-push the user's choice silently reverts on any spec change.
+	UMaterialInstanceDynamic* GetSelectedMaleElderlyMaterialInstance() const { return SelectedMaleElderlyMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedMaleElderlyEyesMaterialInstance() const { return SelectedMaleElderlyEyesMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedFemaleElderlyMaterialInstance() const { return SelectedFemaleElderlyMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedFemaleElderlyEyesMaterialInstance() const { return SelectedFemaleElderlyEyesMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedChildrenMaterialInstance() const { return SelectedChildrenMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedChildrenEyesMaterialInstance() const { return SelectedChildrenEyesMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedWheelchairMaterialInstance() const { return SelectedWheelchairMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedLowSpecMaterialInstance() const { return SelectedLowSpecMaterialInstance; }
 #pragma endregion GETTERS
 
 #pragma region SETTERS
@@ -401,6 +421,9 @@ public:
 	/** Set the empty-wheelchair body material. Setter only, matching Elderly/Children - nothing reads
 	 *  these back; only Male/Female Adult expose getters. */
 	FORCEINLINE void SetSelectedWheelchairMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedWheelchairMaterialInstance = NewMaterialInstance; }
+
+	/** Set the shared low-spec (SimpleAgent) body material. */
+	FORCEINLINE void SetSelectedLowSpecMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedLowSpecMaterialInstance = NewMaterialInstance; }
 
 
 

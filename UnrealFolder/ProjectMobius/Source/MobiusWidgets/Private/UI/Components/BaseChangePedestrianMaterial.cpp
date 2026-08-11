@@ -24,6 +24,8 @@
 
 #include "UI/Components/BaseChangePedestrianMaterial.h"
 
+#include "TimerManager.h"
+#include "Engine/World.h"
 #include "Components/CheckBox.h"
 #include "Components/ComboBoxString.h"
 #include "Components/Slider.h"
@@ -178,6 +180,62 @@ void UBaseChangePedestrianMaterial::ConvertMaterialsToDynamicMaterialInstances(
 		// Assign the material names to the combo box
 		AssignMaterialNamesToComboBox();
 	}
+
+	// Next tick, not now: the wheelchair array is filled by a SEPARATE Blueprint node that may legally
+	// run either side of this one, so an inline check would false-alarm on a graph that wires it second.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateWeakLambda(this, [this]() { ValidateMaterialArrayWiring(); }));
+	}
+}
+
+void UBaseChangePedestrianMaterial::ValidateMaterialArrayWiring()
+{
+	// Only meaningful once the human arrays exist - an empty widget is not a mis-wired one.
+	if (MaleMaterialDynamicInstances.Num() == 0)
+	{
+		return;
+	}
+
+	// Both companion arrays fail the same way and are reported the same way. Each is filled by its own
+	// Blueprint node, so either can be missing independently.
+	struct FCompanionArrayCheck
+	{
+		const TArray<UMaterialInstanceDynamic*>& Instances;
+		const TCHAR* NodeName;
+		const TCHAR* Consequence;
+	};
+
+	const FCompanionArrayCheck Checks[] = {
+		{ WheelchairMaterialDynamicInstances, TEXT("ConvertWheelchairMaterialsToDynamicInstances"),
+		  TEXT("wheelchairs will not follow the material selection at either spec level") },
+		{ LowSpecMaterialDynamicInstances, TEXT("ConvertLowSpecMaterialsToDynamicInstances"),
+		  TEXT("the material selection will do nothing while the low-spec agents are on screen") }
+	};
+
+	for (const FCompanionArrayCheck& Check : Checks)
+	{
+		if (Check.Instances.Num() == 0)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("%s: human material arrays are populated but the array filled by %s is EMPTY, so %s. ")
+				TEXT("Wire that node with one material per combo option, in the same order as the ")
+				TEXT("DisplayName list passed to ConvertMaterialsToDynamicMaterialInstances."),
+				*GetName(), Check.NodeName, Check.Consequence);
+			continue;
+		}
+
+		// Half-filled is worse than empty: the combo offers options the array cannot honour, so
+		// selecting a later one leaves those agents on whatever they last had while the rest update.
+		if (Check.Instances.Num() != MatInstDynamicDisplayNames.Num())
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("%s: %s produced %d material(s) but the combo offers %d option(s). Options beyond ")
+				TEXT("that count will leave those agents on their previous material."),
+				*GetName(), Check.NodeName, Check.Instances.Num(), MatInstDynamicDisplayNames.Num());
+		}
+	}
 }
 
 void UBaseChangePedestrianMaterial::AddMaterialTypeComponents()
@@ -228,7 +286,14 @@ void UBaseChangePedestrianMaterial::AssignMaterialNamesToComboBox()
 				CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[MaterialInst.Key];
 			}
 
-			
+			// Low-spec SimpleAgent - RAW index for the same reason: one material per option, shared by
+			// every human demographic, no eyes entry.
+			if (LowSpecMaterialDynamicInstances.IsValidIndex(MaterialInst.Key))
+			{
+				CurrentSelectedLowSpecMaterialInstance = LowSpecMaterialDynamicInstances[MaterialInst.Key];
+			}
+
+
 			MaterialTypeComboBox->SetSelectedOption(MaterialInst.Value);
 		}
 	}
@@ -266,10 +331,16 @@ void UBaseChangePedestrianMaterial::OnMaterialTypeChanged(FString SelectedItem, 
 
 			// Empty wheelchair - Index is already the combo index doubled for the body/eyes stride,
 			// so halve it back. The chair has one material slot, so it indexes 1:1 with the options.
-			const int32 WheelchairIndex = Index / 2;
-			if (WheelchairMaterialDynamicInstances.IsValidIndex(WheelchairIndex))
+			const int32 SingleSlotIndex = Index / 2;
+			if (WheelchairMaterialDynamicInstances.IsValidIndex(SingleSlotIndex))
 			{
-				CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[WheelchairIndex];
+				CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[SingleSlotIndex];
+			}
+
+			// Low-spec SimpleAgent - same single-slot indexing as the chair.
+			if (LowSpecMaterialDynamicInstances.IsValidIndex(SingleSlotIndex))
+			{
+				CurrentSelectedLowSpecMaterialInstance = LowSpecMaterialDynamicInstances[SingleSlotIndex];
 			}
 
 			// Change the material of the pedestrian
@@ -469,6 +540,35 @@ void UBaseChangePedestrianMaterial::ConvertWheelchairMaterialsToDynamicInstances
 	}
 }
 
+void UBaseChangePedestrianMaterial::ConvertLowSpecMaterialsToDynamicInstances(
+	const TArray<UMaterialInstance*>& LowSpecMaterials)
+{
+	// One MID per combo option. The low-spec system renders every human from the same SimpleAgent mesh,
+	// so there is no per-demographic material and no eyes variant - which is why this is a separate
+	// entry point rather than five more arrays on ConvertMaterialsToDynamicMaterialInstances.
+	LowSpecMaterialDynamicInstances.Reset(LowSpecMaterials.Num());
+
+	for (UMaterialInstance* SourceMaterial : LowSpecMaterials)
+	{
+		if (SourceMaterial == nullptr)
+		{
+			continue;
+		}
+		LowSpecMaterialDynamicInstances.Add(UMaterialInstanceDynamic::Create(SourceMaterial, this));
+	}
+
+	// Adopt the current selection immediately - same reasoning as the wheelchair conversion: a graph
+	// that wires this after the human arrays have already been built would otherwise leave the low-spec
+	// agents on a null material until the user next touches the combo box.
+	const int32 SelectedIndex = MaterialTypeComboBox ? MaterialTypeComboBox->GetSelectedIndex() : 0;
+	const int32 SafeIndex = LowSpecMaterialDynamicInstances.IsValidIndex(SelectedIndex) ? SelectedIndex : 0;
+	if (LowSpecMaterialDynamicInstances.IsValidIndex(SafeIndex))
+	{
+		CurrentSelectedLowSpecMaterialInstance = LowSpecMaterialDynamicInstances[SafeIndex];
+		UpdateRepSubsystemMaterialInstances();
+	}
+}
+
 void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 {
 	// update the material on the pedestrian
@@ -484,6 +584,10 @@ void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
 			// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent.
 			RepresentationSubsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
+			// Low-spec humans - one SimpleAgent material for all five demographics. Pushed unconditionally
+			// alongside the high-spec set; the subsystem decides which one reaches the live component
+			// based on the current spec level, and stores both either way.
+			RepresentationSubsystem->SetLowSpecPedestrianMaterial(CurrentSelectedLowSpecMaterialInstance);
 		}
 		else
 		{
@@ -498,5 +602,9 @@ void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
 			// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent.
 			RepresentationSubsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
+			// Low-spec humans - one SimpleAgent material for all five demographics. Pushed unconditionally
+			// alongside the high-spec set; the subsystem decides which one reaches the live component
+			// based on the current spec level, and stores both either way.
+			RepresentationSubsystem->SetLowSpecPedestrianMaterial(CurrentSelectedLowSpecMaterialInstance);
 		}
 }

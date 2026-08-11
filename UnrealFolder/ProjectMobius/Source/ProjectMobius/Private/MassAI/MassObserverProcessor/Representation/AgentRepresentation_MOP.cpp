@@ -133,7 +133,12 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 	// Set the Niagara System
 	NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
-	
+
+	// Restore any material selection made before this actor existed - e.g. the user picked Translucent,
+	// then loaded a dataset. Every push inside is null-guarded, so on a genuinely fresh run this is a
+	// no-op and the asset defaults stand.
+	MRSSubsystem->ReapplyStoredMaterials(NiagaraAgentRepActor->GetNiagaraComponent());
+
 	//EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, &AgentRepresentationInstanceComp](FMassExecutionContext& Context)
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, NiagaraAgentRepActor,MRSSubsystem](FMassExecutionContext& Context)
 	{
@@ -194,7 +199,11 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			// Set the Niagara System
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAutoActivate(false);
-			
+
+			// The spec level just changed, so this re-push is what selects between the high-spec
+			// MakeHuman set and the shared low-spec SimpleAgent instance. Without it the swapped-in
+			// system keeps its asset defaults and the user's colour choice appears to reset itself.
+			MRSSubsystem->ReapplyStoredMaterials(NiagaraAgentRepActor->GetNiagaraComponent());
 		}
 			
 		// Create the Niagara System
