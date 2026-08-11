@@ -41,6 +41,8 @@ public:
 #pragma region PUBLIC_METHODS
 	// Constructor 
 	virtual void NativeConstruct() override;
+
+	virtual void NativeDestruct() override;
 	
 	/**
 	 * Method to call when the SelectFileButton is clicked
@@ -66,6 +68,13 @@ public:
 	/** Handler for file dialog errors. Displays error popup to user. */
 	UFUNCTION()
 	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
+
+	/**
+	 * Refresh the displayed path when the geometry file is changed elsewhere, e.g. when an
+	 * HDF5 pedestrian data file supplies its own embedded geometry.
+	 */
+	UFUNCTION()
+	void OnGameInstanceMeshFileChanged();
 #pragma endregion PUBLIC_METHODS
 
 #pragma endregion METHODS

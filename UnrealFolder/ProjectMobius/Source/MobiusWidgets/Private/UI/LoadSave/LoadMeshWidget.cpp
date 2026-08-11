@@ -25,11 +25,33 @@
 #include "UI/LoadSave/LoadMeshWidget.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "GameInstances/ProjectMobiusGameInstance.h"
 
 void ULoadMeshWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	if (UProjectMobiusGameInstance* MobiusGameInst = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInst->OnMeshFileChanged.AddUniqueDynamic(this, &ULoadMeshWidget::OnGameInstanceMeshFileChanged);
+	}
+}
+
+void ULoadMeshWidget::NativeDestruct()
+{
+	if (UProjectMobiusGameInstance* MobiusGameInst = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInst->OnMeshFileChanged.RemoveDynamic(this, &ULoadMeshWidget::OnGameInstanceMeshFileChanged);
+	}
+
+	Super::NativeDestruct();
+}
+
+void ULoadMeshWidget::OnGameInstanceMeshFileChanged()
+{
+	// Pull the new path out of the game instance and refresh the text block
+	GetMobiusGameInstanceData();
+	UpdateFileTextBlockTexts();
 }
 
 void ULoadMeshWidget::OnSelectFileButtonClicked()
@@ -132,7 +154,7 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 			Feedback->ReportError(
 				FText::FromString("Invalid Mesh File"),
 				FText::FromString("Unsupported mesh file type selected."),
-				FText::FromString("Supported types: .fbx, .obj, .udatasmith, .ifc, .wkt"),
+				FText::FromString("Supported types: .fbx, .obj, .udatasmith, .ifc, .wkt, .h5"),
 				FText::FromString("Load Mesh"));
 		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));

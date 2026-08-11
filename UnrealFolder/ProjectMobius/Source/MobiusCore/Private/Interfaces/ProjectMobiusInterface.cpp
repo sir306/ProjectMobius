@@ -25,8 +25,47 @@
 #include "Interfaces/ProjectMobiusInterface.h"
 #include "Engine/GameInstance.h"
 #include "GameInstances/ProjectMobiusGameInstance.h"
+#include "Hdf5SimulationReader.h"
+#include "Misc/Paths.h"
 
 // Add default functionality here for any IProjectMobiusInterface functions that are not pure virtual.
+
+namespace
+{
+	/**
+	 * HDF5 simulation files can carry the scene geometry alongside the trajectories in the
+	 * root "wkt_geometry" attribute. When such a file is selected as the pedestrian data
+	 * source, adopt it as the geometry source too so a single selection loads both.
+	 * @param GameInst - Mobius game instance to update
+	 * @param DataPath - Full path of the newly selected pedestrian data file
+	 */
+	void AdoptEmbeddedGeometrySource(UProjectMobiusGameInstance* GameInst, const FString& DataPath)
+	{
+		if (!GameInst || !DataPath.EndsWith(TEXT(".h5"), ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+
+		FHdf5SimulationReader Reader;
+		if (!Reader.OpenFile(DataPath))
+		{
+			return;
+		}
+
+		FString WktGeometry;
+		const bool bHasGeometry = Reader.ReadWktGeometry(WktGeometry) && !WktGeometry.IsEmpty();
+		Reader.CloseFile();
+
+		if (!bHasGeometry)
+		{
+			UE_LOG(LogTemp, Log, TEXT("No embedded geometry in %s, geometry selection left unchanged"), *DataPath);
+			return;
+		}
+
+		GameInst->SetSimulationMeshFilePath(DataPath);
+		GameInst->SetSimulationMeshFileName(FPaths::GetCleanFilename(DataPath));
+	}
+}
 
 UProjectMobiusGameInstance* IProjectMobiusInterface::GetMobiusGameInstance(UWorld* World)
 {
@@ -111,6 +150,9 @@ void IProjectMobiusInterface::UpdateMobiusGameInstancePedestrianData(UWorld* Wor
 	
 	// Set the pedestrian data file name
 	MobiusGameInst->SetPedestrianDataFileName(FPaths::GetCleanFilename(CompleteDataPath));
+
+	// HDF5 files can embed the geometry, load it from the same file
+	AdoptEmbeddedGeometrySource(MobiusGameInst, CompleteDataPath);
 }
 
 void IProjectMobiusInterface::GetMobiusGameInstanceMeshDataFile(UWorld* World, FString& OutCompleteDataPath,
