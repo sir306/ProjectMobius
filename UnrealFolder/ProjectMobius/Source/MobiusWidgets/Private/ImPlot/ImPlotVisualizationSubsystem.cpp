@@ -1184,11 +1184,22 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 double LiveX = 0.0;
                 double LiveY = 0.0;
                 const bool bHasLiveSample = HasLiveSampleForChart(ChartId);
-                // Left out of a copied image on purpose. The playhead marks where playback happens to be
-                // sitting at the moment of the copy, which means nothing once the picture is in a document
-                // — and on a chart with no data yet it was the ONLY thing in the image, so an empty copy
-                // came out as a legend entry reading "Live" and nothing else.
-                if (bHasLiveSample && !bCapturingForImageCopy)
+                // S6a (owner-reported 2026-08-11): the playhead used to be suppressed in EVERY copied image,
+                // by `!bCapturingForImageCopy` alone. Two reasons were recorded for that, and they had
+                // different fates:
+                //
+                //  - "the playhead means nothing once the picture is in a document" — OVERRULED by the owner.
+                //    That is exactly the judgement the "Copy with timeline" toggle exists to hand to the user.
+                //    And because this guard never consulted that flag, toggling it only ever changed the TSV's
+                //    time column (the flag's OTHER meaning — see CopySeriesToClipboard) and could not affect
+                //    the image at all. That mismatch WAS the defect: the setting appeared to do nothing.
+                //  - "on a chart with no data the playhead was the ONLY thing in the image, so an empty copy
+                //    came out as a legend entry reading 'Live' and nothing else" — STILL TRUE, and kept as the
+                //    Points.Num() > 0 term below. Do NOT simplify this to the toggle alone.
+                //
+                // Interactive paint is unchanged: the playhead always draws when there is a live sample.
+                const bool bPlayheadInCapture = State->bCopyWithTimeline && Points.Num() > 0;
+                if (bHasLiveSample && (!bCapturingForImageCopy || bPlayheadInCapture))
                 {
                         GetLiveSampleForChart(ChartId, LiveX, LiveY);
                         ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.35f, 0.25f, 1.0f), 2.0f);
