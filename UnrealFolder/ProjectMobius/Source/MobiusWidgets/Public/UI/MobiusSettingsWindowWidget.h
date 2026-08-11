@@ -29,6 +29,8 @@
 #include "MobiusSettingsWindowWidget.generated.h"
 
 class SMoveableWindow;
+class UAgentDataSubsystem;
+class UButton;
 class UButtonWithText;
 class UCheckBox;
 class UGlobalQualitySegmentWidget;
@@ -176,6 +178,47 @@ protected:
 	TObjectPtr<UCheckBox> StartupLogWindowCheckBox;
 #pragma endregion
 
+#pragma region SimulationCache
+	/**
+	 * S14 sim-cache controls, rehomed here from USimulationSetupWidget (owner, 2026-08-11).
+	 *
+	 * The trigger was that the File panel's "Simulation settings" group is a single column with a FIXED
+	 * height, so the cache header, both checkboxes and the clear row rendered below the card and over the
+	 * 3D viewport. But this is their right home for two reasons independent of that:
+	 *
+	 *  - THEMING, which is the one the owner asked about. The previous host lives in `ProjectMobius`, which
+	 *    CANNOT derive UMobiusThemedUserWidget — `MobiusWidgets` depends on `ProjectMobius`, so the reverse
+	 *    is a module cycle (see UIThemeSubsystem.cpp:1171) — and so those controls were themed only by the
+	 *    subsystem's recursive walk, with no owner-pull for the label or the readout. This class IS themed,
+	 *    so the group label and size readout below take explicit palette roles like every other label here.
+	 *  - STORAGE. Both flags are `UPROPERTY(Config)` on UUserProjectSettings — the very same mechanism as
+	 *    the two "At startup" logging flags this class already owns. Nothing else in the File panel is a
+	 *    per-USER preference; that panel is per-DATASET.
+	 *
+	 * Names deliberately match the ones USimulationSetupWidget used, so the existing widgets can be moved
+	 * between the two assets without being renamed (a rename would break the BindWidget hookup silently).
+	 */
+	/** "Simulation cache" group heading; takes SublabelText with the other group labels. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> GroupLabel_SimCache;
+
+	/** UUserProjectSettings::bCacheSimulationsOnImport → `mobius.SimCache.WriteOnImport`. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UCheckBox> CacheOnImportCheckBox;
+
+	/** UUserProjectSettings::bReuseSimulationCacheOnReopen → `mobius.SimCache.FastReload`. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UCheckBox> ReuseCacheOnReopenCheckBox;
+
+	/** Deletes the `.msc` cache directory. No confirm prompt by design — this is derived data. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UButton> ClearCacheButton;
+
+	/** On-disk size readout beside the clear button; takes HintText. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> CacheSizeText;
+#pragma endregion
+
 private:
 	/**
 	 * Fills GlobalQualityWidget / CustomSettingsPanel by class when BindWidget could not.
@@ -197,6 +240,36 @@ private:
 
 	UFUNCTION()
 	void HandleStartupLogWindowToggled(bool bIsChecked);
+
+	UFUNCTION()
+	void HandleCacheOnImportChanged(bool bIsChecked);
+
+	UFUNCTION()
+	void HandleReuseCacheOnReopenChanged(bool bIsChecked);
+
+	/** Clears the cache directory, then re-reads the size so the readout cannot show a stale figure. */
+	UFUNCTION()
+	void HandleClearCacheClicked();
+
+	/**
+	 * Recompute the on-disk cache size into CacheSizeText. Called from RefreshSettingStates, after a clear,
+	 * and on OnLoadSimulationDataComplete. NOT on a timer: it stats the cache directory, and this panel is
+	 * not a monitor.
+	 */
+	void RefreshCacheSizeText();
+
+	/**
+	 * An import just finished, so the .msc set on disk has changed — re-stat it.
+	 *
+	 * Owner-reported 2026-08-11: leaving this panel OPEN and then loading files left the readout stale,
+	 * because the size was only read when the panel refreshed its states. UAgentDataSubsystem writes the
+	 * cache on the worker thread at AgentDataSubsystem.cpp:964, strictly BEFORE bIsDataLoaded is set, and
+	 * OnLoadSimulationDataComplete broadcasts after that on the game thread (`:186`) — so by the time this
+	 * runs the new file is on disk and the re-stat sees it. That ordering is why this delegate is the right
+	 * one and a load-STARTED signal would not be.
+	 */
+	UFUNCTION()
+	void HandleSimulationDataLoaded();
 
 	UFUNCTION()
 	void HandleOpenCustomSettingsClicked();
@@ -234,6 +307,20 @@ private:
 	/** The phase-2 host window. Not a UPROPERTY — Slate shared pointers are not GC-tracked. */
 	TSharedPtr<SMoveableWindow> PanelWindow;
 
+	/**
+	 * The subsystem this widget bound OnLoadSimulationDataComplete on. Held so NativeDestruct unbinds from
+	 * the SAME object: it is a UTickableWorldSubsystem, so GetWorld() can already be gone by teardown and
+	 * re-resolving it there would silently skip the unbind. Weak, so a torn-down PIE world just no-ops.
+	 */
+	TWeakObjectPtr<UAgentDataSubsystem> CachedAgentDataSubsystem;
+
 	/** True while RefreshSettingStates writes check states, so the handlers ignore their own writes. */
 	bool bSuppressLoggingCallbacks = false;
+
+	/**
+	 * Same guard for the two sim-cache checkboxes. A SEPARATE flag rather than reusing the logging one: these
+	 * write to different setters, and one shared flag would mean a future partial refresh of one block
+	 * silently muted the other's handlers.
+	 */
+	bool bSuppressCacheCallbacks = false;
 };

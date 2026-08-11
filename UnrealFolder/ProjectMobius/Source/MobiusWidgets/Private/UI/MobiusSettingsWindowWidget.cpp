@@ -25,6 +25,7 @@
 #include "UI/MobiusSettingsWindowWidget.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
 #include "Components/CheckBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Image.h"
@@ -40,6 +41,12 @@
 #include "UI/Components/Scalability/GlobalQualitySegmentWidget.h"
 #include "UI/Components/Scalability/ScalabilityPanelWidget.h"
 #include "UserConfig/UserProjectSettings.h"
+// Sim-cache size/clear (S14). MobiusWidgets already depends privately on ProjectMobius, so these free
+// functions are reachable from here — see the SimulationCache region comment in the header for why the
+// controls live in this class rather than in the File panel.
+#include "SimData/SimDiskCache.h"
+// OnLoadSimulationDataComplete — the signal that the .msc set on disk has changed.
+#include "MassAI/SubSystems/AgentDataSubsystem.h"
 
 namespace
 {
@@ -137,6 +144,32 @@ void UMobiusSettingsWindowWidget::NativeConstruct()
 		OpenCustomSettingsButton->OnClicked.AddUniqueDynamic(
 			this, &UMobiusSettingsWindowWidget::HandleOpenCustomSettingsClicked);
 	}
+	if (CacheOnImportCheckBox)
+	{
+		CacheOnImportCheckBox->OnCheckStateChanged.AddUniqueDynamic(
+			this, &UMobiusSettingsWindowWidget::HandleCacheOnImportChanged);
+	}
+	if (ReuseCacheOnReopenCheckBox)
+	{
+		ReuseCacheOnReopenCheckBox->OnCheckStateChanged.AddUniqueDynamic(
+			this, &UMobiusSettingsWindowWidget::HandleReuseCacheOnReopenChanged);
+	}
+	if (ClearCacheButton)
+	{
+		ClearCacheButton->OnClicked.AddUniqueDynamic(
+			this, &UMobiusSettingsWindowWidget::HandleClearCacheClicked);
+	}
+
+	// Keep the cache readout live while the panel STAYS OPEN across an import (owner-reported staleness).
+	if (UWorld* World = GetWorld())
+	{
+		if (UAgentDataSubsystem* AgentData = World->GetSubsystem<UAgentDataSubsystem>())
+		{
+			CachedAgentDataSubsystem = AgentData;
+			AgentData->OnLoadSimulationDataComplete.AddUniqueDynamic(
+				this, &UMobiusSettingsWindowWidget::HandleSimulationDataLoaded);
+		}
+	}
 
 	// Before Super, like the binds above: Super sweeps the tree and then calls ApplyMobiusTheme, so any
 	// widget this moves or creates has to be in place first or it paints unthemed until a theme toggle.
@@ -157,6 +190,14 @@ void UMobiusSettingsWindowWidget::NativeConstruct()
 
 void UMobiusSettingsWindowWidget::NativeDestruct()
 {
+	// Unbind from the SAME subsystem instance the bind used — see CachedAgentDataSubsystem.
+	if (UAgentDataSubsystem* AgentData = CachedAgentDataSubsystem.Get())
+	{
+		AgentData->OnLoadSimulationDataComplete.RemoveDynamic(
+			this, &UMobiusSettingsWindowWidget::HandleSimulationDataLoaded);
+	}
+	CachedAgentDataSubsystem.Reset();
+
 	// Close the child window FIRST: the Custom card was detached from this tree when it opened, so it does
 	// not get torn down by this widget's destruction and would otherwise outlive its owner.
 	if (CustomSettingsPanel)
@@ -267,7 +308,8 @@ void UMobiusSettingsWindowWidget::ApplyMobiusTheme_Implementation()
 	const FSlateColor GroupColour(GetThemeColor(EMobiusPaletteRole::SublabelText));
 	for (UTextBlock* Label : {
 		GroupLabel_GlobalQuality.Get(), GroupLabel_UITheme.Get(),
-		GroupLabel_Pedestrian.Get(), GroupLabel_Logging.Get()})
+		GroupLabel_Pedestrian.Get(), GroupLabel_Logging.Get(),
+		GroupLabel_SimCache.Get()})
 	{
 		if (Label)
 		{
@@ -284,8 +326,10 @@ void UMobiusSettingsWindowWidget::ApplyMobiusTheme_Implementation()
 		}
 	}
 
+	// CacheSizeText joins the hints rather than taking a role of its own: it is a derived read-out beside a
+	// control, the same weight as the pedestrian helper line, and it must not compete with the label above it.
 	const FSlateColor HintColour(GetThemeColor(EMobiusPaletteRole::HintText));
-	for (UTextBlock* Hint : {PedestrianHelperText.Get(), LogFileNoteText.Get()})
+	for (UTextBlock* Hint : {PedestrianHelperText.Get(), LogFileNoteText.Get(), CacheSizeText.Get()})
 	{
 		if (Hint)
 		{
@@ -323,10 +367,97 @@ void UMobiusSettingsWindowWidget::RefreshSettingStates()
 
 	bSuppressLoggingCallbacks = false;
 
+	// Sim-cache block (S14). Same read-back-then-suppress shape as the logging flags above, and for the same
+	// reason: SetIsChecked broadcasts, so without the guard opening the panel would write the settings it is
+	// only meant to be displaying.
+	bSuppressCacheCallbacks = true;
+
+	if (CacheOnImportCheckBox && UserSettings)
+	{
+		CacheOnImportCheckBox->SetIsChecked(UserSettings->GetCacheSimulationsOnImport());
+	}
+	if (ReuseCacheOnReopenCheckBox && UserSettings)
+	{
+		ReuseCacheOnReopenCheckBox->SetIsChecked(UserSettings->GetReuseSimulationCacheOnReopen());
+	}
+
+	bSuppressCacheCallbacks = false;
+
+	RefreshCacheSizeText();
+
 	if (GlobalQualityWidget)
 	{
 		GlobalQualityWidget->RefreshActiveSegment();
 	}
+}
+
+void UMobiusSettingsWindowWidget::HandleCacheOnImportChanged(const bool bIsChecked)
+{
+	if (bSuppressCacheCallbacks)
+	{
+		return;
+	}
+	if (UUserProjectSettings* UserSettings = GetMobiusUserSettings())
+	{
+		// The setter also pushes the CVar; it is deliberately the only write path, so the persisted flag and
+		// mobius.SimCache.WriteOnImport cannot disagree.
+		UserSettings->SetCacheSimulationsOnImport(bIsChecked);
+	}
+}
+
+void UMobiusSettingsWindowWidget::HandleReuseCacheOnReopenChanged(const bool bIsChecked)
+{
+	if (bSuppressCacheCallbacks)
+	{
+		return;
+	}
+	if (UUserProjectSettings* UserSettings = GetMobiusUserSettings())
+	{
+		UserSettings->SetReuseSimulationCacheOnReopen(bIsChecked);
+	}
+}
+
+void UMobiusSettingsWindowWidget::HandleClearCacheClicked()
+{
+	// No confirm prompt, deliberately: the .msc cache is DERIVED data, so the worst case is a re-parse on the
+	// next import. That is the opposite of S13's "clear loaded data", which does need one.
+	MobiusSimCache::ClearCache();
+
+	// Re-read rather than assuming zero — ClearCache only removes the files it counts, so anything it chose
+	// to leave must still show up in the figure.
+	RefreshCacheSizeText();
+}
+
+void UMobiusSettingsWindowWidget::HandleSimulationDataLoaded()
+{
+	// Only the cache figure can have changed. Deliberately NOT RefreshSettingStates(): that also re-reads
+	// the logging + quality controls, and a full re-sync mid-session would stomp a checkbox the user had
+	// just toggled but whose write had not landed yet.
+	RefreshCacheSizeText();
+}
+
+void UMobiusSettingsWindowWidget::RefreshCacheSizeText()
+{
+	if (!CacheSizeText)
+	{
+		return;
+	}
+
+	int32 FileCount = 0;
+	const int64 SizeBytes = MobiusSimCache::GetCacheSizeOnDisk(&FileCount);
+
+	if (FileCount == 0)
+	{
+		CacheSizeText->SetText(NSLOCTEXT("MobiusSettings", "SimCacheEmpty", "Cache is empty"));
+		return;
+	}
+
+	// AsMemory picks the unit, so a 900 KB cache reads as "900 KB" rather than "0.0 GB". Kept identical to
+	// the File-panel readout this supersedes, so the two cannot appear to disagree while both exist.
+	CacheSizeText->SetText(FText::Format(
+		NSLOCTEXT("MobiusSettings", "SimCacheSizeFmt", "{0} in {1} file(s)"),
+		FText::AsMemory(SizeBytes),
+		FText::AsNumber(FileCount)));
 }
 
 void UMobiusSettingsWindowWidget::SetCustomPanelVisible(const bool bVisible)
@@ -451,6 +582,10 @@ void UMobiusSettingsWindowWidget::RestructureSettingsLayout()
 	NestCheckBoxLabel(SessionLogWindowCheckBox);
 	NestCheckBoxLabel(StartupLoggingCheckBox);
 	NestCheckBoxLabel(StartupLogWindowCheckBox);
+	// Sim-cache boxes get the same treatment, so the whole card behaves consistently: in the File panel these
+	// two had a sibling label and only the 16px box itself was clickable.
+	NestCheckBoxLabel(CacheOnImportCheckBox);
+	NestCheckBoxLabel(ReuseCacheOnReopenCheckBox);
 
 	// ---- 2. lift the width cap that clipped the segment labels ----
 	// Walk up from the quality control to the first SizeBox: that is the one sizing the card, and the
