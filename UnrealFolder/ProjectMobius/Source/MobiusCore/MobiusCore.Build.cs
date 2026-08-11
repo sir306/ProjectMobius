@@ -67,7 +67,7 @@ public class MobiusCore : ModuleRules
 		{
 			"MobiusCore/ThirdParty",
 		});
-		
+
 		PrivateIncludePaths.AddRange(new[]
 		{
 			"MobiusCore/Public",
