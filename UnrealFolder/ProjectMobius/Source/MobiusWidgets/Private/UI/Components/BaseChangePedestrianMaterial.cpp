@@ -117,6 +117,19 @@ void UBaseChangePedestrianMaterial::ConvertMaterialsToDynamicMaterialInstances(
 	// Clear the material instances array
 	MatInstDynamicDisplayNames.Empty();
 
+	// The five human arrays are cleared for the same reason the display-name map is, and it is not
+	// optional: WBP_ChangePedestrianColours calls this from BOTH Event Pre Construct and Event
+	// Construct, and the loop below only ever Add()s. Without this the arrays end up at twice their
+	// intended length - 8 entries for 2 combo options - and only the first half is ever read, because
+	// every consumer indexes comboIndex*2. The duplicates are unreachable MIDs kept alive by the
+	// UPROPERTY, and they also break the 2:1 ratio the two companion arrays below are documented to
+	// hold against these (they already Reset(), so they stayed at their intended length).
+	MaleMaterialDynamicInstances.Reset();
+	ElderlyMaleMaterialDynamicInstances.Reset();
+	FemaleMaterialDynamicInstances.Reset();
+	ElderlyFemaleMaterialDynamicInstances.Reset();
+	ChildrenMaterialDynamicInstances.Reset();
+
 	// TODO: this check need to be better and handled differently
 	// Check that the arrays are the same length
 	if(
@@ -536,8 +549,32 @@ void UBaseChangePedestrianMaterial::ConvertWheelchairMaterialsToDynamicInstances
 	if (WheelchairMaterialDynamicInstances.IsValidIndex(SafeIndex))
 	{
 		CurrentSelectedWheelchairMaterialInstance = WheelchairMaterialDynamicInstances[SafeIndex];
-		UpdateRepSubsystemMaterialInstances();
+
+		// Push ONLY the chair. This deliberately does NOT call UpdateRepSubsystemMaterialInstances:
+		// that fans out into all five human SetPedestrianMaterial calls, and this function is
+		// BlueprintCallable, so it can legally run before the human arrays exist - from Event Pre
+		// Construct, or simply from a node placed earlier in the chain. SetPedestrianMaterial has no
+		// null guard, so those calls would push nullptr into User.MaleMaterialBody and friends,
+		// clearing the MakeHuman materials that carry the VAT world-position-offset. The agents then
+		// render from the engine default material with no WPO, which presents as broken AGENT SIZING
+		// - a symptom nothing about it points back to a wheelchair material node.
+		if (UMRS_RepresentationSubsystem* Subsystem = ResolveRepresentationSubsystem())
+		{
+			Subsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
+		}
 	}
+}
+
+UMRS_RepresentationSubsystem* UBaseChangePedestrianMaterial::ResolveRepresentationSubsystem()
+{
+	if (RepresentationSubsystem == nullptr)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			RepresentationSubsystem = World->GetSubsystem<UMRS_RepresentationSubsystem>();
+		}
+	}
+	return RepresentationSubsystem;
 }
 
 void UBaseChangePedestrianMaterial::ConvertLowSpecMaterialsToDynamicInstances(
@@ -565,46 +602,68 @@ void UBaseChangePedestrianMaterial::ConvertLowSpecMaterialsToDynamicInstances(
 	if (LowSpecMaterialDynamicInstances.IsValidIndex(SafeIndex))
 	{
 		CurrentSelectedLowSpecMaterialInstance = LowSpecMaterialDynamicInstances[SafeIndex];
-		UpdateRepSubsystemMaterialInstances();
+
+		// Push ONLY the low-spec instance - same reasoning as the wheelchair conversion above.
+		if (UMRS_RepresentationSubsystem* Subsystem = ResolveRepresentationSubsystem())
+		{
+			Subsystem->SetLowSpecPedestrianMaterial(CurrentSelectedLowSpecMaterialInstance);
+		}
 	}
 }
 
 void UBaseChangePedestrianMaterial::UpdateRepSubsystemMaterialInstances()
 {
-	// update the material on the pedestrian
-		if(RepresentationSubsystem)
-		{
-			// adult
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedMaleMaterialInstance, CurrentSelectedMaleEyesMaterialInstance, EPedestrianGender::Epg_Male, EAgeDemographic::Ead_Adult);
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedFemaleMaterialInstance, CurrentSelectedFemaleEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Adult);
-			// Elderly
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedMaleElderlyMaterialInstance, CurrentSelectedMaleElderlyEyesMaterialInstance, EPedestrianGender::Epg_Male, EAgeDemographic::Ead_Elderly);
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedFemaleElderlyMaterialInstance, CurrentSelectedFemaleElderlyEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Elderly);
-			// when we do different gender for children we will need to set the gender parameter
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
-			// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent.
-			RepresentationSubsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
-			// Low-spec humans - one SimpleAgent material for all five demographics. Pushed unconditionally
-			// alongside the high-spec set; the subsystem decides which one reaches the live component
-			// based on the current spec level, and stores both either way.
-			RepresentationSubsystem->SetLowSpecPedestrianMaterial(CurrentSelectedLowSpecMaterialInstance);
-		}
-		else
-		{
-			RepresentationSubsystem = GetWorld()->GetSubsystem<UMRS_RepresentationSubsystem>();
-			// adult
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedMaleMaterialInstance, CurrentSelectedMaleEyesMaterialInstance, EPedestrianGender::Epg_Male, EAgeDemographic::Ead_Adult);
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedFemaleMaterialInstance, CurrentSelectedFemaleEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Adult);
-			// Elderly
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedMaleElderlyMaterialInstance, CurrentSelectedMaleElderlyEyesMaterialInstance, EPedestrianGender::Epg_Male, EAgeDemographic::Ead_Elderly);
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedFemaleElderlyMaterialInstance, CurrentSelectedFemaleEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Elderly);
-			// when we do different gender for children we will need to set the gender parameter
-			RepresentationSubsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
-			// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent.
-			RepresentationSubsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
-			// Low-spec humans - one SimpleAgent material for all five demographics. Pushed unconditionally
-			// alongside the high-spec set; the subsystem decides which one reaches the live component
-			// based on the current spec level, and stores both either way.
-			RepresentationSubsystem->SetLowSpecPedestrianMaterial(CurrentSelectedLowSpecMaterialInstance);
-		}
+	// A demographic is skipped unless BOTH its body and eyes instances exist. SetPedestrianMaterial
+	// has NO null guard - it pushes whatever it is given straight into SetVariableMaterial - so a
+	// null here does not "do nothing", it CLEARS the MakeHuman material and with it the VAT
+	// world-position-offset, and the agents lose their shape and size. The pair is tested together
+	// because it is pushed together.
+	const auto HasPair = [](const UMaterialInstanceDynamic* Body, const UMaterialInstanceDynamic* Eyes)
+	{
+		return Body != nullptr && Eyes != nullptr;
+	};
+
+	// One implementation, not two. This used to be a duplicated if/else - "subsystem cached" and
+	// "subsystem null, re-fetch and do the same again" - and the copies had already drifted: the
+	// second passed the ADULT female eyes instance for Female Elderly. It also dereferenced the
+	// re-fetch result without checking it. Resolving once through the null-checked helper removes
+	// both problems and the drift risk.
+	UMRS_RepresentationSubsystem* Subsystem = ResolveRepresentationSubsystem();
+	if (Subsystem == nullptr)
+	{
+		return;
+	}
+
+	// Adult
+	if (HasPair(CurrentSelectedMaleMaterialInstance, CurrentSelectedMaleEyesMaterialInstance))
+	{
+		Subsystem->SetPedestrianMaterial(CurrentSelectedMaleMaterialInstance, CurrentSelectedMaleEyesMaterialInstance, EPedestrianGender::Epg_Male, EAgeDemographic::Ead_Adult);
+	}
+	if (HasPair(CurrentSelectedFemaleMaterialInstance, CurrentSelectedFemaleEyesMaterialInstance))
+	{
+		Subsystem->SetPedestrianMaterial(CurrentSelectedFemaleMaterialInstance, CurrentSelectedFemaleEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Adult);
+	}
+
+	// Elderly
+	if (HasPair(CurrentSelectedMaleElderlyMaterialInstance, CurrentSelectedMaleElderlyEyesMaterialInstance))
+	{
+		Subsystem->SetPedestrianMaterial(CurrentSelectedMaleElderlyMaterialInstance, CurrentSelectedMaleElderlyEyesMaterialInstance, EPedestrianGender::Epg_Male, EAgeDemographic::Ead_Elderly);
+	}
+	if (HasPair(CurrentSelectedFemaleElderlyMaterialInstance, CurrentSelectedFemaleElderlyEyesMaterialInstance))
+	{
+		Subsystem->SetPedestrianMaterial(CurrentSelectedFemaleElderlyMaterialInstance, CurrentSelectedFemaleElderlyEyesMaterialInstance, EPedestrianGender::Epg_Female, EAgeDemographic::Ead_Elderly);
+	}
+
+	// when we do different gender for children we will need to set the gender parameter
+	if (HasPair(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance))
+	{
+		Subsystem->SetPedestrianMaterial(CurrentSelectedChildMaterialInstance, CurrentSelectedChildEyesMaterialInstance, EPedestrianGender::Epg_Default, EAgeDemographic::Ead_Child);
+	}
+
+	// Empty wheelchair - no gender, no age: one chair mesh serves every wheelchair agent. Both of
+	// these already early-return on null in the subsystem, so they need no guard here.
+	Subsystem->SetWheelchairMaterial(CurrentSelectedWheelchairMaterialInstance);
+	// Low-spec humans - one SimpleAgent material for all five demographics. The subsystem decides
+	// which set reaches the live component based on spec level, and stores both either way.
+	Subsystem->SetLowSpecPedestrianMaterial(CurrentSelectedLowSpecMaterialInstance);
 }

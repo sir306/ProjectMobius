@@ -154,6 +154,15 @@ protected:
 	 */
 	void ValidateMaterialArrayWiring();
 
+	/**
+	 * Resolve the representation subsystem, null-checked.
+	 *
+	 * Both companion conversion entry points are BlueprintCallable and can therefore be wired to
+	 * Event Pre Construct, which runs BEFORE NativeConstruct caches RepresentationSubsystem. Callers
+	 * must handle nullptr rather than dereference the result.
+	 */
+	UMRS_RepresentationSubsystem* ResolveRepresentationSubsystem();
+
 #pragma endregion
 
 #pragma region UI_COMPONENTS
