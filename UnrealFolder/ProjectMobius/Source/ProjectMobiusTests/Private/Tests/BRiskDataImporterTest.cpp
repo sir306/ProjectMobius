@@ -2384,6 +2384,7 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 	// and are distinguished by having far fewer tokens.
 	TSet<FString> Present;
 	TSet<int32> LoggedTimes;
+	TMap<FIntPoint, int32> LogPairHighest;
 	for (const FString& Line : Lines)
 	{
 		TArray<FString> Tok;
@@ -2408,6 +2409,13 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 		const int32 T = FCString::Atoi(*Tok[0]);
 		LoggedTimes.Add(T);
 		Present.Add(FString::Printf(TEXT("%d|%s|%s|%s"), T, *Tok[1], *Tok[2], *Tok[3]));
+
+		// Highest vent number the log ever uses for each pair. B-Risk numbers 1..N over ALL vents on
+		// the pair including ones that never open, so this is N and we can check our own count against
+		// it - the one cheap structural check that catches a numbering drift head-on.
+		int32& HighestForPair = LogPairHighest.FindOrAdd(
+			FIntPoint(FCString::Atoi(*Tok[1]), FCString::Atoi(*Tok[2])));
+		HighestForPair = FMath::Max(HighestForPair, FCString::Atoi(*Tok[3]));
 	}
 
 	if (!TestTrue(TEXT("The flow log should contain timesteps"), LoggedTimes.Num() > 0))
@@ -2415,16 +2423,49 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// B-Risk numbers vents per (from,to) PAIR, starting at 1, in the same order the .smv lists them -
-	// and it keeps the number of a vent that never opens, so a closed vent leaves a HOLE in the
-	// sequence. That hole is what identifies the window: room 1 -> exterior logs #1, #2 and #4.
+	// B-Risk numbers vents per room PAIR, starting at 1, in the same order the .smv lists them - and it
+	// keeps the number of a vent that never opens, so a closed vent leaves a HOLE in the sequence. That
+	// hole is what identifies the window: rooms 1/3 log #1, #2 and #4.
+	//
+	// The pair is UNORDERED in the log. B-Risk always prints it low room first, whichever way vents.xml
+	// declares it, so a vent whose fromroom exceeds its toroom is logged reversed. In the 12-room export
+	// vents 28 and 29 are declared 2->1 while the log calls that pair 1->2; keying on the raw declared
+	// order gives them a private counter that matches nothing, and it displaces vent 32 (declared 1->2)
+	// onto vent 28's number. Those three vents alone produced 119 false disagreements. Normalise both the
+	// counter and the lookup to (min,max) and the cross-check runs clean at every one of the 2025
+	// vent/time samples.
+	auto NormalisedPair = [](const FBRiskVentGeometry& V)
+	{
+		return FIntPoint(FMath::Min(V.FromRoomId, V.ToRoomId), FMath::Max(V.FromRoomId, V.ToRoomId));
+	};
+
 	TMap<FIntPoint, int32> PairCounter;
 	TArray<int32> VentNumber;
 	VentNumber.Reserve(Data.Vents.Num());
 	for (const FBRiskVentGeometry& Vent : Data.Vents)
 	{
-		int32& Next = PairCounter.FindOrAdd(FIntPoint(Vent.FromRoomId, Vent.ToRoomId));
+		int32& Next = PairCounter.FindOrAdd(NormalisedPair(Vent));
 		VentNumber.Add(++Next);
+	}
+
+	// Structural check on the numbering itself, run BEFORE the state comparison so a drift reports as
+	// "the oracle is broken" rather than as hundreds of state disagreements - which is exactly how the
+	// reversed-pair defect above first presented. Our count of vents on a pair must equal the highest
+	// number the log uses for it: 12-room-test-v2 gives rooms 1/2 -> 3, rooms 1/3 -> 4, rooms 2/3 -> 27.
+	for (const TPair<FIntPoint, int32>& Ours : PairCounter)
+	{
+		const int32* Logged = LogPairHighest.Find(Ours.Key);
+		if (!TestNotNull(
+			*FString::Printf(TEXT("The flow log knows about the room pair %d/%d that we place vents on"),
+				Ours.Key.X, Ours.Key.Y),
+			Logged))
+		{
+			continue;
+		}
+		TestEqual(
+			*FString::Printf(TEXT("Vent count on room pair %d/%d matches B-Risk's numbering"),
+				Ours.Key.X, Ours.Key.Y),
+			Ours.Value, *Logged);
 	}
 
 	TArray<int32> SortedTimes = LoggedTimes.Array();
@@ -2444,6 +2485,13 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 			// AFTER its open time up to and including its close time. Those are reporting-convention
 			// edges, not state disagreements, and asserting them would encode B-Risk's logging
 			// quirks rather than whether we know the vent is open.
+			//
+			// Do NOT narrow this to schedules with a positive open time. A permanently-open leakage
+			// path carries opentime = closetime = 0, so this same rule also drops it at t = 0 - and
+			// that is load-bearing, because B-Risk's t = 0 sample is an initialisation record that
+			// lists ONE vent (1156 records over 61 steps, of which t = 0 contributes a single zero-flow
+			// row). Comparing against it would fail 17 permanently-open vents that are not shut, merely
+			// not yet flowing. Of the 49 exclusions, 30 are door transitions and 19 are this.
 			const double Td = static_cast<double>(T);
 			if (Vent.bHasSchedule
 				&& (FMath::IsNearlyEqual(Td, Vent.OpenTimeSeconds, 0.5)
@@ -2453,9 +2501,10 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
+			const FIntPoint Pair = NormalisedPair(Vent);
 			const bool bWeSayOpen = Vent.IsOpenAtTime(Td);
 			const bool bBRiskSaysOpen = Present.Contains(FString::Printf(
-				TEXT("%d|%d|%d|%d"), T, Vent.FromRoomId, Vent.ToRoomId, VentNumber[VentIndex]));
+				TEXT("%d|%d|%d|%d"), T, Pair.X, Pair.Y, VentNumber[VentIndex]));
 			++Checked;
 			if (bWeSayOpen != bBRiskSaysOpen)
 			{
