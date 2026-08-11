@@ -507,6 +507,15 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def main() -> int:
+    # Line-buffer our own output. Python block-buffers stdout when it is redirected to a file or a
+    # CI log, while the cmake/MSBuild child processes we spawn write straight through -- so without
+    # this the script's own headings appear at the END of a captured log, after the build output
+    # they were supposed to introduce. Harmless interactively, deeply confusing in a saved log.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:  # Python < 3.7
+        pass
+
     args = parse_arguments()
     build_path = Path(args.build_dir)
     if not build_path.is_absolute():
