@@ -5,7 +5,7 @@ Load:
   iso-test-json-1-brisk.smv
 
 Matched agent data:
-  D:\NickWork\Mobius\ProjectMobius\TestData\iso-test-json-1.json
+  ../iso-test-json-1.json   (i.e. <repo>\TestData\iso-test-json-1.json)
 
 Hazard room:
   Origin: 0, -15, 0 metres
