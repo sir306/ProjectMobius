@@ -201,7 +201,21 @@ namespace IfcInGame
 				Test.TestEqual(TEXT("schema recorded from the file header (proves the IFC path ran, not Datasmith)"),
 				               Stats.SourceSchema, ExpectedSchema);
 				Test.TestFalse(TEXT("bIsDatasmithAsset is false for .ifc"), Builder->IsDatasmithAsset());
-				Test.TestEqual(TEXT("triangles in the source file"), Stats.TotalTriangles, ExpectedFileTriangles);
+				// A BAND, not an equality, and deliberately so. IFC++'s tessellation is not
+				// bit-reproducible: the triangle COUNT it produces is stable (16591 for the IFC4X3
+				// file over five runs), but how many of those come out geometrically degenerate is
+				// not (92..95), because carve orders its boolean through pointer-keyed containers.
+				// Since 2026-08-12 EmitTriangle drops the degenerate ones, so the shipped count
+				// inherits that jitter. No threshold value fixes it -- verified by moving the cutoff
+				// three orders of magnitude with no effect. Full measurement in IfcImportTest.cpp and
+				// HANDOFF_IFC_2026-08-11.md 16.11. ExpectedFileTriangles is the TOP of the band.
+				// The actual value goes in the message: TestTrue prints only "expected true", which on a
+				// numeric band is undiagnosable. Losing that cost a whole re-run on 2026-08-12.
+				Test.TestTrue(FString::Printf(
+					TEXT("triangles in the source file within the tessellation band [%d,%d] (actual %d)"),
+					ExpectedFileTriangles - 4, ExpectedFileTriangles, Stats.TotalTriangles),
+					Stats.TotalTriangles >= ExpectedFileTriangles - 4
+					&& Stats.TotalTriangles <= ExpectedFileTriangles);
 				Test.TestEqual(TEXT("renderable products after the allowlist"),
 				               Stats.RenderedProducts, ExpectedRenderedProducts);
 				Test.TestEqual(TEXT("ProcMesh triangles equal the triangles the IFC loader emitted"),
@@ -720,6 +734,33 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FIfcInGameIfc2x3Test::RunTest(const FString& /*Parameters*/)
 {
+	// KNOWN FAILURE UNDER -Rendered, ENGINE-SIDE, NOT A MOBIUS DEFECT. Documented rather than
+	// suppressed, the same way Mobius.InGame.TrajectoryHeatmap.T_PIX_2 is.
+	//
+	// The wireframe capture trips UE's own RDG validation from AddEditorPrimitivePass
+	// (PostProcessCompositeEditorPrimitives.cpp:478):
+	//   Ensure condition failed: Resource->bProduced || Resource->bExternal || Resource->bQueuedForUpload
+	//   Pass Composite <w>x<h> MSAA=4 has a read dependency on Composite.PrimitivesDepth, but it was
+	//   never written to.
+	//
+	// EVERY ASSERTION IN THIS TEST PASSES WHEN IT FIRES. The run is marked failed only because an
+	// ensure counts as an error. The same log carries the proof: "sections=56 tris=2988",
+	// "8 distinct colours, 56 live section MIDs, parent 'MI_RuntimeMeshBuilderOpaque'", and all three
+	// screenshots (Solid / Wireframe / Lit) written.
+	//
+	// It appeared on 2026-08-12 when the loader began applying Original Colours at load
+	// (RuntimeMeshBuilder.cpp). An opaque building takes a different branch through the editor-primitive
+	// composite than a fully translucent one, so that change REACHES this engine bug rather than causing
+	// it -- the ensure is raised entirely inside engine code with no Mobius frame on the stack.
+	//
+	// AddExpectedError was tried on 2026-08-12 and REVERTED: the ensure emits several separate error
+	// lines ("=== Handled ensure: ===", the condition, "Stack:", blanks), so suppressing it needs either
+	// a broad pattern that would hide real failures, or per-line expectations that break the moment the
+	// engine reworks the message. Worse, the ensure does NOT fire on the IFC4X3 test, so an expectation
+	// added there fails with "expected ... did not occur" and turns a passing test red.
+	//
+	// If this needs to go green: run without -Rendered (the screenshots self-skip), or take the
+	// wireframe capture without MSAA.
 	const FString Path = IfcInGame::Ifc2x3FixturePath();
 	if (!FPaths::FileExists(Path))
 	{
@@ -732,9 +773,10 @@ bool FIfcInGameIfc2x3Test::RunTest(const FString& /*Parameters*/)
 	State->FixturePath = Path;
 	State->Tag = TEXT("Ifc2x3");
 
-	// 44 products with geometry, 3092 triangles; minus 7 IfcOpeningElement = 37 products / 3008 tris.
+	// 44 products with geometry, 3072 triangles (was 3092 before the 2026-08-12 zero-area drop);
+	// minus 7 IfcOpeningElement = 37 renderable products.
 	// No IfcSpace in this file. Harness world AABB (9.400, 6.400, 4.050) m -> (940, 640, 405) cm.
-	ADD_LATENT_AUTOMATION_COMMAND(IfcInGame::FLoadIfcCommand(*this, State, TEXT("IFC2X3"), 3092, 37, 0, 120.0));
+	ADD_LATENT_AUTOMATION_COMMAND(IfcInGame::FLoadIfcCommand(*this, State, TEXT("IFC2X3"), 3072, 37, 0, 120.0));
 	ADD_LATENT_AUTOMATION_COMMAND(IfcInGame::FCheckBoundsCommand(*this, State, FVector(940.0, 640.0, 405.0), 1.0));
 	ADD_LATENT_AUTOMATION_COMMAND(IfcInGame::FCheckMaterialStylesCommand(*this, State));
 	ADD_LATENT_AUTOMATION_COMMAND(IfcInGame::FScreenshotBuildingCommand(*this, State));
@@ -766,13 +808,13 @@ bool FIfcInGameIfc4x3Test::RunTest(const FString& /*Parameters*/)
 	State->FixturePath = Path;
 	State->Tag = TEXT("Ifc4x3");
 
-	// 205 products / 16591 triangles; minus 36 IfcOpeningElement + 14 IfcSpace + 17 IfcSensor +
+	// 205 products / 16499 triangles; minus 36 IfcOpeningElement + 14 IfcSpace + 17 IfcSensor +
 	// 1 IfcGeographicElement (annotations off by owner policy) = 137 renderable products.
-	// 16591 rather than the harness's 16592: one degenerate triangle is dropped by IFC++'s export
-	// triangulator, see the note in IfcImportTest.cpp.
+	// 16499, down from 16591 on 2026-08-12: 92 zero-area collinear T-junction triangles are now
+	// dropped at emit rather than shipped with a (0,0,0) normal. See IfcImportTest.cpp.
 	const int32 ExpectedRenderable = MobiusIfc::bMobiusIfcRenderAnnotationClasses ? 155 : 137;
 	ADD_LATENT_AUTOMATION_COMMAND(IfcInGame::FLoadIfcCommand(
-		*this, State, TEXT("IFC4X3_ADD2"), 16591, ExpectedRenderable, 14, 180.0));
+		*this, State, TEXT("IFC4X3_ADD2"), 16499, ExpectedRenderable, 14, 180.0));
 
 	// The RENDERED hull is 2178.6 x 1237.2 x 470.5 cm, NOT the 4000 x 2200 x 480.5 cm whole-file AABB
 	// the harness reports. That is not a shortfall — it is attributed, measured per class through the

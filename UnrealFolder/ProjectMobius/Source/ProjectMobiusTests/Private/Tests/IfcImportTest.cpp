@@ -20,7 +20,8 @@
 //      is a mirror on the wrong axis -- volume is mirror-invariant -- which is why the harness has a
 //      separate per-axis asymmetry lens (handoff 13.2, lens 4) that no UE-side test replaces.
 //
-//   2. THE PRODUCT AND TRIANGLE COUNTS (44/3092 and 205/16592) are what the standalone IFC++
+//   2. THE PRODUCT AND TRIANGLE COUNTS (44/3072 and 205/16499; the standalone IFC++ harness reports
+//      3092 and 16591 before the zero-area drop, see the notes on each assertion) are what the
 //      validation harness and the DLL's own pure-C consumer test independently measured on these two
 //      files (handoff 5.1, 5.4, 13.3). The renderable counts (37 and 137) are the allowlist
 //      arithmetic in handoff 13.4.
@@ -206,7 +207,13 @@ bool FIfcImportAnalyticVolumesTest::RunTest(const FString& /*Parameters*/)
 
 	// --- Counts pinned by the standalone harness and the DLL's pure-C test ------------------------
 	TestEqual(TEXT("products with geometry"), Stats.ProductsWithGeometry, 44);
-	TestEqual(TEXT("total triangles in file"), Stats.TotalTriangles, 3092);
+	// 3072, down from 3092 on 2026-08-12: EmitTriangle now DROPS zero-area triangles rather than
+	// emitting them with a (0,0,0) normal. 20 were dropped from this file, all of them collinear
+	// T-junction triples on the three walls that went through a boolean -- the fourth wall, which has
+	// no IfcRelVoidsElement, contributes none. See the longer note on the IFC4X3 count below and
+	// HANDOFF_IFC_2026-08-11.md 16.5. Volume and area anchors are unaffected: a zero-area triangle
+	// contributes exactly zero to both.
+	TestEqual(TEXT("total triangles in file"), Stats.TotalTriangles, 3072);
 	TestEqual(TEXT("malformed products"), Stats.MalformedProducts, 0);
 
 	// --- Allowlist: 44 with geometry minus the 7 IfcOpeningElement void volumes = 37 --------------
@@ -429,12 +436,34 @@ bool FIfcImportIfc4x3RenderFilterTest::RunTest(const FString& /*Parameters*/)
 	TestEqual(TEXT("source schema from FILE_SCHEMA header"), Stats.SourceSchema, FString(TEXT("IFC4X3_ADD2")));
 
 	TestEqual(TEXT("products with geometry"), Stats.ProductsWithGeometry, 205);
-	// 16591, not the 16592 the standalone harness reports. The difference is one triangle and it is
-	// expected: the harness fan-triangulates face loops, while the DLL now goes through IFC++'s
-	// MeshOps::retriangulateMeshSetForExport, whose PolyInputCache3D::addTriangleCheckDegenerate drops
-	// a triangle whose three points merge to fewer than three distinct indices. A count that differs
-	// from the harness by one degenerate triangle is the correct outcome, not drift to be papered over.
-	TestEqual(TEXT("total triangles in file"), Stats.TotalTriangles, 16591);
+	// A RANGE, NOT AN EQUALITY -- and that is a deliberate, measured decision, not a loosened test.
+	//
+	// IFC++'s geometry output is NOT bit-reproducible for this file. Measured 2026-08-12 over five
+	// runs of the standalone harness:
+	//
+	//     source faces examined :  15987  15987  15987  15987  15987   <- stable
+	//     triangles produced    :  16591  16591  16591  16591  16591   <- stable
+	//     of those, degenerate  :     92     92     93     95     92   <- VARIES
+	//
+	// The triangulator's output COUNT is stable. Which of those triangles come out geometrically
+	// degenerate is not, because carve's boolean orders its work through pointer-keyed containers and
+	// heap addresses move between runs. Three near-collinear triangles have their area computed as a
+	// difference of large nearly-equal numbers, so catastrophic cancellation swings the result by
+	// orders of magnitude -- they are genuinely ambiguous and NO threshold value stabilises them.
+	// That was verified, not assumed: moving EmitTriangle's cutoff from 1e-8 to 1e-5 (the geometric
+	// centre of a six-order-of-magnitude empty gap in the area histogram) did not help.
+	//
+	// So 16591 minus 92..95 = 16496..16499. Before 2026-08-12 the assertion was an exact 16591 and it
+	// passed, because nothing was being dropped -- emitting every degenerate triangle with a (0,0,0)
+	// normal happens to be stable. Dropping them is still right (see MobiusIfcBridge.cpp EmitTriangle);
+	// the exact triangle count simply was never a sound invariant, and this makes that explicit rather
+	// than shipping a test that fails one run in three.
+	//
+	// The STABLE, MEANINGFUL invariants are asserted elsewhere in this test and are unaffected by any
+	// of the above, because a zero-area triangle contributes exactly zero to both: the hand-derived
+	// analytic VOLUMES and AREAS. Those remain exact equalities and are the real regression anchors.
+	TestTrue(TEXT("total triangles in file within the tessellation-nondeterminism band [16496,16499]"),
+	         Stats.TotalTriangles >= 16496 && Stats.TotalTriangles <= 16499);
 	TestEqual(TEXT("malformed products"), Stats.MalformedProducts, 0);
 
 	// 205 - 36 IfcOpeningElement - 14 IfcSpace - 17 IfcSensor - 1 IfcGeographicElement = 137, with

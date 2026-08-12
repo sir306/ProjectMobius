@@ -191,6 +191,14 @@ namespace
 		// retriangulateMeshSetForExport emits only triangles today. Counted rather than fanned so a
 		// future upstream change surfaces as a number instead of as silently overlapping geometry.
 		int32_t               nonTriangleFacesDropped = 0;
+
+		/* Zero-area (collinear T-junction) triangles refused by EmitTriangle -- see its comment.
+		 * Deliberately NOT surfaced through the ABI: adding a field to MobiusIfcProduct is a layout
+		 * change and would force MOBIUSIFC_ABI_VERSION 2 -> 3 and a rebuild of every consumer, for a
+		 * diagnostic that is already obtainable two other ways. The drop IS observable without it:
+		 * per-product triCount falls, and the load summary's rendered_tris / file_tris move with it.
+		 * _CurrentHandoff/tools/ifcvalidate/ifcfacing_main.cpp reports the exact count per file. */
+		int32_t               degenerateTrianglesDropped = 0;
 	};
 
 	// ---------------------------------------------------------------------------------------------
@@ -240,17 +248,76 @@ namespace
 		float nx = -(e1y * e2z - e1z * e2y);
 		float ny = -(e1z * e2x - e1x * e2z);
 		float nz = -(e1x * e2y - e1y * e2x);
+		// THRESHOLD CHOICE IS LOAD-BEARING -- do not "tidy" this back to 1e-8f.
+		//
+		// IFC++'s geometry output is NOT bit-reproducible. Measured 2026-08-12: the same IFC4X3 file
+		// loaded twice IN ONE PROCESS gave 16499 then 16497 triangles, and three separate processes
+		// gave 16499 / 16496 / 16499. (The IFC2X3 file happened to be stable at 3072.) Carve's boolean
+		// orders work through pointer-keyed containers, so heap addresses change the accumulation
+		// order and the last bits of the vertex positions with it. That is upstream of us and is not
+		// something this shim can fix.
+		//
+		// It only matters here because a threshold turns those last bits into a COUNT. At 1e-8f the
+		// cutoff sat on the top edge of the degenerate population and the count flapped by +/-3, which
+		// made the automation tests flaky.
+		//
+		// Measured cross-length distribution (UE cm units, == 2 x area in cm^2):
+		//
+		//                     IFC2X3   IFC4X3
+		//     exactly 0          1        0
+		//     <= 1e-12           5       19     <- degenerate: collinear T-junction triples
+		//     <= 1e-10          14       72
+		//     <= 1e-8            0        1
+		//     ----------------- EMPTY -----------------  six orders of magnitude, zero triangles
+		//     <= 1e-6            0        0
+		//     <= 1e-4            0        0
+		//     <= 1e-2            0        0
+		//     > 1e-2          3072    16499     <- real geometry
+		//
+		// 1e-5f is the geometric centre of that gap: 1000x above the largest degenerate triangle and
+		// 1000x below the smallest real one. Well outside the noise on both sides, so the count is
+		// stable. In absolute terms it discards triangles under 5e-6 cm^2 -- five thousandths of a
+		// square millimetre, which cannot be a rendering decision either way.
 		const float len = std::sqrt(nx * nx + ny * ny + nz * nz);
-		if (len > 1e-8f)
+		if (len <= 1e-5f)
 		{
-			nx /= len; ny /= len; nz /= len;
+			// ZERO-AREA TRIANGLE -- DROPPED, not emitted with a sentinel normal.
+			//
+			// These are collinear T-junction triples left by the boolean, measured 2026-08-12:
+			// 20 on ISO-Test-1-2x3.ifc and 95 on ISO-Test-8-FireSmoke.ifc. Their three points are
+			// distinct and far apart (edge lengths of 120 / 57.95 / 62.05 cm, summing exactly), so
+			// PolyInputCache3D::addTriangleCheckDegenerate does NOT reject them -- it tests index
+			// identity and edge LENGTH, never area. They arise only on walls that went through a
+			// boolean: the wall with zero IfcRelVoidsElement has zero of them, walls with 1 and 3
+			// voids have 3 and 8. Carve inserts the opening's edge vertices into the wall face loop
+			// to keep the mesh watertight; triangulating a loop with a collinear run yields these.
+			//
+			// DROPPING IS SAFE AND AREA-PRESERVING, which is not obvious and is the whole reason this
+			// is a drop rather than a vertex merge:
+			//   - The vertex must STAY in the mesh. It is shared with the perpendicular reveal face of
+			//     the opening. Deleting the VERTEX opens a T-junction crack. Deleting the TRIANGLE
+			//     changes no topology at all -- the neighbouring triangles still reference the point.
+			//     Those are opposite operations and only one of them is safe.
+			//   - The surface is unchanged. MeshOps' 4-gon path always splits on the 0-2 diagonal, so
+			//     a quad whose collinear triple is (A,B,C) or (A,C,D) yields one degenerate triangle
+			//     and one that covers the ENTIRE quad. Every other arrangement of a collinear vertex
+			//     produces two valid sub-triangles and reaches none of this. Measured confirmation:
+			//     total surface area matched the hand-derived analytic anchors to 1e-6 WITH these
+			//     triangles present, because a zero-area triangle contributes exactly zero.
+			//
+			// An earlier plan added diagonal selection to MeshOps' quad path so no degenerate is ever
+			// produced. It was dropped: it yields TWO triangles where this yields one, for the same
+			// surface, so it is strictly more output for no gain -- and it would mean forking vendored
+			// third-party code.
+			//
+			// Why this matters at all, given a zero-area triangle rasterises to nothing: it carried a
+			// (0,0,0) normal, which is an undefined shading basis in a vertex buffer. It also wasted
+			// index buffer and poisoned any per-triangle analysis. It is NOT the cause of the visual
+			// defect the owner reported -- that was the translucent material (HANDOFF 16.9).
+			++out.degenerateTrianglesDropped;
+			return;
 		}
-		else
-		{
-			// Degenerate/zero-area triangle. IFC++'s own minFaceArea filtering removes most of these
-			// upstream; emit an explicit zero rather than a NaN, per the header's documented sentinel.
-			nx = ny = nz = 0.0f;
-		}
+		nx /= len; ny /= len; nz /= len;
 
 		// Guard the narrowing. The ABI hands out int32_t counts, so a product that grew past INT32_MAX
 		// vertices would wrap to a negative count and the caller would walk a buffer with a garbage

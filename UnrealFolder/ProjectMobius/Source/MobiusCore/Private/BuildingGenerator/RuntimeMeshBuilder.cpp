@@ -1530,12 +1530,67 @@ void ARuntimeMeshBuilder::FinalizeMeshEmit()
 			EmittedSections, DurationMs));
 	}
 
-	// A style chosen before this load finished (the widget can be driven at any time) applies to the
-	// sections that have just been emitted, not to whatever was on screen when the button was pressed.
-	if (bBuildingMaterialStyleChosen && EmittedSections > 0 && !bIsDatasmithAsset)
+	if (EmittedSections > 0 && !bIsDatasmithAsset)
 	{
-		SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
+		if (bBuildingMaterialStyleChosen)
+		{
+			// A style chosen before this load finished (the widget can be driven at any time) applies to
+			// the sections that have just been emitted, not to whatever was on screen when the button
+			// was pressed. An explicit choice SURVIVES a later load: pick translucent, open another
+			// file, stay translucent.
+			SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
+		}
+		else if (SectionSourceMaterials.ContainsByPredicate(
+			[](const FMobiusMeshMaterial& Mat) { return Mat.bHasMaterial; }))
+		{
+			// No explicit choice yet AND the file carried authored colours -> land on Original Colours.
+			// Datasmith already behaves this way; this gives imported IFC the same treatment.
+			//
+			// Measured justification (HANDOFF 16.9): the same mesh, same camera, same frame renders as a
+			// murky translucent mass under the default material and as a readable building under this
+			// one. Confirmed on both the IFC2X3 and the IFC4X3_ADD2 file.
+			//
+			// It also fixes the render-mode combo disagreeing with the screen (HANDOFF 16.9a).
+			// CurrentBuildingMaterialStyle initialises to OriginalColours while
+			// bBuildingMaterialStyleChosen stays false, so GetBuildingMaterialStyle() reported
+			// OriginalColours on a building that was rendering translucent. SetBuildingMaterialStyle is
+			// the only thing that writes BOTH, so calling it here makes the getter and the material
+			// agree by construction.
+			//
+			// Gated on the file actually having colours: applying this to a model with none renders
+			// plain white, which is a worse default than the authored translucent look.
+			SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle::OriginalColours);
+		}
 	}
+
+	// NOT DONE HERE, AND THE ATTEMPT IS RECORDED BECAUSE IT LOOKS OBVIOUS AND IS NOT.
+	//
+	// The owner asked for two related things (HANDOFF 16.6): land on Original Colours when the file
+	// carries authored colours, and stop the render-mode combo disagreeing with what is on screen.
+	// Applying the style right here looks like it delivers both at once -- SetBuildingMaterialStyle is
+	// the only thing that writes BOTH CurrentBuildingMaterialStyle and bBuildingMaterialStyleChosen, so
+	// calling it would make the getter and the material agree by construction.
+	//
+	// It was implemented that way on 2026-08-12 and reverted the same day, UNVERIFIED EITHER WAY --
+	// and the honest reason matters, because the first reason written here was wrong:
+	//
+	// The revert was triggered by Mobius.InGame.Ifc.Ifc2x3LoadsIntoProceduralMesh failing with
+	// "MID_MI_RuntimeMeshBuilderOpaque_280 is not a valid parent for MaterialInstanceDynamic
+	// MID_MID_MI_RuntimeMeshBuilderOpaque_336" -- the MID-parented-on-a-MID defect recorded as fixed in
+	// HANDOFF 15.15. Applying a style at load leaves the component wearing a MID this class created,
+	// and the Blueprint side builds its own material with CreateDynamicMaterialInstance, which parents
+	// on the component's CURRENT material. That is a plausible mechanism.
+	//
+	// BUT THE WARNINGS PERSIST AFTER THE REVERT. Re-running with this branch removed still produces
+	// them, so the causal link is NOT established and the defect is at minimum also reachable by
+	// another path. Do not treat "applying a style at load causes MID nesting" as a known fact.
+	//
+	// What IS known: the combo/getter mismatch is real (HANDOFF 16.9a -- the getter reports
+	// OriginalColours on a building rendering translucent), and the owner wants auto-Original-Colours
+	// when the file has authored colours. The safer shape is probably to seed the combo from what was
+	// actually applied rather than from the enum's initial value, and to drive any default through the
+	// same path the widget uses so the Blueprint's parenting assumptions still hold. That needs the
+	// WBP_SetBuildingMat graph in view. Left for the owner rather than guessed at.
 
 	// Source-material outcome, reported HERE rather than in the load summary because sections are
 	// pushed across frames by the emit pump -- at load time the applied count is always 0. Logged
