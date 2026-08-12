@@ -311,6 +311,16 @@ install_manifest.txt
 /UnrealFolder/ProjectMobius/Source/ThirdParty/MobiusIfcLibrary/install/
 
 
+# =====================================================
+# Private test-data scripts
+# =====================================================
+# Copies of Scripts/PIE-*.ps1 pointed at the maintainer's private Mobius_InternalData datasets.
+# The committed scripts in Scripts/ use the repository's own TestData folder so they run on a fresh
+# clone; these exist so the private-dataset workflow keeps working without publishing dataset names
+# or a machine-specific drive layout. See Scripts/InternalTesting/README.md.
+/UnrealFolder/ProjectMobius/Scripts/InternalTesting/
+
+
 # Build and binary outputs
 build/
 executable/

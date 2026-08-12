@@ -5,13 +5,24 @@
 .DESCRIPTION
     The full positive case. All three files load and every field populates.
 
-        -MobiusGeometry     ISO-Test-8-FireSmoke-3DView-{3D}.udatasmith
-        -MobiusPedestrian   ISO-Test-8-FireSmoke-ok-no-fire.json
-        -MobiusBRisk        basemodel_default.smv
+        -MobiusGeometry     ISO-Test-1-3DView.fbx
+        -MobiusPedestrian   iso-test-json-1.json
+        -MobiusBRisk        iso-test-json-1-brisk\iso-test-json-1-brisk.smv
 
-    Note what the geometry path exercises: the folder name contains a SPACE ("12 RoomTest") and
-    the filename contains CURLY BRACES ("{3D}"). Both are the usual reasons a caller's argument
-    building breaks, so a pass here is meaningful.
+    Files come from the repository's own TestData folder, so this runs on a fresh clone with no
+    setup. Pass -DataRoot to point it somewhere else.
+
+    WHAT THIS SAMPLE DOES AND DOES NOT COVER. iso-test-json-1-brisk is the committed single-room
+    ISO scenario (see its README.txt): a .smv plus the matching _zone.csv, which is enough to
+    exercise the B-RISK load path and the smoke/health calculation. It does NOT ship B-RISK's
+    input1.xml / output1.xml, so the imported-tenability path is not exercised here, and being one
+    room it says nothing about multi-room vent flow.
+
+    Two things this test used to cover and no longer does, because no committed file has the
+    shape: a geometry folder containing a SPACE, and a filename containing CURLY BRACES
+    ("{3D}", as Revit/Datasmith exports them). Both are classic reasons a caller's argument
+    building breaks. Those remain covered by the maintainer's private variant under
+    Scripts\InternalTesting\, which is not part of this repository.
 
     Right-click > Run with PowerShell, or run it from a prompt. No arguments needed.
 
@@ -48,11 +59,12 @@ if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
 Invoke-MobiusPieLaunch `
     -ScriptDir     $here `
     -Title         'TEST 2 of 3 - ALL THREE VALID (expect everything to load)' `
-    -RelGeometry   '12 RoomTest\Exported-model\ISO-Test-8-FireSmoke-3DView-{3D}.udatasmith' `
-    -RelPedestrian '12 RoomTest\ISO-Revit-Simulex-Tests\ISO-Test-8-FireSmoke-ok-no-fire.json' `
-    -RelBRisk      '12-room-test-v2\basemodel_default\basemodel_default.smv' `
+    -DataRootName  'TestData' `
+    -RelGeometry   'ISO-Test-1-3DView.fbx' `
+    -RelPedestrian 'iso-test-json-1.json' `
+    -RelBRisk      'iso-test-json-1-brisk\iso-test-json-1-brisk.smv' `
     -Expectation   ("All three File-tab fields show their filenames.`n" +
-                    "Building geometry renders; agents spawn; B-RISK room/vent wireframes appear.`n" +
+                    "Building geometry renders; agents spawn; the B-RISK hazard room appears.`n" +
                     "Log shows three 'dispatched' lines under LogMobiusPreload and no rejections.") `
     -Editor:$Editor -DryRun:$DryRun -NoPause:$NoPause `
     -EnginePath $EnginePath -DataRoot $DataRoot -ExtraArgs $ExtraArgs

@@ -9,6 +9,9 @@
         -MobiusPedestrian   <- an .fbx   (pedestrian takes .json .h5)
         -MobiusBRisk        <- a .json   (B-RISK takes .smv)
 
+    Files come from the repository's own TestData folder, so this runs on a fresh clone with no
+    setup. Pass -DataRoot to point it somewhere else.
+
     So this proves the REJECTION path, not the load path: the application should refuse all three,
     raise a "Startup File Load / Unsupported file type" window per rejection naming the supplied
     file and the accepted types, and load nothing. The three file fields must stay on
@@ -52,9 +55,10 @@ if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
 Invoke-MobiusPieLaunch `
     -ScriptDir     $here `
     -Title         'TEST 1 of 3 - INVALID FILE TYPES (expect three rejections, nothing loaded)' `
-    -RelGeometry   'TechSchoolTest\TechnicalSchool_1000.json' `
-    -RelPedestrian 'TechSchoolTest\Technical-School-For-Lab-3D.fbx' `
-    -RelBRisk      'TechSchoolTest\TechnicalSchool_1000.json' `
+    -DataRootName  'TestData' `
+    -RelGeometry   'iso-test-json-1.json' `
+    -RelPedestrian 'ISO-Test-1-3DView.fbx' `
+    -RelBRisk      'iso-test-json-1.json' `
     -SkipTypeValidation `
     -Expectation   ("Three error windows titled 'Startup File Load', one per argument, each naming`n" +
                     "the supplied file and the accepted extensions.`n" +

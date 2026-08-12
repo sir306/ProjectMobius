@@ -6,8 +6,14 @@
     Proves the three arguments are INDEPENDENT: -MobiusBRisk is simply not passed, which is not an
     error and does not affect the other two.
 
-        -MobiusGeometry     Technical_School_R2027-3DView-{3D}.udatasmith
-        -MobiusPedestrian   TechnicalSchool_1000.json
+        -MobiusGeometry     ISO-Test-1-2x3.ifc
+        -MobiusPedestrian   iso-test-json-1.json
+
+    Geometry is deliberately the .ifc rather than the .fbx used by test 2, so the two positive
+    tests between them cover both a conventional mesh import and the newer runtime IFC path.
+
+    Files come from the repository's own TestData folder, so this runs on a fresh clone with no
+    setup. Pass -DataRoot to point it somewhere else.
 
     The Smoke (B-RISK) field is expected to stay on "Click Browse to choose file" - that is the
     correct result here, not a failure.
@@ -47,8 +53,9 @@ if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
 Invoke-MobiusPieLaunch `
     -ScriptDir     $here `
     -Title         'TEST 3 of 3 - GEOMETRY + AGENTS ONLY (B-RISK deliberately omitted)' `
-    -RelGeometry   'TechSchoolTest\RevitTwinmotionExpt\Technical_School_R2027-3DView-{3D}.udatasmith' `
-    -RelPedestrian 'TechSchoolTest\TechnicalSchool_1000.json' `
+    -DataRootName  'TestData' `
+    -RelGeometry   'ISO-Test-1-2x3.ifc' `
+    -RelPedestrian 'iso-test-json-1.json' `
     -Expectation   ("Geometry and Pedestrian vectors fields show their filenames.`n" +
                     "Smoke (B-RISK) stays on 'Click Browse to choose file' - expected.`n" +
                     "Log shows two 'dispatched' lines and BRisk='<none>' in the request line.") `

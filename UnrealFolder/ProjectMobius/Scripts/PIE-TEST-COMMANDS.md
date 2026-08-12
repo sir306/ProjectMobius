@@ -22,9 +22,9 @@ No arguments needed. The console is held open at the end so you can read the out
 Every path is resolved from the script's own folder, so this works on any machine with the same
 tree layout — nothing is hard-coded to one drive. It finds:
 
-- the project at `..\ProjectMobius.uproject`
+- the project by walking up to `ProjectMobius.uproject`
 - the engine from the project's `EngineAssociation` (registry, then `C:\Program Files\Epic Games\UE_<ver>`)
-- the data at `<workspace>\Mobius_InternalData`
+- the test data at `<repo>\TestData`, the samples committed alongside the source
 
 Override any of them with `-EnginePath` / `-DataRoot` if your layout differs.
 
@@ -55,17 +55,21 @@ accepted, and whether the loader for it was available.
 
 ### Getting the commands for *your* machine
 
-Rather than editing paths by hand after moving machines, let the script print them:
+These commands need absolute paths, and the right ones depend on where you cloned the repository.
+Rather than editing them by hand, let the script print them:
 
 ```
 .\PIE-2-AllValid.ps1 -DryRun
 ```
 
-It emits the exact console commands with absolute paths correct for wherever the tree currently
-lives, ready to copy. That is the reliable way to get these after taking the work home.
+It emits the exact console commands, absolute and correct for wherever the tree currently lives,
+ready to copy. That is the reliable way to get them on any machine.
 
-The literal commands below are correct for a workspace at `D:\NickWork\Mobius`. On another machine
-replace that prefix with your workspace root — or just use `-DryRun` above.
+Below, `<repo>` stands for your clone of this repository — the folder containing `TestData`,
+`UnrealFolder` and `docs`. Substitute it, or use `-DryRun` above and skip the substitution.
+
+All three configurations use the repository's own committed `TestData` folder, so they work on a
+fresh clone with nothing else set up.
 
 ### 1 — invalid file types (negative test)
 
@@ -75,35 +79,48 @@ three fields still reading `Click Browse to choose file`, and three
 `rejected (unsupported file type)` lines in the log with **no** `dispatched` line.
 
 ```
-Mobius.Load.Geometry D:\NickWork\Mobius\Mobius_InternalData\TechSchoolTest\TechnicalSchool_1000.json
-Mobius.Load.Pedestrian D:\NickWork\Mobius\Mobius_InternalData\TechSchoolTest\Technical-School-For-Lab-3D.fbx
-Mobius.Load.BRisk D:\NickWork\Mobius\Mobius_InternalData\TechSchoolTest\TechnicalSchool_1000.json
+Mobius.Load.Geometry <repo>\TestData\iso-test-json-1.json
+Mobius.Load.Pedestrian <repo>\TestData\ISO-Test-1-3DView.fbx
+Mobius.Load.BRisk <repo>\TestData\iso-test-json-1.json
 Mobius.Load.Status
 ```
 
 ### 2 — all three valid
 
 ```
-Mobius.Load.Geometry D:\NickWork\Mobius\Mobius_InternalData\12 RoomTest\Exported-model\ISO-Test-8-FireSmoke-3DView-{3D}.udatasmith
-Mobius.Load.Pedestrian D:\NickWork\Mobius\Mobius_InternalData\12 RoomTest\ISO-Revit-Simulex-Tests\ISO-Test-8-FireSmoke-ok-no-fire.json
-Mobius.Load.BRisk D:\NickWork\Mobius\Mobius_InternalData\12-room-test-v2\basemodel_default\basemodel_default.smv
+Mobius.Load.Geometry <repo>\TestData\ISO-Test-1-3DView.fbx
+Mobius.Load.Pedestrian <repo>\TestData\iso-test-json-1.json
+Mobius.Load.BRisk <repo>\TestData\iso-test-json-1-brisk\iso-test-json-1-brisk.smv
 Mobius.Load.Status
 ```
 
-This one is worth keeping as the standing smoke test: the geometry path contains both a space
-(`12 RoomTest`) and curly braces (`{3D}`), which are the two things that break naive argument
-building.
+The B-RISK file is the committed single-room ISO scenario described in
+`TestData/iso-test-json-1-brisk/README.txt`. It ships the `.smv` and its `_zone.csv`, which is
+enough to exercise the load path and the smoke/health calculation, but not B-RISK's
+`input1.xml` / `output1.xml`, so imported tenability is not covered here — and being one room it
+says nothing about multi-room vent flow.
 
 ### 3 — geometry + agents only
 
 ```
-Mobius.Load.Geometry D:\NickWork\Mobius\Mobius_InternalData\TechSchoolTest\RevitTwinmotionExpt\Technical_School_R2027-3DView-{3D}.udatasmith
-Mobius.Load.Pedestrian D:\NickWork\Mobius\Mobius_InternalData\TechSchoolTest\TechnicalSchool_1000.json
+Mobius.Load.Geometry <repo>\TestData\ISO-Test-1-2x3.ifc
+Mobius.Load.Pedestrian <repo>\TestData\iso-test-json-1.json
 Mobius.Load.Status
 ```
 
+Geometry here is the `.ifc` rather than test 2's `.fbx`, so the two positive configurations
+between them cover a conventional mesh import and the newer runtime IFC path.
+
 B-RISK is deliberately absent. Its field staying on `Click Browse to choose file` is the pass
 condition, not a fault.
+
+### Paths with spaces or braces
+
+Not covered by the files above, because no committed test file has that shape: a folder name
+containing a **space**, and a filename containing **curly braces** (`{3D}`, as Revit and Datasmith
+export them). Both are classic reasons naive argument building breaks. If you have such a file,
+it is worth running one of these against it — quoting the whole path — before trusting an
+integration.
 
 ## Re-issuing the same path
 

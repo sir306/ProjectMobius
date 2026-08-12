@@ -5,13 +5,22 @@
     Invoke-MobiusPieLaunch, so the engine/data resolution and reporting live in exactly one place
     and cannot drift between the three test configurations.
 
-    EVERYTHING IS RESOLVED RELATIVE TO THIS FOLDER. No absolute path from the machine this was
-    written on appears anywhere, so the tree can be copied to another machine or another drive and
-    the scripts keep working. Layout assumed:
+    EVERYTHING IS RESOLVED RELATIVE TO THE CALLING SCRIPT. No absolute path from the machine this
+    was written on appears anywhere, so the tree can be copied to another machine or another drive
+    and the scripts keep working. Layout assumed:
 
-        <workspace>\Mobius_InternalData\                        test data
-        <workspace>\ProjectMobius\UnrealFolder\ProjectMobius\   the .uproject
-        <workspace>\ProjectMobius\UnrealFolder\ProjectMobius\Scripts\   these scripts
+        <workspace>\ProjectMobius\                                       the repo
+        <workspace>\ProjectMobius\TestData\                              shared test data (committed)
+        <workspace>\ProjectMobius\UnrealFolder\ProjectMobius\            the .uproject
+        <workspace>\ProjectMobius\UnrealFolder\ProjectMobius\Scripts\    these scripts
+        <workspace>\Mobius_InternalData\                                 private test data (NOT committed)
+
+    TWO DATA ROOTS, chosen by name rather than by search order. The committed PIE-*.ps1 scripts
+    beside this file ask for 'TestData' and therefore run on any fresh clone. A maintainer with the
+    larger private datasets keeps their own copies under Scripts\InternalTesting\ (gitignored) which
+    ask for 'Mobius_InternalData'. Picking by name, not by "first one that exists", is deliberate:
+    an order-based search would silently hand the committed scripts the private root on a machine
+    that has both, and their relative paths would then resolve to nothing.
 #>
 
 Set-StrictMode -Off
@@ -29,25 +38,47 @@ $script:MobiusSlotExtensions = @{
 
 function Get-MobiusProjectRoot {
     param([Parameter(Mandatory)][string] $ScriptDir)
-    # Scripts\ sits directly under the .uproject folder.
-    $candidate = Join-Path (Split-Path -Parent $ScriptDir) 'ProjectMobius.uproject'
-    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    # WALK UP rather than assuming exactly one level. Scripts\ normally sits directly under the
+    # .uproject folder, but the private copies live one level deeper in Scripts\InternalTesting\,
+    # and a fixed Split-Path would quietly resolve to the wrong folder for those.
+    $dir = $ScriptDir
+    for ($i = 0; $i -lt 6 -and $dir; $i++) {
+        $candidate = Join-Path $dir 'ProjectMobius.uproject'
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+        $dir = Split-Path -Parent $dir
+    }
     return $null
 }
 
 function Get-MobiusDataRoot {
-    param([Parameter(Mandatory)][string] $ScriptDir)
-
-    # Scripts -> ProjectMobius(uproject) -> UnrealFolder -> ProjectMobius(repo) -> workspace
-    $uprojectDir = Split-Path -Parent $ScriptDir
-    $workspace   = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $uprojectDir))
-
-    # Ordered by likelihood, not preference: the first hit wins.
-    $candidates = @(
-        (Join-Path $workspace 'Mobius_InternalData')                                   # current home
-        (Join-Path $uprojectDir 'Mobius_InternalData')                                 # inside the project
-        (Join-Path $workspace 'Packaged\Development\Windows\ProjectMobius\Mobius_InternalData')
+    param(
+        [Parameter(Mandatory)][string] $ScriptDir,
+        # 'TestData'            -> the repo's own committed samples; works on a fresh clone.
+        # 'Mobius_InternalData' -> the maintainer's private datasets, never committed.
+        [string] $RootName = 'TestData'
     )
+
+    $uproject = Get-MobiusProjectRoot -ScriptDir $ScriptDir
+    if (-not $uproject) { return $null }
+
+    # <uproject dir> -> UnrealFolder -> ProjectMobius (repo root) -> workspace
+    $uprojectDir = Split-Path -Parent $uproject
+    $repoRoot    = Split-Path -Parent (Split-Path -Parent $uprojectDir)
+    $workspace   = Split-Path -Parent $repoRoot
+
+    if ($RootName -eq 'TestData') {
+        # Committed alongside the source, so this is the one a contributor will have.
+        $candidates = @( (Join-Path $repoRoot 'TestData') )
+    }
+    else {
+        # Ordered by likelihood, not preference: the first hit wins.
+        $candidates = @(
+            (Join-Path $workspace 'Mobius_InternalData')                                   # current home
+            (Join-Path $uprojectDir 'Mobius_InternalData')                                 # inside the project
+            (Join-Path $workspace 'Packaged\Development\Windows\ProjectMobius\Mobius_InternalData')
+        )
+    }
+
     foreach ($c in $candidates) {
         if (Test-Path -LiteralPath $c -PathType Container) { return $c }
     }
@@ -116,6 +147,9 @@ function Invoke-MobiusPieLaunch {
         [string]   $RelBRisk,
         [string]   $Expectation,
         [switch]   $SkipTypeValidation,
+        # Which data root the relative paths above are written against. See Get-MobiusDataRoot.
+        [ValidateSet('TestData', 'Mobius_InternalData')]
+        [string]   $DataRootName = 'TestData',
         # Caller-facing switches, forwarded verbatim from each PIE-*.ps1.
         [switch]   $Editor,
         [switch]   $DryRun,
@@ -128,16 +162,23 @@ function Invoke-MobiusPieLaunch {
     $uproject = Get-MobiusProjectRoot -ScriptDir $ScriptDir
     if (-not $uproject) {
         Write-Host ''
-        Write-Host 'Could not find ProjectMobius.uproject one level above this script.' -ForegroundColor Red
-        Write-Host "Keep these scripts in <project>\Scripts\.  Script folder: $ScriptDir"
+        Write-Host 'Could not find ProjectMobius.uproject above this script.' -ForegroundColor Red
+        Write-Host "Keep these scripts in <project>\Scripts\ (or a folder under it).  Script folder: $ScriptDir"
         Complete-MobiusPieLaunch -NoPause:$NoPause -ExitCode 1
     }
 
-    if (-not $DataRoot) { $DataRoot = Get-MobiusDataRoot -ScriptDir $ScriptDir }
+    if (-not $DataRoot) { $DataRoot = Get-MobiusDataRoot -ScriptDir $ScriptDir -RootName $DataRootName }
     if (-not $DataRoot) {
         Write-Host ''
-        Write-Host 'Could not find Mobius_InternalData.' -ForegroundColor Red
-        Write-Host 'Expected it beside the repo, i.e. <workspace>\Mobius_InternalData, or pass -DataRoot.'
+        Write-Host "Could not find the '$DataRootName' data root." -ForegroundColor Red
+        if ($DataRootName -eq 'TestData') {
+            Write-Host 'Expected it at the repository root, i.e. <repo>\TestData. Pass -DataRoot to override.'
+        }
+        else {
+            Write-Host 'Expected it beside the repo, i.e. <workspace>\Mobius_InternalData, or pass -DataRoot.'
+            Write-Host 'That folder is private and is not part of the repository; the committed'
+            Write-Host 'PIE-*.ps1 scripts in the parent folder use <repo>\TestData instead.'
+        }
         Complete-MobiusPieLaunch -NoPause:$NoPause -ExitCode 1
     }
 
