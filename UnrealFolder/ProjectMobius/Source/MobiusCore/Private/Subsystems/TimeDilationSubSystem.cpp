@@ -79,7 +79,21 @@ void UTimeDilationSubSystem::Initialize(FSubsystemCollectionBase& Collection)
 
 		// When a file is changed we want to pause the simulation and reset
 		GameInst->OnPedestrianVectorFileUpdated.AddDynamic(this, &UTimeDilationSubSystem::FileChanging);
-		
+
+		// A new B-RISK scenario gets the SAME reset, for the same reason plus one specific to tenability.
+		//
+		// Loading one bumps ScenarioGeneration, which makes the precomputed agent timelines stale; while
+		// they rebuild, the health processor writes the no-data state to EVERY entity, including
+		// DeathTimeSeconds = -1. That de-latches the failure-pose freeze in PedestrianMovementProcessor,
+		// so any agent whose trajectory has already ended at the current playhead stops being rendered -
+		// and the health processor skips unrendered entities, so when the rebuild lands there is nothing
+		// left to re-arm DeathTimeSeconds. Projection needs rendering, rendering needs the projection: the
+		// agent stays invisible with no fail marker until a scrub happens to put it back on-dataset.
+		// Resetting to t=0 breaks that cycle by construction - at 0 every agent is present, so the
+		// rebuild's first projected frame re-arms everything - and it matches what the agent-file path
+		// already does, so both loads leave the app in the same visible state.
+		GameInst->OnBRiskFileChanged.AddDynamic(this, &UTimeDilationSubSystem::FileChanging);
+
 		// log that it has binded
 		UE_LOG(LogTemp, Warning, TEXT("Time Dilation Scale Factor Changed Delegate Binded"));
 	}
@@ -87,6 +101,7 @@ void UTimeDilationSubSystem::Initialize(FSubsystemCollectionBase& Collection)
 	
 	// Get the Time Dilation from the ProjectMobius Game Instance
 	GetUpdatedTimeDilation();
+	bLastBroadcastPauseState = bIsPaused;
 }
 
 void UTimeDilationSubSystem::Deinitialize()
@@ -98,6 +113,7 @@ void UTimeDilationSubSystem::Deinitialize()
 		// UnBind the required Game Instance Delegates
 		GameInst->OnTimeDilationScaleFactorChanged.RemoveDynamic(this, &UTimeDilationSubSystem::GetUpdatedTimeDilation);
 		GameInst->OnPedestrianVectorFileUpdated.RemoveDynamic(this, &UTimeDilationSubSystem::FileChanging);
+		GameInst->OnBRiskFileChanged.RemoveDynamic(this, &UTimeDilationSubSystem::FileChanging);
 	}
 
 	// If we have other subsystems that we depend on we can deinitialize them here after super
@@ -107,6 +123,7 @@ void UTimeDilationSubSystem::Deinitialize()
 void UTimeDilationSubSystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	BroadcastPauseStateIfChanged();
 	
 	// Check if we are paused
 	// if (!UGameplayStatics::IsGamePaused(GetWorld()) || !bIsPaused)
@@ -116,6 +133,7 @@ void UTimeDilationSubSystem::Tick(float DeltaTime)
 	// }
 	// Update the simulation time
 	UpdateSimulationTime();
+	BroadcastPauseStateIfChanged();
 }
 
 void UTimeDilationSubSystem::CalculateCurrentTimeStep(float SimCurrentTime)
@@ -136,7 +154,7 @@ void UTimeDilationSubSystem::CalculateCurrentTimeStep(float SimCurrentTime)
 	if (CurrentTimeStep >= MaxTimeSteps) // we only pause as if this occurs and not unpause as other system will have to handle this
 	{
 		// Pause the simulation
-		bIsPaused = true;
+		SetSimulationPaused(true);
 	}
 }
 
@@ -146,6 +164,25 @@ void UTimeDilationSubSystem::GetUpdatedTimeDilation()
 	if (GetWorld())
 	{
 		TimeDialation = IProjectMobiusInterface::GetMobiusGameInstanceSimulationTimeDilatationFactor(GetWorld());
+
+		// RE-BASE THE CLOCK, or a speed change rewrites the PAST (owner-reported 2026-08-11: raise the speed,
+		// then lower it, and the current time goes NEGATIVE).
+		//
+		// GetGameElapsedTime() derives sim time as an ABSOLUTE product, `wallclock * TimeDialation`, not as an
+		// integral of speed over time — so the factor applies retroactively to every second already played.
+		// Run 60 s at 5x and CurrentSimulationTime is ~300; drop to 2x and the product becomes ~120, so
+		// `ElapsedTime = 120 - 300 = -180` and UpdateSimulationTime()'s `CurrentSimulationTime += NewTime`
+		// drives the clock backwards, through zero.
+		//
+		// AmountOfTimePaused is already the offset term that absorbs discontinuities (the paused branch below
+		// sets it with this exact expression). Re-basing it here makes the NEXT sample come out at the sim
+		// time we are already at, so the new factor governs only time from now on. Rate changes, position
+		// does not — which is what a playback-speed control means.
+		if (const UWorld* World = GetWorld())
+		{
+			const float RealtimeSecondsAtNewRate = UGameplayStatics::GetTimeSeconds(World) * TimeDialation;
+			AmountOfTimePaused = CurrentSimulationTime - RealtimeSecondsAtNewRate;
+		}
 	}
 }
 
@@ -170,7 +207,7 @@ void UTimeDilationSubSystem::UpdateTotalTime(float NewTotalTime)
 void UTimeDilationSubSystem::OverrideCurrentTime(float NewSimulationTime, const uint8 PreviouslyPaused)
 {
 	// Pause the simulation regardless of the previous state
-	bIsPaused = true;
+	SetSimulationPaused(true);
 
 	// Set the new time
 	CurrentSimulationTime = NewSimulationTime;
@@ -193,10 +230,22 @@ void UTimeDilationSubSystem::OverrideCurrentTime(float NewSimulationTime, const 
 
 	if(!PreviouslyPaused)
 	{
-		bIsPaused = false;
+		SetSimulationPaused(false);
 		// log current time
 		//UE_LOG(LogTemp, Warning, TEXT("Current Time: %f"), CurrentSimulationTime);
 	}
+}
+
+void UTimeDilationSubSystem::SetSimulationPaused(bool bPaused)
+{
+	if (bIsPaused == bPaused)
+	{
+		BroadcastPauseStateIfChanged();
+		return;
+	}
+
+	bIsPaused = bPaused;
+	BroadcastPauseStateIfChanged();
 }
 
 float UTimeDilationSubSystem::GetCurrentTimeStepPercentage() const
@@ -209,7 +258,7 @@ float UTimeDilationSubSystem::GetCurrentTimeStepPercentage() const
 
 void UTimeDilationSubSystem::FileChanging()
 {
-	bIsPaused = true;
+	SetSimulationPaused(true);
 
 	CurrentSimulationTime = 0.0f;
 	CurrentTimeStep = 0;
@@ -267,13 +316,24 @@ void UTimeDilationSubSystem::UpdateSimulationTime()
 	else // we have reached end of simulation likely out by a few milliseconds
 	{
 		// TODO make this better
-		bIsPaused = true;
+		SetSimulationPaused(true);
 
 		CurrentTimeStep = MaxTimeSteps;
 
 		// Broadcast the new current time
 		OnNewCurrentTime.Broadcast(TotalTime);
 	}
+}
+
+void UTimeDilationSubSystem::BroadcastPauseStateIfChanged()
+{
+	if (bLastBroadcastPauseState == bIsPaused)
+	{
+		return;
+	}
+
+	bLastBroadcastPauseState = bIsPaused;
+	OnSimulationPauseChanged.Broadcast(bIsPaused);
 }
 
 float UTimeDilationSubSystem::GetGameElapsedTime()
@@ -303,30 +363,67 @@ float UTimeDilationSubSystem::GetGameElapsedTime()
 
 FText UTimeDilationSubSystem::FormatSimTime(float TotalSeconds, bool bIncludeHours) const
 {
-       // Configure formatting so all components have at least two digits
-       FNumberFormattingOptions NumberFormat;
-       NumberFormat.MinimumIntegralDigits = 2;
-       NumberFormat.MaximumIntegralDigits = 3;
+       // D1 allocation cache: this is called several times per frame (UpdateSimulationTime, the playbar's
+       // OnNewCurrentTime handler, GetCurrentSimTimeStr) and, when paused/idle, repeatedly with the same value —
+       // and it used to rebuild FNumberFormattingOptions + FFormatNamedArguments + 3-4 FText every call. We now
+       // build the formatting options once and cache the result FText, reusing it whenever the *displayed*
+       // components are unchanged. The output is a pure function of (bIncludeHours, hour, minute, second,
+       // hundredth), so the cached FText is bit-identical to a fresh build for the same key.
 
-       // Prepare format arguments common to both outputs
-       FFormatNamedArguments TimeFormatArgs;
-       FText Minute = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 3600.f) / 60.f), &NumberFormat);
-       FText Second = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 60.f)), &NumberFormat);
-       FText Millisecond = FText::AsNumber(FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 1.f) * 100.f), &NumberFormat); // rounding to two dp
-
-       TimeFormatArgs.Add(TEXT("Minute"), Minute);
-       TimeFormatArgs.Add(TEXT("Second"), Second);
-       TimeFormatArgs.Add(TEXT("Millisecond"), Millisecond);
-
-       if (bIncludeHours)
+       // Build-once formatting: 2-3 digit, zero-padded integral components (identical to the previous options).
+       static const FNumberFormattingOptions NumberFormat = []
        {
-               FText Hour = FText::AsNumber(FMath::FloorToInt32(TotalSeconds / 3600.f), &NumberFormat);
-               TimeFormatArgs.Add(TEXT("Hour"), Hour);
+               FNumberFormattingOptions Opts;
+               Opts.MinimumIntegralDigits = 2;
+               Opts.MaximumIntegralDigits = 3;
+               return Opts;
+       }();
 
-               return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Hour}:{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       // Displayed components — floored, computed exactly as before (the millisecond field is hundredths).
+       const int32 Hour      = FMath::FloorToInt32(TotalSeconds / 3600.f);
+       const int32 Minute    = FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 3600.f) / 60.f);
+       const int32 Second    = FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 60.f));
+       const int32 Hundredth = FMath::FloorToInt32(FMath::Fmod(TotalSeconds, 1.f) * 100.f); // two dp
+
+       // Cache is only touched on the game thread (all callers are UI/game-thread today). A non-game-thread
+       // caller falls through to a fresh, allocation-equivalent build so the static FText can never be raced.
+       const bool bUseCache = IsInGameThread();
+       static bool  bHasCached = false;
+       static bool  CachedIncludeHours = false;
+       static int32 CachedHour = -1, CachedMinute = -1, CachedSecond = -1, CachedHundredth = -1;
+       static FText CachedText;
+
+       if (bUseCache && bHasCached && bIncludeHours == CachedIncludeHours &&
+           Hour == CachedHour && Minute == CachedMinute && Second == CachedSecond && Hundredth == CachedHundredth)
+       {
+               return CachedText;
        }
 
-       return FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       FFormatNamedArguments TimeFormatArgs;
+       TimeFormatArgs.Add(TEXT("Minute"), FText::AsNumber(Minute, &NumberFormat));
+       TimeFormatArgs.Add(TEXT("Second"), FText::AsNumber(Second, &NumberFormat));
+       TimeFormatArgs.Add(TEXT("Millisecond"), FText::AsNumber(Hundredth, &NumberFormat));
+
+       FText Result;
+       if (bIncludeHours)
+       {
+               TimeFormatArgs.Add(TEXT("Hour"), FText::AsNumber(Hour, &NumberFormat));
+               Result = FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Hour}:{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       }
+       else
+       {
+               Result = FText::Format(NSLOCTEXT("ElapsedTimeSpace", "ElapseTimeFormat", "{Minute}:{Second}.{Millisecond}"), TimeFormatArgs);
+       }
+
+       if (bUseCache)
+       {
+               bHasCached = true;
+               CachedIncludeHours = bIncludeHours;
+               CachedHour = Hour; CachedMinute = Minute; CachedSecond = Second; CachedHundredth = Hundredth;
+               CachedText = Result;
+       }
+
+       return Result;
 }
 
 

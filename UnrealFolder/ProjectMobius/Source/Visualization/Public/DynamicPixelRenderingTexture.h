@@ -26,6 +26,7 @@
 
 
 #include "CoreMinimal.h"
+#include "HeatmapLOSBands.h"
 #include "UObject/Object.h"
 #include "RHI.h"
 #if !PLATFORM_MAC
@@ -39,6 +40,8 @@
 
 
 class FVoronoiDiagramPlugin;
+
+
 /**
  * This class is used to create a dynamic pixel rendering texture
  * A replacement for render targets as they are bad for performance when drawing repeatedly, this is due to render targets
@@ -69,9 +72,39 @@ public:
 	 * @param InHeight - The height of the texture
 	 * @param InitialColor - The initial color of the texture
 	 * @param InFilter - The filter to use for the texture - default is TF_Nearest
+	 * @param InAddress - Addressing mode - default is TA_Clamp
+	 *
+	 * NOTE on InFilter and InAddress: both are only consulted when the MATERIAL asks for the texture's own
+	 * sampler state, i.e. when its Texture Sample node has Sampler Source = "From Texture Asset". With
+	 * either of the *_WorldGroupSettings options the node uses a shared, pooled sampler and BOTH of these
+	 * are discarded - filtering comes from texture-group settings instead. That is why a heatmap can render
+	 * blurred despite TF_Nearest being set here. A transient texture defaults to TA_Wrap, so the clamp
+	 * default below exists to make the "From Texture Asset" path safe: without it, honouring the texture's
+	 * sampler would swap a blur for edge bleeding.
+	 *
+	 * THE HEATMAPS PASS THIS EXPLICITLY, AND THE TWO SURFACES DIFFER. See the three InitializeTexture calls
+	 * in HeatmapPixelTextureVisualizer.cpp, gated by
+	 * `Mobius.InGame.TrajectoryHeatmap.Texture.FilterPerSurface`:
+	 *
+	 *   density     TF_Bilinear  (owner ruling 2026-08-05) - a continuous field, so interpolating the
+	 *                            scalar moves each band boundary onto a smooth sub-texel iso-contour while
+	 *                            the output stays one of the discrete band colours. Fixes the pixelated
+	 *                            look of A0-72.
+	 *   trajectory  TF_Nearest   (owner ruling 2026-08-10, reversing the above for this surface) - it
+	 *                            carries a discrete CROSSING COUNT drawn one texel wide, and interpolating
+	 *                            toward the zero neighbours drops the sample below the band floor at
+	 *                            +-0.25 texel, so ~75% of the stroke reads at least one band low.
+	 *
+	 * The lesson generalises: bilinear suits a field you are asking someone to read as a GRADIENT, and lies
+	 * about one you are asking them to read as a COUNT. Do NOT reason from either to an already-colourised
+	 * RGB texture, where interpolation blends band colours into shades that mean nothing.
+	 *
+	 * The default stays TF_Nearest so a NEW caller gets conservative, per-texel-exact behaviour and has to
+	 * opt in to interpolation.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Methods")
-	void InitializeTexture(int32 InWidth, int32 InHeight, FLinearColor InitialColor, TextureFilter InFilter = TF_Nearest);
+	void InitializeTexture(int32 InWidth, int32 InHeight, FLinearColor InitialColor, TextureFilter InFilter = TF_Nearest,
+	                       TextureAddress InAddress = TA_Clamp);
 
 	/**
 	 * Set Pixel Color at the specified location of the specified color
@@ -104,6 +137,32 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Methods")
 	void DrawLine(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y, int32 End_Coordinate_Y, FLinearColor LineColor,  bool bAddColourToExisting = true);
+
+	/**
+	 * Draw a cumulative line while seeding each previously untouched texel with a minimum red value.
+	 * This is useful for quantitative palettes whose low bands otherwise render a first observation invisible.
+	 *
+	 * @param BrushRadius - Radius of the stamped footprint in TEXELS. The brush is a disc, matching
+	 *        DrawCircle, so callers must convert from world units themselves: a texel is not a fixed
+	 *        real-world size. Zero stamps the centreline only.
+	 */
+	void DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X, int32 Start_Coordinate_Y, int32 End_Coordinate_Y,
+		FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius = 0);
+
+private:
+	/**
+	 * Disc offsets for DrawLineWithMinimumRed, rebuilt only when the radius changes.
+	 *
+	 * The trajectory path calls that function once per agent per flush — order 1900 calls, all at the
+	 * same radius — so building the list per call would rebuild an identical disc every time. Not
+	 * thread-safe by design: the only caller walks its segments on one thread.
+	 */
+	const TArray<FIntPoint>& GetBrushOffsets(int32 BrushRadius);
+
+	TArray<FIntPoint> CachedBrushOffsets;
+	int32 CachedBrushRadius = INDEX_NONE;
+
+public:
 
 	/**
 	 * Draw an Anti-Aliased line on the texture from the start to the end with the specified color
@@ -170,7 +229,13 @@ public:
 	/**
 	 * This method performs a Gaussian Blur on the texture using OpenCV, so that the heatmaps have even distribution
 	 */
-	void OpenCVGaussianBlur();
+	void OpenCVGaussianBlur(int32 KernelSize = 29, bool bForceBlur = false);
+
+	/** Copies only CPU pixel data. The destination may then be blurred and rendered without mutating the source. */
+	bool CopyPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture);
+
+	/** Preserves the strongest raw value per channel after a display-only blur. */
+	bool MaxPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture);
 
 	/**
 	 * Method that creates a voronoi diagram using openCV
@@ -276,9 +341,9 @@ private:
 	/** As the problem with doing colour deficiency in vr, prevents colours from updating this method handles applying LOS Colour to the texture based on the input texture */
 	void UpdateTextureToLOSColour();
 	void UpdateTextureToLOSColour(TUniquePtr<uint8[]>& BufferToColourPtr);
-	
-	
-	
+
+
+
 #pragma endregion METHODS
 
 #pragma region PROPERTIES
@@ -314,6 +379,10 @@ protected:
 	/** Threshold for triggering blur when the red channel exceeds this value */
 	UPROPERTY(EditAnywhere, Category = "DynamicPixelRenderingTexture|Properties|Blur")
 	float BlurTriggerThreshold = 0.1419f;
+
+	/** Band edges used by UpdateTextureToLOSColour. Density edges unless a surface overrides them. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|LOS")
+	FHeatmapLOSBands LOSBands;
 
 	/** The colour vision deficiency - by default it is set to normal */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DynamicPixelRenderingTexture|Properties|ColourDeficiency")
@@ -373,5 +442,45 @@ public:
 	/** Gets the Dynamic Texture Size */
 	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Getters")
 	FORCEINLINE FVector2D GetDynamicTextureSize() const { return FVector2D(TextureDimensionX, TextureDimensionY); }
+
+	/**
+	 * Choose which set of band edges the colouriser and the PNG export use. A surface must set the same
+	 * edges here that it pushes to its material, otherwise the exported image and the in-world render
+	 * disagree about where the bands are.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DynamicPixelRenderingTexture|Setters")
+	void SetLOSBands(const FHeatmapLOSBands& InBands) { LOSBands = InBands; }
+
+	/** The band edges currently applied by the colouriser. Defaults to the Fruin density edges. */
+	UFUNCTION(BlueprintPure, Category = "DynamicPixelRenderingTexture|Getters")
+	const FHeatmapLOSBands& GetLOSBands() const { return LOSBands; }
+
+	/**
+	 * The single place the band comparison chain lives on the CPU side. Exposed so tests can assert the
+	 * colour a stored byte produces without going through a texture.
+	 *
+	 * @param RVal  Stored red byte divided by 255.
+	 * @param Bands Edges to compare against.
+	 */
+	static FLinearColor BandColourForRedValue(float RVal, const FHeatmapLOSBands& Bands);
+
+#if !UE_BUILD_SHIPPING
+	/**
+	 * Diagnostics / automation readback of one raw stored byte, straight out of the CPU pixel buffer
+	 * before any material banding is applied.
+	 *
+	 * Pixels are stored BGRA, so ChannelIndex is 0=B, 1=G, 2=R, 3=A. The heatmap's accumulated value
+	 * lives in the red channel, so callers almost always want GetRawPixelRed.
+	 *
+	 * Returns 0 for an out-of-bounds coordinate, an invalid channel, or an uninitialised buffer, so a
+	 * miscomputed coordinate reads as "untouched" rather than crashing a test.
+	 *
+	 * @return The stored 0-255 byte for that channel.
+	 */
+	uint8 GetRawPixelChannel(int32 X_Coordinate, int32 Y_Coordinate, int32 ChannelIndex) const;
+
+	/** Red-channel convenience wrapper — the channel the heatmap accumulates into. */
+	uint8 GetRawPixelRed(int32 X_Coordinate, int32 Y_Coordinate) const { return GetRawPixelChannel(X_Coordinate, Y_Coordinate, 2); }
+#endif
 #pragma endregion GETTERS_SETTERS
 };

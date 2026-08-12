@@ -371,18 +371,14 @@ AFlowCounter::AFlowCounter()
 
 AFlowCounter::~AFlowCounter()
 {
-	RemoveFlowCounterToSubsystem();
-
-	if (GetWorld() == nullptr){return;}  
-	// we need to unbind to the time dilation subsystem delegate for current simulation time
-	if (UTimeDilationSubSystem* TimeDilationSub = GetWorld()->GetSubsystem<UTimeDilationSubSystem>())
-	{
-		TimeDilationSub->OnNewCurrentTime.RemoveDynamic(this, &AFlowCounter::NewSimTime);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("FlowCounter: Time Dilation Subsystem not found!"));
-	}
+	// Intentionally empty. Do NOT touch GetWorld(), subsystems, or delegates here:
+	// a UObject destructor runs during garbage collection, where purge order is not
+	// guaranteed and the outer chain may already be freed. In particular, at editor
+	// shutdown (PurgeAllUObjectsOnExit) GetWorld() itself dereferences a freed outer
+	// via GetTypedOuter<UWorld>() and access-violates — the "if (GetWorld()==nullptr)"
+	// guard can't help because the crash is inside GetWorld().
+	// All teardown (subsystem unregister + OnNewCurrentTime unbind + timer clear) lives
+	// in EndPlay, which is BeginPlay-paired and runs while the object graph is valid.
 }
 
 void AFlowCounter::PostInitializeComponents()
@@ -535,14 +531,47 @@ void AFlowCounter::MoveGatePillarMeshToLocation(int32 PillarIndex, const FVector
 		return;
 	}
 	//TODO: likely need to communicate pillars location changing wait for changes to mass ai so we don't get data corruption/mismatches
-	
-	if (PillarIndex == 0 && FlowCounterPillarMesh1)
+
+	UStaticMeshComponent* MovedPillar = (PillarIndex == 0) ? FlowCounterPillarMesh1 : FlowCounterPillarMesh2;
+	UStaticMeshComponent* SiblingPillar = (PillarIndex == 0) ? FlowCounterPillarMesh2 : FlowCounterPillarMesh1;
+
+	if (MovedPillar)
 	{
-		FlowCounterPillarMesh1->SetWorldLocation(NewLocation);
+		MovedPillar->SetWorldLocation(NewLocation);
 	}
-	else if (PillarIndex == 1 && FlowCounterPillarMesh2)
+
+	// =============================================================================================
+	// N1 (2026-08-07) — the sibling pillar's Z FOLLOWS the moved one, so the counting plane stays level.
+	// Stakeholder: "when we move one pillar the z value of the moved pillar should update the z on the
+	// other pillar to match".
+	//
+	// X/Y are deliberately left alone: the pair's horizontal separation IS the gate width, so coupling
+	// those would make the gate un-resizable.
+	//
+	// MATCH, not delta-follow. Both callers that move a pair do it as two sequential calls
+	// (FlowCounterSpawnerComponent.cpp:256-257, and PlaceFlowCounterInFrontOfCamera below), so a
+	// "shift the sibling by the same delta" rule would have the SECOND call drag the first pillar by a
+	// bogus delta. Matching is idempotent across a pair; a delta rule is not.
+	//
+	// No re-entrancy guard is needed and none should be re-added: the sibling is written DIRECTLY here
+	// rather than by calling back into this function, so the B-follows-A-follows-B loop that a guard
+	// flag would exist to break cannot form in the first place.
+	//
+	// UpdateFlowCounterTriggerBox() below moves RootComponent to the pillar midpoint, and both pillar
+	// meshes are attached to that root — but they are absolute-location (set on the BP_FlowCounter
+	// component templates; the constructor comment at the SetupAttachment calls records the same intent),
+	// so the root move does not drag them and cannot undo this write. If that flag were ever cleared the
+	// two pillars would still shift by the SAME vector, so Z parity would survive even then — only their
+	// absolute positions would drift, which is a separate pre-existing concern and not this row's.
+	// =============================================================================================
+	if (SiblingPillar)
 	{
-		FlowCounterPillarMesh2->SetWorldLocation(NewLocation);
+		FVector SiblingLocation = SiblingPillar->GetComponentLocation();
+		if (!FMath::IsNearlyEqual(SiblingLocation.Z, NewLocation.Z))
+		{
+			SiblingLocation.Z = NewLocation.Z;
+			SiblingPillar->SetWorldLocation(SiblingLocation);
+		}
 	}
 
 	// After moving the pillar mesh, we need to update the trigger box to match the new pillar locations

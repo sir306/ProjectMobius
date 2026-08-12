@@ -1,14 +1,67 @@
 #include "Slate/Components/SWindowTitleBarWidget.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Framework/Application/SWindowTitleBar.h"
 #include "Input/Events.h"
 #include "InputCoreTypes.h"
+#include "Slate/Components/MobiusWindowButtonStyle.h" // A19-c: ApplyDangerCloseGlyph on theme change
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+#include "Widgets/Colors/SColorBlock.h"
+#include "Widgets/Layout/SBox.h" // title left-padding wrapper
 #include "Widgets/SNullWidget.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
 {
+	// D8/Q3: the SWindow chrome is Slate, not UMG, so it can't ride the palette walker. Resolve the theme
+	// subsystem from any live game world and poll it per-paint (matches the codebase's per-frame ImGui
+	// StyleColors / combo OnGenerate idiom) so the title bar follows a live theme toggle.
+	UUIThemeSubsystem* FindMobiusThemeSubsystem()
+	{
+		// Cached: the callers are per-paint colour lambdas, so the world-context walk below would otherwise
+		// run several times a frame for the life of the window. A weak pointer self-clears when the
+		// GameInstance goes (PIE stop, level travel), so the walk re-runs exactly when it has to.
+		// Game thread only, which is where Slate paints.
+		static TWeakObjectPtr<UUIThemeSubsystem> CachedTheme;
+		if (UUIThemeSubsystem* Cached = CachedTheme.Get())
+		{
+			return Cached;
+		}
+
+		if (!GEngine)
+		{
+			return nullptr;
+		}
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			if (UWorld* World = Context.World())
+			{
+				if (UGameInstance* GameInstance = World->GetGameInstance())
+				{
+					if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+					{
+						CachedTheme = Theme;
+						return Theme;
+					}
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	FLinearColor MobiusThemeColor(EMobiusPaletteRole Role, const FLinearColor& Fallback)
+	{
+		if (const UUIThemeSubsystem* Theme = FindMobiusThemeSubsystem())
+		{
+			return Theme->GetPaletteColor(Role);
+		}
+		return Fallback;
+	}
+
 	class SMoveableWindowTitleBar final : public SWindowTitleBar
 	{
 	public:
@@ -18,6 +71,7 @@ namespace
 				  , _OwnerWindow()
 				  , _TitleBarContent(SNullWidget::NullWidget)
 				  , _TitleAlignment(HAlign_Fill)
+				  , _CloseButtonToolTipText()
 			{
 			}
 			SLATE_STYLE_ARGUMENT(FWindowStyle, Style)
@@ -25,6 +79,8 @@ namespace
 			SLATE_ARGUMENT(TSharedPtr<SMoveableWindow>, OwnerWindow)
 			SLATE_ARGUMENT(TSharedRef<SWidget>, TitleBarContent)
 			SLATE_ARGUMENT(EHorizontalAlignment, TitleAlignment)
+			/** Tooltip for the close button. Empty leaves SWindowTitleBar's own default ("Close"). */
+			SLATE_ATTRIBUTE(FText, CloseButtonToolTipText)
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& InArgs)
@@ -32,10 +88,18 @@ namespace
 			OwnerWindow = InArgs._OwnerWindow;
 			if (TSharedPtr<SMoveableWindow> Window = OwnerWindow.Pin())
 			{
+				// The close-button tooltip cannot be set after construction (SWindow exposes only a getter), and
+				// this class bypasses FSlateApplication::MakeWindowTitleBar, which is the only thing that reads
+				// SWindow's own CloseButtonToolTipText. So it has to be threaded in here. Only forwarded when the
+				// caller actually set one, so existing callers keep SWindowTitleBar's default.
+				SWindowTitleBar::FArguments TitleBarArgs;
+				TitleBarArgs.Style(InArgs._Style).ShowAppIcon(InArgs._ShowAppIcon);
+				if (InArgs._CloseButtonToolTipText.IsSet())
+				{
+					TitleBarArgs.CloseButtonToolTipText(InArgs._CloseButtonToolTipText);
+				}
 				SWindowTitleBar::Construct(
-					SWindowTitleBar::FArguments()
-					.Style(InArgs._Style)
-					.ShowAppIcon(InArgs._ShowAppIcon),
+					TitleBarArgs,
 					Window.ToSharedRef(),
 					InArgs._TitleBarContent,
 					InArgs._TitleAlignment);
@@ -117,6 +181,81 @@ SWindowTitleBarWidget::SWindowTitleBarWidget()
 
 SWindowTitleBarWidget::~SWindowTitleBarWidget()
 {
+	UnbindThemeChanged();
+}
+
+void SWindowTitleBarWidget::ApplyThemeToTitleBar()
+{
+	// A19-c. Everything else in this bar polls per paint, but the close (x) GLYPH cannot: it is an
+	// FSlateBrush tint, and a brush tint is not an attribute. It was therefore stamped once, at open, and a
+	// live theme toggle left it showing the OTHER theme's red -- measured #B62C1F (light DangerText) still
+	// sitting on the dark title bar at ~1.9:1, i.e. all but invisible.
+	//
+	// It has to be re-stamped HERE and not by the window that owns the style. Construct COPIES the caller's
+	// FWindowStyle into our WindowStyle member (see above), so SErrorWindowWidget re-stamping its own
+	// ErrorWindowStyle can never reach this bar -- that is exactly why the first attempt at this failed.
+	//
+	// An in-place write is enough, and this is the one place in this file where that is true: the engine
+	// reads the close-button image through the style POINTER every paint
+	// (SWindowTitleBar::GetCloseImage, SWindowTitleBar.cpp:411-419, returning &Style->CloseButtonStyle.*),
+	// and Style points at our member. So mutate the member and invalidate; no rebuild, and no need to reach
+	// the engine's private CloseButton pointer, which a subclass cannot see anyway.
+	//
+	// Unconditional because UUIThemeSubsystem::GetThemedWindowStyle already applies the danger glyph to
+	// every Mobius window, so "this window wants a red x" is true for all of them (A18). Fixing it at this
+	// level fixes the error window, the log window and the ImPlot chart windows in one place.
+	const UUIThemeSubsystem* ThemeSubsystem = FindMobiusThemeSubsystem();
+	if (!ThemeSubsystem)
+	{
+		return;
+	}
+
+	const EMobiusUITheme CurrentThemeValue = ThemeSubsystem->GetTheme();
+	if (CurrentThemeValue == LastAppliedTheme)
+	{
+		return;
+	}
+	LastAppliedTheme = CurrentThemeValue;
+
+	MobiusWindowButtonStyle::ApplyDangerCloseGlyph(WindowStyle, ThemeSubsystem);
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+bool SWindowTitleBarWidget::TryBindThemeChanged()
+{
+	if (ThemeChangedHandle.IsValid())
+	{
+		return true;
+	}
+
+	UUIThemeSubsystem* ThemeSubsystem = FindMobiusThemeSubsystem();
+	if (!ThemeSubsystem)
+	{
+		return false;
+	}
+
+	BoundThemeSubsystem = ThemeSubsystem;
+	ThemeChangedHandle = ThemeSubsystem->OnThemeChangedNative.AddSP(this, &SWindowTitleBarWidget::ApplyThemeToTitleBar);
+
+	// The event only fires on a later toggle, so stamp the current theme now.
+	ApplyThemeToTitleBar();
+	return true;
+}
+
+EActiveTimerReturnType SWindowTitleBarWidget::EnsureThemeBinding(double, float)
+{
+	return TryBindThemeChanged() ? EActiveTimerReturnType::Stop : EActiveTimerReturnType::Continue;
+}
+
+void SWindowTitleBarWidget::UnbindThemeChanged()
+{
+	// By handle, so no AsShared() is needed and this is safe from the destructor.
+	if (UUIThemeSubsystem* ThemeSubsystem = BoundThemeSubsystem.Get())
+	{
+		ThemeSubsystem->OnThemeChangedNative.Remove(ThemeChangedHandle);
+	}
+	BoundThemeSubsystem.Reset();
+	ThemeChangedHandle.Reset();
 }
 
 void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
@@ -128,9 +267,20 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
                 ? *InArgs._TitleTextStyle
                 : FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window").TitleTextStyle;
 
+        // D8/Q3: suppress the engine title-bar background brushes so our theme-polled SColorBlock behind
+        // the bar is what shows — that way the title chrome follows a live theme toggle instead of staying
+        // stuck on the (dark) style the window was created with.
+        WindowStyle.ActiveTitleBrush = *FStyleDefaults::GetNoBrush();
+        WindowStyle.InactiveTitleBrush = *FStyleDefaults::GetNoBrush();
+        WindowStyle.FlashTitleBrush = *FStyleDefaults::GetNoBrush();
+
         SAssignNew(TitleTextBlock, STextBlock)
         .Text(InArgs._TitleText)
-        .TextStyle(&TitleTextStyle);
+        .TextStyle(&TitleTextStyle)
+        .ColorAndOpacity_Lambda([]()
+        {
+                return FSlateColor(MobiusThemeColor(EMobiusPaletteRole::TitlebarText, FLinearColor(0.55201f, 0.55201f, 0.55201f)));
+        });
 
 	if (!InArgs._OwnerWindow.IsValid())
 	{
@@ -141,17 +291,51 @@ void SWindowTitleBarWidget::Construct(const FArguments& InArgs)
 		return;
 	}
 
+	// LEFT PADDING + vertical centring on the title. SMoveableWindow passes TitleAlignment=HAlign_Fill by
+	// default, and with ShowAppIcon(false) there is no icon holding the text off the frame — so an unwrapped
+	// STextBlock renders flush against the window border ("the title sits right on the edge"). 8u matches the
+	// engine's own AppIconPadding-sized gap and applies to every SMoveableWindow, not just one popup.
+	const TSharedRef<SWidget> PaddedTitle = SNew(SBox)
+		.Padding(FMargin(8.0f, 0.0f, 0.0f, 0.0f))
+		.VAlign(VAlign_Center)
+		[
+			TitleTextBlock.ToSharedRef()
+		];
+
 	TitleBarWidget = SNew(SMoveableWindowTitleBar)
 		.OwnerWindow(InArgs._OwnerWindow)
-		.TitleBarContent(TitleTextBlock.ToSharedRef())
+		.TitleBarContent(PaddedTitle)
 		.TitleAlignment(InArgs._TitleAlignment)
 		.Style(&WindowStyle)
-		.ShowAppIcon(InArgs._ShowAppIcon);
+		.ShowAppIcon(InArgs._ShowAppIcon)
+		.CloseButtonToolTipText(InArgs._CloseButtonToolTipText);
 
         ChildSlot
         [
-                TitleBarWidget.ToSharedRef()
+                SNew(SOverlay)
+                + SOverlay::Slot()
+                [
+                        SNew(SColorBlock)
+                        .Visibility(EVisibility::HitTestInvisible) // never intercept title-bar drag
+                        .Color_Lambda([]()
+                        {
+                                return MobiusThemeColor(EMobiusPaletteRole::TitlebarBg, FLinearColor(0.03955f, 0.03955f, 0.03955f));
+                        })
+                ]
+                + SOverlay::Slot()
+                [
+                        TitleBarWidget.ToSharedRef()
+                ]
         ];
+
+	// A19-c: keep the close-glyph tint in step with the theme. Bind now if the subsystem exists (it is a
+	// GameInstanceSubsystem, so it may not yet); otherwise retry at 2 Hz until it does, then stop. Unlike
+	// SErrorWindowWidget's copy of this idiom, the timer can live on this widget: this one IS slotted under
+	// the window and therefore painted, which is what pumps active timers.
+	if (!TryBindThemeChanged())
+	{
+		RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SWindowTitleBarWidget::EnsureThemeBinding));
+	}
 }
 
 void SWindowTitleBarWidget::SetTitleText(const FText& InTitleText)

@@ -27,6 +27,8 @@
 #include "EngineGlobals.h"
 #include "SlateCore.h"
 #include "Framework/Application/NavigationConfig.h"
+#include "Components/Border.h"
+#include "Styling/SlateBrush.h"
 
 void UMobiusSettingPanel::NativePreConstruct()
 {
@@ -50,9 +52,24 @@ void UMobiusSettingPanel::NativeConstruct()
 	Super::NativeConstruct();
 }
 
-void UMobiusSettingPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+void UMobiusSettingPanel::ApplyMobiusTheme_Implementation()
 {
-	Super::NativeTick(MyGeometry, InDeltaTime);
+	// Frame the settings-panel surface so it reads as a distinct bordered panel: RibbonBg fill + a 1px
+	// WindowBorder outline. UBorder double-tint (SBorder multiplies BorderBackgroundColor by the brush):
+	// keep the fill in the brush TintColor and set BorderBackgroundColor white. White is also skipped by
+	// the theme walk's neutral-white guard, so the walk and this born-theme path never fight.
+	if (RibbonPanelBackground)
+	{
+		FSlateBrush Brush;
+		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Brush.TintColor = FSlateColor(GetThemeColor(EMobiusPaletteRole::RibbonBg));
+		Brush.OutlineSettings.Color = FSlateColor(GetThemeColor(EMobiusPaletteRole::WindowBorder));
+		Brush.OutlineSettings.Width = 1.0f;
+		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Brush.OutlineSettings.CornerRadii = FVector4(6.0, 6.0, 6.0, 6.0);
+		RibbonPanelBackground->SetBrush(Brush);
+		RibbonPanelBackground->SetBrushColor(FLinearColor::White);
+	}
 }
 
 void UMobiusSettingPanel::SynchronizeProperties()

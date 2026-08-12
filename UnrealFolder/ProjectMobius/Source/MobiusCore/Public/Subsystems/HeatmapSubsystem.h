@@ -33,6 +33,22 @@ class AHeatmapPixelTextureVisualizer;
 class UHeatmapSubsystem;
 class AHeatmapVisualizer;
 
+/** A travelled section of an agent path, expressed in world-space centimetres. */
+struct FHeatmapTrajectorySegment
+{
+	FVector Start = FVector::ZeroVector;
+	FVector End = FVector::ZeroVector;
+	/** Simulation seconds this segment represents. One frame's sim-time delta, not the flush interval. */
+	float DeltaSeconds = 0.0f;
+};
+
+/** Length (cm) and sim-seconds of trajectory segments the floor filter has dropped for one heatmap (D7). */
+struct FHeatmapTrajectoryDroppedMass
+{
+	double DroppedLengthCm = 0.0;
+	double DroppedSeconds = 0.0;
+};
+
 // Delegates used to broadcast events
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHeatmapAdded, AHeatmapPixelTextureVisualizer*, HeatmapActor);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHeatmapRemoved, AHeatmapPixelTextureVisualizer*, HeatmapActor);
@@ -129,6 +145,66 @@ public:
 
 	void UpdateHeatmapsWithLocations(const TArray<FVector>& LocationArray);
 
+	/** Immediately redraws one heatmap from the most recently processed agent locations. */
+	void RefreshHeatmapFromLatestLocations(AHeatmapPixelTextureVisualizer* Heatmap);
+
+	/** Draw path segments accumulated only while the current simulation session is played. */
+	void UpdateHeatmapsWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments);
+
+	/** True when at least one visible heatmap is in trajectory-path mode. */
+	bool AnyTrajectoryHeatmapsActive() const;
+
+	/** Clears the trajectory render targets after a rewind, seek, or new playback session. */
+	void ClearTrajectoryHeatmaps();
+
+	/**
+	 * Length (cm) and sim-seconds of trajectory segments dropped by the floor filter in
+	 * UpdateHeatmapsWithTrajectorySegments (D7) for one heatmap since its last ClearTrajectoryHeatmaps().
+	 * For conservation checks: deposited + dropped should equal offered.
+	 */
+	void GetDroppedTrajectoryMass(const AHeatmapPixelTextureVisualizer* Heatmap, double& OutDroppedLengthCm, double& OutDroppedSeconds) const;
+
+	/**
+	 * Ask the heatmap processor to forget every agent's last sampled trajectory position.
+	 *
+	 * The processor deliberately KEEPS those positions across a rewind or seek, so the scrubbed-to state
+	 * is joined to where the agent was and the jump renders as a visible transition rather than a hole.
+	 * That is wrong when the agent set itself is replaced — loading a different dataset reuses entity
+	 * IDs, so each recycled ID would be joined to a position belonging to the previous simulation and
+	 * draw one long straight streak across the floor on the first flush.
+	 *
+	 * Call this whenever the entities are rebuilt rather than merely re-timed. The processor consumes
+	 * the request on its next update; it is a request rather than a direct reset because the map lives
+	 * on the MASS processor, which callers on the game thread have no handle to.
+	 */
+	void RequestTrajectoryTrackingReset();
+
+	/** Processor-side half of RequestTrajectoryTrackingReset. Returns true once per request. */
+	bool ConsumeTrajectoryTrackingReset();
+
+	/** Enables or disables trajectory-path mode for every registered heatmap actor. */
+	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
+	void SetTrajectoryHeatmapsEnabled(bool bEnabled);
+
+	/**
+	 * Selects Route Exposure (person-seconds) over Route Usage (person-metres) for every registered
+	 * heatmap actor, and REMEMBERS the selection so an actor registering later inherits it.
+	 *
+	 * The "stored and applied when the trajectory view is next enabled" claim this comment used to make
+	 * was FALSE until 2026-08-11 — nothing stored it and AddHeatmapActor applied no trajectory state at
+	 * all, so the mode was silently lost for any heatmap spawned after the toggle. That sentence is what
+	 * made the dead path look legitimate, which is why it is called out rather than quietly corrected.
+	 *
+	 * Display-only: both canonical accumulators are maintained unconditionally, so this re-encodes and
+	 * never re-walks or discards a segment. Safe to call mid-playback.
+	 *
+	 * Takes a bool rather than ETrajectoryMapMode deliberately — the checkbox that drives this should
+	 * not have to name the enum, and a bool pin needs no literal, which keeps the widget graph
+	 * scriptable (the MCP bridge cannot write enum pin defaults).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
+	void SetTrajectoryRouteExposureEnabled(bool bEnabled);
+
 
 	void UpdateHeatmapTextureRender();
 
@@ -223,8 +299,34 @@ protected:
 	//TArray<class AHeatmapVisualizer*> Heatmaps;
 	TArray<AHeatmapPixelTextureVisualizer*> Heatmaps;
 
+	/** Most recent simulation locations, retained only to refresh a live mode after a visual mode change. */
+	TArray<FVector> LastAgentLocations;
+
 
 private:
+	/**
+	 * The trajectory view state the subsystem believes is selected, so an actor registering LATER inherits
+	 * it (AddHeatmapActor applies both). Before 2026-08-11 neither was stored: the setters only forwarded
+	 * to actors already in Heatmaps, so a heatmap spawned after the user made a selection — which is the
+	 * normal order, since heatmaps are created per floor when a dataset loads — came up in the default
+	 * Route Usage with trajectory off, while the checkboxes still showed the user's choice.
+	 *
+	 * These mirror UI intent, NOT actor truth. AHeatmapPixelTextureVisualizer remains the authority on its
+	 * own state and both of its setters early-out on no-change, so re-applying here is idempotent and
+	 * cannot re-trigger the ClearTexture() that entering trajectory mode performs.
+	 */
+	bool bTrajectoryHeatmapsEnabled = false;
+	bool bRouteExposureEnabled = false;
+
+	/** Set by RequestTrajectoryTrackingReset, cleared by ConsumeTrajectoryTrackingReset. Game thread only. */
+	bool bTrajectoryTrackingResetPending = false;
+
+	/**
+	 * Trajectory mass dropped by the floor filter per heatmap (D7); the entry for a heatmap is zeroed
+	 * when ClearTrajectoryHeatmaps() clears it. Raw pointer keys match the existing Heatmaps array.
+	 */
+	TMap<const AHeatmapPixelTextureVisualizer*, FHeatmapTrajectoryDroppedMass> TrajectoryDroppedMassByHeatmap;
+
 	/** The XY spawn point for the heatmaps */
 	UPROPERTY()
 	FVector2D XYSpawnLocation;

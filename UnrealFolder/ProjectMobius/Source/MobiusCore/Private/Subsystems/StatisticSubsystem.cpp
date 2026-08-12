@@ -94,6 +94,26 @@ FAgentMeshViewer UStatisticSubsystem::GetHoveredAgentInfoMeshData()
 	return HoveredAgentData;
 }
 
+void UStatisticSubsystem::PublishAgentEgressHealthData(TArray<FAgentEgressTenabilityViewer>& InOutAgentData)
+{
+	Swap(AgentEgressHealthData, InOutAgentData);
+	++AgentEgressHealthRevision;
+}
+
+TConstArrayView<FAgentEgressTenabilityViewer> UStatisticSubsystem::GetAgentEgressHealthData() const
+{
+	return AgentEgressHealthData;
+}
+
+void UStatisticSubsystem::ClearAgentEgressHealthData()
+{
+	AgentEgressHealthData.Reset();
+	++AgentEgressHealthRevision;
+	// Q48/R3: no snapshot -> no live B-RISK; the processor re-asserts this each frame it runs, but
+	// reset on clear (file switch) so the UI collapses the B-RISK section immediately.
+	bBRiskTenabilityActive = false;
+}
+
 void UStatisticSubsystem::UpdateFlowCounters()
 {
 	if (!GetWorld()){return;}
@@ -229,6 +249,7 @@ void UStatisticSubsystem::ResetForFileSwitch()
 	PedestrianAgentData.Empty();
 	SelectedAgentData = FAgentMeshViewer();
 	HoveredAgentData = FAgentMeshViewer();
+	ClearAgentEgressHealthData();
 
 	OnSelectedAgentInfoChanged.Broadcast();
 

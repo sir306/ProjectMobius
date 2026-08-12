@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Unattributed tenability failure. Atlas slot 3. DIAGNOSTIC, not a hazard type.
+       Warning triangle with a question mark.
+
+       Drawn when an agent has bTenabilityFailed set but FirstFailureCriterion is not one
+       of the three criteria that have their own icon, i.e. Temperature or LayerHeight
+       (both default OFF in FTenabilityAnalysisSettings, but the codebase explicitly
+       advises enabling Temperature for scenarios where FEDRadSum saturates), or
+       ETenabilityCriterion::None, which alongside a failure flag means a genuine bug.
+
+       This exists so that case is VISIBLE rather than silently drawing no marker. It
+       deliberately replaces a log line: the only places the condition could be detected
+       are OnPaint and the MASS processors, all per-frame hot paths where logging is
+       banned in this project.
+
+       Transparent background, strokes only: the strokes ARE the mask. Colour comes from
+       the runtime material; #333333 is an authoring colour only.
+
+       Line weight 7, matching the hazard markers, so a mixed scene reads as one set.
+
+       Motif keepout: all motif geometry including stroke width and round caps stays
+       inside the triangle inset 10 units per edge (apex 128,51 / base y 212). -->
+  <g fill="none" stroke="#333333">
+    <!-- Sharp warning triangle, mitered corners -->
+    <path d="M128 31 L238 222 L18 222 Z" stroke-width="7" stroke-linejoin="miter" stroke-linecap="butt"/>
+
+    <!-- Question mark: bowl sweeping over the top and down into a short stem -->
+    <path d="M109 128
+             C109 111, 121 103, 132 103
+             C145 103, 153 113, 153 125
+             C153 135, 146 141, 138 147
+             C131 152, 128 157, 128 165"
+          stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- Question mark dot -->
+  <circle cx="128" cy="184" r="6.5" fill="#333333" stroke="none"/>
+</svg>

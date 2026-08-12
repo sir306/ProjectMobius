@@ -22,6 +22,7 @@
  */
 #include "MobiusCore.h"
 #include "IMobiusErrorReporter.h"
+#include "Ifc/MobiusIfcMeshLoader.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
 
@@ -41,6 +42,20 @@ void FMobiusCoreModule::StartupModule()
 {
 	// Register our error reporter getter with the logging module
 	IMobiusErrorReporter::RegisterGetterFunc(&GetMobiusErrorReporterImpl);
+
+	// Load MobiusIfcBridge.dll up front. MobiusIfcLibrary uses PublicDelayLoadDLLs, so the first
+	// MobiusIfc_* call would otherwise trigger MSVC's delay-load thunk — and if the DLL is missing at
+	// that moment the thunk raises a Win32 SEH exception (ERROR_MOD_NOT_FOUND) at the call site, which
+	// is not a C++ exception and cannot be caught in a module built with bEnableExceptions = false.
+	// Doing it here turns a staging mistake into one log line at startup instead of a crash the first
+	// time a user opens an .ifc. This is the same pattern the UE4_Assimp integration uses.
+	//
+	// A failure is deliberately NOT fatal: every other supported format still loads without this DLL.
+	FString IfcBridgeError;
+	if (!FMobiusIfcMeshLoader::EnsureBridgeLoaded(IfcBridgeError))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("IFC import unavailable: %s"), *IfcBridgeError);
+	}
 }
 
 void FMobiusCoreModule::ShutdownModule()

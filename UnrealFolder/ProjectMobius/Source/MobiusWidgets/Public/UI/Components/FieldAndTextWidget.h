@@ -7,6 +7,7 @@
 #include "FieldAndTextWidget.generated.h"
 
 class SFieldAndTitleText;
+class UUIThemeSubsystem;
 /**
  * 
  */
@@ -42,8 +43,23 @@ public:
 
 protected:
 	TSharedPtr<SFieldAndTitleText> FieldAndTextWidget;
-	
+
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void OnWidgetRebuilt() override;
+	virtual void BeginDestroy() override;
+
+	/**
+	 * A5 (2026-07-28): bound to UUIThemeSubsystem::OnThemeChanged so these rows follow a live toggle on
+	 * their own. RefreshThemedStyle was previously reachable only from the value walk, so the row would
+	 * have stopped theming entirely when A6 deletes it. Takes the theme from the subsystem it is BOUND to
+	 * rather than self-resolving through GetWorld() — that is what made the in-world flow-counter card
+	 * render dark-value text on a light card.
+	 */
+	UFUNCTION()
+	void HandleThemeChanged();
+
+	/** Weak so a torn-down game instance cannot be kept alive through this row (A5 theme bind). */
+	TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
 
 public:
 	virtual void SynchronizeProperties() override;
@@ -55,6 +71,16 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "FieldAndTextWidget")
 	void SetUpdateFieldText(FText InFieldText);
+
+	/**
+	 * Re-land themed text colours (both = LabelText, high contrast) on the inner raw-Slate title/field
+	 * blocks. The theme walk calls the (bool) overload with the theme it is applying — the no-arg version
+	 * (build/sync cold-start) resolves the current theme itself. Taking the walk's theme is essential for
+	 * the in-world flow-counter card: its widget-component GetWorld()/GetGameInstance() resolves an
+	 * unreliable theme, so self-resolving there gave grey (dark-value) text on a light card.
+	 */
+	void RefreshThemedStyle();
+	void RefreshThemedStyle(bool bLight);
 	/**
 	 * Gets the size of the text in this widget, used for layout calculations
 	 * 
@@ -67,6 +93,12 @@ public:
 	 * @param[int32] InFontSize The font size to set for both texts
 	 */
 	void SetFontSize(float InFontSize) const;
+
+	/**
+	 * Set the typeface face of the FIELD (value) text only, on the composite Font_Inter (e.g. "Mono" for
+	 * numeric/path/timecode readouts per spec §3.4). Title face is left alone. No-op until Slate is built.
+	 */
+	void SetFieldFontFace(FName InTypeface) const;
 
 	// Optional getters if you want to bind attributes rather than call setters
 	FText GetTitleText() const   { return TitleText; }

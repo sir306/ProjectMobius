@@ -65,3 +65,24 @@ enum class EPedestrianMovementBracket : uint8
 	Emb_BriskWalk = 4,
 	Emb_Error = 5
 };
+
+/**
+ * Mobility aid used by an agent.
+ *
+ * Deliberately ORTHOGONAL to EAgeDemographic and EPedestrianGender: a wheelchair user is still an
+ * adult or a child, and analysis must keep counting them as one. This enum adds a chair mesh and
+ * selects a seated pose; it never changes which age bucket the agent belongs to.
+ *
+ * Folding wheelchair into EAgeDemographic instead would force the name parser to CHOOSE between the
+ * age and the aid, permanently losing the age — StatisticSubsystem's buckets would then silently
+ * under-count adults.
+ */
+UENUM()
+enum class EMobilityAid : uint8
+{
+	/** No mobility aid — walks unaided. Default for every agent. */
+	Ema_None = 0,
+
+	/** Wheelchair user. */
+	Ema_Wheelchair = 1
+};

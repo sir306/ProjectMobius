@@ -1,0 +1,64 @@
+ZONE
+iso-test-json-1-brisk_zone.csv
+P
+Pa
+Layer Height
+zlay
+m
+TEMPERATURE
+TEMP
+C
+TEMPERATURE
+TEMP
+C
+AMBIENT
+  1.013250E+005  0.000000E+000  2.970000E+002
+ROOM   1
+ 1.0000E+001 1.5000E+001 2.6000E+000
+ 0.0000E+000 -1.5000E+001 0.0000E+000
+LABEL
+           5        -7.5           0
+ISO test left smoke zone
+FIRE
+   1 5.0000E+000 -7.5000E+000 3.0000E-001
+THCP
+   1
+  5.000    -7.500       0.0       0.0       0.0       1.0
+TIME
+      0        23.
+DEVICE
+   TIME
+   0.0   0.0   0.0
+DEVICE
+  ULT_1
+   0.0   0.0   0.0
+DEVICE
+  LLT_1
+   0.0   0.0   0.0
+DEVICE
+  HGT_1
+   0.0   0.0   0.0
+DEVICE
+ ULOD_1
+   0.0   0.0   0.0
+DEVICE
+ LLOD_1
+   0.0   0.0   0.0
+DEVICE
+ UHCN_1
+   0.0   0.0   0.0
+DEVICE
+ LHCN_1
+   0.0   0.0   0.0
+DEVICE
+  HRR_1
+   0.0   0.0   0.0
+DEVICE
+FLHGT_1
+   0.0   0.0   0.0
+DEVICE
+FBASE_1
+   0.0   0.0   0.0
+DEVICE
+FAREA_1
+   0.0   0.0   0.0

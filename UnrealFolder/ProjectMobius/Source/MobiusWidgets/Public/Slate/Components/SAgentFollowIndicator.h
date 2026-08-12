@@ -8,7 +8,7 @@
 
 class UAgentInfoDisplay;
 /**
- * 
+ *
  */
 class MOBIUSWIDGETS_API SAgentFollowIndicator final : public SMeshWidget
 {
@@ -16,7 +16,7 @@ public:
 	SLATE_BEGIN_ARGS(SAgentFollowIndicator) :
 		_FollowIndicator(true)
 		{
- 
+
 		}
 		SLATE_ATTRIBUTE(bool, FollowIndicator)
 	SLATE_END_ARGS()
@@ -27,11 +27,11 @@ protected:
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
 	                      FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle,
 	                      bool bParentEnabled) const override;
-	
+
 	void CreateRenderMeshData(const FAgentMeshViewer& PedestrianAgentData, const FGeometry& AllottedGeometry, FSlateInstanceBufferData& PerInstanceUpdate) const;
-	
+
 	UAgentInfoDisplay* ParentWidget = nullptr;
 	bool FollowIndicator = true; // Flag to determine if this is a follow indicator or not, used for different rendering logic
 
-	UTexture2D* IconTexture;
+	UTexture2D* IconTexture = nullptr;
 };

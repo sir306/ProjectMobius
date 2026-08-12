@@ -26,20 +26,25 @@
 
 #include "CoreMinimal.h"
 #include "UI/WidgetInterface.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "FloorStatsWidget.generated.h"
 
 class UBaseButton;
+class UBorder;
 class UTextBlock;
 class UImPlotDataSubsystem;
 /**
- *
+ * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget (WBP_NumberOfAgents). This row
+ * already resolved its own label/value colours from the palette inside RefreshFloorDisplay, but only on
+ * construct — nothing re-ran it on a theme toggle, so it depended on the global value walk to follow one.
+ * The themed base gives it the OnThemeChanged bind, and ApplyMobiusTheme just re-runs RefreshFloorDisplay,
+ * which means the explicit role lookups it already had become the live path.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UFloorStatsWidget : public UUserWidget, public IWidgetInterface
+class MOBIUSWIDGETS_API UFloorStatsWidget : public UMobiusThemedUserWidget, public IWidgetInterface
 {
 	GENERATED_BODY()
-	
+
 #pragma region METHODS
 public:
         /** Override to handle design-time setup. */
@@ -52,12 +57,11 @@ public:
         virtual void NativeDestruct() override;
 
         /**
-         * Override to tick the widget during runtime.
-         *
-         * @param MyGeometry Cached geometry for this widget.
-         * @param InDeltaTime Time elapsed since the last tick.
+         * Re-pull this row's palette colours on a theme toggle. RefreshFloorDisplay already reads its roles
+         * from the subsystem, so re-running it is the whole implementation — it also re-lands the fonts and
+         * the transit indent, all of which are idempotent.
          */
-        virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+        virtual void ApplyMobiusTheme_Implementation() override;
 
         /** Override to keep design-time properties synchronized. */
         virtual void SynchronizeProperties() override;
@@ -80,6 +84,14 @@ public:
         /** Build the floor label prefix text. */
         UFUNCTION(BlueprintCallable, Category = "Mobius|Widgets|FloorStatsWidget")
         void BuildFloorText();
+
+        /**
+         * Push FloorPrefixText + CurrentLiveAgentCount to the row widgets (§3.2): label/value split when
+         * the optional blocks exist (label Regular, value Mono; Total row SemiBold; transit label muted),
+         * else the legacy combined FloorTextBlock. Also toggles the Total-row well and the row hover tint.
+         * Centralises what four call sites used to duplicate.
+         */
+        void RefreshFloorDisplay();
 
         /** Build and send the chart title for the ImPlot overlay. */
         void BuildImPlotChartTitle() const;
@@ -165,9 +177,25 @@ public:
 	UPROPERTY()
 	FText FloorPrefixText;
 
-	/** Current Active agent text block */
+	/** Current Active agent text block (legacy single combined "{Prefix}{Count}" block). */
 	UPROPERTY(meta= (BindWidget))
 	TObjectPtr<UTextBlock> FloorTextBlock;
+
+	/**
+	 * §3.2 row rework (D57): OPTIONAL label/value split. When WBP_NumberOfAgents provides FloorLabelText
+	 * + FloorValueText the row renders label (Font_Inter Regular; transit muted) + value (Mono) with the
+	 * combined FloorTextBlock collapsed; when they are absent the widget falls back to FloorTextBlock so
+	 * behaviour is unchanged. Optional so this C++ builds+ships before the asset gains the two blocks.
+	 */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> FloorLabelText;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> FloorValueText;
+
+	/** OPTIONAL WellBg well behind the Total-occupants row (name contains "Well" → themed by GNameRoleMap). */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UBorder> TotalRowWell;
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
 	TObjectPtr<UBaseButton> CurrentFloorBtn;

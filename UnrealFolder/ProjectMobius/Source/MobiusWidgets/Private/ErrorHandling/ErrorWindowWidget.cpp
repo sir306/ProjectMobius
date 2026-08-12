@@ -82,5 +82,18 @@ void UErrorWindowWidget::ShowErrorWindow()
 	}
 }
 
+bool UErrorWindowWidget::IsWindowOpen() const
+{
+	return ErrorWindowWidget.IsValid() && ErrorWindowWidget->IsWindowOpen();
+}
+
+void UErrorWindowWidget::SetErrorSeverity(EMobiusErrorSeverity Severity)
+{
+	if (ErrorWindowWidget.IsValid())
+	{
+		ErrorWindowWidget->SetSeverity(Severity);
+	}
+}
+
 
 

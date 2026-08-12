@@ -25,14 +25,23 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "MoveableWidget.generated.h"
 
 /**
- * 
+ * A6b-5 (2026-07-28): base changed UUserWidget -> UMobiusThemedUserWidget so this widget themes its own
+ * tree on construct + OnThemeChanged. Without it, its text would go unthemed the moment the global value
+ * walk is deleted. No behaviour of its own is added: this widget has no role colours to pull, only standard
+ * controls and text in its tree, which the base handles. It calls Super::NativeConstruct, so the base's
+ * bind runs.
+ *
+ * A19 (2026-08-03): this used to also cover a subclass, UMoveableErrorWidget (the UMG error popup behind
+ * WBP_ErrorPopup1). That class and both popup assets were deleted — zero referencers of any kind, and the
+ * live error surface has been the Slate SErrorWindowWidget for some time. Sole remaining consumer of this
+ * base is WBP_MoveableWidgetTest.
  */
 UCLASS()
-class MOBIUSWIDGETS_API UMoveableWidget : public UUserWidget
+class MOBIUSWIDGETS_API UMoveableWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 #pragma region METHODS
@@ -42,9 +51,6 @@ public:
 
 	// Native Constructor 
 	virtual void NativeConstruct() override;
-
-	// Tick Method for in C++ for the widget
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	/** Method to move the widgets around */
 	UFUNCTION()

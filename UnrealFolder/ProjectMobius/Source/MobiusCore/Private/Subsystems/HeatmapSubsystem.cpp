@@ -25,8 +25,11 @@
 #include "Subsystems/HeatmapSubsystem.h"
 
 #include "Actors/HeatmapPixelTextureVisualizer.h"
+#include "Async/Async.h"
+#include "Diagnostics/TrajectoryCaptureRecorder.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
+#include "Subsystems/TimeDilationSubSystem.h"
 #include "Engine/Engine.h"
 
 UHeatmapSubsystem::UHeatmapSubsystem(): XYSpawnLocation()
@@ -168,6 +171,19 @@ void UHeatmapSubsystem::AddHeatmapActor(AHeatmapPixelTextureVisualizer* HeatmapA
 
 	// add the actor to the array
 	Heatmaps.Add(HeatmapActor);
+
+	// Inherit the trajectory view state the user already selected. Heatmaps are created per floor when a
+	// dataset loads, so registering AFTER a toggle is the normal order, not an edge case — without this a
+	// newly loaded dataset came up in Route Usage with trajectory off while the checkboxes still showed
+	// the user's choice. Mode BEFORE enable: SetTrajectoryHeatmapEnabled calls ClearTexture() and sizes the
+	// field on the way in, so selecting the mode first means the first encode is already the right one
+	// rather than a Usage frame that is immediately thrown away. Both setters early-out on no-change, so
+	// the default (false, false) case costs two compares and touches nothing.
+	HeatmapActor->SetTrajectoryMapMode(bRouteExposureEnabled
+		? ETrajectoryMapMode::RouteExposure
+		: ETrajectoryMapMode::RouteUsage);
+	HeatmapActor->SetTrajectoryHeatmapEnabled(bTrajectoryHeatmapsEnabled);
+
 	OnHeatmapAdded.Broadcast(HeatmapActor);
 
 	// log the number of heatmaps
@@ -263,12 +279,179 @@ void UHeatmapSubsystem::UpdateHeatmapsWithLocations(const TArray<FVector>& Locat
 	if (Heatmaps.Num() <= 0)
 		return;
 
+	LastAgentLocations = LocationArray;
+
 	TArray<TArray<FVector>> ValidHeatmapLocations;
 	TArray<TArray<FVector>> BetweenValidHeatmapLocations;
 
 	ComputeValidHeatmapLocations(LocationArray, ValidHeatmapLocations, BetweenValidHeatmapLocations);
 	BroadcastAgentCounts(ValidHeatmapLocations, BetweenValidHeatmapLocations);
 	RunAsyncHeatmapUpdate(LocationArray, ValidHeatmapLocations);
+}
+
+void UHeatmapSubsystem::RefreshHeatmapFromLatestLocations(AHeatmapPixelTextureVisualizer* Heatmap)
+{
+	if (!IsValid(Heatmap) || Heatmap->bTrajectoryHeatmap || LastAgentLocations.IsEmpty())
+	{
+		return;
+	}
+
+	TArray<FVector> ValidLocations;
+	ValidLocations.Reserve(LastAgentLocations.Num());
+	for (const FVector& Location : LastAgentLocations)
+	{
+		if (Heatmap->CheckHeatmapAndLocationValid(Location))
+		{
+			ValidLocations.Add(Location);
+		}
+	}
+
+	if (!ValidLocations.IsEmpty())
+	{
+		Heatmap->UpdateHeatmapWithMultipleAgents(ValidLocations);
+	}
+}
+
+void UHeatmapSubsystem::UpdateHeatmapsWithTrajectorySegments(const TArray<FHeatmapTrajectorySegment>& Segments)
+{
+	if (Segments.IsEmpty())
+	{
+		return;
+	}
+
+	// Keep this synchronous: the actor's CPU pixel buffer is shared mutable state and trajectory
+	// sampling must not overlap with a later playback interval.
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (!IsValid(Heatmap) || Heatmap->IsHidden() || !Heatmap->bTrajectoryHeatmap)
+		{
+			continue;
+		}
+
+		TArray<FHeatmapTrajectorySegment> FloorSegments;
+#if !UE_BUILD_SHIPPING
+		FTrajectoryCaptureRecorder& Capture = FTrajectoryCaptureRecorder::Get();
+		const bool bCapturing = Capture.IsTargetFloor(Heatmap->FloorID);
+		float CaptureSimTime = 0.0f;
+		if (bCapturing)
+		{
+			if (const UWorld* CaptureWorld = GetWorld())
+			{
+				if (const UTimeDilationSubSystem* Time = CaptureWorld->GetSubsystem<UTimeDilationSubSystem>())
+				{
+					CaptureSimTime = Time->GetCurrentSimTime();
+				}
+			}
+		}
+#endif
+		for (const FHeatmapTrajectorySegment& Segment : Segments)
+		{
+			const bool bKept = Heatmap->CheckHeatmapAndLocationValid(Segment.End);
+			if (bKept)
+			{
+				FloorSegments.Add(Segment);
+			}
+			else
+			{
+				// D7: make the loss visible rather than changing the filter's accept/reject behaviour.
+				FHeatmapTrajectoryDroppedMass& Dropped = TrajectoryDroppedMassByHeatmap.FindOrAdd(Heatmap);
+				Dropped.DroppedLengthCm += FVector::Dist(Segment.Start, Segment.End);
+				Dropped.DroppedSeconds += Segment.DeltaSeconds;
+			}
+#if !UE_BUILD_SHIPPING
+			// Rejections are the point: a segment dropped here never reaches the rasteriser, and
+			// because only Segment.End is tested, a straddling segment loses its in-band portion too.
+			if (bCapturing)
+			{
+				Capture.RecordFilter(CaptureSimTime, Heatmap->FloorID,
+					static_cast<float>(Heatmap->MeshOriginLocation.Z), Heatmap->MaxAddHeight,
+					Segment.Start, Segment.End, bKept);
+			}
+#endif
+		}
+
+		Heatmap->UpdateHeatmapWithTrajectorySegments(FloorSegments);
+	}
+}
+
+bool UHeatmapSubsystem::AnyTrajectoryHeatmapsActive() const
+{
+	return Heatmaps.ContainsByPredicate([](const AHeatmapPixelTextureVisualizer* Heatmap)
+	{
+		return IsValid(Heatmap) && !Heatmap->IsHidden() && Heatmap->bTrajectoryHeatmap;
+	});
+}
+
+void UHeatmapSubsystem::ClearTrajectoryHeatmaps()
+{
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap) && Heatmap->bTrajectoryHeatmap)
+		{
+			Heatmap->ClearTexture();
+			Heatmap->UpdateHeatmapTextureRender();
+			// D8: dropped-mass accounting must not survive the render targets it was measured against.
+			if (FHeatmapTrajectoryDroppedMass* Dropped = TrajectoryDroppedMassByHeatmap.Find(Heatmap))
+			{
+				*Dropped = FHeatmapTrajectoryDroppedMass();
+			}
+		}
+	}
+}
+
+void UHeatmapSubsystem::GetDroppedTrajectoryMass(const AHeatmapPixelTextureVisualizer* Heatmap, double& OutDroppedLengthCm, double& OutDroppedSeconds) const
+{
+	if (const FHeatmapTrajectoryDroppedMass* Dropped = TrajectoryDroppedMassByHeatmap.Find(Heatmap))
+	{
+		OutDroppedLengthCm = Dropped->DroppedLengthCm;
+		OutDroppedSeconds = Dropped->DroppedSeconds;
+	}
+	else
+	{
+		OutDroppedLengthCm = 0.0;
+		OutDroppedSeconds = 0.0;
+	}
+}
+
+void UHeatmapSubsystem::RequestTrajectoryTrackingReset()
+{
+	bTrajectoryTrackingResetPending = true;
+}
+
+bool UHeatmapSubsystem::ConsumeTrajectoryTrackingReset()
+{
+	const bool bPending = bTrajectoryTrackingResetPending;
+	bTrajectoryTrackingResetPending = false;
+	return bPending;
+}
+
+void UHeatmapSubsystem::SetTrajectoryHeatmapsEnabled(bool bEnabled)
+{
+	bTrajectoryHeatmapsEnabled = bEnabled; // remembered for actors that register later; see AddHeatmapActor
+
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap))
+		{
+			Heatmap->SetTrajectoryHeatmapEnabled(bEnabled);
+		}
+	}
+}
+
+void UHeatmapSubsystem::SetTrajectoryRouteExposureEnabled(bool bEnabled)
+{
+	bRouteExposureEnabled = bEnabled; // remembered for actors that register later; see AddHeatmapActor
+
+	const ETrajectoryMapMode NewMode =
+		bEnabled ? ETrajectoryMapMode::RouteExposure : ETrajectoryMapMode::RouteUsage;
+
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap))
+		{
+			Heatmap->SetTrajectoryMapMode(NewMode);
+		}
+	}
 }
 
 void UHeatmapSubsystem::UpdateHeatmapTextureRender()
@@ -553,13 +736,12 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(
 	HeatmapsSnapshot.Reserve(Heatmaps.Num());
 	for (AHeatmapPixelTextureVisualizer* HM : Heatmaps) { HeatmapsSnapshot.Add(HM); }
 
-	Async(EAsyncExecution::Thread, [HeatmapsSnapshot, ValidLocations, FallbackLocations]()
+	AsyncTask(ENamedThreads::GameThread, [HeatmapsSnapshot, ValidLocations, FallbackLocations]()
 	{
-		//TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
-		ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
+		for (int32 i = 0; i < HeatmapsSnapshot.Num(); ++i)
 		{
 			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-			if (!HM || !IsValid(HM)) return;
+			if (!IsValid(HM)) continue;
 			if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
 			{
 				HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
@@ -568,18 +750,7 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate_Mpmc(
 			{
 				HM->UpdateHeatmapAgentCount(FallbackLocations);
 			}
-		});
-	},
-	[HeatmapsSnapshot]()
-	{
-		ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
-		{
-			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-			if (HM && IsValid(HM))
-			{
-				HM->UpdateHeatmapTextureRender();
-			}
-		});
+		}
 	});
 }
 
@@ -594,32 +765,20 @@ void UHeatmapSubsystem::RunAsyncHeatmapUpdate(const TArray<FVector>& LocationArr
 	HeatmapsSnapshot.Reserve(Heatmaps.Num());
 	for (AHeatmapPixelTextureVisualizer* HM : Heatmaps) { HeatmapsSnapshot.Add(HM); }
 
-	Async(EAsyncExecution::Thread, [HeatmapsSnapshot, LocationArray, ValidLocations]()
-	      {
-	              //TRACE_CPUPROFILER_EVENT_SCOPE_STR("Heatmap Subsystem work task");
-	              ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
-	              {
-	                      AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-	                      if (!HM || !IsValid(HM)) return;
-	                      if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
-	                      {
-	                              HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
-	                      }
-	                      else
-	                      {
-	                              HM->UpdateHeatmapAgentCount(LocationArray);
-	                      }
-	              });
-	      },
-	      [HeatmapsSnapshot]()
-	      {
-	              ParallelFor(HeatmapsSnapshot.Num(), [&](int32 i)
-	              {
-	                      AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
-	                      if (HM && IsValid(HM) && !HM->IsHidden())
-	                      {
-	                              HM->UpdateHeatmapTextureRender();
-	                      }
-	              });
-	      });
+	AsyncTask(ENamedThreads::GameThread, [HeatmapsSnapshot, LocationArray, ValidLocations]()
+	{
+		for (int32 i = 0; i < HeatmapsSnapshot.Num(); ++i)
+		{
+			AHeatmapPixelTextureVisualizer* HM = HeatmapsSnapshot[i].Get();
+			if (!IsValid(HM)) continue;
+			if (!HM->IsHidden() && ValidLocations.IsValidIndex(i))
+			{
+				HM->UpdateHeatmapWithMultipleAgents(ValidLocations[i]);
+			}
+			else
+			{
+				HM->UpdateHeatmapAgentCount(LocationArray);
+			}
+		}
+	});
 }

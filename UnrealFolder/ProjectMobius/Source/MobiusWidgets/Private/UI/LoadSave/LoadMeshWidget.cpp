@@ -23,6 +23,7 @@
  */
 
 #include "UI/LoadSave/LoadMeshWidget.h"
+#include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 
@@ -142,5 +143,23 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 void ULoadMeshWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)
 {
 	UE_LOG(LogTemp, Error, TEXT("File dialog error: %s - %s"), *ErrorTitle, *ErrorMessage);
+}
+
+void ULoadMeshWidget::BindGameInstanceFileDelegate()
+{
+	// OnMeshFileChanged, not OnMeshScaleChanged: this is the delegate SetSimulationMeshFilePath
+	// broadcasts, so it fires for a Browse selection AND for a preload / console-command path push.
+	if (UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInstance->OnMeshFileChanged.AddUniqueDynamic(this, &ULoadMeshWidget::RefreshFromGameInstance);
+	}
+}
+
+void ULoadMeshWidget::UnbindGameInstanceFileDelegate()
+{
+	if (UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld()))
+	{
+		MobiusGameInstance->OnMeshFileChanged.RemoveDynamic(this, &ULoadMeshWidget::RefreshFromGameInstance);
+	}
 }
 

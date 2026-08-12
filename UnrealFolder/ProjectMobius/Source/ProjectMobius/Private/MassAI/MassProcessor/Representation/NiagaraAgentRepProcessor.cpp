@@ -29,7 +29,9 @@
 #include "MassExecutionContext.h"
 #include "MassExternalSubsystemTraits.h" // This is needed so we can use subsystems and have no compile errors
 // Fragments to include with this processor
+#include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/MassProcessor/Analytics/AgentEgressHealthCalculationProcessor.h"
 // Shared Fragments to include with the processor
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Tags
@@ -45,6 +47,31 @@
 #include "NiagaraDataInterfaceArrayFunctionLibrary.h"
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentNiagaraDataFrag.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "Async/ParallelFor.h"
+#include "HAL/IConsoleManager.h"
+
+// The header keeps a plain literal to preserve its forward declarations — hold the two in sync here
+static_assert(UNiagaraAgentRepProcessor::DemographicSlotCount == MobiusNiagaraDemographics::NumSlots,
+	"DemographicSlotCount must match MobiusNiagaraDemographics::NumSlots");
+
+// Gates the per-demographic Niagara array uploads on content changes; 0 = legacy upload-every-frame.
+// Default stays 0 until the scripted camera+scrub A/B verifies identical rendered output (PRD B8).
+static TAutoConsoleVariable<int32> CVarMobiusChangedOnlyUpload(
+	TEXT("mobius.Render.ChangedOnlyUpload"),
+	0,
+	TEXT("1 = re-upload a demographic's Niagara agent arrays only when their content changed since its last upload (paused/idle frames skip all 15 SetNiagaraArray marshals). 0 = upload every frame (legacy)."),
+	ECVF_Default);
+
+/**
+ * VAT animation index for the seated wheelchair pose. A wheelchair agent's HUMAN mesh uses this
+ * regardless of speed — walk/shuffle/brisk brackets are meaningless for a seated occupant.
+ *
+ * PLACEHOLDER: the five seated VAT poses are NOT baked yet, so this deliberately aliases the
+ * existing not-moving index (GetIntAnimState(Emb_NotMoving) == 0). Wheelchair occupants therefore
+ * render STANDING inside the chair until the bake lands — that is expected, not a bug to chase.
+ * Repoint this ONE constant when the poses arrive; nothing else needs to change.
+ */
+static constexpr int32 GWheelchairSeatedAnimStateIndex = 0;
 
 
 UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
@@ -53,6 +80,7 @@ UNiagaraAgentRepProcessor::UNiagaraAgentRepProcessor()
 	ExecutionFlags = static_cast<int32>(EProcessorExecutionFlags::All);
 	ProcessingPhase = EMassProcessingPhase::PostPhysics;
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::Avoidance);
+	ExecutionOrder.ExecuteAfter.Add(UAgentEgressHealthCalculationProcessor::StaticClass()->GetFName());
 
 	bRequiresGameThreadExecution = true;
 }
@@ -62,6 +90,7 @@ void UNiagaraAgentRepProcessor::ConfigureQueries()
 	// The Entity Query Required fragments for this processor;
 	EntityQuery.AddRequirement<FEntityMovementFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FEntityRenderingFragment>(EMassFragmentAccess::ReadWrite);
+	EntityQuery.AddRequirement<FAgentEgressTenabilityFragment>(EMassFragmentAccess::ReadOnly);
 
 	// Add the shared Niagara representation fragment
 	EntityQuery.AddSharedRequirement<FAgentNiagaraDataFrag>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::All);
@@ -153,11 +182,50 @@ void UNiagaraAgentRepProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	}));
 	UNiagaraComponent* NiagaraComp = NiagaraAgentRepActor ? NiagaraAgentRepActor->GetNiagaraComponent() : nullptr;
 
-	SetNiagaraAgentData(NiagaraComp, TEXT("MaleAdultAgent"), MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("ElderlyMaleAgent"), ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
-	SetNiagaraAgentData(NiagaraComp, TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+	// Changed-only upload (mobius.Render.ChangedOnlyUpload): skip a demographic's three array
+	// re-marshals while nothing in it changed since its last upload. Off (0) = legacy every-frame path.
+	const bool bChangedOnlyUpload = CVarMobiusChangedOnlyUpload.GetValueOnGameThread() != 0;
+	auto UploadAgentData = [&](const int32 Slot, const TCHAR* BaseName,
+		const TArray<FVector4>& Locations, const TArray<FQuat>& Rotations, const TArray<int32>& AnimationStates)
+	{
+		// Nothing to draw for this demographic — e.g. the chair slot on every dataset with no
+		// wheelchair agents, which is all of them today. Skip the three array marshals AND clear the
+		// dirty bit: SetNiagaraAgentData below early-outs on an empty array without ever marking
+		// clean, so the bit would otherwise stay true forever and re-test every frame.
+		//
+		// Clearing the bit cannot strand a demographic as clean-but-stale. These arrays only ever
+		// change SIZE in RegisterProperties (whole-array assignment from the shared fragment);
+		// SetAgentData writes by index and never Adds. So an empty demographic can only become
+		// non-empty via RegisterProperties, which unconditionally re-dirties every slot on its way
+		// out. This is the one edit here that also affects the five pre-existing demographics —
+		// gate G10 (unmodified dataset) is what confirms it.
+		if (Locations.Num() == 0)
+		{
+			DemographicDirty[Slot].store(false, std::memory_order_relaxed);
+			return;
+		}
+		if (bChangedOnlyUpload && !DemographicDirty[Slot].load(std::memory_order_relaxed))
+		{
+			return;
+		}
+		SetNiagaraAgentData(NiagaraComp, BaseName, Locations, Rotations, AnimationStates);
+		// Mirror SetNiagaraAgentData's early-out: only mark clean when the upload actually ran
+		if (NiagaraComp && Locations.Num() > 0)
+		{
+			DemographicDirty[Slot].store(false, std::memory_order_relaxed);
+		}
+	};
+
+	// Slot indices follow MobiusNiagaraDemographics::ComputeSlot; call order preserved from the legacy path
+	UploadAgentData(0, TEXT("MaleAdultAgent"), MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
+	UploadAgentData(2, TEXT("ElderlyMaleAgent"), ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
+	UploadAgentData(1, TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
+	UploadAgentData(3, TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
+	UploadAgentData(4, TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+	// Empty wheelchairs. Self-gating: the Locations.Num() == 0 early-out above makes this free on
+	// every dataset with no wheelchair agents.
+	UploadAgentData(MobiusNiagaraDemographics::WheelchairSlot, TEXT("WheelchairAgent"),
+		WheelchairLocationAndScales, WheelchairRotations, WheelchairAnimationStates);
 
 }
 
@@ -166,57 +234,144 @@ void UNiagaraAgentRepProcessor::ExtractAgentData(FMassExecutionContext& Context)
 	// Get the entity Rendering fragment
 	const TArrayView<FEntityRenderingFragment>& EntityRenderingFragment = Context.GetMutableFragmentView<FEntityRenderingFragment>();
 	TConstArrayView<FEntityMovementFragment> EntityMovementFragment = Context.GetFragmentView<FEntityMovementFragment>();
+	const TConstArrayView<FAgentEgressTenabilityFragment> AgentHealthFragments =
+		Context.GetFragmentView<FAgentEgressTenabilityFragment>();
 
 	auto Entities = Context.GetEntities();
 
-	for (int i = 0; i < Entities.Num(); i++)
+	// Slot-indexed dispatch tables replace the legacy per-agent gender/age branch; the slot was
+	// routed once at spawn (AgentRepresentation_MOP). Table order = MobiusNiagaraDemographics::ComputeSlot.
+	// One entry PER SLOT, in slot order. A missing trailing entry value-initialises to nullptr and
+	// compiles silently — the deref below then crashes inside ParallelFor, from a worker thread.
+	TArray<FVector4>* const LocationsBySlot[MobiusNiagaraDemographics::NumSlots] = {
+		&MaleAdultAgentLocationAndScales, &FemaleAdultAgentLocationAndScales,
+		&ElderlyMaleAdultAgentLocationAndScales, &ElderlyFemaleAdultAgentLocationAndScales,
+		&ChildrenAgentLocationAndScales, &WheelchairLocationAndScales };
+	TArray<FQuat>* const RotationsBySlot[MobiusNiagaraDemographics::NumSlots] = {
+		&MaleAdultAgentRotations, &FemaleAdultAgentRotations,
+		&ElderlyMaleAdultAgentRotations, &ElderlyFemaleAdultAgentRotations,
+		&ChildrenAgentRotations, &WheelchairRotations };
+	TArray<int32>* const AnimationStatesBySlot[MobiusNiagaraDemographics::NumSlots] = {
+		&MaleAnimationStates, &FemaleAnimationStates,
+		&ElderlyMaleAnimationStates, &ElderlyFemaleAnimationStates,
+		&ChildrenAnimationStates, &WheelchairAnimationStates };
+
+	// Safe to run parallel: every routed entity writes only its own (slot, InstanceID) array element
+	// (InstanceID is unique within a demographic and every routed agent has a distinct one) plus its own
+	// rendering-fragment element — all write targets disjoint. Unrouted agents (Slot >= NumSlots, i.e.
+	// InvalidSlot) are skipped below, so they can't alias index 0. The Niagara SetNiagaraArray* uploads
+	// stay on the game thread after the loop (see Execute).
+	ParallelFor(Entities.Num(), [&](const int32 i)
 	{
-		auto EntityMovement = EntityMovementFragment[i];
-		auto& EntityRendering = EntityRenderingFragment[i];
+		FEntityRenderingFragment& EntityRendering = EntityRenderingFragment[i];
+
+		const uint8 Slot = EntityRendering.NiagaraDemographicSlot;
+		if (Slot >= MobiusNiagaraDemographics::NumSlots)
+		{
+			// Agent was never routed into a demographic array at spawn (only Ead_Default today,
+			// currently unreachable) — nothing to write. Guards the dispatch index too.
+			return;
+		}
+
+		const FEntityMovementFragment& EntityMovement = EntityMovementFragment[i];
+		const bool bIsDead = AgentHealthFragments[i].bIsDead;
 
 		// Get the entity instance index
-		int32 EntityInstanceID = EntityRendering.InstanceID;
+		const int32 EntityInstanceID = EntityRendering.InstanceID;
 
-		// check if the entity is a child
-		if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Child)
+		if (SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, bIsDead,
+			*LocationsBySlot[Slot], *RotationsBySlot[Slot], *AnimationStatesBySlot[Slot]))
 		{
-			SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+			// relaxed is enough: racing writers all store true; read/clear happens game-thread-only
+			DemographicDirty[Slot].store(true, std::memory_order_relaxed);
 		}
-		// check if elderly
-		else if (EntityRendering.AgeDemographic == EAgeDemographic::Ead_Elderly)
-		{
-			if (EntityRendering.bIsMale)
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyMaleAdultAgentLocationAndScales, ElderlyMaleAdultAgentRotations, ElderlyMaleAnimationStates);
-			}
-			else
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
-			}
 
-		}
-		else // entity is an adult
+		// A wheelchair agent renders a SECOND mesh: the empty chair, at the same pose, from the
+		// chair slot. This is the only place an agent writes twice.
+		//
+		// Still race-free: the chair target is (WheelchairSlot, ChairInstanceID), and
+		// ChairInstanceID is its own monotonic counter, so no two agents share a chair element and
+		// no chair element collides with a human element (different slot). Reusing InstanceID here
+		// would break that — two agents in different demographic slots can hold the same InstanceID.
+		//
+		// The branch is deliberately NOT guarded on a "are there any wheelchair agents" count: MASS
+		// interleaves wheelchair agents into the same chunks as everyone else, so this loop visits
+		// every agent regardless, and the test reads a byte already in this fragment's cache line.
+		//
+		// NOTE: this passes the SAME rendering fragment to SetAgentData a second time, so any
+		// side effect that helper has on the fragment runs twice for a wheelchair agent. Today the
+		// only one is `bReadyToDestroy = !bRenderAgent`, which is idempotent. If you ever add a
+		// non-idempotent write there (a counter, a latch, an accumulator) it will double-apply on
+		// wheelchair agents ONLY — guard it on the slot rather than assuming one call per agent.
+		if (EntityRendering.MobilityAid == EMobilityAid::Ema_Wheelchair)
 		{
-			if (EntityRendering.bIsMale)
+			constexpr uint8 ChairSlot = MobiusNiagaraDemographics::WheelchairSlot;
+			if (SetAgentData(EntityRendering.ChairInstanceID, EntityMovement, EntityRendering, bIsDead,
+				*LocationsBySlot[ChairSlot], *RotationsBySlot[ChairSlot], *AnimationStatesBySlot[ChairSlot]))
 			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, MaleAdultAgentLocationAndScales, MaleAdultAgentRotations, MaleAnimationStates);
-			}
-			else
-			{
-				SetAgentData(EntityInstanceID, EntityMovement, EntityRendering, FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
+				// Must not be discarded: without this store the chairs upload once on frame 1 and
+				// then freeze at their spawn positions while the humans walk away.
+				DemographicDirty[ChairSlot].store(true, std::memory_order_relaxed);
 			}
 		}
-	}
+	});
 }
 
-void UNiagaraAgentRepProcessor::SetAgentData(int32 Index, const FEntityMovementFragment EntityMovementFragment, FEntityRenderingFragment& EntityRenderingFragment, TArray<FVector4>& LocationAndScales, TArray<FQuat>& Rotations, TArray<int32>& AnimationStates)
+bool UNiagaraAgentRepProcessor::SetAgentData(
+	const int32 Index,
+	const FEntityMovementFragment& EntityMovementFragment,
+	FEntityRenderingFragment& EntityRenderingFragment,
+	const bool bIsDead,
+	TArray<FVector4>& LocationAndScales,
+	TArray<FQuat>& Rotations,
+	TArray<int32>& AnimationStates)
 {
-	LocationAndScales[Index] = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, EntityRenderingFragment.bRenderAgent ? 1.0f : 0.0f);
-	Rotations[Index] = EntityMovementFragment.CurrentRotation.Quaternion();
-	AnimationStates[Index] = GetIntAnimState(EntityMovementFragment.CurrentMovementBracket);
+	// W term:
+	//   bRenderAgent               - analysis gate (sample presence + tenability); also drives
+	//                                bReadyToDestroy below, so it must NEVER be cleared just to hide
+	//   bHiddenByTenabilityFailure - failed agent replaced in-world by its tenability fail marker
+	// A hidden agent still reaches every analysis query and the published tenability snapshot, which is
+	// what lets the fail marker draw at the spot the mesh just vanished from.
+	//
+	// bVisibleToCamera is deliberately NOT ANDed in yet, even though its doc comment names this term as
+	// its one consumer: nothing writes it (the B7 cull never landed), so it would be a no-op that fails
+	// UNSAFE. It defaults true, so anything that hands this fragment zeroed memory instead of running
+	// its constructor would blank the whole crowd. bHiddenByTenabilityFailure is the other way round —
+	// it defaults false, so a zeroed fragment draws. Add bVisibleToCamera here when B7 lands and there
+	// is a writer to test against.
+	const bool bDrawAgent = EntityRenderingFragment.bRenderAgent
+		&& !EntityRenderingFragment.bHiddenByTenabilityFailure;
+
+	const FVector4 NewLocationAndScale = FVector4(EntityMovementFragment.CurrentLocation.X,EntityMovementFragment.CurrentLocation.Y,EntityMovementFragment.CurrentLocation.Z, bDrawAgent ? 1.0f : 0.0f);
+	const FQuat NewRotation = EntityMovementFragment.CurrentRotation.Quaternion();
+	// Half of the former TODO here is now done: a failed agent's mesh is hidden (bHiddenByTenabilityFailure
+	// above) and an in-world fail marker is drawn at its failure location by SAgentEgressHealth. The
+	// NotMoving animation state below is kept only as the fallback for Mobius.Tenability.HideFailedAgents 0.
+	// Wheelchair users hold the seated pose whatever their speed — the movement brackets describe a
+	// gait, which a seated occupant does not have. Branching here rather than adding a parameter
+	// keeps the non-wheelchair path untouched and keeps the pose inside the value compared below, so
+	// a pose change still dirties the demographic and actually uploads.
+	// (Harmless on the chair's own write: the chair emitter ignores its animation state entirely.)
+	const int32 NewAnimationState = bIsDead
+		? GetIntAnimState(EPedestrianMovementBracket::Emb_NotMoving)
+		: (EntityRenderingFragment.MobilityAid == EMobilityAid::Ema_Wheelchair
+			? GWheelchairSeatedAnimStateIndex
+			: GetIntAnimState(EntityMovementFragment.CurrentMovementBracket));
+
+	// Exact (bitwise-value) compare before write: an unchanged agent must not dirty its
+	// demographic's upload — this is what makes paused/idle frames upload nothing
+	const bool bChanged = LocationAndScales[Index] != NewLocationAndScale
+		|| Rotations[Index] != NewRotation
+		|| AnimationStates[Index] != NewAnimationState;
+
+	LocationAndScales[Index] = NewLocationAndScale;
+	Rotations[Index] = NewRotation;
+	AnimationStates[Index] = NewAnimationState;
 
 	// update entity destroy state
 	EntityRenderingFragment.bReadyToDestroy = !EntityRenderingFragment.bRenderAgent;
+
+	return bChanged;
 }
 
 int32 UNiagaraAgentRepProcessor::GetIntAnimState(EPedestrianMovementBracket AnimState)
@@ -296,8 +451,23 @@ void UNiagaraAgentRepProcessor::RegisterProperties(FMassExecutionContext& Contex
 	// Get the children animation states
 	ChildrenAnimationStates = AgentNiagaraRepSharedFrag.ChildrenAnimationStates;
 
+	// Get the empty-wheelchair transforms (empty on every dataset with no wheelchair agents)
+	WheelchairLocationAndScales = AgentNiagaraRepSharedFrag.WheelchairLocationAndScales;
+
+	// Get the empty-wheelchair rotations
+	WheelchairRotations = AgentNiagaraRepSharedFrag.WheelchairRotations;
+
+	// Get the empty-wheelchair animation states (unused by the chair emitter)
+	WheelchairAnimationStates = AgentNiagaraRepSharedFrag.WheelchairAnimationStates;
+
 	// Map the agent count to the array
 	MapAgentCountToArray(Context.GetMutableSharedFragment<FNiagaraStatsFragment>());
+
+	// Freshly (re)copied arrays must upload regardless of past content compares
+	for (std::atomic<bool>& Dirty : DemographicDirty)
+	{
+		Dirty.store(true, std::memory_order_relaxed);
+	}
 
 	bRegisteredProperties = true;
 }
@@ -316,13 +486,15 @@ void UNiagaraAgentRepProcessor::PauseResumeAnimations(bool bPause) const
 
 void UNiagaraAgentRepProcessor::MapAgentCountToArray(const FNiagaraStatsFragment& AgentStatsFragment)
 {
-	NumberOfAgentsArray.Reset(5);
+	// Add order MUST match MobiusNiagaraDemographics slot order — CheckAgentArraySize indexes by slot
+	NumberOfAgentsArray.Reset(MobiusNiagaraDemographics::NumSlots);
 
 	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfMaleAdults);
 	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfFemaleAdults);
 	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfMaleElderly);
 	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfFemaleElderly);
 	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfChildren);
+	NumberOfAgentsArray.Add(AgentStatsFragment.NumberOfWheelchairs);
 }
 
 bool UNiagaraAgentRepProcessor::CheckAgentCountArraySize(const FNiagaraStatsFragment& AgentStatsFragment) const
@@ -332,9 +504,12 @@ bool UNiagaraAgentRepProcessor::CheckAgentCountArraySize(const FNiagaraStatsFrag
 	bool bMaleElderlyCorrect = CheckAgentArraySize(2, AgentStatsFragment.NumberOfMaleElderly);
 	bool bFemaleElderlyCorrect = CheckAgentArraySize(3, AgentStatsFragment.NumberOfFemaleElderly);
 	bool bChildrenCorrect = CheckAgentArraySize(4, AgentStatsFragment.NumberOfChildren);
+	bool bWheelchairsCorrect = CheckAgentArraySize(MobiusNiagaraDemographics::WheelchairSlot,
+		AgentStatsFragment.NumberOfWheelchairs);
 
 	// if any are false then we need to return false
-	if (!bMaleAdultsCorrect || !bFemaleAdultsCorrect || !bMaleElderlyCorrect || !bFemaleElderlyCorrect || !bChildrenCorrect)
+	if (!bMaleAdultsCorrect || !bFemaleAdultsCorrect || !bMaleElderlyCorrect || !bFemaleElderlyCorrect
+		|| !bChildrenCorrect || !bWheelchairsCorrect)
 	{
 		// if any of the checks fail then we need to return false
 		return false;
@@ -444,6 +619,7 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults);
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly);
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("ChildNumberOfAgents"), AgentNiagaraStatsSharedFrag.NumberOfChildren);
+	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->SetVariableInt(TEXT("WheelchairAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfWheelchairs);
 
 	//
 
@@ -452,9 +628,21 @@ void UNiagaraAgentRepProcessor::CheckAndUpdateNiagaraRenderSpec(FMassExecutionCo
 	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("FemaleAdultAgent"), FemaleAdultAgentLocationAndScales, FemaleAdultAgentRotations, FemaleAnimationStates);
 	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ElderlyFemaleAgent"), ElderlyFemaleAdultAgentLocationAndScales, ElderlyFemaleAdultAgentRotations, ElderlyFemaleAnimationStates);
 	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("ChildAgent"), ChildrenAgentLocationAndScales, ChildrenAgentRotations, ChildrenAnimationStates);
+	SetNiagaraAgentData(AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent(), TEXT("WheelchairAgent"), WheelchairLocationAndScales, WheelchairRotations, WheelchairAnimationStates);
 
 	// If we are paused then we need to pause the animations and vice versa
 	PauseResumeAnimations(bLastPauseLoop);
+
+	// A recreated system instance must get the next regular upload even if agent content is unchanged
+	for (std::atomic<bool>& Dirty : DemographicDirty)
+	{
+		Dirty.store(true, std::memory_order_relaxed);
+	}
+
+	// A swapped-in system comes up on its asset-default materials, so the user's colour choice has to be
+	// pushed again here or it silently reverts on every spec change. Must run BEFORE Activate.
+	RepresentationSubsystem->ReapplyStoredMaterials(
+		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent());
 
 	// Activate the Niagara System
 	AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->Activate(true);

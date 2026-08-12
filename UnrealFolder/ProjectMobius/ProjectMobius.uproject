@@ -61,7 +61,7 @@
 		},
 		{
 			"Name": "ProjectMobiusTests",
-			"Type": "Editor",
+			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"
 		}
 	],
@@ -119,12 +119,16 @@
 		},
 		{
 			"Name": "ElectronicNodes",
-			"Enabled": true,
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ],
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/5cb2a394d0c04e73891762be4cbd7216"
 		},
 		{
 			"Name": "DarkerNodes",
-			"Enabled": true,
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ],
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/4b3441f0228a40ec9ca986489a5bd682"
 		},
 		{
@@ -134,7 +138,7 @@
 		{
 			"Name": "ProceduralMeshComponent",
 			"Enabled": true,
-			"LoadingPhase": "Pre-Default"
+			"LoadingPhase": "PreDefault"
 		},
 		{
 			"Name": "AnimationWarping",
@@ -176,12 +180,29 @@
 			"Enabled": true
 		},
 		{
-			"Name": "Hdf5DataPlugin",
+			"Name": "MobiusDataImporter",
 			"Enabled": true
+		},
+		{
+			"Name": "NiagaraFluids",
+			"Enabled": true
+		},
+		{
+			"Name": "NwiroIntegrationKit",
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ]
+		},
+		{
+			"Name": "McpAutomationBridge",
+          "Enabled": true,
+          "Optional": true,
+          "TargetAllowList": [ "Editor" ]
 		}
 	],
 	"AdditionalPluginDirectories": [
-		"Plugins"
+		"Plugins",
+		"../../../../../NickAssets/UE_Plugins/McpBridge-bin/5.5"
 	],
 	"TargetPlatforms": [
 		"Linux",

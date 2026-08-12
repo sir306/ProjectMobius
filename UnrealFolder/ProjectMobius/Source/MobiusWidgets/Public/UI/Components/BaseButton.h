@@ -28,6 +28,34 @@
 #include "Components/Button.h"
 #include "BaseButton.generated.h"
 
+class UUIThemeSubsystem;
+
+/**
+ * Which named C++ shape a Mobius button takes, replacing "whatever FButtonStyle the bound SWS asset
+ * happened to carry". Declared here rather than beside the geometry structs because MobiusButtonGeometry.h
+ * is a plain header with no UHT reflection, and this has to be a UPROPERTY the designer can set.
+ */
+UENUM(BlueprintType)
+enum class EMobiusButtonGeometryFamily : uint8
+{
+	/**
+	 * Take no shape from C++ — keep the shared "Mobius.Button" style.
+	 *
+	 * FIRST on purpose, so it is the value 0. A UENUM property serialises by enumerator NAME, and a name
+	 * that no longer exists resolves to the first entry on load. `FromAsset` was removed in A10b step 5,
+	 * and every asset was migrated off it first — but if one were ever missed, landing on `Shared` gives it
+	 * exactly the behaviour `FromAsset` had with nothing bound, which is what all six of them were doing.
+	 * Reordering costs nothing here: `Panel` and `Tab` keep the numeric values they already had.
+	 */
+	Shared		UMETA(DisplayName = "Shared Default"),
+
+	/** The standard Mobius button: 4px rounded box, 1px ring, 8/4 padding (MobiusButtonGeometry::Chip). */
+	Panel		UMETA(DisplayName = "Panel Button"),
+
+	/** Setting/panel tab: square at rest, 4px on hover, no ring, 0/20 padding (MobiusButtonGeometry::Tab). */
+	Tab			UMETA(DisplayName = "Setting Tab")
+};
+
 /**
  * To apply our custom style to the button, we need to create a new class that inherits from UButton,
  * this is to reduce some boilerplate code that we would have to write if we were to create a new button for each widget.
@@ -47,10 +75,134 @@ public:
 	/**
 	 * Method to apply the custom style to the button.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "MobiusWidget|Appearance")
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Style")
 	virtual void ApplyMobiusButtonStyle();
 
-	/** The Style asset for the button */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MobiusWidget|Appearance")
-	TObjectPtr<USlateWidgetStyleAsset> SlateButtonStyle;
+	/**
+	 * Injects the click-path diagnostics (see Diagnostics/MobiusClickLog.h) into EVERY Mobius button.
+	 * Bound here rather than in SynchronizeProperties because this fires once per Slate rebuild, and a
+	 * rebuild is itself evidence in the unresponsive-button investigation: an SButton rebuilt between
+	 * press and release drops mouse capture, which reads to the user as "the click did nothing".
+	 * All logging is gated on `Mobius.LogClicks` and skipped at design time.
+	 */
+	virtual void OnWidgetRebuilt() override;
+
+	/**
+	 * Re-stamp the LIVE button style's state colours from the theme palette: Normal = ButtonBg,
+	 * Hovered = ButtonHoverBg, Pressed = ButtonPressedBg, Disabled = ButtonBg, 1px outline =
+	 * ButtonBorder, all four foregrounds = ButtonText. Geometry (draw type, corner radii, outline
+	 * WIDTH, padding, sound) is left exactly as the SWS asset / shared style authored it — a material
+	 * on a RoundedBox brush loses the corner mask and the outline, so this recolours flat brushes
+	 * rather than swapping in materials (owner ruling).
+	 *
+	 * Called from construct (via ApplyMobiusButtonStyle) and from OnThemeChanged — never from
+	 * hover/press. Re-styling mid-press makes SButton drop mouse capture, which reads to the user as
+	 * "the click did nothing" (see A15 in the pending-task list).
+	 *
+	 * ALSO neutralises UButton::BackgroundColor's RGB to white (alpha untouched) before any of the above.
+	 * That property reaches Slate as SButton's BorderBackgroundColor and MULTIPLIES every brush tint set
+	 * here, so a non-neutral authored value silently re-tints the palette colour this function just
+	 * resolved. A6b-6a moved that write here from the legacy value-walk, which was its only other owner;
+	 * see the implementation comment for the project-wide measurement that made the move safe.
+	 *
+	 * Skips, by design:
+	 *  - brushes carrying a ResourceObject (image/material art: the playbar play/pause MIDs, the VR
+	 *    button MIs) — the asset owns those pixels,
+	 *  - styles whose outline is WIDER than the shared 1px chrome line: a thick outline is a MEANINGFUL
+	 *    accent ring (the scalability "current tier" chip is 2px accent blue), not themeable chrome,
+	 *  - ribbon tabs (UButtonWithText::bIsRibbonButton), which self-theme via ApplyRibbonTabStyle.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mobius|Theme")
+	void RefreshThemedButtonStyle();
+
+	/**
+	 * CLICK-RELIABILITY FIX (2026-07-27, owner-diagnosed). Slate treats a button's pressed padding as
+	 * LAYOUT, not decoration: `SButton::GetCombinedPadding` (SButton.cpp:159-164) returns
+	 * ContentPadding + (IsPressed ? Style->PressedPadding : Style->NormalPadding), so a smaller pressed
+	 * padding SHRINKS the widget the instant you press it. If the cursor sat within that delta of the
+	 * edge, the retreating edge fires OnMouseLeave (which calls Release(), SButton.cpp:449) and the
+	 * following OnMouseButtonUp sees `bEventOverButton = IsHovered()` == false (SButton.cpp:374) — so the
+	 * click is silently dropped even though the button visibly hovered and visibly depressed.
+	 *
+	 * `SWS_PanelButtonStyle` authored Normal 8,4,8,4 → Pressed 6,2,6,2 = 2px in on every side, which is
+	 * exactly the dead band the owner measured across the flow-counter / load-data / scalability buttons.
+	 *
+	 * This keeps the press FEEL but removes the size change: the pressed margin is redistributed to the
+	 * same totals (content nudges 1px down) instead of shrinking, so the hit rect never moves. Runs for
+	 * EVERY Mobius button — click reliability is not a theming concern, so it is deliberately outside
+	 * ShouldFollowThemePalette() and outside the accent-ring early-out.
+	 */
+	void StabilisePressedPadding();
+
+	/**
+	 * Which named C++ geometry this button is shaped by.
+	 *
+	 * A10b step 5 (2026-08-07) removed the `SlateButtonStyle` property that used to sit here and the
+	 * `FromAsset` inference that read it. A Mobius button is now shaped entirely by this enum: nothing
+	 * about it comes from a style asset, which is the owner's 2026-08-06 ruling — widgets are themed by
+	 * the palette subsystem, not by an asset binding. Colour has come from the palette since A6b,
+	 * geometry and the click sound from FMobiusButtonGeometry since A10b/T3.
+	 *
+	 * Defaults to `Shared` (= leave the shape alone), which is what an unbound button always did. A new
+	 * widget is therefore correct with nothing configured, and only opts in to a shape deliberately.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
+	EMobiusButtonGeometryFamily GeometryFamily = EMobiusButtonGeometryFamily::Shared;
+
+	/** Resolve GeometryFamily to a shape, or null for "leave this button's geometry alone". */
+	const struct FMobiusButtonGeometry* ResolveButtonGeometry() const;
+
+	/** Set: the button's fill/hover/pressed/outline/foreground colours are re-stamped from the theme
+	 *  palette on construct and on every theme change (the SWS asset still supplies geometry).
+	 *  Clear: colours are left exactly as the style asset authored them — use this only for a button
+	 *  whose owner drives its state colours itself, so the re-stamp cannot repaint that meaning away. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Theme")
+	bool bFollowThemePalette = true;
+
+	/**
+	 * Set: this button is a TOOL PANEL ROW, not a standard button — the third styling variant alongside
+	 * the default fill and UButtonWithText's ribbon tabs.
+	 *
+	 * Per UE_IMPLEMENTATION_SPEC_v2 §3.2, a tool-panel row is a flat click target on the pane surface:
+	 * the pane's own background shows through at rest and only HOVER carries a fill ("hover = btnhover
+	 * tint"). Emphasis on a row is the job of a sibling border with a declared role — e.g. the floor-stats
+	 * Total row's wellbg + hairline well — not of the button's own fill.
+	 *
+	 * So Normal/Disabled become fully transparent and the label takes LabelText rather than ButtonText.
+	 * That also removes a real defect: these rows author Normal as DrawAs=Box with NO ResourceObject
+	 * (Hovered/Pressed are RoundedBox), and an unresourced Box brush paints a hard dark slab, which is
+	 * what made the floor-stats header and rows read as black in dark theme.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Theme")
+	bool bIsToolPanelRow = false;
+
+protected:
+	/** Gate for RefreshThemedButtonStyle. Overridden by UButtonWithText to exclude ribbon tabs. */
+	virtual bool ShouldFollowThemePalette() const;
+
+	/** Cache + return the theme subsystem (runtime only — none at design time). */
+	UUIThemeSubsystem* ResolveThemeSubsystem();
+
+	/** Bound to UUIThemeSubsystem::OnThemeChanged — event-driven replacement for the value-matching walk.
+	 *  Virtual so a subclass with its own themed look (ribbon tabs) extends rather than re-binds. */
+	UFUNCTION()
+	virtual void HandleThemeChanged();
+
+	virtual void BeginDestroy() override;
+
+	/** Weak so a torn-down game instance cannot keep the subsystem alive through this button. */
+	TWeakObjectPtr<UUIThemeSubsystem> CachedThemeSubsystem;
+
+	/** Click-log handlers bound to UButton's OnPressed / OnReleased / OnClicked. */
+	UFUNCTION()
+	void HandleClickLogPressed();
+
+	UFUNCTION()
+	void HandleClickLogReleased();
+
+	UFUNCTION()
+	void HandleClickLogClicked();
+
+	/** "<ButtonName> in <OwningWidgetClass>" — identifies the button in a log line. */
+	FString GetClickLogLabel() const;
 };

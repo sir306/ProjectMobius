@@ -25,6 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Ifc/MobiusIfcMeshLoader.h"
 #include "UE_Assimp/Public/AIScene.h"
 #include "UObject/Object.h"
 #include "AsyncAssimpMeshLoader.generated.h"
@@ -66,6 +67,35 @@ struct FAssimpSubmeshBuffers
 	TArray<int32>     Faces;
 	TArray<FVector>   Normals;
 	TArray<FVector2D> UV;
+
+	/**
+	 * Source provenance, populated ONLY by the IFC path (FMobiusIfcMeshLoader) and empty for every
+	 * other format. Carried on the submesh rather than in a side table because SplitSubmeshByTriCap
+	 * can turn one submesh into several sections, and after that split there is no other way to get
+	 * from a ProcMesh section index back to the entity it came from.
+	 *
+	 * IfcGloballyUniqueId (22-char base64) of the IFC product. Kept because IFC semantics are the
+	 * point of importing IFC at all: IfcSpace is the room-polygon source for the B-RISK work, and
+	 * retrofitting per-section identity after the fact is painful.
+	 */
+	FString SourceGuid;
+
+	/** IFC entity class exactly as IFC++ names it, e.g. "IfcWallStandardCase". Empty for non-IFC. */
+	FString SourceIfcClass;
+
+	/**
+	 * SEMANTIC material name — IfcMaterial / layer-set name for IFC, aiMaterial name for fbx/obj.
+	 * Metadata and filtering, not what gets rendered; that is Material below. The two are independent:
+	 * a product can be named "Concrete" and carry no colour, or carry a colour and no name.
+	 */
+	FString SourceMaterialName;
+
+	/**
+	 * Visual material as authored in the source file, filled by BOTH import paths. When
+	 * bHasMaterial is false the source said nothing about appearance and the consumer must keep its own
+	 * material — false is NOT "black".
+	 */
+	FMobiusMeshMaterial Material;
 };
 
 /**
@@ -127,6 +157,14 @@ public:
 	int32 SectionCount;
 	FString ErrorMessageCode;
 
+	/**
+	 * IFC load diagnostics (schema, product/triangle counts, render-filter summary, IfcSpace room
+	 * volumes). Only populated when bIsIfcExtension; default-constructed otherwise. The consumer
+	 * (ARuntimeMeshBuilder::GetTheAsyncMeshData) moves this out and logs FilterSummary exactly once,
+	 * on the game thread, after the load -- never inside the per-product loop.
+	 */
+	FMobiusIfcLoadStats IfcLoadStats;
+
 	/** Per-submesh buffers. One entry per aiMesh in the source scene. Consumers iterate this to emit one ProcMesh section per submesh. */
 	TArray<FAssimpSubmeshBuffers> Submeshes;
 
@@ -150,7 +188,10 @@ public:
 #pragma endregion MESH_PROPERTIES
 	/** is the file path actually an obj string */
 	bool bIsWktExtension = false;
-	
+
+	/** .ifc input -- routed to FMobiusIfcMeshLoader instead of Assimp (Assimp's IFCLoader is IFC2X3-only). */
+	bool bIsIfcExtension = false;
+
 
 	/** Delegate to broadcast when the mesh data has finished loading */
 	FOnLoadMeshDataComplete OnLoadMeshDataComplete;
@@ -176,6 +217,13 @@ protected:
 	 * Process a mesh from an obj string
 	 */
 	void ProcessMeshFromString();
+
+	/**
+	 * Load an .ifc file through FMobiusIfcMeshLoader (IFC++ via the MobiusIfcBridge C shim) and fill
+	 * Submeshes + IfcLoadStats. Assimp is not involved: its IFCLoader is hard-coded to IFC2X3
+	 * (`fileSchema.substr(0,4) != "IFC2"`) and Mobius has to read IFC4X3_ADD2.
+	 */
+	void ProcessIfcFromFile();
 
 	/**
 	 * Load and convert WKT data into obj string format.

@@ -27,7 +27,11 @@
 #include "MassSpawnerSubsystem.h"
 // Fragments
 #include "MassAI/Fragments/EntityInfoFragment.h"
+#include "MassAI/Fragments/AgentEgressTenabilityFragments.h"
 #include "MassAI/Fragments/SharedFragments/SimulationFragment.h"
+#include "SimData/ISimSampleProvider.h" // A1: FFullyResidentProvider built into the shared fragment
+#include "SimData/FStreamingProvider.h" // A4: optional .msc-backed streaming provider (flag-gated)
+#include "SimData/SimDiskCache.h"       // A4: cache path/hash lookup for the loaded source file
 #include "MassAI/Fragments/SharedFragments/RepresentationFragments/AgentRepresentationFragment.h"
 // Actors to include
 #include "MassAI/Actors/AgentRepresentationActorISM.h"
@@ -43,6 +47,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "MassAI/Actors/NiagaraAgentRepActor.h"
 #include "Subsystems/TimeDilationSubSystem.h"
+#include "BRisk/BRiskDataSubsystem.h"
 // Niagara
 #include "MassExecutionContext.h"
 #include "NiagaraComponent.h"
@@ -53,6 +58,7 @@
 #include "MassAI/SubSystems/PedestrianSignalSubsystem.h"
 #include "Util/MemoryTraceHelper.h"
 #include "Subsystems/StatisticSubsystem.h"
+#include "Subsystems/HeatmapSubsystem.h" // RequestTrajectoryTrackingReset on file switch
 #include "HAL/IConsoleManager.h"
 
 class UTimeDilationSubSystem;
@@ -258,7 +264,7 @@ void UMassEntitySpawnSubsystem::ClearNiagaraSim()
 	}
 }
 
-void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimulationDataRunnable>& ToKill)
+void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessAgentSimulationDataRunnable>& ToKill)
 {
         if (!ToKill) return;
 
@@ -277,9 +283,9 @@ void UMassEntitySpawnSubsystem::AgentDataRunnableCleanup(TUniquePtr<FProcessSimu
 	// 2) Signal the thread to stop
 	ToKill->Stop();
 
-	// 3) Join via destructor — WaitForCompletion() is called inside ~FProcessSimulationDataRunnable,
+	// 3) Join via destructor — WaitForCompletion() is called inside ~FProcessAgentSimulationDataRunnable,
 	//    then UE calls Exit() once cleanly after Run() returns. Do NOT call Exit() manually here;
-	//    that races with the background thread still accessing AgentDataArray / Hdf5Data.
+	//    that races with the background thread still accessing AgentDataArray / AgentSimulationData.
 	ToKill.Reset();
 
 	// 4) Clear any stale completion flag now the thread is fully joined
@@ -320,7 +326,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		!PedestrianTemplateData.IsEmpty() ||
 		!SpawnedEntityPedestrianHandles.IsEmpty() ||
 		SharedSimulationFragment.GetPtr<FSimulationFragment>() != nullptr ||
-		(AgentDataSubsystem && AgentDataSubsystem->JsonDataRunnable);
+		(AgentDataSubsystem && AgentDataSubsystem->AgentDataRunnable);
 
 	// get the mobius widget subsystem
 	auto LoadingSubsystem = GetWorld()->GetSubsystem<ULoadingSubsystem>();
@@ -336,7 +342,7 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 	}
 
         // Cleanup any existing runnable to avoid memory leaks
-        AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+        AgentDataRunnableCleanup(AgentDataSubsystem->AgentDataRunnable);
 
         bHasResetFlowCounters = false;
 
@@ -410,6 +416,12 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 		{
 			StatSub->ResetForFileSwitch();
 		}
+		if (UHeatmapSubsystem* HeatmapSub = World->GetSubsystem<UHeatmapSubsystem>())
+		{
+			// The new dataset reuses entity IDs. Without this the heatmap processor joins each recycled
+			// ID to the position its predecessor last held and draws a streak across the floor.
+			HeatmapSub->RequestTrajectoryTrackingReset();
+		}
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -472,6 +484,9 @@ void UMassEntitySpawnSubsystem::CreatePedestrianTemplateData()
 			Frag->SimulationData->Empty();
 			Frag->SimulationData.Reset();
 		}
+		// A1: release the provider too. It holds a copy of the same TSharedPtr as SimulationData, so it
+		// must be reset for the backing allocation's control block to go away on file switch.
+		Frag->Provider.Reset();
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -620,7 +635,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 	}
 
 	// Cleanup any existing runnable to avoid memory leaks
-	AgentDataRunnableCleanup(AgentDataSubsystem->JsonDataRunnable);
+	AgentDataRunnableCleanup(AgentDataSubsystem->AgentDataRunnable);
 
 	// Bind delegate BEFORE creating the runnable so we never miss a completion if the thread is very fast
 	AgentDataSubsystem->OnLoadSimulationDataComplete.AddDynamic(this, &UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData);
@@ -629,7 +644,7 @@ void UMassEntitySpawnSubsystem::LoadPedestrianData()
 #if !UE_BUILD_SHIPPING
 	const double RunnableCreateStart = FPlatformTime::Seconds();
 #endif
-	AgentDataSubsystem->JsonDataRunnable = MakeUnique<FProcessSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
+	AgentDataSubsystem->AgentDataRunnable = MakeUnique<FProcessAgentSimulationDataRunnable>(JSONDataFile, AgentDataSubsystem);
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogTemp, Display, TEXT("Agent data runnable creation took %.3f ms"), (FPlatformTime::Seconds() - RunnableCreateStart) * 1000.0);
 #endif
@@ -679,24 +694,32 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 	FSimulationFragment SimulationFragment;
 	float TimeBetweenStepsLocal = 0.f;
 
-	if (AgentDataSubsystem->JsonDataRunnable)
+	if (AgentDataSubsystem->AgentDataRunnable)
 	{
-		SimulationFragment    = MoveTemp(AgentDataSubsystem->JsonDataRunnable->AgentMovementInfoData);
-		TimeBetweenStepsLocal = AgentDataSubsystem->JsonDataRunnable->TimeBetweenSteps;
-		NumOfAgentsPerTimeStep = AgentDataSubsystem->JsonDataRunnable->NumOfAgentsPerTimeStep;
+		SimulationFragment    = MoveTemp(AgentDataSubsystem->AgentDataRunnable->AgentMovementInfoData);
+		TimeBetweenStepsLocal = AgentDataSubsystem->AgentDataRunnable->TimeBetweenSteps;
+		NumOfAgentsPerTimeStep = AgentDataSubsystem->AgentDataRunnable->NumOfAgentsPerTimeStep;
 
 		// Cache entity metadata before the runnable is torn down.
 		// PedestrianInitializeMOP fires after SpawnMaxPedestrians destroys the runnable,
 		// so SetEntityInfoByIndex / SetEntityRenderingByIndex must read from here instead.
-		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->JsonDataRunnable->Hdf5Data.Entities);
+		AgentDataSubsystem->CachedEntityData = MoveTemp(AgentDataSubsystem->AgentDataRunnable->AgentSimulationData.Entities);
 		AgentDataSubsystem->CachedEntityData.Shrink();
 	}
+
+	// Persist the agent grid (interval + total) before SimulationFragment is moved into the shared
+	// struct below. These outlive the runnable and act as the reliable "agent data present" signal
+	// for the timeline coordinator, plus the source of the movement processor's agent-native index.
+	AgentTimeBetweenSteps = TimeBetweenStepsLocal;
+	AgentTotalTime = SimulationFragment.MaxTime;
 
 	//UE_LOG(LogTemp, Warning, TEXT("Building Pedestrian Movement Fragment Data"));
 	PedestrianTemplateData.AddFragment<FEntityInfoFragment>();
 	PedestrianTemplateData.AddFragment<FEntityMovementFragment>();
 	PedestrianTemplateData.AddFragment<FEntityRenderingFragment>();
 	PedestrianTemplateData.AddFragment<FEntityCollisionFragment>();
+	PedestrianTemplateData.AddFragment<FAgentBRiskExposureFragment>();
+	PedestrianTemplateData.AddFragment<FAgentEgressTenabilityFragment>();
 
 	// Add the tag to prevent collision updates
 	PedestrianTemplateData.AddTag<FPedestrianCollisionsDisabled>();
@@ -707,14 +730,118 @@ void UMassEntitySpawnSubsystem::BuildPedestrianMovementFragmentData()
 		UE_LOG(LogTemp, Warning, TEXT("Number of Agents Per Time Step: %d"), NumOfAgentsPerTimeStep[0]);
 	}
 
-	// Get Time Dilation from the ProjectMobius Game Instance
-	UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>();
+	// Configure the shared playback clock. Route through the B-Risk timeline coordinator so the
+	// active source (agent vs B-Risk) owns the clock: with B-Risk timing enabled the clock keeps
+	// the B-Risk duration while agent data still loads on its own grid (req: agent loaded after a
+	// B-Risk file). The coordinator reads this subsystem's just-cached AgentTotalTime/interval.
+	// Fall back to a direct agent-clock config when the B-Risk subsystem is unavailable so the
+	// pure-agent workflow never regresses.
+	if (UBRiskDataSubsystem* BRiskSubsystem = GetWorld()->GetSubsystem<UBRiskDataSubsystem>())
+	{
+		BRiskSubsystem->ApplyActiveTimeline(/*bResetToStart=*/true);
+	}
+	else if (UTimeDilationSubSystem* TimeDilationSubSystem = GetWorld()->GetSubsystem<UTimeDilationSubSystem>())
+	{
+		TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenStepsLocal);
+		TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
+	}
 
-	// update time between steps
-	TimeDilationSubSystem->UpdateTimeBetweenData(TimeBetweenStepsLocal);
+	// B2: stamp the monotonic build generation (composite cache key for the persistent movement processor).
+	// Bumped here once per rebuild and never reset, so a file switch back to t=0 still invalidates the
+	// processor's sample-index maps. Placed after the SimulationFragment move above and before the MoveTemp
+	// into the shared struct below so it travels into the shared fragment (covers the null-runnable branch too).
+	SimulationFragment.DataGeneration = ++SimDataGenerationCounter;
 
-	// Update the total time for the Time Dilation Subsystem - which also updates the max time steps
-	TimeDilationSubSystem->UpdateTotalTime(SimulationFragment.MaxTime);
+	// A1: wrap the resident TMap in an FFullyResidentProvider so consumers (FloorStatsWidget, and a future
+	// streaming provider) read through the ISimSampleProvider interface instead of touching SimulationData
+	// directly. Shares the same TSharedPtr (no copy); built before the MoveTemp so it travels into the shared
+	// fragment. ModeTable defaults to { "" } (perf task A2 — importer drops the source per-sample mode attribute).
+	SimulationFragment.Provider = MakeShared<FFullyResidentProvider>(SimulationFragment.SimulationData);
+
+	// A4/A5: serve from the .msc disk cache instead of the resident TMap when either the manual force
+	// flag is on (A4, mobius.SimCache.ForceStreaming) or the auto residency decision finds the dataset
+	// over the RAM budget (A5, mobius.SimCache.AutoStreaming + BudgetFraction/BudgetCapGB). On streaming
+	// success the resident copy is FREED here: at this point it has a single owner (the runnable's
+	// fragment was MoveTemp'd into this local above, and the streaming provider holds no reference to
+	// it), so the Reset() returns the multi-GB block to the allocator before entities spawn. Consumers
+	// have been provider-only since A1 (InitMOP copies its spawn block from the provider; all-timestep
+	// analysis uses ForEachTimestep — a disk pass). Every validation failure falls back to the resident
+	// provider built above. NOTE: the transient import peak is unchanged (the data must exist once to be
+	// converted and cached); this bounds the STEADY-STATE playback footprint.
+	if (SimulationFragment.SimulationData.IsValid())
+	{
+		const bool bForceStreaming = FStreamingProvider::IsForceStreamingEnabled();
+		bool bWantStreaming = bForceStreaming;
+
+		if (!bWantStreaming && FStreamingProvider::IsAutoStreamingEnabled())
+		{
+			// Inline sample footprint only (64 B x samples; container overhead is small beside it).
+			int64 TotalSamples = 0;
+			for (const TPair<int32, TArray<FSimMovementSample>>& Pair : *SimulationFragment.SimulationData)
+			{
+				TotalSamples += Pair.Value.Num();
+			}
+			const uint64 EstimatedResidentBytes = static_cast<uint64>(TotalSamples) * sizeof(FSimMovementSample);
+
+			float BudgetFraction = 0.f;
+			uint64 BudgetCapBytes = 0;
+			FStreamingProvider::GetBudgetCVars(BudgetFraction, BudgetCapBytes);
+			const uint64 AvailablePhysical = FPlatformMemory::GetStats().AvailablePhysical;
+			bWantStreaming = FStreamingProvider::ShouldStreamSimData(
+				EstimatedResidentBytes, AvailablePhysical, BudgetFraction, BudgetCapBytes);
+			if (bWantStreaming)
+			{
+				UE_LOG(LogTemp, Log, TEXT("Agent dataset estimated at %llu MB resident exceeds the RAM budget — auto-streaming (perf task A5)"),
+					EstimatedResidentBytes / (1024ull * 1024ull));
+			}
+		}
+
+		if (bWantStreaming)
+		{
+			const FString SourcePath = AgentDataSubsystem ? AgentDataSubsystem->GetLoadedSimulationDataFilePath() : FString();
+			bool bStreamingActive = false;
+			if (!SourcePath.IsEmpty())
+			{
+				const uint64 SourceHash = MobiusSimCache::ComputeSourceHash(SourcePath);
+				const FString CacheFilePath = MobiusSimCache::MakeCacheFilePath(SourcePath, SourceHash);
+				const FStreamingProviderConfig StreamConfig =
+					FStreamingProvider::MakeConfigFromCVars(MobiusSimCache::CacheDriveHasSeekPenalty());
+				TSharedPtr<FStreamingProvider> StreamingProvider =
+					MakeShared<FStreamingProvider>(CacheFilePath, SourceHash, StreamConfig);
+				// Timestep-count parity with the just-imported data is the last stale-cache guard (the
+				// hash keys only source bytes — see the A4 forward-trap note in SimDiskCache.h).
+				if (StreamingProvider->IsValidAndPopulated()
+					&& StreamingProvider->GetNumTimesteps() == SimulationFragment.SimulationData->Num())
+				{
+					SimulationFragment.Provider = StreamingProvider;
+#if !UE_BUILD_SHIPPING
+					FMobiusMemSnapshot SnapDropBefore = FMobiusMemSnapshot::Take(TEXT("BuildFrag_StreamingDropResident_Before"));
+#endif
+					// Single owner (see block comment) — this is the A5 RAM win. The refcount log is the
+					// tiebreaker between "freed but the allocator retains the pages" (count 1) and "a
+					// hidden holder keeps it alive" (count > 1).
+					UE_LOG(LogTemp, Log, TEXT("Dropping resident sample map (shared refs at drop: %d)"),
+						SimulationFragment.SimulationData.GetSharedReferenceCount());
+					SimulationFragment.SimulationData.Reset();
+					// Hand the freed pages back to the OS: the samples are 64-byte-bin allocations the
+					// binned allocator otherwise pools indefinitely, so without this the working set
+					// never falls and the drop is invisible (the documented "baseline stays elevated"
+					// behaviour from the 2026-04 memory investigation). One-time cost at load.
+					FMemory::Trim();
+#if !UE_BUILD_SHIPPING
+					FMobiusMemSnapshot::Take(TEXT("BuildFrag_StreamingDropResident_After")).LogDelta(SnapDropBefore);
+#endif
+					bStreamingActive = true;
+				}
+			}
+			if (!bStreamingActive)
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("Streaming requested (%s) but no usable .msc for '%s' — keeping the resident provider"),
+					bForceStreaming ? TEXT("ForceStreaming=1") : TEXT("auto RAM budget"), *SourcePath);
+			}
+		}
+	}
 
         auto SharedSimulationFragmentData = FSharedStruct::Make(MoveTemp(SimulationFragment));
 

@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: MIT
+#
+# Copies the Assimp runtime binaries into the UE_Assimp plugin's Binaries/<Platform> folder.
+#
+# DO NOT reintroduce a `rm -rf` of the stage directory here. That folder is ALSO where UnrealBuildTool
+# writes the plugin's own compiled output (UnrealEditor-UE_Assimp.dll/.pdb/.exp, UnrealEditor.modules
+# and any hot-reload -000N variants). An earlier version of the superbuild wiped the whole directory
+# on every build, which silently deleted the compiled UE plugin and forced a full editor rebuild --
+# or hard-failed if the editor happened to be open. Copy only what we own, by pattern.
+
+set(_src_dir   "@ASSIMP_RUNTIME_SRC_DIR@")
+set(_stage_dir "@ASSIMP_STAGE_DIR@")
+set(_patterns  @ASSIMP_RUNTIME_PATTERNS@)
+
+if(NOT EXISTS "${_src_dir}")
+  message(FATAL_ERROR
+    "Assimp runtime source directory not found: ${_src_dir}\n"
+    "The assimp install step did not produce it. Re-run the superbuild with a clean build tree.")
+endif()
+
+file(MAKE_DIRECTORY "${_stage_dir}")
+
+set(_copied "")
+foreach(_pattern IN LISTS _patterns)
+  file(GLOB _found "${_src_dir}/${_pattern}")
+  foreach(_file IN LISTS _found)
+    get_filename_component(_name "${_file}" NAME)
+    execute_process(
+      COMMAND "@CMAKE_COMMAND@" -E copy_if_different "${_file}" "${_stage_dir}/${_name}"
+      RESULT_VARIABLE _copy_result)
+    if(NOT _copy_result EQUAL 0)
+      message(FATAL_ERROR "Failed to stage Assimp runtime file: ${_file} -> ${_stage_dir}/${_name}")
+    endif()
+    list(APPEND _copied "${_name}")
+  endforeach()
+endforeach()
+
+if(_copied STREQUAL "")
+  message(FATAL_ERROR
+    "No Assimp runtime binaries matched ${_patterns} under ${_src_dir}.\n"
+    "The assimp build produced nothing to stage -- check the assimp_ep build log.")
+endif()
+
+# Drop Assimp runtimes left behind by a previous build under a different MSVC toolset (e.g. a
+# lingering assimp-vc143-mt.dll next to a freshly staged assimp-vc145-mt.dll). Scoped to the same
+# assimp-only patterns and to files we did NOT just copy, so the UE plugin's own output in this
+# directory -- UnrealEditor-UE_Assimp.dll/.pdb/.exp, UnrealEditor.modules -- is never matched.
+foreach(_pattern IN LISTS _patterns)
+  file(GLOB _staged "${_stage_dir}/${_pattern}")
+  foreach(_file IN LISTS _staged)
+    get_filename_component(_name "${_file}" NAME)
+    if(NOT _name IN_LIST _copied)
+      message(STATUS "Removing stale staged Assimp runtime: ${_file}")
+      file(REMOVE "${_file}")
+    endif()
+  endforeach()
+endforeach()
+
+list(JOIN _copied ", " _copied_text)
+message(STATUS "Staged Assimp runtime to ${_stage_dir}: ${_copied_text}")

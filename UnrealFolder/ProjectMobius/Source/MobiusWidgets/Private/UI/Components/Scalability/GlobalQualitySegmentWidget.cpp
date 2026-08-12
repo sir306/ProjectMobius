@@ -1,0 +1,398 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+/**
+ * MIT License
+ * Copyright (c) 2025 ProjectMobius contributors
+ * Nicholas R. Harding and Peter Thompson
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is furnished
+ * to do so, subject to the following conditions:
+ *	The above copyright notice and this permission notice shall be included in
+ *	all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ */
+
+#include "UI/Components/Scalability/GlobalQualitySegmentWidget.h"
+
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
+#include "Style/MobiusStyle.h"
+#include "Styling/SlateTypes.h"
+#include "Subsystems/PerformanceUtilSubsystem.h"
+#include "UI/Components/ButtonWithText.h"
+#include "UI/Components/MobiusThemedBorder.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+#include "Widgets/Text/STextBlock.h"
+
+namespace
+{
+	/**
+	 * Deliberately NOT reusing ThemeToggleWidget.cpp's identically-shaped helpers: both files sit in the
+	 * same module and MobiusWidgets builds with unity, so two anonymous namespaces exporting
+	 * `MakeSegmentBrush` / `GSegmentPadding` collide in one translation unit. Distinct names, same values.
+	 */
+	constexpr float GQualityContainerRadius = 3.0f;
+	constexpr float GQualitySegmentRadius = GQualityContainerRadius - 1.0f;
+
+	/** Equal Normal/Pressed padding — a shrinking pressed box drops clicks (StabilisePressedPadding). */
+	const FMargin GQualitySegmentPadding(8.0f, 3.0f);
+
+	/** Flat rounded fill, no outline: the hairline belongs to the container the segments sit in. */
+	FSlateBrush MakeQualitySegmentBrush(const FLinearColor& Fill, const FVector4& Radii)
+	{
+		FSlateBrush Brush;
+		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Brush.SetResourceObject(nullptr);
+		Brush.TintColor = FSlateColor(Fill);
+		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Brush.OutlineSettings.CornerRadii = Radii;
+		Brush.OutlineSettings.Width = 0.0f;
+		Brush.OutlineSettings.Color = FSlateColor(FLinearColor::Transparent);
+		return Brush;
+	}
+
+	/** The nine per-feature categories, matching UScalabilityPanelWidget's matrix. */
+	constexpr EScalabilityCategories GQualityCategories[] = {
+		ESc_GlobalIllumination,
+		ESc_PostProcessing,
+		ESc_Shadows,
+		ESc_AntiAliasing,
+		ESc_Reflections,
+		ESc_Textures,
+		ESc_Effects,
+		ESc_Shading,
+		ESc_ViewDistance
+	};
+}
+
+void UGlobalQualitySegmentWidget::NativePreConstruct()
+{
+	Super::NativePreConstruct();
+
+	// The brief's copy, set here rather than in the .uasset so the labels cannot drift between the two.
+	// "Ultra" is the user-facing name for the engine's Epic tier; the widget names keep the engine word.
+	if (LowSetting_Button)
+	{
+		LowSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierLow", "Low"));
+	}
+	if (MedSetting_Button)
+	{
+		MedSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierMedium", "Medium"));
+	}
+	if (HighSetting_Button)
+	{
+		HighSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierHigh", "High"));
+	}
+	if (EpicSetting_Button)
+	{
+		EpicSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierUltra", "Ultra"));
+	}
+	if (CustomSetting_Button)
+	{
+		// Owner ruling 2026-08-05: the fifth segment is a real Cinematic TIER now, not a link to the
+		// Custom window — that moved out to its own control under the bar. The BindWidget property keeps its
+		// CustomSetting_Button name because that is the widget name in the .uasset.
+		CustomSetting_Button->SetButtonWithNewText(NSLOCTEXT("MobiusGlobalQuality", "TierCinematic", "Cinematic"));
+	}
+}
+
+void UGlobalQualitySegmentWidget::NativeConstruct()
+{
+	// Before Super: Super themes the tree then calls ApplyMobiusTheme, which restyles the segments — so the
+	// derived active tier has to be known by then or the first paint marks the wrong segment.
+	auto ClearPalette = [](UButtonWithText* Segment)
+	{
+		if (Segment)
+		{
+			// This widget owns the segment's state colours. Without this, UBaseButton re-stamps flat
+			// ButtonBg/ButtonText on construct AND on every OnThemeChanged, erasing the accent fill.
+			Segment->bFollowThemePalette = false;
+		}
+	};
+	ClearPalette(LowSetting_Button);
+	ClearPalette(MedSetting_Button);
+	ClearPalette(HighSetting_Button);
+	ClearPalette(EpicSetting_Button);
+	ClearPalette(CustomSetting_Button);
+
+	if (LowSetting_Button)
+	{
+		LowSetting_Button->OnClicked.AddUniqueDynamic(this, &UGlobalQualitySegmentWidget::HandleLowClicked);
+	}
+	if (MedSetting_Button)
+	{
+		MedSetting_Button->OnClicked.AddUniqueDynamic(this, &UGlobalQualitySegmentWidget::HandleMediumClicked);
+	}
+	if (HighSetting_Button)
+	{
+		HighSetting_Button->OnClicked.AddUniqueDynamic(this, &UGlobalQualitySegmentWidget::HandleHighClicked);
+	}
+	if (EpicSetting_Button)
+	{
+		EpicSetting_Button->OnClicked.AddUniqueDynamic(this, &UGlobalQualitySegmentWidget::HandleUltraClicked);
+	}
+	if (CustomSetting_Button)
+	{
+		CustomSetting_Button->OnClicked.AddUniqueDynamic(this, &UGlobalQualitySegmentWidget::HandleCustomClicked);
+	}
+
+	DisplayedLevel = DeriveLowestAppliedLevel();
+
+	// Before Super for the same reason the palette clear is: Super themes the tree, so the container has
+	// to EXIST by then or it paints unthemed until the first theme toggle.
+	EnsureSegmentContainer();
+
+	Super::NativeConstruct();
+}
+
+void UGlobalQualitySegmentWidget::EnsureSegmentContainer()
+{
+	if (SegmentContainer || !LowSetting_Button || !WidgetTree)
+	{
+		return; // already wrapped, or nothing to wrap
+	}
+
+	UPanelWidget* SegmentGrid = LowSetting_Button->GetParent();
+	if (!SegmentGrid)
+	{
+		return;
+	}
+	UPanelWidget* OuterPanel = SegmentGrid->GetParent();
+	if (!OuterPanel)
+	{
+		return; // the grid is the root; wrapping it would need a root swap, which is out of scope here
+	}
+
+	// Where the grid sits among its siblings, so the container can take exactly that place. Without this
+	// the wrapped control jumps to the bottom of the VerticalBox, under Pedestrian Models and Logging.
+	const int32 GridIndex = OuterPanel->GetChildIndex(SegmentGrid);
+
+	SegmentContainer = WidgetTree->ConstructWidget<UMobiusThemedBorder>(
+		UMobiusThemedBorder::StaticClass(), TEXT("QualitySegmentContainer"));
+	if (!SegmentContainer)
+	{
+		return;
+	}
+	{
+		FSlateBrush Background;
+		Background.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Background.SetResourceObject(nullptr);
+		// White TINT with the colour supplied via FillRole: SBorder paints TintColor * BrushColor, and two
+		// non-white values multiply into near-black (the UBorder double-tint trap).
+		Background.TintColor = FSlateColor(FLinearColor::White);
+		Background.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Background.OutlineSettings.CornerRadii = FVector4(GQualityContainerRadius, GQualityContainerRadius,
+			GQualityContainerRadius, GQualityContainerRadius);
+		Background.OutlineSettings.Width = 1.0f;
+		SegmentContainer->SetBrush(Background);
+	}
+	SegmentContainer->bThemeFill = true;
+	SegmentContainer->FillRole = EMobiusPaletteRole::InputBg;
+	SegmentContainer->bThemeOutline = true;
+	SegmentContainer->OutlineRole = EMobiusPaletteRole::ButtonBorder;
+	// 1px inset so an active segment's fill cannot paint over the hairline it sits inside.
+	SegmentContainer->SetPadding(FMargin(1.0f));
+
+	SegmentGrid->RemoveFromParent();
+	SegmentContainer->AddChild(SegmentGrid);
+
+	OuterPanel->AddChild(SegmentContainer);
+	if (GridIndex != INDEX_NONE)
+	{
+		OuterPanel->ShiftChild(GridIndex, SegmentContainer);
+	}
+}
+
+void UGlobalQualitySegmentWidget::ApplyMobiusTheme_Implementation()
+{
+	Super::ApplyMobiusTheme_Implementation();
+
+	RestyleSegments();
+}
+
+void UGlobalQualitySegmentWidget::RefreshActiveSegment()
+{
+	DisplayedLevel = DeriveLowestAppliedLevel();
+	RestyleSegments();
+}
+
+TEnumAsByte<EScalabilitySettings> UGlobalQualitySegmentWidget::DeriveLowestAppliedLevel() const
+{
+	// Same design-time / game-world guard the rest of the scalability family uses.
+	UWorld* World = IsDesignTime() ? nullptr : GetWorld();
+	UPerformanceUtilSubsystem* Performance = (World && World->IsGameWorld())
+		? World->GetSubsystem<UPerformanceUtilSubsystem>()
+		: nullptr;
+	if (!Performance)
+	{
+		return DisplayedLevel;
+	}
+
+	// The enum is ordered Low(0) < Medium < High < Epic < Cinematic(4), so "lowest" is a numeric min.
+	// ESsl_Default(5) is Hidden and higher than every real tier, so it must not win a min() — skip it.
+	uint8 Lowest = static_cast<uint8>(EScalabilitySettings::ESsl_Cinematic);
+	bool bFoundAny = false;
+	for (const EScalabilityCategories Category : GQualityCategories)
+	{
+		const uint8 Level = static_cast<uint8>(Performance->GetScalabilityLevel(Category));
+		if (Level > static_cast<uint8>(EScalabilitySettings::ESsl_Cinematic))
+		{
+			continue;
+		}
+		Lowest = FMath::Min(Lowest, Level);
+		bFoundAny = true;
+	}
+
+	return bFoundAny
+		? TEnumAsByte<EScalabilitySettings>(static_cast<EScalabilitySettings>(Lowest))
+		: DisplayedLevel;
+}
+
+void UGlobalQualitySegmentWidget::HandleLowClicked()
+{
+	ApplyGlobalTier(EGlobalScalabilitySettings::EGss_Low);
+}
+
+void UGlobalQualitySegmentWidget::HandleMediumClicked()
+{
+	ApplyGlobalTier(EGlobalScalabilitySettings::EGss_Medium);
+}
+
+void UGlobalQualitySegmentWidget::HandleHighClicked()
+{
+	ApplyGlobalTier(EGlobalScalabilitySettings::EGss_High);
+}
+
+void UGlobalQualitySegmentWidget::HandleUltraClicked()
+{
+	ApplyGlobalTier(EGlobalScalabilitySettings::EGss_Epic);
+}
+
+void UGlobalQualitySegmentWidget::HandleCustomClicked()
+{
+	// Cinematic cannot go through UpdateGlobalScalabilitySetting: EGlobalScalabilitySettings stops at
+	// Epic (Low/Medium/High/Epic/Custom/Default) and adding a value to a serialized UENUM to express one
+	// tier is not worth it. ApplyScalabilityLevelToAll writes the same nine categories directly.
+	UWorld* World = IsDesignTime() ? nullptr : GetWorld();
+	if (UPerformanceUtilSubsystem* Performance = (World && World->IsGameWorld())
+		? World->GetSubsystem<UPerformanceUtilSubsystem>()
+		: nullptr)
+	{
+		// Move the subsystem's global bookkeeping to Custom FIRST. UpdateGlobalScalabilitySetting
+		// early-returns when the requested tier equals the stored one, so without this an
+		// Ultra -> Cinematic -> Ultra sequence would silently fail to re-apply Ultra: the stored value
+		// would still read Epic. EGss_Custom is the honest label for "a set the global enum cannot name"
+		// and its own switch case deliberately applies nothing, so it cannot fight the call below.
+		Performance->UpdateGlobalScalabilitySetting(EGlobalScalabilitySettings::EGss_Custom);
+		Performance->ApplyScalabilityLevelToAll(EScalabilitySettings::ESsl_Cinematic);
+	}
+
+	RefreshActiveSegment();
+}
+
+void UGlobalQualitySegmentWidget::ApplyGlobalTier(const TEnumAsByte<EGlobalScalabilitySettings> Tier)
+{
+	UWorld* World = IsDesignTime() ? nullptr : GetWorld();
+	if (UPerformanceUtilSubsystem* Performance = (World && World->IsGameWorld())
+		? World->GetSubsystem<UPerformanceUtilSubsystem>()
+		: nullptr)
+	{
+		// Writes all nine per-feature categories; resolution is untouched (it is not a quality tier).
+		Performance->UpdateGlobalScalabilitySetting(Tier);
+	}
+
+	RefreshActiveSegment();
+}
+
+void UGlobalQualitySegmentWidget::RestyleSegments() const
+{
+	StyleSegment(LowSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_Low,
+		/*bFirst*/true, /*bLast*/false, /*bAccentLabel*/false);
+	StyleSegment(MedSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_Medium,
+		false, false, false);
+	StyleSegment(HighSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_High,
+		false, false, false);
+	StyleSegment(EpicSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_Epic,
+		false, false, false);
+	// Cinematic now has its own segment, so the Ultra fold is gone and this one takes a normal tier label
+	// rather than the Accent "link" colouring it wore as the old Custom entry.
+	StyleSegment(CustomSetting_Button, DisplayedLevel == EScalabilitySettings::ESsl_Cinematic,
+		false, /*bLast*/true, /*bAccentLabel*/false);
+}
+
+void UGlobalQualitySegmentWidget::StyleSegment(UButtonWithText* Segment, const bool bActive,
+	const bool bFirst, const bool bLast, const bool bAccentLabel) const
+{
+	if (!Segment)
+	{
+		return;
+	}
+
+	// Outer corners only, so the five read as one bar inside the container's radius.
+	FVector4 Radii(0.0, 0.0, 0.0, 0.0);
+	if (bFirst)
+	{
+		Radii.X = GQualitySegmentRadius;
+		Radii.W = GQualitySegmentRadius;
+	}
+	if (bLast)
+	{
+		Radii.Y = GQualitySegmentRadius;
+		Radii.Z = GQualitySegmentRadius;
+	}
+
+	const FLinearColor Accent = GetThemeColor(EMobiusPaletteRole::Accent);
+	// Inactive is TRANSPARENT, not a fill of its own: the container's InputBg is the surface behind an
+	// unselected segment and one surface cannot double-paint itself.
+	const FLinearColor Fill = bActive ? Accent : FLinearColor::Transparent;
+	const FLinearColor Hover = bActive ? Accent : GetThemeColor(EMobiusPaletteRole::ButtonHoverBg);
+	const FLinearColor Press = bActive ? Accent : GetThemeColor(EMobiusPaletteRole::ButtonPressedBg);
+
+	FLinearColor LabelColour = GetThemeColor(EMobiusPaletteRole::TabInactiveText);
+	if (bActive)
+	{
+		LabelColour = FLinearColor::White;
+	}
+	else if (bAccentLabel)
+	{
+		// The mockup draws Custom as an accent-coloured label on the panel surface — a link, not a tier.
+		LabelColour = Accent;
+	}
+	const FSlateColor LabelSlateColour(LabelColour);
+
+	FButtonStyle Style = Segment->GetStyle();
+	Style.SetNormal(MakeQualitySegmentBrush(Fill, Radii));
+	Style.SetHovered(MakeQualitySegmentBrush(Hover, Radii));
+	Style.SetPressed(MakeQualitySegmentBrush(Press, Radii));
+	Style.SetDisabled(MakeQualitySegmentBrush(Fill, Radii));
+	Style.NormalForeground = LabelSlateColour;
+	Style.HoveredForeground = LabelSlateColour;
+	Style.PressedForeground = LabelSlateColour;
+	Style.DisabledForeground = LabelSlateColour;
+	// EQUAL by construction — an asymmetric pressed padding shrinks the hit rect mid-press and the click is
+	// silently dropped.
+	Style.NormalPadding = GQualitySegmentPadding;
+	Style.PressedPadding = GQualitySegmentPadding;
+	Segment->SetStyle(Style);
+
+	// Weight is the other active signal (600 vs 400). Size and face stay on the Mobius ramp.
+	if (Segment->MyButtonText.IsValid())
+	{
+		FSlateFontInfo Font = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label").Font;
+		Font.TypefaceFontName = bActive ? FName("SemiBold") : FName("Regular");
+		Segment->MyButtonText->SetFont(Font);
+	}
+	// Explicit: RefreshThemedLabelStyle no longer runs for a button with bFollowThemePalette cleared, so
+	// this is the only label-colour writer here.
+	Segment->ApplyThemedLabelColor(LabelColour);
+}

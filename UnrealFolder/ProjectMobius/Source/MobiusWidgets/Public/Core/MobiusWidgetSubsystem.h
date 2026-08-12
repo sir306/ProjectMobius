@@ -34,6 +34,7 @@ class UImprovedLoadingNotifyWidget;
 class UErrorWindowWidget;
 class USimulationPlayBar;
 class SLogWindowWidget;
+class SErrorWindowWidget;
 enum class EMobiusLogWindowCommand : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLogWindowClosedBP);
@@ -99,10 +100,13 @@ public:
 	 * @param ErrorTitle - Title of the Error
 	 * @param ErrorMessage - Message of the Error
 	 * @param ErrorLocation - Optional location text for where the error occurred
+	 * @param Severity - Message severity; drives the window's emphasis cue (Error/Fatal = red,
+	 *        Warning = amber, Info = accent). Defaults to Error to preserve existing call sites.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Error Widget", meta = (AdvancedDisplay = "ErrorLocation"))
+	UFUNCTION(BlueprintCallable, Category = "Error Widget", meta = (AdvancedDisplay = "ErrorLocation,Severity"))
 	void DisplayErrorWidget(const FText& TitleBarText, const FText& ErrorTitle, const FText& ErrorMessage,
-		const FText& ErrorLocation = FText::GetEmpty());
+		const FText& ErrorLocation = FText::GetEmpty(),
+		EMobiusErrorSeverity Severity = EMobiusErrorSeverity::Error);
 
 	/**
 	 * Update the title bar text for the error window.
@@ -278,4 +282,39 @@ private:
         TArray<FMobiusErrorMessage> DeferredErrors;
         TSharedPtr<SLogWindowWidget> LogWindowWidget;
         bool bLogWindowEnabled = true;
+
+        /**
+         * True only while CloseLogWindow() is driving the close — i.e. teardown, or the logger being
+         * switched off. Lets LogWindowIsClosing tell a PROGRAMMATIC close from a USER one (title-bar x or
+         * the window's Close button), which is the only distinction the close path cannot infer for
+         * itself: Deinitialize() closes the window through that same function.
+         */
+        bool bClosingLogWindowProgrammatically = false;
+
+        /**
+         * A19, owner ruling 2026-08-03: "if old error window is open then it should display a new error
+         * widget". There is only ONE UErrorWindowWidget (a UMG widget placed in the HUD, registered via
+         * AddErrorWidget), so a second error used to silently OVERWRITE the first one's text in the same
+         * window and the first message was lost. Errors that arrive while a window is already up now get
+         * their own free-standing SErrorWindowWidget, held here.
+         *
+         * This array is the SOLE owner of those widgets — ~SErrorWindowWidget calls CloseErrorWindow(), so
+         * dropping an entry destroys its native window. Pruned on entry to DisplayErrorWidget and cleared
+         * in Deinitialize (PIE stop must not leave native windows behind).
+         */
+        TArray<TSharedPtr<SErrorWindowWidget>> ExtraErrorWindows;
+
+        /**
+         * Ceiling on the extra windows above. The feedback subsystem already suppresses DUPLICATE prompts
+         * (2 s cooldown on a content hash) but nothing caps a burst of DISTINCT errors, and its pending
+         * queue is 32 deep — without a cap, one bad load could paper the screen. Past the cap the newest
+         * error reuses the primary window, i.e. the pre-A19 behaviour, and says so in the log.
+         */
+        static constexpr int32 MaxExtraErrorWindows = 4;
+
+        /** Drop entries whose window the user has already closed. Cheap; called before each new error. */
+        void PruneClosedErrorWindows();
+
+        /** Close and forget every extra error window, unregistering each one's activity refcount. */
+        void CloseAllExtraErrorWindows();
 };

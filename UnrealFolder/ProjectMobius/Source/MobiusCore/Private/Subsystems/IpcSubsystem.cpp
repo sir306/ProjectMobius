@@ -11,11 +11,11 @@
 
 namespace
 {
-        constexpr bool bEnableQtApps = false;
+        constexpr bool bEnableIpcQtApps = false;
 }
 
 // ------- Small cross-platform helper (kept from your old code style) -------
-static const TCHAR* GetPlatformFolder()
+static const TCHAR* GetIpcPlatformFolder()
 {
 #if PLATFORM_WINDOWS
 	return TEXT("Win64");
@@ -54,7 +54,7 @@ void UIpcSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		}
 	}
 
-        if (bEnableQtApps)
+        if (bEnableIpcQtApps)
         {
                 StartIpcClient();
         }
@@ -80,7 +80,7 @@ void UIpcSubsystem::Deinitialize()
 
 void UIpcSubsystem::StartIpcClient()
 {
-        if (!bEnableQtApps)
+        if (!bEnableIpcQtApps)
         {
                 return;
         }
@@ -184,7 +184,7 @@ void UIpcSubsystem::OnIpcMessage(const TArray<uint8>& Bytes)
 
 void UIpcSubsystem::SendJsonMessage(const TSharedPtr<FJsonObject>& JsonObject) const
 {
-        if (!bEnableQtApps)
+        if (!bEnableIpcQtApps)
         {
                 return;
         }
@@ -207,7 +207,7 @@ void UIpcSubsystem::SendJsonMessage(const TSharedPtr<FJsonObject>& JsonObject) c
 
 void UIpcSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCount)  
 {
-        if (!bEnableQtApps)
+        if (!bEnableIpcQtApps)
         {
                 return;
         }
@@ -220,7 +220,7 @@ void UIpcSubsystem::SendAgentDataCount(float CurrentSimTime, int32 AgentCount)
 
 void UIpcSubsystem::OpenOrCloseQtStatApp()
 {
-        if (!bEnableQtApps)
+        if (!bEnableIpcQtApps)
         {
                 return;
         }
@@ -229,7 +229,7 @@ void UIpcSubsystem::OpenOrCloseQtStatApp()
 
 void UIpcSubsystem::LaunchQtStatsAppOrToggle()
 {
-        if (!bEnableQtApps)
+        if (!bEnableIpcQtApps)
         {
                 return;
         }
@@ -242,7 +242,7 @@ void UIpcSubsystem::LaunchQtStatsAppOrToggle()
 		return;
 	}
 
-	const TCHAR* Plat = GetPlatformFolder();
+	const TCHAR* Plat = GetIpcPlatformFolder();
 	FString QtExePath;
     
 #if PLATFORM_WINDOWS

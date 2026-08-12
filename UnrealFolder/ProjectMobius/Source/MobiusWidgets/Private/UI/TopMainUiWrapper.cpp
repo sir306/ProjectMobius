@@ -42,11 +42,6 @@ void UTopMainUiWrapper::NativeDestruct()
 	Super::NativeDestruct();
 }
 
-void UTopMainUiWrapper::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-}
-
 int32 UTopMainUiWrapper::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
 	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const

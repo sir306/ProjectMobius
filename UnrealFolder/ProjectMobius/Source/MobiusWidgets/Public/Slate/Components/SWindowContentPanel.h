@@ -76,6 +76,23 @@ public:
 	 */
 	void SetLocationText(const FText& InLocationText);
 
+	/**
+	 * Re-colour the three text blocks for a live theme change (A19).
+	 *
+	 * COLOUR ONLY, and it has to stay that way. The styles this panel is constructed with are handed to
+	 * STextBlock, which stores its FTextBlockStyle BY VALUE — so mutating the caller's style structs after
+	 * construct changes nothing, and this setter is the only route in. Re-applying whole styles instead
+	 * would clobber two things that are written after construct: SFieldAndTitleText::OnPaint's
+	 * shrink-to-fit (it writes font size back via SetFontSize) and the numeric-field Mono typeface. See
+	 * the comment on SFieldAndTitleText::SetTextColors, which records that exact regression.
+	 *
+	 * @param InTitleColor    Colour for the title text.
+	 * @param InMessageColor  Colour for the message/body text.
+	 * @param InLocationColor Colour for the optional location/source line.
+	 */
+	void SetTextColors(const FSlateColor& InTitleColor, const FSlateColor& InMessageColor,
+		const FSlateColor& InLocationColor);
+
 private:
 	TSharedPtr<SFieldAndTitleText> TitleMessageWidget;
 	TSharedPtr<STextBlock> LocationTextBlock;

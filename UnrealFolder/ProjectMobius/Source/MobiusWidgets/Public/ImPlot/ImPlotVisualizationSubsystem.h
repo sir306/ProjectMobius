@@ -21,11 +21,33 @@ struct ImPlotContext;
 struct ImDrawData;
 struct ImFontAtlas;
 struct FSlateDynamicImageBrush;
+class UTextureRenderTarget2D;
+
+/**
+ * Where the copy buttons sit relative to the chart.
+ *
+ * Same eight positions as ImPlot's legend picker (its centre cell is an InvisibleButton, so nine cells,
+ * eight choices). The corners are not decorative here: a horizontal row is drawn at the top or bottom and
+ * ALIGNED left / centre / right, which is what makes NorthWest a different layout from North. NorthWest is
+ * the default because it is where an un-aligned row already landed.
+ */
+enum class EMobiusCopyButtonLocation : uint8
+{
+        NorthWest,
+        North,
+        NorthEast,
+        West,
+        East,
+        SouthWest,
+        South,
+        SouthEast,
+};
 
 class SImPlotOverlay;
 class SMoveableWindow;
 class SWindow;
 class UMobiusWidgetSubsystem;
+class UUIThemeSubsystem;
 
 /**
  * World subsystem that owns ImPlot overlay state and data.
@@ -157,6 +179,18 @@ public:
                 const FWidgetStyle& InWidgetStyle, bool bParentEnabled, const TSharedRef<const SWidget>& Widget,
                 const FSimpleDelegate& OnRequestClose);
 
+        /**
+         * Render the chart offscreen and put the image on the OS clipboard, if a copy was asked for.
+         *
+         * Split from the click on purpose. The button/menu item only raises a flag, because the capture
+         * has to FlushRenderingCommands and re-render the widget — neither is safe from inside
+         * PaintOverlayForChart, which IS a Slate paint. SImPlotOverlay's hover timer calls this, so the
+         * work lands on a normal tick with the cursor still over the chart.
+         *
+         * No-op when nothing is pending, so it is cheap to call every tick.
+         */
+        void ServicePendingImageCopy(const FName& ChartId);
+
 private:
 
         struct FImPlotOverlayState
@@ -166,6 +200,28 @@ private:
                 bool bHasLiveSample = false;
                 bool bHasLiveSampleThickness = false;
                 bool bMoveableWindowActivityRegistered = false;
+
+                /** Raised by the "Copy chart image" button / menu item; serviced next tick. */
+                bool bImageCopyRequested = false;
+
+                /**
+                 * Whether "Copy values" also writes the time column. OFF by default — whoever is reading
+                 * this chart supplied the trajectory data, so the timestamps are usually the least
+                 * interesting column. Toggled from the right-click menu. Per chart and per session; it is
+                 * not written to UUserProjectSettings.
+                 */
+                bool bCopyWithTimeline = false;
+
+                /** Where the copy buttons sit. North* rows go above the chart TITLE. Same scope as above. */
+                EMobiusCopyButtonLocation CopyButtonLocation = EMobiusCopyButtonLocation::NorthWest;
+
+                /**
+                 * DPI scale of the last ON-SCREEN paint. The capture pass has no window to ask, and
+                 * letting it fall back to 1.0 would re-bake SharedFontAtlas — which is shared by every
+                 * chart context — and then re-bake it again on the next on-screen paint. Replaying the
+                 * live scale keeps the atlas untouched.
+                 */
+                float LastPaintDpiScale = 1.0f;
 
                 bool bWindowOpen = true;
                 ImGuiContext* ImGuiContext = nullptr;
@@ -191,6 +247,32 @@ private:
         /** Per-chart overlay data keyed by chart id. */
         TMap<FName, FImPlotOverlayState> OverlayStates;
 
+        /**
+         * Themed SWindow chrome shared by all chart overlay windows (D8/Q3). SWindow keeps its style by
+         * pointer, so it must live at a stable address for the window's lifetime — a subsystem member,
+         * NOT a TMap value (which moves on rehash). Refreshed to the current theme each OpenOverlayWindow.
+         */
+        FWindowStyle ChartWindowStyle;
+
+        /** True once ChartWindowStyle has been seeded, so a failed theme lookup keeps the last good
+         *  style instead of resetting the shared chrome to the CoreStyle gray (D8/Q3 harden). */
+        bool bChartWindowStyleInitialized = false;
+
+        /**
+         * Theme subsystem we bound OnThemeChanged on. Weak so Deinitialize can RemoveDynamic safely: the
+         * theme subsystem is a GameInstance subsystem and outlives this World subsystem across PIE stop /
+         * level change. OnThemeChanged is a DYNAMIC delegate - bound/unbound by (object, UFUNCTION name),
+         * so there is no FDelegateHandle to store; the weak ptr is what the unbind needs.
+         */
+        TWeakObjectPtr<UUIThemeSubsystem> BoundThemeSubsystem;
+
+        /** Bind OnThemeChanged once (idempotent; theme subsystem resolved lazily on first window open). */
+        void EnsureThemeChangeBinding();
+
+        /** Re-theme the shared chart window chrome in place on a live theme toggle and repaint. */
+        UFUNCTION()
+        void HandleThemeChanged();
+
         FImPlotOverlayState& GetOrCreateOverlayState(const FName& ChartId);
         FImPlotOverlayState* FindOverlayState(const FName& ChartId);
         const FImPlotOverlayState* FindOverlayState(const FName& ChartId) const;
@@ -211,15 +293,33 @@ private:
         void InvalidateOverlay(const FName& ChartId) const;
         void EnsureOverlayContext(FImPlotOverlayState& State);
         void DestroyOverlayContext(FImPlotOverlayState& State);
-        void EnsureSharedFontAtlas();
+        void EnsureSharedFontAtlas(float InDpiScale = 1.0f);
         bool TryGetNearestPointForChart(const FName& ChartId, double TimeSeconds, FVector2D& OutPoint) const;
         void RenderDrawData(const ImDrawData* DrawData, const FVector2f& WindowOffset,
                 float DpiScale, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
+
+        /**
+         * True only while ServicePendingImageCopy is re-rendering a chart offscreen. PaintOverlayForChart
+         * reads it to leave the copy buttons out of the captured image and to size ImGui from the allotted
+         * geometry instead of the live window.
+         */
+        bool bCapturingForImageCopy = false;
+
+        /** Reused across captures: sized on demand, kept alive by UPROPERTY rather than left to GC. */
+        UPROPERTY(Transient)
+        TObjectPtr<UTextureRenderTarget2D> CaptureRenderTarget;
+
+        /** Gamma flag CaptureRenderTarget was built with, so moving the console lever rebuilds it. */
+        bool bCaptureTargetLinearGamma = true;
 
         ImFontAtlas* SharedFontAtlas = nullptr;
         TSharedPtr<FSlateDynamicImageBrush> SharedFontBrush;
         FName SharedFontTextureName;
         uint64 SharedFontTextureId = 0;
+        /** DPI scale the shared atlas glyphs were last baked at. Glyphs rasterize at 13px * scale
+         *  and draw at 13 logical units (style.FontScaleMain = 1/scale); the existing vertex upscale
+         *  then maps them 1:1 to physical pixels — crisp at any OS scaling instead of bitmap-stretched. */
+        float SharedFontAtlasDpiScale = 1.0f;
 
 };
 

@@ -8,6 +8,7 @@
 
 class SErrorWindowWidget;
 class UMobiusWidgetSubsystem;
+enum class EMobiusErrorSeverity : uint8;
 /**
  * 
  */
@@ -62,4 +63,18 @@ public:
 	 * Ensure the error window is visible and focused.
 	 */
 	void ShowErrorWindow();
+
+	/**
+	 * Set the severity that drives the window's emphasis cue (top accent bar).
+	 * @param Severity Severity of the currently displayed message.
+	 */
+	void SetErrorSeverity(EMobiusErrorSeverity Severity);
+
+	/**
+	 * True while a message is on screen in this window. UMobiusWidgetSubsystem uses it to decide whether a
+	 * new error needs its own window instead of replacing the one the user is still reading (A19).
+	 * False before the first show and after any close route, since the Slate widget resets its window
+	 * pointer from HandleWindowClosed.
+	 */
+	bool IsWindowOpen() const;
 };

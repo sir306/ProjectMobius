@@ -33,10 +33,12 @@
 #include "DirectLink/DatasmithSceneReceiver.h"
 #include "Engine/StaticMeshActor.h"
 #include "DatasmithAssetUserData.h"
+#include "MaterialDomain.h"
 #include "Actors/FlowCounter.h"
 #include "Components/FlowCounterSpawnerComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
 #include "Subsystems/PerformanceUtilSubsystem.h"
@@ -51,6 +53,20 @@
 #include "RenderingThread.h"
 
 TMap<UMaterial*, EDatasmithMasterType> ARuntimeMeshBuilder::MasterTypeCache;
+
+namespace
+{
+	/**
+	 * Index of refraction on the RuntimeDatasmithOverrides translucent master.
+	 *
+	 * The Twinmotion translucent master names its equivalent differently, so its MIDs fail the
+	 * lookup and are left alone — deliberately, since that content cannot ship anyway.
+	 */
+	const FName RefractionIndexParamName(TEXT("RefractionIndex"));
+
+	/** IOR 1.0 bends nothing, so the surface contributes no distortion. */
+	constexpr float NoRefractionIndex = 1.0f;
+}
 
 // Sets default values
 ARuntimeMeshBuilder::ARuntimeMeshBuilder() :
@@ -253,6 +269,8 @@ void ARuntimeMeshBuilder::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// Drop our custom MID refs held per-mesh so the MIDs can be GC'd once the
 	// components detach below.
 	DatasmithMaterialsMap.Empty();
+	TranslucentViewRefractionSnapshot.Empty();
+	bTranslucentViewActive = false;
 
 	// Free the DatasmithRuntime scene's heavy render/collision data. The
 	// plugin's static FAssetRegistry::RegistrationMap keeps the UObject shells
@@ -320,7 +338,39 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 		return;
 	}
 
+	bIsResettingForNewLoad = true;
+	PendingCollisionEnable.Reset();
+	PendingDatasmithMeshes.Reset();
+	bHeatmapBroadcastPending = false;
+	MaterialCache.Reset();
+
+	if (ChunkEmitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ChunkEmitTickerHandle);
+		ChunkEmitTickerHandle.Reset();
+	}
+	PendingMeshChunks.Empty();
+	PendingChunkEmitIndex = 0;
+
+	if (FlowCounterSpawnerComponent)
+	{
+		FlowCounterSpawnerComponent->AbortSpawning();
+		FlowCounterSpawnerComponent->RemoveAllFlowCounters();
+	}
+
+	if (RuntimeDatasmithAnchor && !RuntimeDatasmithAnchor->IsActorBeingDestroyed())
+	{
+		ReleaseDatasmithSceneResources();
+		RuntimeDatasmithAnchor->Reset();
+	}
+
+	DatasmithMaterialsMap.Empty();
+	TranslucentViewRefractionSnapshot.Empty();
+	bTranslucentViewActive = false;
+	bIsDatasmithAsset = false;
 	ResetMeshCollisionAndPhysics();
+
+	const FBox MeshBounds(InVertices);
 
 	FAssimpSubmeshBuffers Input;
 	Input.Vertices = MoveTemp(InVertices);
@@ -344,7 +394,7 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 			EmptyUVs,
 			EmptyColors,
 			EmptyTangents,
-			false);
+			true);
 	}
 
 	if (MobiusMaterialInstanceDynamic != nullptr)
@@ -354,6 +404,21 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 		{
 			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
 		}
+	}
+
+	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = true;
+	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	MobiusProceduralMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
+	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
+
+	bMeshBeingBuilt = false;
+	bIsResettingForNewLoad = false;
+
+	if (MeshBounds.IsValid)
+	{
+		const FVector BoundsCenter = MeshBounds.GetCenter();
+		const FVector BoundsExtent = MeshBounds.GetExtent();
+		OnMeshBuilt.Broadcast(BoundsCenter - BoundsExtent, BoundsExtent);
 	}
 }
 
@@ -431,7 +496,7 @@ void ARuntimeMeshBuilder::GetMeshDataFromFile(const FRotator MeshRotationOffset)
 		MobiusProceduralMeshComponent->CreateMeshSection_LinearColor(0, MVertices, MFaces, MNormals, MUV,
 		                                                             TArray<FLinearColor>(),
 		                                                             TArray<FProcMeshTangent>(),
-		                                                             false);
+		                                                             true);
 	}
 	else
 	{
@@ -490,6 +555,19 @@ void ARuntimeMeshBuilder::ResetMeshCollisionAndPhysics()
 	// 4. Force physics state to be recreated on the component
 	MobiusProceduralMeshComponent->RecreatePhysicsState();
 
+}
+
+void ARuntimeMeshBuilder::ClearMobiusProceduralMesh()
+{
+	// Guard: ResetMeshCollisionAndPhysics dereferences the component directly.
+	if (!MobiusProceduralMeshComponent)
+	{
+		return;
+	}
+
+	// Reuse the procedural-only teardown. This empties mesh sections + collision and leaves
+	// any imported Datasmith building (a separate component tree) completely untouched.
+	ResetMeshCollisionAndPhysics();
 }
 
 void ARuntimeMeshBuilder::UpdateMeshFileName()
@@ -578,6 +656,8 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	PendingDatasmithMeshes.Reset();
 
 	DatasmithMaterialsMap.Empty();
+	TranslucentViewRefractionSnapshot.Empty();
+	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
 
 	// Remove any flow counters, as the mesh is changing
@@ -644,8 +724,18 @@ void ARuntimeMeshBuilder::ContinueLoadAfterPurge()
 	// UObject array. Sweep them now so the next LoadFile doesn't double the
 	// resident set before engine GC runs.
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS, true);
-	// As we are now able to use Datasmith assets we need to check if the file is a .udatasmith file
-	if(MeshFileName.Contains(".udatasmith") || MeshFileName.Contains(".ifc"))
+	// As we are now able to use Datasmith assets we need to check if the file is a .udatasmith file.
+	//
+	// .ifc USED TO BE ROUTED HERE and silently did nothing: it fell into the else below, built a
+	// FDatasmithRuntimeImportOptions, assigned it to the anchor and returned without ever calling
+	// LoadFile — no geometry, no error, no log, while seven other places in the codebase advertised
+	// .ifc support. It is not routed here any more, and must not be re-routed here: DatasmithRuntime
+	// cannot translate IFC in a packaged build at all, because its CAD backend (HOOPS/TechSoft) lives
+	// in Engine\Restricted\NotForLicensees and is absent from a licensee engine install. .ifc now
+	// falls through to AsyncUpdateMesh, where FAssimpMeshLoaderRunnable routes it to
+	// FMobiusIfcMeshLoader (IFC++ via our MobiusIfcBridge C shim). See
+	// _CurrentHandoff\HANDOFF_IFC_2026-08-11.md sections 1, 3 and 7.3.
+	if(MeshFileName.EndsWith(TEXT(".udatasmith"), ESearchCase::IgnoreCase))
 	{
 		// check world is valid
 		if(!CheckStillInWorld())
@@ -670,7 +760,8 @@ void ARuntimeMeshBuilder::ContinueLoadAfterPurge()
 			RuntimeDatasmithAnchor = GetWorld()->SpawnActor<ADatasmithRuntimeActor>();
 		}
 
-		if(MeshFileName.Contains(".udatasmith"))
+		// Inner extension re-check removed: the enclosing branch is now .udatasmith-only, so the
+		// second test was always true and its else was the dead .ifc no-op described above.
 		{
 			// is the runtime datasmith anchor valid
 			if(RuntimeDatasmithAnchor == nullptr)
@@ -734,18 +825,10 @@ void ARuntimeMeshBuilder::ContinueLoadAfterPurge()
 
 			      });
 		}
-		else
-		{
-			// import options
-			FDatasmithRuntimeImportOptions ImportOptions;// TODO: set the import options
-
-			//ImportOptions.TessellationOptions.bUseCADKernel = true;
-
-			RuntimeDatasmithAnchor->ImportOptions = ImportOptions;
-		}
 	}
-	// not a datasmith file so we can load the mesh as normal. Anchor (if any)
-	// has had its prior scene purged by the ResetScene tick and stays idle.
+	// not a datasmith file so we can load the mesh as normal — fbx/obj/wkt/h5 via Assimp, and .ifc
+	// via FMobiusIfcMeshLoader, both inside FAssimpMeshLoaderRunnable. Anchor (if any) has had its
+	// prior scene purged by the ResetScene tick and stays idle.
 	else
 	{
 		AsyncUpdateMesh(MeshFileName);
@@ -868,6 +951,23 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	// (potentially slow) emit loop. Runnable retains empty TArrays — cheap to delete.
 	TArray<FAssimpSubmeshBuffers> LocalSubmeshes = MoveTemp(AsyncAssimpLoader->MeshLoaderRunnable->Submeshes);
 
+	// IFC diagnostics travel with the buffers. Moved out before the runnable is torn down below;
+	// default-constructed (empty SourceSchema) for every non-IFC format.
+	LastIfcLoadStats = MoveTemp(AsyncAssimpLoader->MeshLoaderRunnable->IfcLoadStats);
+	IfcSectionInfo.Reset();
+
+	// Fresh load: re-probe whether the (Blueprint-supplied) building material can express source
+	// colours, since the material may have been swapped since the last load.
+	bSourceColourParamProbeDone = false;
+	bSourceColourParamsAvailable = false;
+	SourceColourProbedParent = nullptr;
+	SourceMaterialSectionsApplied = 0;
+	// Per-section colours belong to the mesh that is being replaced, not to the next one. Same for the
+	// section MIDs -- section 3 of the next building is not section 3 of this one.
+	SectionSourceMaterials.Reset();
+	SectionColourMIDs.Reset();
+	SectionColourMIDParent = nullptr;
+
 	// The loader is no longer needed. Properly stop, drop the CPU-side mesh
 	// buffers, and delete the runnable. The previous code path nulled
 	// MeshLoaderRunnable without deleting it, leaking the runnable plus
@@ -952,12 +1052,62 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 			Chunks.Num(), TotalVerts, TotalTris));
 	}
 
+	// IFC only: record the per-section entity map, then emit the render-filter summary exactly ONCE.
+	// The allowlist itself never logs (per-product logging is a project rule violation); this is the
+	// single line that makes a dropped class visible, and it is deliberately here — after the load,
+	// outside every per-product and per-section loop.
+	if (!LastIfcLoadStats.SourceSchema.IsEmpty())
+	{
+		IfcSectionInfo.Reserve(Chunks.Num());
+		for (const FAssimpSubmeshBuffers& Chunk : Chunks)
+		{
+			FMobiusIfcSectionInfo& Info = IfcSectionInfo.AddDefaulted_GetRef();
+			Info.Guid = Chunk.SourceGuid;
+			Info.IfcClass = Chunk.SourceIfcClass;
+			Info.MaterialName = Chunk.SourceMaterialName;
+			Info.Material = Chunk.Material;
+		}
+
+		int32 SectionsWithSourceMaterial = 0;
+		for (const FMobiusIfcSectionInfo& Info : IfcSectionInfo)
+		{
+			if (Info.Material.bHasMaterial)
+			{
+				++SectionsWithSourceMaterial;
+			}
+		}
+
+		const FString IfcSummary = FString::Printf(
+			TEXT("IFC load: schema=%s products_with_geometry=%d products_without_geometry=%d rendered_products=%d ")
+			TEXT("rendered_tris=%d file_tris=%d malformed=%d rooms(IfcSpace)=%d sections=%d ")
+			TEXT("styled_sections=%d materials(products)=%d | %s"),
+			*LastIfcLoadStats.SourceSchema,
+			LastIfcLoadStats.ProductsWithGeometry,
+			LastIfcLoadStats.ProductsWithoutGeometry,
+			LastIfcLoadStats.RenderedProducts,
+			LastIfcLoadStats.RenderedTriangles,
+			LastIfcLoadStats.TotalTriangles,
+			LastIfcLoadStats.MalformedProducts,
+			LastIfcLoadStats.RoomVolumes.Num(),
+			IfcSectionInfo.Num(),
+			SectionsWithSourceMaterial,
+			LastIfcLoadStats.ProductMaterials.Num(),
+			*LastIfcLoadStats.FilterSummary);
+
+		if (StartupLogger)
+		{
+			StartupLogger->EnqueueLogMessage(IfcSummary);
+		}
+		UE_LOG(LogTemp, Log, TEXT("%s"), *IfcSummary);
+	}
+
 	// Hand the chunks off to the staggered emit pump. Emitting all sections in one tick spikes
 	// FScene_AddPrimitive on the game thread (~300ms for 8 sections on the test asset); spreading
 	// them across frames keeps the per-frame cost bounded. Finalize (broadcast + EndLoadingWidget
 	// + bMeshBeingBuilt=false) runs after the last chunk is pushed, so listeners see a fully
-	// populated bounds. Component-level collision is NoCollision (ctor line 78) so per-section
-	// bCreateCollision stays false in the pump.
+	// populated bounds. Each section is cooked WITH collision (bCreateCollision=true) in the pump; the
+	// component itself is switched from its ctor NoCollision to QueryOnly once in FinalizeMeshEmit, so
+	// the cooked geometry becomes queryable for cursor ray-traces.
 	PendingMeshChunks = MoveTemp(Chunks);
 	PendingChunkEmitIndex = 0;
 	ChunkEmitStartTime = FPlatformTime::Seconds();
@@ -1012,11 +1162,27 @@ bool ARuntimeMeshBuilder::EmitNextChunkSection(float /*DeltaTime*/)
 			Chunk.UV,
 			EmptyColors,
 			EmptyTangents,
-			/*bCreateCollision*/ false);
+			/*bCreateCollision*/ true);
 
-		if (MobiusMaterialInstanceDynamic)
+		// Remember this section's source material BEFORE anything is applied, index-parallel to the
+		// ProcMesh sections and for every format. SetBuildingMaterialStyle re-applies these onto a
+		// different parent, so without this cache switching to translucent and back would permanently
+		// lose every imported colour.
+		if (SectionSourceMaterials.Num() <= SectionIdx)
 		{
-			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
+			SectionSourceMaterials.SetNum(SectionIdx + 1);
+		}
+		SectionSourceMaterials[SectionIdx] = Chunk.Material;
+
+		// Per-section source material, when the import gave this section one AND the project's building
+		// material can express it. See ApplySourceMaterialToSection for why this is a probe rather than
+		// an assumption.
+		if (!ApplySourceMaterialToSection(SectionIdx, Chunk.Material))
+		{
+			if (MobiusMaterialInstanceDynamic)
+			{
+				MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
+			}
 		}
 
 		const double PushDurationMs = (FPlatformTime::Seconds() - PushStart) * 1000.0;
@@ -1046,6 +1212,306 @@ bool ARuntimeMeshBuilder::EmitNextChunkSection(float /*DeltaTime*/)
 	return true;
 }
 
+UMaterialInterface* ARuntimeMeshBuilder::ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style) const
+{
+	// The four instances already in the project, one per style. Hardcoded paths follow the existing
+	// precedent in this file (CreateRuntimeOpaqueMaterials hardcodes MI_Opaque the same way).
+	//
+	// Style -> instance mapping, per the owner's specification:
+	//   OriginalColours            -> Opaque
+	//   OriginalColoursCutOut      -> Masked        (masked blend IS the cut-out)
+	//   TransparentWhite           -> Translucent
+	//   OriginalColoursTransparent -> TranslucentClearcoat
+	static const TCHAR* Base = TEXT("/Game/01_Dev/RuntimeMeshGenerator/GeneratedMeshMasterMaterials/");
+	const TCHAR* AssetName = TEXT("MI_RuntimeMeshBuilderOpaque");
+	switch (Style)
+	{
+	case EMobiusBuildingMaterialStyle::OriginalColoursCutOut:      AssetName = TEXT("MI_RuntimeMeshBuilderMasked"); break;
+	case EMobiusBuildingMaterialStyle::TransparentWhite:           AssetName = TEXT("MI_RuntimeMeshBuilderTranslucent"); break;
+	case EMobiusBuildingMaterialStyle::OriginalColoursTransparent: AssetName = TEXT("MI_RuntimeMeshBuilderTranslucentClearcoat"); break;
+	case EMobiusBuildingMaterialStyle::OriginalColours:
+	default:                                                       AssetName = TEXT("MI_RuntimeMeshBuilderOpaque"); break;
+	}
+
+	const FString Path = FString::Printf(TEXT("%s%s.%s"), Base, AssetName, AssetName);
+	UMaterialInterface* Loaded = LoadObject<UMaterialInterface>(nullptr, *Path);
+	if (!Loaded)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[Building %s] building material style asset not found: %s. Sections keep their current material."),
+			*GetName(), *Path);
+	}
+	return Loaded;
+}
+
+void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle Style)
+{
+	CurrentBuildingMaterialStyle = Style;
+	bBuildingMaterialStyleChosen = true;
+
+	// ---- Datasmith buildings: delegate to the existing implementations ----------------------------
+	// Behaviour for a .udatasmith building is unchanged by construction -- this only routes one widget
+	// control to the calls that widget was already making.
+	if (bIsDatasmithAsset)
+	{
+		switch (Style)
+		{
+		case EMobiusBuildingMaterialStyle::OriginalColours:
+			SetDatasmithToOriginalMatStyle();
+			SetDatasmithMeshToSolidMaterials();
+			SetDatasmithMeshToUseClearCoatMaterials(false);
+			break;
+
+		case EMobiusBuildingMaterialStyle::OriginalColoursCutOut:
+			SetDatasmithToOriginalMatStyle();
+			SetDatasmithMeshToSolidMaterials();
+			// The Datasmith equivalent of "cut out" is the box dissolve, which needs its bounds set by
+			// the caller (SetDatasmithDissolveMeshSizeAndOrigin) -- enabling it here without bounds
+			// would dissolve nothing, so the dissolve toggle is left to the existing control.
+			BoxDissolveDatasmithMesh(true);
+			break;
+
+		case EMobiusBuildingMaterialStyle::TransparentWhite:
+			SetDatasmithMeshToTranslucentMaterials();
+			SetDatasmithToUseModifiedColour(true, FLinearColor::White);
+			break;
+
+		case EMobiusBuildingMaterialStyle::OriginalColoursTransparent:
+			SetDatasmithMeshToTranslucentMaterials();
+			SetDatasmithToUseModifiedColour(false); // keep the imported colours
+			SetDatasmithMeshToUseClearCoatMaterials(true);
+			break;
+		}
+		return;
+	}
+
+	// ---- Procedural buildings (IFC / fbx / obj / wkt) ---------------------------------------------
+	if (!IsValid(MobiusProceduralMeshComponent))
+	{
+		return;
+	}
+
+	UMaterialInterface* StyleParent = ResolveStyleParentMaterial(Style);
+	if (!StyleParent)
+	{
+		return; // ResolveStyleParentMaterial already logged
+	}
+
+	const bool bForceWhite = (Style == EMobiusBuildingMaterialStyle::TransparentWhite);
+	const int32 NumSections = MobiusProceduralMeshComponent->GetNumSections();
+	int32 Coloured = 0;
+
+	for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
+	{
+		// Reused per section; StyleParent is an asset instance, so this never nests MIDs.
+		UMaterialInstanceDynamic* SectionMaterial = GetOrCreateSectionMID(SectionIdx, StyleParent);
+		if (!SectionMaterial)
+		{
+			continue;
+		}
+
+		// Reuse is safe against stale parameters here because each of the four styles resolves to a
+		// DIFFERENT MI_RuntimeMeshBuilder* asset, so a style switch changes the parent and rebuilds the
+		// MIDs. Reuse only happens on a repeat call with the same style, where every value written below
+		// is the same value. If a future style ever shares a parent with another, this branch must start
+		// writing every parameter unconditionally.
+
+		// Source colour for this section, when the import gave it one AND this style wants it.
+		// Everything else falls through to Use Modified Colour = 0, which is the master's own plain
+		// white chain -- so "no colours" degrades to plain white / plain white cut out / plain white
+		// transparent / plain white clear coat, one per style, rather than to black.
+		const FMobiusMeshMaterial* Source = SectionSourceMaterials.IsValidIndex(SectionIdx)
+			                                    ? &SectionSourceMaterials[SectionIdx]
+			                                    : nullptr;
+
+		if (bForceWhite)
+		{
+			SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
+			SectionMaterial->SetVectorParameterValue(FName("NewColour"), FLinearColor::White);
+		}
+		else if (Source && Source->bHasMaterial)
+		{
+			SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
+			SectionMaterial->SetVectorParameterValue(FName("NewColour"), Source->BaseColour);
+			++Coloured;
+		}
+		else
+		{
+			SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 0.0f);
+		}
+
+		// Source opacity only where the source actually asked for transparency; the style's own blend
+		// mode governs everything else. Overwriting OpacityAmount on an opaque style would fight the
+		// project's own translucent-view feature for no reason.
+		const float SourceAlpha = (Source && Source->bHasMaterial) ? Source->BaseColour.A : 1.0f;
+		if (SourceAlpha < 1.0f)
+		{
+			SectionMaterial->SetScalarParameterValue(FName("OpacityAmount"), SourceAlpha);
+		}
+
+		MobiusProceduralMeshComponent->SetMaterial(SectionIdx, SectionMaterial);
+	}
+
+	UE_LOG(LogTemp, Log,
+		TEXT("[Building %s] building material style -> %d (procedural): %d sections, %d took a source colour"),
+		*GetName(), static_cast<int32>(Style), NumSections, Coloured);
+}
+
+UMaterialInterface* ARuntimeMeshBuilder::ResolveNonDynamicParent(UMaterialInterface* InMaterial)
+{
+	// See the header for why a MID must never parent a MID here. Bounded walk: a legitimate chain is one
+	// or two links, and a cycle (which SetParentInternal should already have refused) must not hang us.
+	UMaterialInterface* Candidate = InMaterial;
+	for (int32 Depth = 0; Depth < 16 && Candidate != nullptr; ++Depth)
+	{
+		UMaterialInstanceDynamic* AsDynamic = Cast<UMaterialInstanceDynamic>(Candidate);
+		if (AsDynamic == nullptr)
+		{
+			return Candidate; // asset material instance, or a UMaterial -- either is a stable parent
+		}
+		Candidate = AsDynamic->Parent;
+	}
+	return nullptr;
+}
+
+UMaterialInstanceDynamic* ARuntimeMeshBuilder::GetOrCreateSectionMID(int32 SectionIdx, UMaterialInterface* Parent)
+{
+	if (Parent == nullptr || SectionIdx < 0)
+	{
+		return nullptr;
+	}
+
+	// A different parent means a different look; the cached MIDs are no longer the right objects.
+	if (SectionColourMIDParent != Parent)
+	{
+		SectionColourMIDParent = Parent;
+		SectionColourMIDs.Reset();
+	}
+
+	if (SectionColourMIDs.Num() <= SectionIdx)
+	{
+		SectionColourMIDs.SetNum(SectionIdx + 1);
+	}
+
+	UMaterialInstanceDynamic* Existing = SectionColourMIDs[SectionIdx];
+	if (IsValid(Existing) && Existing->Parent == Parent)
+	{
+		return Existing;
+	}
+
+	UMaterialInstanceDynamic* Created = UMaterialInstanceDynamic::Create(Parent, this);
+	if (Created != nullptr && Created->Parent == nullptr)
+	{
+		// SetParentInternal refused the parent (cycle or self). Better to report and fall back to the
+		// shared material than to hand the mesh a parentless MID, which renders as nothing meaningful.
+		UE_LOG(LogTemp, Error,
+			TEXT("[Building %s] section %d: MID creation left a NULL parent for '%s'. Section keeps the ")
+			TEXT("shared material."),
+			*GetName(), SectionIdx, *Parent->GetName());
+		return nullptr;
+	}
+
+	SectionColourMIDs[SectionIdx] = Created;
+	return Created;
+}
+
+bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const FMobiusMeshMaterial& SourceMaterial)
+{
+	// ---------------------------------------------------------------------------------------------
+	// Applies a source-authored colour (IFC IfcSurfaceStyle, or aiMaterial for fbx/obj) to one section
+	// by creating a MID from the building material's own parent and setting the colour parameters the
+	// Datasmith path already uses.
+	//
+	// THIS IS A PROBE, NOT AN ASSUMPTION, and that is the whole design of this function.
+	// MobiusMaterialInstanceDynamic is handed to this actor from Blueprint (UpdateMeshMaterial is
+	// BlueprintCallable), so C++ cannot know which master material it is. "NewColour",
+	// "Use Modified Colour" and "OpacityAmount" are known to exist on the Datasmith master family; if
+	// the procedurally-built building happens to use a different parent, blindly calling
+	// SetVectorParameterValue would be a silent no-op -- geometry would render in the default colour and
+	// look like the importer had dropped the material. So: check the parameter exists, and if it does
+	// not, return false so the caller keeps the shared material and the ONE summary log line says so.
+	//
+	// Returns true only if a per-section material was actually created AND parameterised.
+	// ---------------------------------------------------------------------------------------------
+	if (!SourceMaterial.bHasMaterial || !IsValid(MobiusProceduralMeshComponent))
+	{
+		return false;
+	}
+
+	// NOT MobiusMaterialInstanceDynamic itself -- that is a MID, and Blueprint derives it from whatever is
+	// currently on the section, so using it as a parent stacks MIDs and eventually nulls the parent.
+	// ResolveNonDynamicParent walks to the asset behind it; see its header comment.
+	UMaterialInterface* Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	if (!Parent)
+	{
+		// The walk found no asset, which means Blueprint handed us a MID that UE had ALREADY refused to
+		// parent -- the "MID_MID_*" case, logged by the engine as "Only Materials and
+		// MaterialInstanceConstants are valid parents for a material instance". Such a MID has Parent ==
+		// null and carries no material chain at all, so it can neither be used as a parent nor be applied
+		// to the mesh. Fall back to the asset backing the current style.
+		Parent = ResolveStyleParentMaterial(CurrentBuildingMaterialStyle);
+		if (!Parent)
+		{
+			return false;
+		}
+	}
+
+	// One probe per parent, cached: the answer cannot change between sections sharing a parent, and
+	// FMaterialParameterInfo lookups are not free. Keyed on the parent rather than only on the load,
+	// because Blueprint can swap the building material mid-load.
+	if (!bSourceColourParamProbeDone || SourceColourProbedParent != Parent)
+	{
+		bSourceColourParamProbeDone = true;
+		SourceColourProbedParent = Parent;
+
+		FLinearColor Unused;
+		bSourceColourParamsAvailable =
+			Parent->GetVectorParameterValue(FMaterialParameterInfo(TEXT("NewColour")), Unused);
+
+		if (!bSourceColourParamsAvailable)
+		{
+			// Deliberately a Warning, not silence: "the importer read the colours and the material
+			// cannot show them" is a different problem from "the file had no colours", and the two must
+			// not look the same in a log.
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Building %s] Source materials were imported but the building material '%s' has no ")
+				TEXT("'NewColour' parameter, so per-section colours cannot be applied. Sections keep the ")
+				TEXT("shared material. Fix = give the procedural building material the same colour ")
+				TEXT("parameters the Datasmith master uses ('NewColour', 'Use Modified Colour', 'OpacityAmount')."),
+				*GetName(), *Parent->GetName());
+		}
+	}
+
+	if (!bSourceColourParamsAvailable)
+	{
+		return false;
+	}
+
+	UMaterialInstanceDynamic* SectionMaterial = GetOrCreateSectionMID(SectionIdx, Parent);
+	if (!SectionMaterial)
+	{
+		return false;
+	}
+
+	SectionMaterial->SetVectorParameterValue(FName("NewColour"), SourceMaterial.BaseColour);
+	SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
+	// Alpha carries the source's opacity. Only pushed when the parameter exists, and only when the
+	// source actually asked for transparency -- overwriting the project's own opacity handling on an
+	// opaque material would fight the translucent-view feature for no reason.
+	if (SourceMaterial.BaseColour.A < 1.0f)
+	{
+		float UnusedScalar = 0.0f;
+		if (Parent->GetScalarParameterValue(FMaterialParameterInfo(TEXT("OpacityAmount")), UnusedScalar))
+		{
+			SectionMaterial->SetScalarParameterValue(FName("OpacityAmount"), SourceMaterial.BaseColour.A);
+		}
+	}
+
+	MobiusProceduralMeshComponent->SetMaterial(SectionIdx, SectionMaterial);
+	++SourceMaterialSectionsApplied;
+	return true;
+}
+
 void ARuntimeMeshBuilder::FinalizeMeshEmit()
 {
 	const int32 EmittedSections = PendingMeshChunks.Num();
@@ -1064,11 +1530,44 @@ void ARuntimeMeshBuilder::FinalizeMeshEmit()
 			EmittedSections, DurationMs));
 	}
 
+	// A style chosen before this load finished (the widget can be driven at any time) applies to the
+	// sections that have just been emitted, not to whatever was on screen when the button was pressed.
+	if (bBuildingMaterialStyleChosen && EmittedSections > 0 && !bIsDatasmithAsset)
+	{
+		SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
+	}
+
+	// Source-material outcome, reported HERE rather than in the load summary because sections are
+	// pushed across frames by the emit pump -- at load time the applied count is always 0. Logged
+	// whenever the emit ran, so "the file had no colours", "the material cannot show them" and "they
+	// were applied" are three distinguishable lines rather than one silence.
+	if (EmittedSections > 0)
+	{
+		UE_LOG(LogTemp, Log,
+			TEXT("[Building %s] source materials: %d of %d sections got a per-section colour ")
+			TEXT("(colour params on building material: %s)"),
+			*GetName(), SourceMaterialSectionsApplied, EmittedSections,
+			bSourceColourParamProbeDone ? (bSourceColourParamsAvailable ? TEXT("available") : TEXT("MISSING"))
+			                            : TEXT("never probed - no section carried a source material"));
+	}
+
 	if (!IsValid(MobiusProceduralMeshComponent))
 	{
 		EndLoadingWidget();
 		return;
 	}
+
+	// Enable query collision now that every section is present. The staggered pump cooks per-section
+	// collision (CreateMeshSection_LinearColor bCreateCollision=true), but the component is left at
+	// NoCollision by the ctor and — unlike the legacy single-shot build paths — the staggered path
+	// never re-enabled it, so the geometry exists yet is invisible to line traces. Cursor ray-traces
+	// (e.g. flow-counter pillar placement: a bTraceComplex LineTraceByChannel against the building)
+	// then hit nothing. QueryOnly + ComplexAsSimple + Block-all matches the legacy build paths and the
+	// bTraceComplex trace, without enabling physics simulation.
+	MobiusProceduralMeshComponent->bUseComplexAsSimpleCollision = true;
+	MobiusProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	MobiusProceduralMeshComponent->SetCollisionResponseToAllChannels(ECR_Block);
+	MobiusProceduralMeshComponent->SetSimulatePhysics(false);
 
 	// The origin we want to broadcast is the smallest location of the mesh bounds as the mesh generator
 	// for the heatmap works from left to right and bottom to top.
@@ -1170,6 +1669,9 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToTranslucentMaterials()
 			DatasmithMaterialMap.Key->SetMaterial(Index,DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]);
 		}
 	}
+
+	ApplyRefractionForCurrentView();
+
 	UE_LOG(LogTemp, Error, TEXT("SetDatasmithMeshToTranslucentMaterials Finished"));
 }
 
@@ -1200,6 +1702,95 @@ void ARuntimeMeshBuilder::SetDatasmithMeshToSolidMaterials()
 			DatasmithMaterialMap.Key->SetMaterial(Index,DatasmithMaterialMap.Value.MeshMaterials[Index * 2]);
 		}
 	}
+
+	ApplyRefractionForCurrentView();
+}
+
+void ARuntimeMeshBuilder::RecordOriginalRefraction(UMaterialInstanceDynamic* TranslucentMaterial)
+{
+	if (!TranslucentMaterial)
+	{
+		return;
+	}
+
+	// One shared MID serves many slots, so this is reached repeatedly. Only the first sighting can
+	// be trusted as the original — and only a MID recorded here ever gets flattened or restored.
+	if (TranslucentViewRefractionSnapshot.Contains(TranslucentMaterial))
+	{
+		return;
+	}
+
+	float OriginalRefractionIndex = 0.0f;
+	if (!TranslucentMaterial->GetScalarParameterValue(RefractionIndexParamName, OriginalRefractionIndex))
+	{
+		// Master does not expose the parameter — nothing to flatten, nothing to restore.
+		return;
+	}
+
+	TranslucentViewRefractionSnapshot.Add(TranslucentMaterial, OriginalRefractionIndex);
+
+	// Datasmith meshes finish building across several ticks, so a mesh can arrive after the
+	// translucent view is already on. Bring it straight into the current view rather than leaving
+	// one late chunk refracting while the rest of the building does not.
+	if (bTranslucentViewActive)
+	{
+		TranslucentMaterial->SetScalarParameterValue(RefractionIndexParamName, NoRefractionIndex);
+	}
+}
+
+bool ARuntimeMeshBuilder::IsTranslucentViewActive() const
+{
+	for (const TPair<TWeakObjectPtr<UStaticMeshComponent>, FDatasmithMaterials>& Entry : DatasmithMaterialsMap)
+	{
+		const UStaticMeshComponent* Mesh = Entry.Key.Get();
+		if (!Mesh)
+		{
+			continue;
+		}
+
+		for (int32 Index = 0; Index < Mesh->GetNumMaterials(); Index++)
+		{
+			// Only an opaque slot answers the question. A slot Datasmith classified as translucent
+			// renders its translucent MID in both views, so it can never tell them apart.
+			if (!Entry.Value.bIsOpaque.IsValidIndex(Index) || !Entry.Value.bIsOpaque[Index])
+			{
+				continue;
+			}
+
+			if (!Entry.Value.MeshMaterials.IsValidIndex(Index * 2 + 1))
+			{
+				continue;
+			}
+
+			if (Mesh->GetMaterial(Index) == Entry.Value.MeshMaterials[Index * 2 + 1])
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void ARuntimeMeshBuilder::ApplyRefractionForCurrentView()
+{
+	// Read the view off the materials that are actually on the meshes rather than trusting which
+	// function ran last. The UI drives these entry points from Blueprint and a single mode change
+	// calls several of them, so "the last one called wins" is not something this can rely on.
+	bTranslucentViewActive = IsTranslucentViewActive();
+
+	for (const TPair<TWeakObjectPtr<UMaterialInstanceDynamic>, float>& Recorded : TranslucentViewRefractionSnapshot)
+	{
+		if (UMaterialInstanceDynamic* TranslucentMaterial = Recorded.Key.Get())
+		{
+			TranslucentMaterial->SetScalarParameterValue(
+				RefractionIndexParamName,
+				bTranslucentViewActive ? NoRefractionIndex : Recorded.Value);
+		}
+	}
+
+	// The record is never consumed here. It belongs to the MIDs and is dropped with them when the
+	// Datasmith scene is torn down, so the view can be entered and left any number of times.
 }
 
 void ARuntimeMeshBuilder::UpdateDatasmithMeshOpacity(float Opacity)
@@ -1366,12 +1957,12 @@ void ARuntimeMeshBuilder::SetDatasmithToOriginalMatStyle()
 		{
 			if (!DatasmithMaterialMap.Value.MeshMaterials.IsValidIndex(Index * 2 + 1)) continue;
 
-			// set the material shading to use the modified colour material or not
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
+			// set the material shading to not use the modified colour material or and to use the modified material so we are able to override opacity with the slider
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Colour"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2]->SetScalarParameterValue(FName("Use Modified Material"), 1.0f);
 
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
-			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Material"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Colour"), 0.0f);
+			DatasmithMaterialMap.Value.MeshMaterials[Index * 2 + 1]->SetScalarParameterValue(FName("Use Modified Material"), 1.0f);
 
 			// if is opaque then set the material to use the opaque material
 			if(DatasmithMaterialMap.Value.bIsOpaque[Index])
@@ -1392,6 +1983,11 @@ void ARuntimeMeshBuilder::SetDatasmithToOriginalMatStyle()
 			}
 		}
 	}
+
+	// Translucent slots go back to rendering the same MID the translucent view flattened, so the
+	// refraction it took away has to come back here. This is the route the UI actually uses to
+	// leave the translucent view — SetDatasmithMeshToSolidMaterials never runs in practice.
+	ApplyRefractionForCurrentView();
 }
 
 void ARuntimeMeshBuilder::SetMaterialOnMesh()
@@ -1399,10 +1995,51 @@ void ARuntimeMeshBuilder::SetMaterialOnMesh()
 	// As the mesh may not exist we check if it does
 	if(MobiusProceduralMeshComponent != nullptr)
 	{
+		// ---------------------------------------------------------------------------------------------
+		// MUST NOT stamp one shared material over every section unconditionally.
+		//
+		// This function used to do exactly that, and it silently undid every imported source colour.
+		// The sequence, measured 2026-08-12: FinalizeMeshEmit applies per-section colours, THEN
+		// broadcasts OnMeshBuilt; WBP_SetBuildingMat is bound to OnMeshBuilt and responds by calling
+		// UpdateMeshMaterial, which lands here and overwrote all N sections with the single
+		// MobiusMaterialInstanceDynamic. The building came out one flat colour with the window frames
+		// indistinguishable from the walls -- which looks like the importer failing to read materials
+		// and is not that at all.
+		//
+		// So: honour the chosen style if there is one, otherwise re-apply each section's own source
+		// colour on top of the material being set, and only fall back to the shared material for
+		// sections that genuinely have no source colour.
+		// ---------------------------------------------------------------------------------------------
+		if (bBuildingMaterialStyleChosen && !bIsDatasmithAsset)
+		{
+			SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
+			return;
+		}
+
 		const int32 NumSections = MobiusProceduralMeshComponent->GetNumSections();
 		for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
 		{
-			MobiusProceduralMeshComponent->SetMaterial(SectionIdx, MobiusMaterialInstanceDynamic);
+			const FMobiusMeshMaterial* Source = SectionSourceMaterials.IsValidIndex(SectionIdx)
+				                                    ? &SectionSourceMaterials[SectionIdx]
+				                                    : nullptr;
+
+			// ApplySourceMaterialToSection parents its MID on MobiusMaterialInstanceDynamic, i.e. on
+			// whatever material was just supplied -- so the caller's choice of material is respected and
+			// the source colour is layered on top of it, rather than one overriding the other.
+			if (!Source || !ApplySourceMaterialToSection(SectionIdx, *Source))
+			{
+				// Never hand the mesh a MID whose parent UE refused (the MID_MID case) -- it has no
+				// material chain and renders as nothing. Substitute the asset behind the current style.
+				UMaterialInterface* Fallback = MobiusMaterialInstanceDynamic;
+				if (MobiusMaterialInstanceDynamic != nullptr && MobiusMaterialInstanceDynamic->Parent == nullptr)
+				{
+					Fallback = ResolveStyleParentMaterial(CurrentBuildingMaterialStyle);
+				}
+				if (Fallback != nullptr)
+				{
+					MobiusProceduralMeshComponent->SetMaterial(SectionIdx, Fallback);
+				}
+			}
 		}
 	}
 	else
@@ -1502,6 +2139,29 @@ void ARuntimeMeshBuilder::DecideAndExecuteSpawnStrategy()
 	}
 }
 
+UMaterialInterface* ARuntimeMeshBuilder::GetUnsupportedMaterial()
+{
+	if (UnsupportedMaterialCache)
+	{
+		return UnsupportedMaterialCache;
+	}
+
+	// Vivid "render error" purple, shown when a Twinmotion-sourced slot can't be satisfied in a
+	// packaged build (its master was excluded from cook under Epic's Twinmotion EULA). This asset
+	// is project-owned (not Twinmotion-derived) and lives in the always-cooked RuntimeMeshGenerator
+	// folder, so it is always available in the package.
+	static const TCHAR* UnsupportedPath = TEXT("/Game/01_Dev/RuntimeMeshGenerator/M_MobiusUnsupported.M_MobiusUnsupported");
+	UnsupportedMaterialCache = LoadObject<UMaterialInterface>(nullptr, UnsupportedPath);
+
+	if (!UnsupportedMaterialCache)
+	{
+		// Last-resort fallback so the slot is at least visibly wrong rather than empty.
+		UnsupportedMaterialCache = UMaterial::GetDefaultMaterial(MD_Surface);
+	}
+
+	return UnsupportedMaterialCache;
+}
+
 void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 {
 	const double DatasmithStart = FPlatformTime::Seconds();
@@ -1539,6 +2199,7 @@ void ARuntimeMeshBuilder::CreateDatasmithMaterials()
 	PendingDatasmithMeshes.Reset();
 	bDatasmithMaterialSetupInProgress = false;
 	bHeatmapBroadcastPending = false;
+	bTwinmotionRefusedThisLoad = false;
 
 	if (DataComps.Num() == 0)
 	{
@@ -1715,7 +2376,19 @@ TArray<TObjectPtr<UMaterialInstanceDynamic>> ARuntimeMeshBuilder::CreateRuntimeT
 		                                        : TEXT("MaterialInstanceConstant'/Game/01_Dev/RuntimeMeshGenerator/RuntimeDatasmithOverrides/MI_Transparent.MI_Transparent'");
 
 	//return CreateMaterialInstances(InMaterial, TranslucentMaterialPath); - old way without cache
-	return MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> Created =
+		MaterialCache.CreateMaterialInstancesUsingCache(InMaterial, TranslucentMaterialPath, false);
+
+	// Capture the untouched refraction here, at generation, not on the first switch to the
+	// translucent view. MaterialCache hands back a shared MID and the view can be entered and left
+	// any number of times in any order, so a snapshot taken on a toggle is only ever as good as the
+	// toggle ordering — and the ordering is decided in Blueprint.
+	for (UMaterialInstanceDynamic* Material : Created)
+	{
+		RecordOriginalRefraction(Material);
+	}
+
+	return Created;
 }
 
 void ARuntimeMeshBuilder::EnqueueCollisionEnable(UStaticMeshComponent* Mesh)
@@ -1944,6 +2617,24 @@ void ARuntimeMeshBuilder::ProcessPendingDatasmithMeshes(float DeltaSeconds)
 			}
 		}
 
+#if MOBIUS_TWINMOTION_PACKAGED_DISABLED
+		// One-shot notice per load: at least one slot was a Twinmotion-sourced material that can't
+		// be shipped in a packaged build (Epic Twinmotion EULA). Geometry was drawn with the purple
+		// M_MobiusUnsupported placeholder instead of the excluded Twinmotion masters.
+		if (bTwinmotionRefusedThisLoad)
+		{
+			if (UMobiusUserFeedbackSubsystem* Feedback = UMobiusUserFeedbackSubsystem::Get(this))
+			{
+				Feedback->ReportError(
+					FText::FromString(TEXT("Twinmotion Materials Not Supported")),
+					FText::FromString(TEXT("Model exported from Twinmotion")),
+					FText::FromString(TEXT("This model uses Twinmotion materials, which cannot be included in the packaged application under Epic's Twinmotion EULA. The geometry is shown without materials (marked in purple). Re-export the model using non-Twinmotion (Datasmith) materials to restore them.")),
+					FText::FromString(TEXT("RuntimeMeshBuilder")));
+			}
+			bTwinmotionRefusedThisLoad = false;
+		}
+#endif
+
 		EndLoadingWidget();
 		FlowCounterSpawnerComponent->BeginSpawning();
 		DecideAndExecuteSpawnStrategy();
@@ -1998,16 +2689,34 @@ void ARuntimeMeshBuilder::BuildDatasmithMaterialsForMesh(UStaticMeshComponent* M
 		}
 
 		UMaterialInterface* Material = MeshComp->GetMaterial(Index);
+		UMaterial* ParentMaterial = Material ? Material->GetMaterial() : nullptr;
+
+#if MOBIUS_TWINMOTION_PACKAGED_DISABLED
+		// Packaged build: the Twinmotion master materials are excluded from cook (Epic Twinmotion
+		// EULA — see MobiusCore.Build.cs / Config/DefaultGame.ini). A Datasmith slot that resolves
+		// to no material is a model that needed Twinmotion content we cannot ship. Substitute the
+		// purple "unsupported" placeholder, flag the load for a one-shot notice, and skip the remap.
+		// Non-Twinmotion Datasmith imports resolve to the engine DatasmithRuntime masters and keep
+		// a valid material here, so they fall through untouched.
+		if (!Material || !ParentMaterial)
+		{
+			if (UMaterialInterface* Placeholder = GetUnsupportedMaterial())
+			{
+				MeshComp->SetMaterial(Index, Placeholder);
+			}
+			bTwinmotionRefusedThisLoad = true;
+			continue;
+		}
+#else
 		if (!Material)
 		{
 			continue;
 		}
-
-		UMaterial* ParentMaterial = Material->GetMaterial();
 		if (!ParentMaterial)
 		{
 			continue;
 		}
+#endif
 
 		// Classify master material using cached FName → enum mapping
 		EDatasmithMasterType MasterType = EDatasmithMasterType::Unknown;

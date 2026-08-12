@@ -8,21 +8,256 @@
 #include "Core/MobiusWidgetSubsystem.h"
 #include "Engine/Engine.h"
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/PlatformApplicationMisc.h" // ClipboardCopy for the chart TSV export (S6)
+#include "Engine/TextureRenderTarget2D.h"
+#include "RenderingThread.h"             // FlushRenderingCommands before the capture readback
+#include "Slate/WidgetRenderer.h"        // offscreen re-render of the chart for "Copy chart image"
 #include "Styling/CoreStyle.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "InputCoreTypes.h"
 #include "Layout/Clipping.h"
 #include "Misc/App.h"
+#include "Misc/Paths.h"
 #include "Rendering/DrawElementTypes.h"
 #include "Rendering/RenderingCommon.h"
+#include "UI/Theme/UIThemeSubsystem.h"
+#include "UserConfig/UserProjectSettings.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/SWidget.h"
 
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
+#endif
 #include "imgui.h"
 #include "implot.h"
+// GImPlot, GetCurrentPlot, ShowPlotContextMenu and ShowAxisContextMenu are all IMPLOT_API but live in the
+// internal header. They are what let the plot's right-click menu be rebuilt (S6) without patching ImPlot.
+#include "implot_internal.h"
 namespace
 {
-	const FName DefaultChartId = NAME_None;
+	/**
+	 * S6: render the plotted series as TSV for the OS clipboard.
+	 *
+	 * `bIncludeTime` is passed explicitly rather than inferred from a non-empty XHeader: the axis titles
+	 * are optional (HasAxisSettingsForChart can be false), so inferring would silently downgrade the
+	 * time+values export to values-only on any chart that never set its axis labels.
+	 *
+	 * %.10g, not the %.2f / %.0f the hover tooltip uses. The tooltip is rounding for a human reading one
+	 * point; an export that rounds is data loss the user cannot see once it is in their spreadsheet.
+	 * CRLF and a header row because the destination is Excel on Windows.
+	 */
+	FString BuildChartTsv(const TArray<FVector2D>& Points, const bool bIncludeTime,
+		const FString& XHeader, const FString& YHeader)
+	{
+		const FString TimeLabel = XHeader.IsEmpty() ? TEXT("Time") : XHeader;
+		const FString ValueLabel = YHeader.IsEmpty() ? TEXT("Value") : YHeader;
+
+		FString Out;
+		Out.Reserve(Points.Num() * (bIncludeTime ? 32 : 16) + 64);
+		Out += bIncludeTime ? FString::Printf(TEXT("%s\t%s"), *TimeLabel, *ValueLabel) : ValueLabel;
+		Out += TEXT("\r\n");
+
+		for (const FVector2D& Point : Points)
+		{
+			Out += bIncludeTime
+				? FString::Printf(TEXT("%.10g\t%.10g\r\n"), Point.X, Point.Y)
+				: FString::Printf(TEXT("%.10g\r\n"), Point.Y);
+		}
+		return Out;
+	}
+
+	/**
+	 * Gamma pairing for the chart capture, as two console levers.
+	 *
+	 * Getting this wrong is not subtle — an extra linear->sRGB encode turns the near-black chart
+	 * background into mid grey and the whole image reads washed out — but which pairing is correct
+	 * depends on the RHI, and it cannot be settled by reading code. The defaults are the reasoned answer
+	 * (gamma-space output stored raw, so ReadPixels returns exactly the bytes that were on screen); these
+	 * exist so the other three combinations can be tried from the console in seconds instead of costing
+	 * an editor rebuild each.
+	 */
+	static TAutoConsoleVariable<int32> CVarChartCopyGammaSpace(
+		TEXT("Mobius.ChartCopy.GammaSpace"), 1,
+		TEXT("Chart image copy: 1 = Slate3D writes gamma-space values (default), 0 = linear."),
+		ECVF_Default);
+
+	static TAutoConsoleVariable<int32> CVarChartCopyLinearTarget(
+		TEXT("Mobius.ChartCopy.LinearTarget"), 1,
+		TEXT("Chart image copy: 1 = render target forces linear gamma so the hardware does NOT re-encode "
+			"on write (default), 0 = sRGB target."),
+		ECVF_Default);
+
+	/**
+	 * S6: put a captured chart on the OS clipboard as an image.
+	 *
+	 * UE has no image clipboard — FPlatformApplicationMisc only ever calls SetClipboardData with
+	 * CF_UNICODETEXT (WindowsPlatformApplicationMisc.cpp) — so this is raw Win32.
+	 *
+	 * Two decisions that consumers actually notice:
+	 *   * CF_DIB is written OPAQUE. Alpha in a 32-bit CF_DIB is interpreted inconsistently — Word,
+	 *     PowerPoint and Paint commonly render a transparent pixel as BLACK — so anything not fully
+	 *     opaque is composited onto Backdrop and the alpha byte is forced to 255. A chart that pastes
+	 *     as a black rectangle is the classic failure here.
+	 *   * biHeight is NEGATIVE, i.e. top-down rows, which matches ReadPixels' order. A positive height
+	 *     means bottom-up and pastes the chart upside down.
+	 *
+	 * FColor is already B,G,R,A in memory on Windows, which is exactly the DIB channel order, so the
+	 * rows copy straight across.
+	 */
+	bool CopyImageToClipboard(const TArray<FColor>& Pixels, const FIntPoint& Size, const FColor Backdrop)
+	{
+#if PLATFORM_WINDOWS
+		if (Size.X <= 0 || Size.Y <= 0 || Pixels.Num() < Size.X * Size.Y)
+		{
+			return false;
+		}
+
+		const SIZE_T HeaderBytes = sizeof(BITMAPINFOHEADER);
+		const SIZE_T PixelBytes = static_cast<SIZE_T>(Size.X) * static_cast<SIZE_T>(Size.Y) * 4;
+
+		HGLOBAL GlobalMem = ::GlobalAlloc(GMEM_MOVEABLE, HeaderBytes + PixelBytes);
+		if (GlobalMem == nullptr)
+		{
+			return false;
+		}
+
+		void* Locked = ::GlobalLock(GlobalMem);
+		if (Locked == nullptr)
+		{
+			::GlobalFree(GlobalMem);
+			return false;
+		}
+
+		BITMAPINFOHEADER* Header = static_cast<BITMAPINFOHEADER*>(Locked);
+		FMemory::Memzero(Header, HeaderBytes);
+		Header->biSize = sizeof(BITMAPINFOHEADER);
+		Header->biWidth = Size.X;
+		Header->biHeight = -Size.Y; // top-down; see note above
+		Header->biPlanes = 1;
+		Header->biBitCount = 32;
+		Header->biCompression = BI_RGB;
+		Header->biSizeImage = static_cast<DWORD>(PixelBytes);
+
+		FColor* Dest = reinterpret_cast<FColor*>(static_cast<uint8*>(Locked) + HeaderBytes);
+		for (int32 Index = 0; Index < Size.X * Size.Y; ++Index)
+		{
+			const FColor Src = Pixels[Index];
+			if (Src.A == 255)
+			{
+				Dest[Index] = FColor(Src.R, Src.G, Src.B, 255);
+				continue;
+			}
+			const int32 Alpha = Src.A;
+			const int32 Inv = 255 - Alpha;
+			Dest[Index] = FColor(
+				static_cast<uint8>((Src.R * Alpha + Backdrop.R * Inv) / 255),
+				static_cast<uint8>((Src.G * Alpha + Backdrop.G * Inv) / 255),
+				static_cast<uint8>((Src.B * Alpha + Backdrop.B * Inv) / 255),
+				255);
+		}
+
+		::GlobalUnlock(GlobalMem);
+
+		if (!::OpenClipboard(nullptr))
+		{
+			::GlobalFree(GlobalMem);
+			return false;
+		}
+		::EmptyClipboard();
+		const bool bSet = ::SetClipboardData(CF_DIB, GlobalMem) != nullptr;
+		::CloseClipboard();
+		if (!bSet)
+		{
+			// Ownership only transfers on success; freeing after a successful set would corrupt it.
+			::GlobalFree(GlobalMem);
+		}
+		return bSet;
+#else
+		return false;
+#endif
+	}
+
+	/**
+	 * R1: paint the ImGui/ImPlot colour table from the Mobius palette.
+	 *
+	 * ImGui::StyleColorsDark() / ImPlot::StyleColorsDark() are the STOCK upstream themes, not ours, and
+	 * ImPlot's dark PlotBg is literally ImVec4(0, 0, 0, 0.50) (implot.cpp) — which is why the chart's
+	 * plotting area rendered near-black while the window chrome around it followed the theme. Nothing
+	 * here was ever palette-driven; the stock call is the whole story.
+	 *
+	 * Called per frame, right after the stock call seeds every remaining entry — same idiom already used
+	 * for the stock call itself, and it means a freshly created context and a live theme toggle both land
+	 * without any change tracking.
+	 *
+	 * The palette is authored in LINEAR space (Slate takes FLinearColor), but ImGui's colour table is
+	 * consumed as sRGB-ish floats — the stock 0.06 dark window background reads as #101010 on screen, not
+	 * as linear 0.06. So every value is sRGB-encoded on the way in, or the whole chart would come out
+	 * far too dark.
+	 */
+	/** One palette role as an ImGui colour. Free function so per-widget style pushes can use it too. */
+	ImVec4 MobiusImGuiColor(const EMobiusPaletteRole InRole, const bool bLight, const float Alpha = 1.0f)
+	{
+		const FColor Srgb = MobiusThemePalette::Color(InRole, bLight).ToFColor(/*bSRGB=*/true);
+		return ImVec4(Srgb.R / 255.0f, Srgb.G / 255.0f, Srgb.B / 255.0f, Alpha);
+	}
+
+	void ApplyMobiusPaletteToImGui(const bool bLight)
+	{
+		auto Role = [bLight](const EMobiusPaletteRole InRole, const float Alpha = 1.0f) -> ImVec4
+		{
+			return MobiusImGuiColor(InRole, bLight, Alpha);
+		};
+
+		ImVec4* Colors = ImGui::GetStyle().Colors;
+		Colors[ImGuiCol_WindowBg]      = Role(EMobiusPaletteRole::RibbonBg);
+		Colors[ImGuiCol_ChildBg]       = Role(EMobiusPaletteRole::RibbonBg);
+		Colors[ImGuiCol_PopupBg]       = Role(EMobiusPaletteRole::RibbonBg);
+		Colors[ImGuiCol_Border]        = Role(EMobiusPaletteRole::PanelHeaderBorder);
+		Colors[ImGuiCol_Text]          = Role(EMobiusPaletteRole::LabelText);
+		Colors[ImGuiCol_TextDisabled]  = Role(EMobiusPaletteRole::MicroText);
+		Colors[ImGuiCol_FrameBg]       = Role(EMobiusPaletteRole::InputBg);
+		Colors[ImGuiCol_TitleBg]       = Role(EMobiusPaletteRole::TitlebarBg);
+		Colors[ImGuiCol_TitleBgActive] = Role(EMobiusPaletteRole::TitlebarBg);
+
+		// Interactive roles. Until the copy controls landed nothing in this overlay was clickable, so these
+		// were never mapped and every button, menu highlight and tick mark still came from ImGui's STOCK
+		// dark/light theme — a blue-grey that belongs to no Mobius palette row. Buttons take the same three
+		// roles the Slate buttons do, so an ImGui button and a UMG one read as the same control.
+		Colors[ImGuiCol_Button]         = Role(EMobiusPaletteRole::ButtonBg);
+		Colors[ImGuiCol_ButtonHovered]  = Role(EMobiusPaletteRole::ButtonHoverBg);
+		Colors[ImGuiCol_ButtonActive]   = Role(EMobiusPaletteRole::ButtonPressedBg);
+		Colors[ImGuiCol_FrameBgHovered] = Role(EMobiusPaletteRole::ButtonHoverBg);
+		Colors[ImGuiCol_FrameBgActive]  = Role(EMobiusPaletteRole::ButtonPressedBg);
+		// Header* is what MenuItem / Selectable highlight with, i.e. every row of the right-click menu.
+		Colors[ImGuiCol_Header]         = Role(EMobiusPaletteRole::HoverBg);
+		Colors[ImGuiCol_HeaderHovered]  = Role(EMobiusPaletteRole::ButtonHoverBg);
+		Colors[ImGuiCol_HeaderActive]   = Role(EMobiusPaletteRole::ButtonPressedBg);
+		Colors[ImGuiCol_CheckMark]      = Role(EMobiusPaletteRole::Accent);
+		Colors[ImGuiCol_Separator]      = Role(EMobiusPaletteRole::PanelDivider);
+		Colors[ImGuiCol_MenuBarBg]      = Role(EMobiusPaletteRole::RibbonBg);
+
+		ImVec4* Plot = ImPlot::GetStyle().Colors;
+		// PlotBg is the card the series are drawn on — same role the migrated card backgrounds use.
+		Plot[ImPlotCol_PlotBg]       = Role(EMobiusPaletteRole::InputBg);
+		Plot[ImPlotCol_PlotBorder]   = Role(EMobiusPaletteRole::InputBorder);
+		Plot[ImPlotCol_FrameBg]      = Role(EMobiusPaletteRole::RibbonBg);
+		Plot[ImPlotCol_LegendBg]     = Role(EMobiusPaletteRole::RibbonBg);
+		Plot[ImPlotCol_LegendBorder] = Role(EMobiusPaletteRole::PanelHeaderBorder);
+		Plot[ImPlotCol_LegendText]   = Role(EMobiusPaletteRole::LabelText);
+		Plot[ImPlotCol_TitleText]    = Role(EMobiusPaletteRole::LabelText);
+		Plot[ImPlotCol_InlayText]    = Role(EMobiusPaletteRole::LabelText);
+		Plot[ImPlotCol_AxisText]     = Role(EMobiusPaletteRole::SublabelText);
+		// Grid and ticks stay deliberately faint so they sit under the series, not next to them.
+		Plot[ImPlotCol_AxisGrid]     = Role(EMobiusPaletteRole::PanelDivider, 0.6f);
+		Plot[ImPlotCol_AxisTick]     = Role(EMobiusPaletteRole::PanelDivider);
+	}
+
+	const FName VisualizationDefaultChartId = NAME_None;
 }
 
 void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -32,6 +267,15 @@ void UImPlotVisualizationSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 void UImPlotVisualizationSubsystem::Deinitialize()
 {
+        // Unbind the live-theme handler. Dynamic delegate: remove by (object, UFUNCTION name). The theme
+        // subsystem outlives this world subsystem, so leaving it bound would retain a stale ref to a
+        // torn-down world subsystem across PIE stop / level change.
+        if (BoundThemeSubsystem.IsValid())
+        {
+                BoundThemeSubsystem->OnThemeChanged.RemoveDynamic(this, &UImPlotVisualizationSubsystem::HandleThemeChanged);
+        }
+        BoundThemeSubsystem.Reset();
+
         for (auto& Pair : OverlayStates)
         {
                 CloseOverlayWindow(Pair.Value);
@@ -48,37 +292,37 @@ void UImPlotVisualizationSubsystem::Deinitialize()
 
 void UImPlotVisualizationSubsystem::ShowOverlay(bool bShow)
 {
-	ShowOverlayForChart(DefaultChartId, bShow);
+	ShowOverlayForChart(VisualizationDefaultChartId, bShow);
 }
 
 void UImPlotVisualizationSubsystem::ToggleOverlay()
 {
-	ToggleOverlayForChart(DefaultChartId);
+	ToggleOverlayForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::CloseOverlay()
 {
-	CloseOverlayForChart(DefaultChartId);
+	CloseOverlayForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::SetChartTitle(const FText& InTitle)
 {
-	SetChartTitleForChart(DefaultChartId, InTitle);
+	SetChartTitleForChart(VisualizationDefaultChartId, InTitle);
 }
 
 void UImPlotVisualizationSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
 {
-	SetAxisSettingsForChart(DefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
+	SetAxisSettingsForChart(VisualizationDefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
 }
 
 void UImPlotVisualizationSubsystem::SetPlotPoints(const TArray<FVector2D>& InPoints)
 {
-	SetPlotPointsForChart(DefaultChartId, InPoints);
+	SetPlotPointsForChart(VisualizationDefaultChartId, InPoints);
 }
 
 void UImPlotVisualizationSubsystem::UpdateLiveSample(double InTimeSeconds, double InCount)
 {
-	UpdateLiveSampleForChart(DefaultChartId, InTimeSeconds, InCount);
+	UpdateLiveSampleForChart(VisualizationDefaultChartId, InTimeSeconds, InCount);
 }
 
 void UImPlotVisualizationSubsystem::ShowOverlayForChart(const FName& ChartId, bool bShow)
@@ -160,57 +404,57 @@ void UImPlotVisualizationSubsystem::UpdateLiveSampleForChart(const FName& ChartI
 
 bool UImPlotVisualizationSubsystem::IsOverlayVisible() const
 {
-	return IsOverlayVisibleForChart(DefaultChartId);
+	return IsOverlayVisibleForChart(VisualizationDefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetChartTitle() const
 {
-	return GetChartTitleForChart(DefaultChartId);
+	return GetChartTitleForChart(VisualizationDefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetXAxisTitle() const
 {
-	return GetXAxisTitleForChart(DefaultChartId);
+	return GetXAxisTitleForChart(VisualizationDefaultChartId);
 }
 
 const FText& UImPlotVisualizationSubsystem::GetYAxisTitle() const
 {
-	return GetYAxisTitleForChart(DefaultChartId);
+	return GetYAxisTitleForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::GetAxisLimits(double& OutXMin, double& OutXMax, double& OutYMin, double& OutYMax) const
 {
-	GetAxisLimitsForChart(DefaultChartId, OutXMin, OutXMax, OutYMin, OutYMax);
+	GetAxisLimitsForChart(VisualizationDefaultChartId, OutXMin, OutXMax, OutYMin, OutYMax);
 }
 
 bool UImPlotVisualizationSubsystem::HasAxisSettings() const
 {
-	return HasAxisSettingsForChart(DefaultChartId);
+	return HasAxisSettingsForChart(VisualizationDefaultChartId);
 }
 
 const TArray<FVector2D>& UImPlotVisualizationSubsystem::GetPlotPoints() const
 {
-	return GetPlotPointsForChart(DefaultChartId);
+	return GetPlotPointsForChart(VisualizationDefaultChartId);
 }
 
 bool UImPlotVisualizationSubsystem::HasLiveSample() const
 {
-	return HasLiveSampleForChart(DefaultChartId);
+	return HasLiveSampleForChart(VisualizationDefaultChartId);
 }
 
 void UImPlotVisualizationSubsystem::GetLiveSample(double& OutTimeSeconds, double& OutCount) const
 {
-	GetLiveSampleForChart(DefaultChartId, OutTimeSeconds, OutCount);
+	GetLiveSampleForChart(VisualizationDefaultChartId, OutTimeSeconds, OutCount);
 }
 
 bool UImPlotVisualizationSubsystem::HasLiveSampleThickness() const
 {
-	return HasLiveSampleThicknessForChart(DefaultChartId);
+	return HasLiveSampleThicknessForChart(VisualizationDefaultChartId);
 }
 
 double UImPlotVisualizationSubsystem::GetLiveSampleThickness() const
 {
-	return GetLiveSampleThicknessForChart(DefaultChartId);
+	return GetLiveSampleThicknessForChart(VisualizationDefaultChartId);
 }
 
 bool UImPlotVisualizationSubsystem::IsOverlayVisibleForChart(const FName& ChartId) const
@@ -333,12 +577,37 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 		return;
 	}
 
+	// Bind the live-theme handler once, now that a GameInstance (and its theme subsystem) is available.
+	EnsureThemeChangeBinding();
+
 	if (!State.OverlayWindow.IsValid())
 	{
 		const FText WindowTitle = FText::FromString(TEXT("UE Plot Overlay"));
 
+		// D8/Q3: themed window chrome held at a stable subsystem address (SWindow keeps the style by
+		// pointer). The SWindowTitleBarWidget also polls the theme per-paint so the title bar follows a
+		// live toggle; the border/background here theme at open time, and HandleThemeChanged re-themes it
+		// in place on a live toggle. Seed the CoreStyle default only once - if the theme lookup fails on a
+		// later open, we keep the last good themed style instead of flashing back to the CoreStyle gray.
+		if (!bChartWindowStyleInitialized)
+		{
+			ChartWindowStyle = FCoreStyle::Get().GetWidgetStyle<FWindowStyle>("Window");
+			bChartWindowStyleInitialized = true;
+		}
+		if (const UWorld* World = GetWorld())
+		{
+			if (const UGameInstance* GameInstance = World->GetGameInstance())
+			{
+				if (const UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+				{
+					ChartWindowStyle = Theme->GetThemedWindowStyle();
+				}
+			}
+		}
+
 		SAssignNew(State.OverlayWindow, SMoveableWindow)
 			.Title(WindowTitle)
+			.Style(&ChartWindowStyle)
 			.SizingRule(ESizingRule::UserSized)
 			.FocusWhenFirstShown(false)
 			.ActivationPolicy(EWindowActivationPolicy::Never)
@@ -363,6 +632,47 @@ void UImPlotVisualizationSubsystem::OpenOverlayWindow(FImPlotOverlayState& State
 	}
 }
 
+void UImPlotVisualizationSubsystem::EnsureThemeChangeBinding()
+{
+	if (BoundThemeSubsystem.IsValid())
+	{
+		// Already bound (weak ptr set by a previous successful resolve).
+		return;
+	}
+
+	if (const UWorld* World = GetWorld())
+	{
+		if (UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UUIThemeSubsystem* Theme = GameInstance->GetSubsystem<UUIThemeSubsystem>())
+			{
+				// AddUniqueDynamic guards against a duplicate bind; the weak ptr is what Deinitialize
+				// needs to RemoveDynamic (dynamic delegates have no FDelegateHandle).
+				Theme->OnThemeChanged.AddUniqueDynamic(this, &UImPlotVisualizationSubsystem::HandleThemeChanged);
+				BoundThemeSubsystem = Theme;
+			}
+		}
+	}
+}
+
+void UImPlotVisualizationSubsystem::HandleThemeChanged()
+{
+	// Re-theme the shared window chrome IN PLACE: SWindow holds &ChartWindowStyle by pointer, so we must
+	// assign into the existing member, never reassign a new object. GetThemedWindowStyle() reads the
+	// theme subsystem's CurrentTheme, which is already the new value while OnThemeChanged fires.
+	if (UUIThemeSubsystem* Theme = BoundThemeSubsystem.Get())
+	{
+		ChartWindowStyle = Theme->GetThemedWindowStyle();
+		bChartWindowStyleInitialized = true;
+	}
+
+	// Force a repaint so the open chart window(s) pick up the retinted border/background brushes.
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().InvalidateAllWidgets(false);
+	}
+}
+
 void UImPlotVisualizationSubsystem::CloseOverlayWindow(FImPlotOverlayState& State)
 {
         UnregisterMoveableWindowActivity(State);
@@ -373,7 +683,9 @@ void UImPlotVisualizationSubsystem::CloseOverlayWindow(FImPlotOverlayState& Stat
                 DestroyOverlayContext(State);
                 return;
         }
-        FSlateApplication::Get().RequestDestroyWindow(State.OverlayWindow.ToSharedRef());
+        // Spec §5: play the close animation (reverse fade + sink) then self-destroy — the window is not
+        // dropped mid-anim. The plot area blanks during the fade (context torn down below, OnPaint guards).
+        State.OverlayWindow->PlayCloseAnimationThenDestroy();
         State.OverlayWindow.Reset();
         DestroyOverlayContext(State);
 }
@@ -394,6 +706,87 @@ void UImPlotVisualizationSubsystem::HandleWindowClosed(const TSharedRef<SWindow>
                 UnregisterMoveableWindowActivity(*State);
                 DestroyOverlayContext(*State);
         }
+}
+
+void UImPlotVisualizationSubsystem::ServicePendingImageCopy(const FName& ChartId)
+{
+        FImPlotOverlayState* State = FindOverlayState(ChartId);
+        if (State == nullptr || !State->bImageCopyRequested || !State->OverlayWidget.IsValid())
+        {
+                return;
+        }
+
+        // Cleared BEFORE the render: DrawWidget repaints this same widget, and a request left standing
+        // would be re-serviced on the next tick forever.
+        State->bImageCopyRequested = false;
+
+        const TSharedRef<SWidget> OverlayRef = State->OverlayWidget.ToSharedRef();
+        const FVector2D DrawSize(OverlayRef->GetTickSpaceGeometry().GetLocalSize());
+        if (DrawSize.X < 1.0 || DrawSize.Y < 1.0)
+        {
+                return;
+        }
+
+        const bool bLinearTarget = CVarChartCopyLinearTarget.GetValueOnGameThread() != 0;
+        const bool bGammaSpace = CVarChartCopyGammaSpace.GetValueOnGameThread() != 0;
+
+        const FIntPoint TargetSize(FMath::CeilToInt(DrawSize.X), FMath::CeilToInt(DrawSize.Y));
+        if (CaptureRenderTarget == nullptr
+                || CaptureRenderTarget->SizeX != TargetSize.X
+                || CaptureRenderTarget->SizeY != TargetSize.Y
+                || bCaptureTargetLinearGamma != bLinearTarget) // rebuild when the console lever moves
+        {
+                // Built by hand rather than with FWidgetRenderer::CreateTargetFor, because that helper
+                // derives BOTH of its gamma flags from one argument and the pairing it produces
+                // double-corrects — which is what made the first capture come out washed out (a near-black
+                // chart background landed at mid grey, the signature of an extra linear->sRGB encode).
+                //
+                // CreateTargetFor(true) gives SRGB=false but bForceLinearGamma=FALSE, so the RHI texture is
+                // created sRGB and the hardware encodes on write — while the Slate3D renderer, constructed
+                // with bUseGammaCorrection=true below, is ALREADY writing gamma-space values. Encoded twice.
+                //
+                // What is wanted is gamma-space output stored raw: force linear gamma on the resource so
+                // nothing re-encodes, and ReadPixels then hands back exactly the bytes that were on screen.
+                // 8-bit is safe here — Slate's recommended colour format is PF_B8G8R8A8, so there is no
+                // float path to lose precision through.
+                CaptureRenderTarget = NewObject<UTextureRenderTarget2D>(this);
+                CaptureRenderTarget->Filter = TF_Bilinear;
+                CaptureRenderTarget->ClearColor = FLinearColor::Transparent;
+                CaptureRenderTarget->SRGB = !bLinearTarget;
+                CaptureRenderTarget->TargetGamma = 1.0f;
+                CaptureRenderTarget->InitCustomFormat(TargetSize.X, TargetSize.Y, PF_B8G8R8A8, bLinearTarget);
+                CaptureRenderTarget->UpdateResourceImmediate(true);
+                bCaptureTargetLinearGamma = bLinearTarget;
+        }
+        if (CaptureRenderTarget == nullptr)
+        {
+                return;
+        }
+
+        {
+                // Scoped so the flag is down again before anything else can paint, even on an early return.
+                TGuardValue<bool> CaptureGuard(bCapturingForImageCopy, true);
+                FWidgetRenderer Renderer(bGammaSpace);
+                Renderer.SetIsPrepassNeeded(true);
+                Renderer.DrawWidget(CaptureRenderTarget, OverlayRef, DrawSize, /*DeltaTime*/0.0f);
+                // DrawWidget only ENQUEUES; without this the readback races an empty target.
+                FlushRenderingCommands();
+        }
+
+        FTextureRenderTargetResource* Resource = CaptureRenderTarget->GameThread_GetRenderTargetResource();
+        TArray<FColor> Pixels;
+        if (Resource == nullptr || !Resource->ReadPixels(Pixels))
+        {
+                return;
+        }
+
+        // Backdrop for any non-opaque pixel. ImGui fills its window with WindowBg so most of the image is
+        // already opaque, but the corners it rounds off are not, and those are what paste black.
+        const UUserProjectSettings* UserSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
+        const bool bLight = !UserSettings || UserSettings->GetUseLightUITheme();
+        const FColor Backdrop = MobiusThemePalette::Color(EMobiusPaletteRole::WellBg, bLight).ToFColor(/*bSRGB*/true);
+
+        CopyImageToClipboard(Pixels, TargetSize, Backdrop);
 }
 
 void UImPlotVisualizationSubsystem::InvalidateOverlay(const FName& ChartId) const
@@ -466,34 +859,97 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
 
         ImGui::SetCurrentContext(State->ImGuiContext);
         ImPlot::SetCurrentContext(State->ImPlotContext);
-        EnsureSharedFontAtlas();
 
-        ImGuiIO& IO = ImGui::GetIO();
-        // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
-        FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
-        if (FSlateApplication::IsInitialized())
+        // Match the Mobius UI theme (light = design 4b, dark = 7a). Applied per frame: it is a
+        // trivial colour-table fill, covers freshly created contexts, and follows a runtime theme
+        // toggle without any change tracking. FontScaleMain is set again after this each frame.
+        // Kept at function scope because the copy buttons push a per-widget border colour from the
+        // palette further down, and that needs the same theme this table was built from.
+        const UUserProjectSettings* ThemeSettings = Cast<UUserProjectSettings>(GEngine ? GEngine->GetGameUserSettings() : nullptr);
+        const bool bLightTheme = !ThemeSettings || ThemeSettings->GetUseLightUITheme();
         {
-                const FVector2f CursorPos = FVector2f(FSlateApplication::Get().GetCursorPos());
-                const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(Widget);
-                if (Window.IsValid())
+                if (bLightTheme)
                 {
-                        const FSlateRect ClientRect = Window->GetClientRectInScreen();
-                        const float DpiScale = Window->GetDPIScaleFactor();
-                        const FVector2f ClientOrigin = FVector2f(ClientRect.Left, ClientRect.Top);
-                        const FVector2f LocalCursorPos = (CursorPos - ClientOrigin) / DpiScale;
-                        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
-                        // Use DPI-scaled client size for display
-                        DisplaySize = FVector2f(ClientRect.GetSize()) / DpiScale;
+                        ImGui::StyleColorsLight();
+                        ImPlot::StyleColorsLight();
                 }
                 else
                 {
-                        const FVector2f LocalCursorPos = FVector2f(AllottedGeometry.AbsoluteToLocal(CursorPos));
-                        IO.MousePos = ImVec2(LocalCursorPos.X, LocalCursorPos.Y);
+                        ImGui::StyleColorsDark();
+                        ImPlot::StyleColorsDark();
                 }
+
+                // The stock call above seeds the whole table; this overwrites the entries the Mobius
+                // palette owns. Order matters — the stock call resets every colour, so it has to run first.
+                ApplyMobiusPaletteToImGui(bLightTheme);
+        }
+
+        ImGuiIO& IO = ImGui::GetIO();
+        // Calculate display size - will be used for both IO.DisplaySize and ImGui window size
+        // Size from THIS WIDGET, never from the window.
+        //
+        // DisplaySize used to come from Window->GetClientRectInScreen(), which is wrong here:
+        // OpenOverlayWindow passes the overlay as `WindowPanelContent`, so it sits BELOW SMoveableWindow's
+        // title bar and the client rect is taller than the widget. ImGui laid the chart out into a space
+        // bigger than it was drawn into. RenderDrawData already positions its output from
+        // AllottedGeometry's layout transform, so the widget's own local size is the frame of reference
+        // that agrees with what ends up on screen.
+        FVector2f DisplaySize = FVector2f(AllottedGeometry.GetLocalSize());
+        // Replay the last on-screen DPI during a capture rather than defaulting to 1.0, or the shared
+        // glyph atlas re-bakes for the capture and re-bakes back on the next real paint — across every
+        // chart, since the atlas is shared.
+        float WindowDpiScale = bCapturingForImageCopy ? State->LastPaintDpiScale : 1.0f;
+        if (FSlateApplication::IsInitialized())
+        {
+                // The cursor is tracked by SImPlotOverlay's own pointer events and arrives ALREADY in
+                // local space. It is not derived here, because Slate has more than one absolute space and
+                // this function cannot see which one it is in: the FGeometry passed to OnPaint is in
+                // WINDOW space, while FSlateApplication::GetCursorPos() is DESKTOP. Combining them leaves
+                // an error equal to the window's screen position — which looks correct only while the
+                // window sits in the top-left corner of the display.
+                if (State->OverlayWidget.IsValid())
+                {
+                        const FVector2D LocalCursorPos = State->OverlayWidget->GetLocalCursorPosition();
+                        IO.MousePos = ImVec2(static_cast<float>(LocalCursorPos.X), static_cast<float>(LocalCursorPos.Y));
+                }
+
+                // The window is still the only place a DPI scale can come from; it just must not decide
+                // cursor position or display size.
+                if (!bCapturingForImageCopy)
+                {
+                        if (const TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(Widget))
+                        {
+                                WindowDpiScale = Window->GetDPIScaleFactor();
+                        }
+                }
+
                 IO.MouseDown[0] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton);
                 IO.MouseDown[1] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::RightMouseButton);
                 IO.MouseDown[2] = FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::MiddleMouseButton);
         }
+        if (!bCapturingForImageCopy)
+        {
+                State->LastPaintDpiScale = WindowDpiScale;
+        }
+
+        // (Re)bake the shared glyph atlas at this window's DPI scale. Must happen BEFORE NewFrame —
+        // the atlas is shared across all chart contexts and cannot change mid-frame. Mirrors the
+        // release logic in DestroyOverlayContext.
+        if (SharedFontBrush.IsValid() && !FMath::IsNearlyEqual(WindowDpiScale, SharedFontAtlasDpiScale, 0.05f))
+        {
+                SharedFontBrush.Reset();
+                SharedFontTextureId = 0;
+                SharedFontTextureName = NAME_None; // new name per bake — dynamic brush textures are keyed by name
+                SharedFontAtlas->Clear();
+        }
+        EnsureSharedFontAtlas(WindowDpiScale);
+
+        // Glyphs are baked at 13px * atlas scale; draw them at 13 logical units so layout metrics stay
+        // unchanged — the vertex upscale in RenderDrawData maps them 1:1 to physical pixels. Do NOT
+        // touch FontScaleDpi/CurrentDpiScale: the logical-units-in / vertex-upscale-out pipeline would
+        // double-scale.
+        ImGui::GetStyle().FontScaleMain = 1.0f / SharedFontAtlasDpiScale;
+
         // Use the same DisplaySize for both IO and ImGui window
         IO.DisplaySize = ImVec2(DisplaySize.X, DisplaySize.Y);
         IO.DeltaTime = FMath::Max(1.0e-6f, static_cast<float>(FApp::GetDeltaTime()));
@@ -508,14 +964,188 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
+        // S6: copy the chart, either as an image or as TSV.
+        //
+        // FPlatformApplicationMisc::ClipboardCopy, NOT ImGui::SetClipboardText: ImGui's clipboard is scoped
+        // to its own context and never reaches the Windows clipboard.
+        //
+        // Deliberately the ForChart accessor: this function is per-chart, and the legacy GetPlotPoints()
+        // reads a different series while looking entirely plausible.
+        const TArray<FVector2D>& CopyPoints = GetPlotPointsForChart(ChartId);
+        auto CopySeriesToClipboard = [this, &ChartId, &CopyPoints](const bool bIncludeTime)
+        {
+                // Built here, inside the click handler, never per frame — this is a paint path.
+                const FString Tsv = BuildChartTsv(CopyPoints, bIncludeTime,
+                        bIncludeTime ? GetXAxisTitleForChart(ChartId).ToString() : FString(),
+                        GetYAxisTitleForChart(ChartId).ToString());
+                FPlatformApplicationMisc::ClipboardCopy(*Tsv);
+        };
+
+        // The copy ACTIONS live only here, on buttons. They used to be duplicated as items in the
+        // right-click menu, which read wrong: everything else in that menu is a setting, so two verbs sat
+        // among a list of adjustments. The menu now carries only the "Copy Settings" submenu.
+        auto DrawCopyButtons = [this, &State, &CopyPoints, &CopySeriesToClipboard, bLightTheme](const bool bStacked)
+        {
+                // ImGui draws buttons with NO border by default (FrameBorderSize is 0), which is what made
+                // these read as flat blocks of colour next to the outlined Slate buttons elsewhere. Pushed
+                // per-widget rather than set globally: the same ImGuiCol_Border also draws the window and
+                // popup frames, and a 1px outline is right for a button but not for those.
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Border,
+                        MobiusImGuiColor(EMobiusPaletteRole::ButtonBorder, bLightTheme));
+
+                if (ImGui::SmallButton("Copy chart"))
+                {
+                        // Only a flag. The capture has to flush rendering commands and re-render this very
+                        // widget, neither of which is safe from inside a Slate paint — see
+                        // ServicePendingImageCopy.
+                        State->bImageCopyRequested = true;
+                }
+                ImGui::SetItemTooltip("Copy the chart to the clipboard as an image");
+
+                if (!bStacked)
+                {
+                        ImGui::SameLine();
+                }
+                ImGui::BeginDisabled(CopyPoints.Num() == 0);
+                // ONE data button. Whether it carries the time column is the "Copy with timeline" toggle
+                // in Copy Settings, not a second button — two near-identical buttons made the caller
+                // choose on every copy about a column that is usually the least interesting one.
+                if (ImGui::SmallButton("Copy values"))
+                {
+                        CopySeriesToClipboard(State->bCopyWithTimeline);
+                }
+                ImGui::SetItemTooltip(State->bCopyWithTimeline
+                                ? "Copy %d row%s of time and value, tab separated"
+                                : "Copy %d value%s to the clipboard, one per line",
+                        CopyPoints.Num(), CopyPoints.Num() == 1 ? "" : "s");
+                ImGui::EndDisabled();
+
+                ImGui::PopStyleColor();
+                ImGui::PopStyleVar();
+        };
+
+        // Width of the two buttons side by side, measured rather than assumed so a font or DPI change
+        // cannot make the alignment drift. Needed before anything is drawn, to right-align or centre a row.
+        auto CopyButtonRowWidth = []() -> float
+        {
+                const ImGuiStyle& Style = ImGui::GetStyle();
+                return ImGui::CalcTextSize("Copy chart").x + Style.FramePadding.x * 2.0f
+                        + Style.ItemSpacing.x
+                        + ImGui::CalcTextSize("Copy values").x + Style.FramePadding.x * 2.0f;
+        };
+
+        // Horizontal rows (the North* and South* positions) differ ONLY in alignment — that is what makes
+        // NorthWest a different layout from North rather than a decorative label.
+        auto AlignCopyButtonRow = [&CopyButtonRowWidth](const EMobiusCopyButtonLocation Location)
+        {
+                const float RowWidth = CopyButtonRowWidth();
+                const float Avail = ImGui::GetContentRegionAvail().x;
+                if (Avail <= RowWidth)
+                {
+                        return; // too narrow to align; left edge is the only honest answer
+                }
+                float Offset = 0.0f;
+                if (Location == EMobiusCopyButtonLocation::North || Location == EMobiusCopyButtonLocation::South)
+                {
+                        Offset = (Avail - RowWidth) * 0.5f;
+                }
+                else if (Location == EMobiusCopyButtonLocation::NorthEast || Location == EMobiusCopyButtonLocation::SouthEast)
+                {
+                        Offset = Avail - RowWidth;
+                }
+                if (Offset > 0.0f)
+                {
+                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Offset);
+                }
+        };
+
+        // Skipped entirely while capturing — the chrome must not appear in the copied image.
+        const bool bShowButtons = !bCapturingForImageCopy;
+        const EMobiusCopyButtonLocation ButtonLocation = State->CopyButtonLocation;
+
+        const bool bButtonsNorth = ButtonLocation == EMobiusCopyButtonLocation::NorthWest
+                || ButtonLocation == EMobiusCopyButtonLocation::North
+                || ButtonLocation == EMobiusCopyButtonLocation::NorthEast;
+        const bool bButtonsSouth = ButtonLocation == EMobiusCopyButtonLocation::SouthWest
+                || ButtonLocation == EMobiusCopyButtonLocation::South
+                || ButtonLocation == EMobiusCopyButtonLocation::SouthEast;
+        const bool bButtonsWest = ButtonLocation == EMobiusCopyButtonLocation::West;
+        const bool bButtonsEast = ButtonLocation == EMobiusCopyButtonLocation::East;
+
+        if (bShowButtons && bButtonsNorth)
+        {
+                // Above the TITLE, not just above the plot: the title belongs to the chart, so the controls
+                // that act on the whole chart sit outside it.
+                ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                AlignCopyButtonRow(ButtonLocation);
+                DrawCopyButtons(/*bStacked*/false);
+        }
+
         const FString TitleString = GetChartTitleForChart(ChartId).ToString();
         if (!TitleString.IsEmpty())
         {
-                ImGui::TextUnformatted(TCHAR_TO_UTF8(*TitleString));
+                // Nudge the title down so it isn't jammed against the window's top border.
+                ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+                // Held in a named local, not TCHAR_TO_UTF8 inline: the macro's buffer only lives to the end
+                // of the full expression, and the title is needed twice — measure, then draw.
+                const FTCHARToUTF8 TitleUtf8(*TitleString);
+                const float TitleWidth = ImGui::CalcTextSize(TitleUtf8.Get()).x;
+                const float TitleAvail = ImGui::GetContentRegionAvail().x;
+                if (TitleAvail > TitleWidth)
+                {
+                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (TitleAvail - TitleWidth) * 0.5f);
+                }
+                ImGui::TextUnformatted(TitleUtf8.Get());
                 ImGui::Spacing();
         }
 
-        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f, -1.0f)))
+        // West/East put the buttons in a column beside the plot, so the plot has to give up that width.
+        // Measured from the widest label rather than hard-coded, or a font or DPI change clips it.
+        float SideColumnWidth = 0.0f;
+        if (bShowButtons && (bButtonsWest || bButtonsEast))
+        {
+                SideColumnWidth = ImGui::CalcTextSize("Copy values").x
+                        + ImGui::GetStyle().FramePadding.x * 2.0f
+                        + ImGui::GetStyle().ItemSpacing.x;
+        }
+
+        // Vertically centre a side column against the plot — that is what West and East mean, as opposed to
+        // the corners, which are horizontal rows. Two stacked SmallButtons: SmallButton has zero vertical
+        // frame padding, so each is one text line.
+        auto CentreSideColumn = []()
+        {
+                const float GroupHeight = ImGui::GetTextLineHeight() * 2.0f + ImGui::GetStyle().ItemSpacing.y;
+                const float Avail = ImGui::GetContentRegionAvail().y;
+                if (Avail > GroupHeight)
+                {
+                        ImGui::Dummy(ImVec2(0.0f, (Avail - GroupHeight) * 0.5f));
+                }
+        };
+
+        if (bShowButtons && bButtonsWest)
+        {
+                ImGui::BeginGroup();
+                CentreSideColumn();
+                DrawCopyButtons(/*bStacked*/true);
+                ImGui::EndGroup();
+                ImGui::SameLine();
+        }
+
+        // ImPlotFlags_NoMenus: ImPlot 0.17 exposes no hook for appending to its context menu, so this
+        // suppresses ImPlot's popups and the block before EndPlot below rebuilds them with the same copy
+        // actions on top. See the comment there for why nothing is lost.
+        // A bottom row has to be reserved BEFORE the plot claims the remaining height, or the plot fills
+        // everything and pushes the buttons out of the window. SmallButton uses zero vertical frame
+        // padding, so its height is one text line.
+        const float BottomRowHeight = (bShowButtons && bButtonsSouth)
+                ? ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y * 2.0f
+                : 0.0f;
+
+        // Negative width/height means "fill, minus this much", so the plot reflows around whatever the
+        // buttons take: all the remaining space, less any side column or bottom row reserved for them.
+        if (ImPlot::BeginPlot("##MobiusPlot", ImVec2(-1.0f - SideColumnWidth, -1.0f - BottomRowHeight), ImPlotFlags_NoMenus))
         {
                 if (HasAxisSettingsForChart(ChartId))
                 {
@@ -554,7 +1184,22 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                 double LiveX = 0.0;
                 double LiveY = 0.0;
                 const bool bHasLiveSample = HasLiveSampleForChart(ChartId);
-                if (bHasLiveSample)
+                // S6a (owner-reported 2026-08-11): the playhead used to be suppressed in EVERY copied image,
+                // by `!bCapturingForImageCopy` alone. Two reasons were recorded for that, and they had
+                // different fates:
+                //
+                //  - "the playhead means nothing once the picture is in a document" — OVERRULED by the owner.
+                //    That is exactly the judgement the "Copy with timeline" toggle exists to hand to the user.
+                //    And because this guard never consulted that flag, toggling it only ever changed the TSV's
+                //    time column (the flag's OTHER meaning — see CopySeriesToClipboard) and could not affect
+                //    the image at all. That mismatch WAS the defect: the setting appeared to do nothing.
+                //  - "on a chart with no data the playhead was the ONLY thing in the image, so an empty copy
+                //    came out as a legend entry reading 'Live' and nothing else" — STILL TRUE, and kept as the
+                //    Points.Num() > 0 term below. Do NOT simplify this to the toggle alone.
+                //
+                // Interactive paint is unchanged: the playhead always draws when there is a live sample.
+                const bool bPlayheadInCapture = State->bCopyWithTimeline && Points.Num() > 0;
+                if (bHasLiveSample && (!bCapturingForImageCopy || bPlayheadInCapture))
                 {
                         GetLiveSampleForChart(ChartId, LiveX, LiveY);
                         ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.35f, 0.25f, 1.0f), 2.0f);
@@ -595,7 +1240,166 @@ int32 UImPlotVisualizationSubsystem::PaintOverlayForChart(const FName& ChartId, 
                         ImGui::EndTooltip();
                 }
 
+                // S6: the plot's right-click menu, rebuilt.
+                //
+                // ImPlotFlags_NoMenus on BeginPlot above suppressed ImPlot's own popups because 0.17 has no
+                // way to append to them. Everything ImPlot would have drawn is reproduced here from its
+                // exported internals — ShowPlotContextMenu and ShowAxisContextMenu are both IMPLOT_API, so
+                // this needs NO patch to the vendored library and no copied menu code that could drift from
+                // it. The axis popups are rebuilt too: NoMenus kills those as well, and dropping
+                // right-click-on-an-axis would be a silent regression on a chart people zoom.
+                //
+                // The open condition mirrors implot.cpp's own `can_ctx` exactly, including the
+                // legend-hovered exclusion. GImPlot->OpenContextThisFrame is set by UpdateInput() during
+                // BeginPlot and cleared while selecting or panning, which is what stops a right-drag
+                // box-zoom from also opening the menu — reimplementing that from IsMouseReleased would get
+                // it wrong.
+                if (ImPlotPlot* CurrentPlot = ImPlot::GetCurrentPlot())
+                {
+                        const bool bCanOpenContext = GImPlot != nullptr
+                                && GImPlot->OpenContextThisFrame
+                                && !CurrentPlot->Items.Legend.Hovered;
+                        const bool bAxisEqual = ImHasFlag(CurrentPlot->Flags, ImPlotFlags_Equal);
+
+                        // PushOverrideID(plot.ID) is what ImPlot does, so the popup IDs match the plot
+                        // rather than wherever this happens to sit on the ID stack.
+                        ImGui::PushOverrideID(CurrentPlot->ID);
+
+                        // "##Mobius…" NOT ImPlot's own "##PlotContext"/"##XContext"/"##YContext".
+                        // ImPlotFlags_NoMenus gates only the OpenPopup calls in EndPlot — the matching
+                        // `if (ImGui::BeginPopup("##PlotContext"))` runs UNCONDITIONALLY. Under the same
+                        // PushOverrideID, reusing the name meant EndPlot re-entered the popup this block
+                        // had just opened and drew ShowPlotContextMenu a SECOND time, which Dear ImGui
+                        // reports as "2 visible items with conflicting ID". Distinct names leave ImPlot's
+                        // BeginPopup returning false, as NoMenus intends.
+                        if (bCanOpenContext && CurrentPlot->Hovered)
+                        {
+                                ImGui::OpenPopup("##MobiusPlotContext");
+                        }
+                        if (ImGui::BeginPopup("##MobiusPlotContext"))
+                        {
+                                // A SUBMENU of settings, not the copy actions themselves. Everything else in
+                                // this menu — Legend, Settings, the per-axis entries — adjusts the chart, so
+                                // two verbs sitting among them read as a different kind of thing. The actions
+                                // are the buttons; this is where their behaviour is configured. One entry
+                                // today, and it is the right shape for the next one.
+                                if (ImGui::BeginMenu("Copy Settings"))
+                                {
+                                        ImGui::MenuItem("Copy with timeline", nullptr, &State->bCopyWithTimeline);
+                                        ImGui::SetItemTooltip("Include the time column when copying values");
+
+                                        ImGui::Separator();
+                                        ImGui::TextUnformatted("Buttons");
+
+                                        // The same nine-cell grid as ImPlot's legend picker
+                                        // (ShowLegendContextMenu), centre cell invisible — eight choices laid
+                                        // out where the buttons will actually end up, so the control looks
+                                        // like what it does.
+                                        //
+                                        // The corners are not decoration: North* and South* are horizontal
+                                        // rows that differ by ALIGNMENT (left / centre / right), which is why
+                                        // NorthWest is a real position and not a synonym for North. It is
+                                        // also the default, because it is where an unaligned row already sat.
+                                        const float ButtonSize = ImGui::GetFrameHeight();
+                                        const ImVec2 CellSize(1.5f * ButtonSize, ButtonSize);
+                                        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, 2));
+
+                                        auto LocationCell = [&State, &CellSize](const char* Label, const EMobiusCopyButtonLocation Location)
+                                        {
+                                                // Selected cell is drawn in the accent so the current position
+                                                // is readable at a glance; ImPlot's own picker gives no such
+                                                // feedback, which is a small thing it gets wrong.
+                                                const bool bSelected = State->CopyButtonLocation == Location;
+                                                if (bSelected)
+                                                {
+                                                        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_CheckMark]);
+                                                }
+                                                if (ImGui::Button(Label, CellSize))
+                                                {
+                                                        State->CopyButtonLocation = Location;
+                                                }
+                                                if (bSelected)
+                                                {
+                                                        ImGui::PopStyleColor();
+                                                }
+                                        };
+
+                                        LocationCell("NW", EMobiusCopyButtonLocation::NorthWest); ImGui::SameLine();
+                                        LocationCell("N",  EMobiusCopyButtonLocation::North);     ImGui::SameLine();
+                                        LocationCell("NE", EMobiusCopyButtonLocation::NorthEast);
+
+                                        LocationCell("W",  EMobiusCopyButtonLocation::West);      ImGui::SameLine();
+                                        ImGui::InvisibleButton("##C", CellSize);                  ImGui::SameLine();
+                                        LocationCell("E",  EMobiusCopyButtonLocation::East);
+
+                                        LocationCell("SW", EMobiusCopyButtonLocation::SouthWest); ImGui::SameLine();
+                                        LocationCell("S",  EMobiusCopyButtonLocation::South);     ImGui::SameLine();
+                                        LocationCell("SE", EMobiusCopyButtonLocation::SouthEast);
+
+                                        ImGui::PopStyleVar();
+                                        ImGui::EndMenu();
+                                }
+                                ImGui::Separator();
+                                ImPlot::ShowPlotContextMenu(*CurrentPlot);
+                                ImGui::EndPopup();
+                        }
+
+                        for (int32 AxisIndex = 0; AxisIndex < IMPLOT_NUM_X_AXES; ++AxisIndex)
+                        {
+                                ImGui::PushID(AxisIndex);
+                                ImPlotAxis& XAxis = CurrentPlot->XAxis(AxisIndex);
+                                if (bCanOpenContext && XAxis.Hovered && XAxis.HasMenus())
+                                {
+                                        ImGui::OpenPopup("##MobiusXContext");
+                                }
+                                if (ImGui::BeginPopup("##MobiusXContext"))
+                                {
+                                        ImGui::TextUnformatted(XAxis.HasLabel()
+                                                ? CurrentPlot->GetAxisLabel(XAxis) : "X-Axis");
+                                        ImGui::Separator();
+                                        ImPlot::ShowAxisContextMenu(XAxis, bAxisEqual ? XAxis.OrthoAxis : nullptr, true);
+                                        ImGui::EndPopup();
+                                }
+                                ImGui::PopID();
+                        }
+                        for (int32 AxisIndex = 0; AxisIndex < IMPLOT_NUM_Y_AXES; ++AxisIndex)
+                        {
+                                ImGui::PushID(AxisIndex);
+                                ImPlotAxis& YAxis = CurrentPlot->YAxis(AxisIndex);
+                                if (bCanOpenContext && YAxis.Hovered && YAxis.HasMenus())
+                                {
+                                        ImGui::OpenPopup("##MobiusYContext");
+                                }
+                                if (ImGui::BeginPopup("##MobiusYContext"))
+                                {
+                                        ImGui::TextUnformatted(YAxis.HasLabel()
+                                                ? CurrentPlot->GetAxisLabel(YAxis) : "Y-Axis");
+                                        ImGui::Separator();
+                                        ImPlot::ShowAxisContextMenu(YAxis, bAxisEqual ? YAxis.OrthoAxis : nullptr, false);
+                                        ImGui::EndPopup();
+                                }
+                                ImGui::PopID();
+                        }
+
+                        ImGui::PopID();
+                }
+
                 ImPlot::EndPlot();
+        }
+
+        if (bShowButtons && bButtonsEast)
+        {
+                // SameLine pairs with the width the plot gave up via SideColumnWidth above.
+                ImGui::SameLine();
+                ImGui::BeginGroup();
+                CentreSideColumn();
+                DrawCopyButtons(/*bStacked*/true);
+                ImGui::EndGroup();
+        }
+        else if (bShowButtons && bButtonsSouth)
+        {
+                AlignCopyButtonRow(ButtonLocation);
+                DrawCopyButtons(/*bStacked*/false);
         }
 
         ImGui::End();
@@ -675,7 +1479,7 @@ void UImPlotVisualizationSubsystem::DestroyOverlayContext(FImPlotOverlayState& S
         State.bWindowOpen = true;
 }
 
-void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas()
+void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas(float InDpiScale)
 {
         if (SharedFontBrush.IsValid() || !FSlateApplication::IsInitialized())
         {
@@ -684,6 +1488,29 @@ void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas()
         if (!SharedFontAtlas)
         {
                 SharedFontAtlas = IM_NEW(ImFontAtlas)();
+        }
+
+        // Bake glyphs at the window's DPI scale so they are rasterized at their final on-screen pixel
+        // size. They draw at 13 logical units (FontScaleMain = 1/scale in PaintOverlayForChart) and the
+        // vertex upscale in RenderDrawData maps them 1:1 to physical pixels. Without this the default
+        // 13px bake gets bitmap-stretched 4x at 400% OS scaling.
+        SharedFontAtlasDpiScale = FMath::Max(InDpiScale, 1.0f);
+        if (SharedFontAtlas->Fonts.Size == 0)
+        {
+                const float FontPixelSize = FMath::RoundToFloat(13.0f * SharedFontAtlasDpiScale);
+                // Prefer the engine-shipped Roboto over ImGui's embedded ProggyClean: Proggy is a
+                // pixel font designed for exactly 13px and rasterizes poorly at other sizes.
+                const FString RobotoPath = FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf");
+                if (FPaths::FileExists(RobotoPath))
+                {
+                        SharedFontAtlas->AddFontFromFileTTF(TCHAR_TO_UTF8(*RobotoPath), FontPixelSize);
+                }
+                else
+                {
+                        ImFontConfig FontConfig;
+                        FontConfig.SizePixels = FontPixelSize;
+                        SharedFontAtlas->AddFontDefault(&FontConfig);
+                }
         }
 
         unsigned char* Pixels = nullptr;
@@ -701,7 +1528,10 @@ void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas()
 
         if (SharedFontTextureName.IsNone())
         {
-                SharedFontTextureName = FName(*FString::Printf(TEXT("ImGuiFontAtlas_Shared_%p"), this));
+                // Unique per bake: dynamic image brushes register their texture under this name, so
+                // reusing it after a DPI rebake could resolve to the stale texture.
+                static uint32 AtlasBakeCounter = 0;
+                SharedFontTextureName = FName(*FString::Printf(TEXT("ImGuiFontAtlas_Shared_%p_%u"), this, ++AtlasBakeCounter));
         }
 
         SharedFontBrush = FSlateDynamicImageBrush::CreateWithImageData(SharedFontTextureName, FVector2D(Width, Height), ImageData);
@@ -807,7 +1637,6 @@ void UImPlotVisualizationSubsystem::RenderDrawData(const ImDrawData* DrawData, c
                 }
         }
 }
-
 
 
 

@@ -23,7 +23,7 @@ public class ProjectMobius : ModuleRules
             "Chaos",
             "MassSignals",
             "MobiusLogging",
-            "Hdf5DataPlugin",
+            "MobiusDataImporter",
         });
 
         // The following modules are required for the MASS system to run with a couple of added modules for convenience

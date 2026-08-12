@@ -16,9 +16,15 @@ public class UE_AssimpLibrary : ModuleRules
         string AssimpRoot = Path.Combine(ModuleDirectory, "assimp");
         string IncludeDir = Path.Combine(AssimpRoot, "include");
 
+        // assimp/lib and assimp/bin are CMake install output and are gitignored, so a fresh
+        // checkout has the headers but nothing to link against. Say what to run.
+        const string SuperbuildRemedy =
+            "Run the superbuild first: from UnrealFolder/ProjectMobius, `python superbuild.py`. " +
+            "It builds Assimp and installs it into assimp/{include,lib,bin}.";
+
         if (!Directory.Exists(IncludeDir))
         {
-            throw new BuildException($"Assimp include dir not found: {IncludeDir}");
+            throw new BuildException($"Assimp include dir not found: {IncludeDir}. {SuperbuildRemedy}");
         }
 
         PublicIncludePaths.Add(IncludeDir);
@@ -35,12 +41,34 @@ public class UE_AssimpLibrary : ModuleRules
             string LibDir = Path.Combine(AssimpRoot, "lib", "Win64");
             string BinDir = Path.Combine(AssimpRoot, "bin", "Win64");
 
-            if (!Directory.Exists(LibDir)) throw new BuildException($"Assimp lib dir not found: {LibDir}");
-            if (!Directory.Exists(BinDir)) throw new BuildException($"Assimp bin dir not found: {BinDir}");
+            if (!Directory.Exists(LibDir)) throw new BuildException($"Assimp lib dir not found: {LibDir}. {SuperbuildRemedy}");
+            if (!Directory.Exists(BinDir)) throw new BuildException($"Assimp bin dir not found: {BinDir}. {SuperbuildRemedy}");
 
-            // Pick import lib + dll by pattern
-            string ImportLib = Directory.GetFiles(LibDir, "assimp*.lib")[0];
-            string DllPath   = Directory.GetFiles(BinDir, "assimp*.dll")[0];
+            // Pick import lib + dll by pattern.
+            //
+            // These two globs used to index [0] directly. An interrupted install leaves the
+            // directories present but empty, and [0] then threw IndexOutOfRangeException from
+            // inside UBT -- a stack trace with no filename in it. Check the match count instead.
+            // Note the two globs are INDEPENDENT: if the tree somehow held two toolset variants
+            // (assimp-vc143-mt.* and assimp-vc145-mt.*), GetFiles makes no ordering guarantee and
+            // the lib and the DLL could come from different builds. The superbuild's prune step
+            // keeps the install tree to one variant; this is the second line of defence.
+            string[] ImportLibs = Directory.GetFiles(LibDir, "assimp*.lib");
+            string[] Dlls       = Directory.GetFiles(BinDir, "assimp*.dll");
+
+            if (ImportLibs.Length == 0) throw new BuildException($"No assimp*.lib in {LibDir}. {SuperbuildRemedy}");
+            if (Dlls.Length == 0)       throw new BuildException($"No assimp*.dll in {BinDir}. {SuperbuildRemedy}");
+            if (ImportLibs.Length > 1 || Dlls.Length > 1)
+            {
+                throw new BuildException(
+                    $"Multiple Assimp toolset variants found ({string.Join(", ", ImportLibs)} / " +
+                    $"{string.Join(", ", Dlls)}). Linking a lib and a DLL from different MSVC " +
+                    $"toolsets is a silent ABI mismatch. Re-run the superbuild, which prunes the " +
+                    $"install tree to a single variant: `python superbuild.py` from UnrealFolder/ProjectMobius.");
+            }
+
+            string ImportLib = ImportLibs[0];
+            string DllPath   = Dlls[0];
             string DllName   = Path.GetFileName(DllPath);
 
             PublicAdditionalLibraries.Add(ImportLib);

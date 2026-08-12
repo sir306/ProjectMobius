@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "BaseLoadingWidget.generated.h"
 
 class UImage;
@@ -15,10 +15,10 @@ class UTextBlock;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLoadingStateChanged, bool, bLoadingStateChanged);
 
 /**
- * 
+ *
  */
 UCLASS()
-class MOBIUSWIDGETS_API UBaseLoadingWidget : public UUserWidget
+class MOBIUSWIDGETS_API UBaseLoadingWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -30,15 +30,32 @@ public:
 	void UpdateLoading(bool bNewLoading);
 
 	void UpdateLoadingText(FText& NewLoadingText);
-	
-#pragma endregion METHODS
-	
 
+	/**
+	 * Repaint a Border whose brush is an M_WidgetBackground instance (MI_LoadingInnerBackground /
+	 * MI_LoadingOuterBackground) to Fill + Outline. Those MIs bake dark colours into their "Background
+	 * Color Tint" / "Border Color Tint" params, so the theme colour has to be written through a MID —
+	 * SetBrushColor on its own only multiplies the baked value and can never reach a light surface.
+	 * Static so the notify popup can theme its outer frame with the same rule.
+	 *
+	 * A Border whose brush is a FLAT COLOUR has no MID to write, so it takes Fill on BrushColor (and Outline
+	 * on OutlineSettings.Color when the brush draws one) with the tint pinned white — the same D169
+	 * single-multiplier convention as UMobiusThemedBorder. Only the material path whitens BrushColor.
+	 */
+	static void ThemeMaterialCard(class UBorder* Border, const FLinearColor& Fill, const FLinearColor& Outline);
+
+#pragma endregion METHODS
+
+protected:
+	/** Born-theme: sub-text -> SublabelText, percent -> LabelText, bar -> Accent/SliderTrack, card frame MID. */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
+public:
 #pragma region PUBLIC_PROPERTIES
 	/** Delegate to notify listeners if something is loading or finished loading */
 	UPROPERTY(BlueprintAssignable, Category = "LoadingWidget|Delegates")
 	FOnLoadingStateChanged OnLoadingStateChanged;
-	
+
 	/** Text block to show current Load Text - this will inform the user what loading action is being done */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
 	TObjectPtr<UTextBlock> LoadingText;
@@ -52,7 +69,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
 	TObjectPtr<UImage> LoadingInfiniteImage;
-	
+
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	float LoadPercent = 1.0f;

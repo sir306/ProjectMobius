@@ -7,7 +7,7 @@
 
 namespace
 {
-	const FName DefaultChartId = NAME_None;
+	const FName DataDefaultChartId = NAME_None;
 }
 
 void UImPlotDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -27,27 +27,27 @@ void UImPlotDataSubsystem::Deinitialize()
 
 void UImPlotDataSubsystem::SetChartTitle(const FText& InTitle)
 {
-	SetChartTitleForChart(DefaultChartId, InTitle);
+	SetChartTitleForChart(DataDefaultChartId, InTitle);
 }
 
 void UImPlotDataSubsystem::SetAxisSettings(const FText& InXTitle, const FText& InYTitle, double InXMin, double InXMax, double InYMin, double InYMax)
 {
-	SetAxisSettingsForChart(DefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
+	SetAxisSettingsForChart(DataDefaultChartId, InXTitle, InYTitle, InXMin, InXMax, InYMin, InYMax);
 }
 
 void UImPlotDataSubsystem::SetPlotPoints(const TArray<FVector2D>& InPoints)
 {
-	SetPlotPointsForChart(DefaultChartId, InPoints);
+	SetPlotPointsForChart(DataDefaultChartId, InPoints);
 }
 
 void UImPlotDataSubsystem::UpdateLiveSample(double InTimeSeconds, double InCount)
 {
-	UpdateLiveSampleForChart(DefaultChartId, InTimeSeconds, InCount);
+	UpdateLiveSampleForChart(DataDefaultChartId, InTimeSeconds, InCount);
 }
 
 void UImPlotDataSubsystem::ToggleOverlay()
 {
-	ToggleOverlayForChart(DefaultChartId);
+	ToggleOverlayForChart(DataDefaultChartId);
 }
 
 void UImPlotDataSubsystem::SetChartTitleForChart(const FName& ChartId, const FText& InTitle)

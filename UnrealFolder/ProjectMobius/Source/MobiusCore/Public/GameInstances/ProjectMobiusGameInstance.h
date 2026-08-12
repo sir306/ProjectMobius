@@ -11,14 +11,14 @@
  * copies of the Software, and to permit persons to whom the Software is furnished
  * to do so, subject to the following conditions:
  *	The above copyright notice and this permission notice shall be included in
- *	all copies or substantial portions of the Software.  
+ *	all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS  
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL  
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR  
- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING  
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS  
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
 
@@ -33,7 +33,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTimeDilationScaleFactorChanged); // To broadcast time dilation scale changes
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPedestrianVectorFileChanged, FString, PedestrianVectorFile); // To broadcast simulation data file changes with file
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPedestrianVectorFileUpdated); // Simple signal to say the file has changed
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMeshFileChanged); // To broadcast mesh data file changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMeshFileChanged);   // To broadcast mesh data file changes
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBRiskFileChanged);  // To broadcast when the B-Risk SMV file path changes
 // simulations and meshes come in different units, so we need to broadcast when the scale changes and update
 // the simulations and meshes so they are in the correct units and scale and are consistent
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMeshScaleChanged); // To broadcast when a different mesh scale is selected
@@ -51,7 +52,7 @@ UCLASS()
 class MOBIUSCORE_API UProjectMobiusGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
-	
+
 public:
 #pragma region PUBLIC_METHODS
 	/** Constructor */
@@ -60,8 +61,20 @@ public:
 	/** Initialize the Game Instance */
 	virtual void Init() override;
 
+	/** Called when the game starts (viewport window exists). Handles first-run window sizing. */
+	virtual void OnStart() override;
+
 	/** Shutdown the Game Instance */
 	virtual void Shutdown() override;
+
+private:
+	/** Keeps the persisted maximized flag current (the window is gone by Shutdown, so it cannot be
+	 *  queried there). Bound to FViewport::ViewportResizedEvent in OnStart, standalone game only. */
+	void HandleGameViewportResized(class FViewport* Viewport, uint32 Unused);
+
+	FDelegateHandle ViewportResizedHandle;
+
+public:
 
 	/**
 	 * Report an error through the central feedback subsystem.
@@ -130,6 +143,16 @@ public:
 	void SetSimulationMeshFileName(const FString& NewSimulationMeshFileName);
 
 	/**
+	 * Set the B-Risk SMV scenario file path.
+	 * Stores the path, derives the file name, then broadcasts OnBRiskFileChanged
+	 * so UBRiskDataSubsystem (and any other listeners) auto-trigger a load.
+	 *
+	 * @param NewBRiskSmvFilePath - Absolute path to the .smv manifest.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Simulation Settings")
+	void SetBRiskSmvFilePath(const FString& NewBRiskSmvFilePath);
+
+	/**
 	 * Set the Time Dilation Scale Factor
 	 *
 	 * @param NewTimeDilationScaleFactor - The new time dilation scale factor to set
@@ -196,7 +219,11 @@ public:
 	/** Delegate to broadcast Mesh file has changed */
 	UPROPERTY(BlueprintAssignable, Category = "Delegates")
 	FOnMeshFileChanged OnMeshFileChanged;
-	
+
+	/** Delegate to broadcast that the B-Risk SMV file path has changed */
+	UPROPERTY(BlueprintAssignable, Category = "Delegates")
+	FOnBRiskFileChanged OnBRiskFileChanged;
+
 	/** Delegate that can broadcast mesh scale changes */
 	UPROPERTY(BlueprintAssignable, Category = "Delegates")
 	FOnMeshScaleChanged OnMeshScaleChanged;
@@ -250,6 +277,14 @@ private:
 	UPROPERTY()
 	FString SimulationMeshFileName;
 
+	/** B-Risk SMV scenario file path -- The complete file path */
+	UPROPERTY()
+	FString BRiskSmvFilePath;
+
+	/** B-Risk SMV file name -- base name only, derived from BRiskSmvFilePath */
+	UPROPERTY()
+	FString BRiskSmvFileName;
+
 	//TODO: we will bring datatables back as it makes it to manage and requires less memory allocation
 	// /** DataTable that holds the different types of meshes for the agents */
 	// UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Simulation Settings", meta = (AllowPrivateAccess = "true"))
@@ -293,6 +328,18 @@ private:
 	UPROPERTY()
 	UMaterialInstanceDynamic* SelectedChildrenEyesMaterialInstance = nullptr;
 
+	/** Empty-wheelchair body material. No Eyes counterpart: the chair mesh has one material slot. */
+	UPROPERTY()
+	UMaterialInstanceDynamic* SelectedWheelchairMaterialInstance = nullptr;
+
+	/** Low-spec (SimpleAgent) body material — ONE instance shared by all five human demographics.
+	 *  The low-spec system renders every human from the same SimpleAgent mesh, so there is no
+	 *  per-demographic material and no eyes variant; this single instance is pushed to all ten
+	 *  User.*MaterialBody/Eyes parameters. Stored separately from the high-spec selections rather
+	 *  than replacing them so switching spec level back and forth does not lose either choice. */
+	UPROPERTY()
+	UMaterialInstanceDynamic* SelectedLowSpecMaterialInstance = nullptr;
+
 #pragma endregion SIMULATION_VARIABLES
 
 #pragma endregion PRIVATE_VARIABLES
@@ -312,6 +359,12 @@ public:
 	/** Get the Simulation Mesh File Name */
 	FString GetSimulationMeshFileName() const { return SimulationMeshFileName; }
 
+	/** Get the B-Risk SMV scenario file path */
+	FString GetBRiskSmvFilePath() const { return BRiskSmvFilePath; }
+
+	/** Get the B-Risk SMV file name (base name only) */
+	FString GetBRiskSmvFileName() const { return BRiskSmvFileName; }
+
 	/** Get the Time Dilation Scale Factor */
 	float GetTimeDilationScaleFactor() const { return TimeDilationScaleFactor; }
 
@@ -330,6 +383,18 @@ public:
 	UMaterialInstanceDynamic* GetSelectedFemaleMaterialInstance() const { return SelectedFemaleAdultMaterialInstance; }
 
 	UMaterialInstanceDynamic* GetSelectedFemaleEyesMaterialInstance() const { return SelectedFemaleAdultEyesMaterialInstance; }
+
+	// The getters below were added so UMRS_RepresentationSubsystem::ReapplyStoredMaterials can restore
+	// every demographic after a Niagara system swap. A swapped-in system starts on its asset-default
+	// materials, so without a full re-push the user's choice silently reverts on any spec change.
+	UMaterialInstanceDynamic* GetSelectedMaleElderlyMaterialInstance() const { return SelectedMaleElderlyMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedMaleElderlyEyesMaterialInstance() const { return SelectedMaleElderlyEyesMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedFemaleElderlyMaterialInstance() const { return SelectedFemaleElderlyMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedFemaleElderlyEyesMaterialInstance() const { return SelectedFemaleElderlyEyesMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedChildrenMaterialInstance() const { return SelectedChildrenMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedChildrenEyesMaterialInstance() const { return SelectedChildrenEyesMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedWheelchairMaterialInstance() const { return SelectedWheelchairMaterialInstance; }
+	UMaterialInstanceDynamic* GetSelectedLowSpecMaterialInstance() const { return SelectedLowSpecMaterialInstance; }
 #pragma endregion GETTERS
 
 #pragma region SETTERS
@@ -353,7 +418,14 @@ public:
 	FORCEINLINE void SetSelectedChildrenMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedChildrenMaterialInstance = NewMaterialInstance; }
 	FORCEINLINE void SetSelectedChildrenEyesMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedChildrenEyesMaterialInstance = NewMaterialInstance; }
 
+	/** Set the empty-wheelchair body material. Setter only, matching Elderly/Children - nothing reads
+	 *  these back; only Male/Female Adult expose getters. */
+	FORCEINLINE void SetSelectedWheelchairMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedWheelchairMaterialInstance = NewMaterialInstance; }
 
-	
+	/** Set the shared low-spec (SimpleAgent) body material. */
+	FORCEINLINE void SetSelectedLowSpecMaterialInstance(UMaterialInstanceDynamic* NewMaterialInstance) { SelectedLowSpecMaterialInstance = NewMaterialInstance; }
+
+
+
 #pragma endregion SETTERS
 };

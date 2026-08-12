@@ -22,6 +22,9 @@ public class MobiusWidgets : ModuleRules
                 "Slate",
                 "SlateCore",
                 "InputCore",
+                "ApplicationCore", // FPlatformApplicationMisc::ClipboardCopy — the chart TSV export (S6)
+                "AssetRegistry", // UIThemeSubsystem sweeps shared Slate style assets on theme switch
+
                 "ProjectMobius", // FloorStatsWidget and BaseChangePedestrianMaterial use MassAI subsystems from ProjectMobius
                 /* TODO: Move MassEntitySpawnSubsystem and AgentDataSubsystem to MobiusCore
                  * to eliminate this cross-module reach. Blocked by Blueprint references to

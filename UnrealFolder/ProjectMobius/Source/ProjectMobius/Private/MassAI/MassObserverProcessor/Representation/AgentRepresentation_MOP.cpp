@@ -133,7 +133,12 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 	// Set the Niagara System
 	NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
-	
+
+	// Restore any material selection made before this actor existed - e.g. the user picked Translucent,
+	// then loaded a dataset. Every push inside is null-guarded, so on a genuinely fresh run this is a
+	// no-op and the asset defaults stand.
+	MRSSubsystem->ReapplyStoredMaterials(NiagaraAgentRepActor->GetNiagaraComponent());
+
 	//EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, &AgentRepresentationInstanceComp](FMassExecutionContext& Context)
 	EntityQuery.ForEachEntityChunk(EntityManager, ExecutionContext, [this, NiagaraAgentRepActor,MRSSubsystem](FMassExecutionContext& Context)
 	{
@@ -148,6 +153,14 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		FNiagaraStatsFragment& AgentNiagaraStatsSharedFrag = Context.GetMutableSharedFragment<FNiagaraStatsFragment>();
 		
 		//TODO: need to do index size and offset check here
+		// The FIVE HUMAN counters only — this is compared against EntityIndexOffset below, which
+		// increments exactly once per entity. Every agent, wheelchair or not, lands in exactly one
+		// human slot, so the sum is already correct.
+		//
+		// Do NOT add NumberOfWheelchairs here. A wheelchair agent is counted once as a human and
+		// again as a chair, so including it makes the total exceed the entity count, the comparison
+		// never matches, and ResetDataInNiagaraSystem fires every chunk on every Execute — wiping all
+		// agent arrays and making the WHOLE crowd flicker, not just the wheelchair users.
 		int32 CurrentInstanceTotal = AgentNiagaraStatsSharedFrag.NumberOfMaleAdults + AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults +
 			AgentNiagaraStatsSharedFrag.NumberOfChildren + AgentNiagaraStatsSharedFrag.NumberOfMaleElderly +
 			AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly;
@@ -186,7 +199,11 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 			// Set the Niagara System
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAsset(NiagaraSystem);
 			NiagaraAgentRepActor->GetNiagaraComponent()->SetAutoActivate(false);
-			
+
+			// The spec level just changed, so this re-push is what selects between the high-spec
+			// MakeHuman set and the shared low-spec SimpleAgent instance. Without it the swapped-in
+			// system keeps its asset defaults and the user's colour choice appears to reset itself.
+			MRSSubsystem->ReapplyStoredMaterials(NiagaraAgentRepActor->GetNiagaraComponent());
 		}
 			
 		// Create the Niagara System
@@ -197,10 +214,6 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 
 		// DEACTIVATE THE NIAGARA SYSTEM
 		AgentNiagaraStatsSharedFrag.NiagaraRepresentationActor->GetNiagaraComponent()->DeactivateImmediate();
-			
-		// get time dilation subsystem current time step
-		int32 CurrentTimeStep = GetWorld()->GetSubsystem<UTimeDilationSubSystem>()->GetCurrentTimeStep();
-
 
 		auto Entities = Context.GetEntities();
 		
@@ -228,6 +241,19 @@ void UAgentRepresentation_MOP::Execute(FMassEntityManager& EntityManager, FMassE
 		NC->SetVariableInt(TEXT("FemaleAdultAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleAdults);
 		NC->SetVariableInt(TEXT("ElderlyFemaleAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfFemaleElderly);
 		NC->SetVariableInt(TEXT("ChildNumberOfAgents"),    AgentNiagaraStatsSharedFrag.NumberOfChildren);
+		NC->SetVariableInt(TEXT("WheelchairAgentNumber"), AgentNiagaraStatsSharedFrag.NumberOfWheelchairs);
+
+		// Zero-cost when nothing uses it: a 6th GPU-sim emitter still ticks and holds simulation
+		// state at zero particles, so switch it off outright for the (currently universal) case of a
+		// dataset with no wheelchair agents. Done HERE rather than per frame because this block
+		// already sits between DeactivateImmediate()/ClearSimCache() above and Activate(true) below,
+		// which is the only point where changing emitter enablement is free.
+		//
+		// TODO(§4): confirm this handle name once the chair emitter is actually added to both Niagara
+		// systems. Handle names and subobject names diverge in this system (002/003/004 carry a "_1"
+		// suffix), and a wrong name here is a SILENT no-op — the emitter would simply never disable.
+		NC->SetEmitterEnable(TEXT("NE_InstancedPedestrianAgent005"),
+			AgentNiagaraStatsSharedFrag.NumberOfWheelchairs > 0);
 
 		SetNiagaraAgentData(NC, AgentNiagaraDataSharedFrag);
 		
@@ -266,6 +292,11 @@ void UAgentRepresentation_MOP::SetNiagaraAgentData(UNiagaraComponent* Nc, FAgent
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("ChildAgentQuatRotations"),   NiagaraDataFrag.ChildrenAgentRotations);
 	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("ChildAgentAnimationStates"), NiagaraDataFrag.ChildrenAnimationStates);
 
+	// Empty wheelchairs — one set for every wheelchair agent, any age, any gender
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector4(Nc, TEXT("WheelchairAgentLocationAndScale"), NiagaraDataFrag.WheelchairLocationAndScales);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayQuat   (Nc, TEXT("WheelchairAgentQuatRotations"),   NiagaraDataFrag.WheelchairRotations);
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayInt32  (Nc, TEXT("WheelchairAgentAnimationStates"), NiagaraDataFrag.WheelchairAnimationStates);
+
 }
 
 // Consume movement and rendering fragments to fill Niagara arrays and update counts.
@@ -275,6 +306,11 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 	FVector4 LocationScale = FVector4(EntityMovementFrag.CurrentLocation, 1.0f);
 	FQuat RotationQuat = EntityMovementFrag.CurrentRotation.Quaternion();
 	int32 AnimationState = 0;
+
+	// Route once at spawn: the per-frame extract (UNiagaraAgentRepProcessor) dispatches by this slot
+	// instead of re-branching on gender/age for every agent every frame
+	EntityRenderingFrag.NiagaraDemographicSlot =
+		MobiusNiagaraDemographics::ComputeSlot(EntityRenderingFrag.bIsMale, EntityRenderingFrag.AgeDemographic);
 
 	if (EntityRenderingFrag.bIsMale)
 	{
@@ -308,7 +344,10 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 	{
 		switch (EntityRenderingFrag.AgeDemographic)
 		{
-		case EAgeDemographic::Ead_Child: // TODO: no female children yet
+		// Child agents are deliberately rendered from a single, gender-neutral mesh; only the Adult
+		// and Elderly bands are gender-differentiated. This is an intentional product decision, not
+		// an unfinished feature — do not "complete" it by adding a gendered child variant.
+		case EAgeDemographic::Ead_Child:
 			EntityRenderingFrag.InstanceID = NiagaraStatsFrag.NumberOfChildren++; // ++ on right side of assignment means post increment
 			NiagaraDataFrag.ChildrenAgentLocationAndScales.Add(LocationScale);
 			NiagaraDataFrag.ChildrenAgentRotations.Add(RotationQuat);
@@ -331,6 +370,21 @@ void UAgentRepresentation_MOP::ProcessEntity(const FEntityMovementFragment& Enti
 			break;
 		}
 	}
+
+	// A wheelchair agent has ALREADY been routed into its human demographic arrays above; it is
+	// ADDITIONALLY given an empty chair. Deliberately appended and additive — never an early return
+	// or a replacement for the routing above, or the human stops rendering and a chair drives around
+	// on its own.
+	//
+	// One chair set for every wheelchair agent regardless of age or gender: the chair is a single
+	// empty mesh, and the gender/age variation is already carried by the human mesh.
+	if (EntityRenderingFrag.MobilityAid == EMobilityAid::Ema_Wheelchair)
+	{
+		EntityRenderingFrag.ChairInstanceID = NiagaraStatsFrag.NumberOfWheelchairs++;
+		NiagaraDataFrag.WheelchairLocationAndScales.Add(LocationScale);
+		NiagaraDataFrag.WheelchairRotations.Add(RotationQuat);
+		NiagaraDataFrag.WheelchairAnimationStates.Add(AnimationState);
+	}
 }
 
 void UAgentRepresentation_MOP::ResetDataInNiagaraSystem(FNiagaraStatsFragment& NiagaraStatsFrag,
@@ -341,6 +395,7 @@ void UAgentRepresentation_MOP::ResetDataInNiagaraSystem(FNiagaraStatsFragment& N
 	NiagaraStatsFrag.NumberOfMaleAdults = 0;
 	NiagaraStatsFrag.NumberOfMaleElderly = 0;
 	NiagaraStatsFrag.NumberOfChildren = 0;
+	NiagaraStatsFrag.NumberOfWheelchairs = 0;
 	EntityIndexOffset = 0;
 
 #define RESET_NIAGARA_FRAG(Field) NiagaraFrag.Field.Reset()
@@ -360,6 +415,9 @@ void UAgentRepresentation_MOP::ResetDataInNiagaraSystem(FNiagaraStatsFragment& N
 	RESET_NIAGARA_FRAG(ChildrenAgentRotations);
 	RESET_NIAGARA_FRAG(ChildrenAgentLocationAndScales);
 	RESET_NIAGARA_FRAG(ChildrenAnimationStates);
+	RESET_NIAGARA_FRAG(WheelchairRotations);
+	RESET_NIAGARA_FRAG(WheelchairLocationAndScales);
+	RESET_NIAGARA_FRAG(WheelchairAnimationStates);
 
 	if (NiagaraStatsFrag.NiagaraRepresentationActor.Get() && NiagaraStatsFrag.NiagaraRepresentationActor->GetNiagaraComponent())
 	{

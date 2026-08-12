@@ -33,7 +33,7 @@
 #include "Templates/UniquePtr.h"
 #include "MassEntitySpawnSubsystem.generated.h"
 
-class FProcessSimulationDataRunnable;
+class FProcessAgentSimulationDataRunnable;
 class UAgentDataSubsystem;
 
 // Delegate to broadcast when the pedestrian data is loaded and processed
@@ -99,11 +99,11 @@ public:
 	void ClearNiagaraSim();
 
 	/**
-	 * Clean up method to kill the FProcessSimulationDataRunnable and clean up resources associated with it
+	 * Clean up method to kill the FProcessAgentSimulationDataRunnable and clean up resources associated with it
 	 *
-         * @param ToKill The FJsonDataRunnable to kill and clean up resources associated with it
+         * @param ToKill The FAgentDataRunnable to kill and clean up resources associated with it
          */
-        void AgentDataRunnableCleanup(TUniquePtr<FProcessSimulationDataRunnable>& ToKill);
+        void AgentDataRunnableCleanup(TUniquePtr<FProcessAgentSimulationDataRunnable>& ToKill);
 	
 	/**
 	* Create the archetype for the pedestrian entity
@@ -135,6 +135,17 @@ public:
 
         /** Get the shared simulation fragment used for plotting. */
         const FSimulationFragment* GetSimulationFragment() const;
+
+        /**
+         * Agent trajectory sample interval (seconds), cached at build time. The runnable that owns
+         * this value is destroyed after spawn, so this member is the persistent source consulted by
+         * the timeline coordinator and the movement processor's agent-native re-index.
+         */
+        float GetAgentTimeBetweenSteps() const { return AgentTimeBetweenSteps; }
+
+        /** Agent trajectory total duration (seconds), cached at build time. Persists for the life of
+         *  the loaded file; used as the reliable "agent data present" signal + clock total. */
+        float GetAgentTotalTime() const { return AgentTotalTime; }
 protected:
 
 public:
@@ -161,6 +172,20 @@ public:
 private:
         /** Cached shared simulation fragment for plot access. */
         FSharedStruct SharedSimulationFragment;
+
+        /** Agent trajectory sample interval (seconds). Cached early in BuildPedestrianMovementFragmentData
+         *  before the runnable is torn down. 0 until an agent file has been built. */
+        float AgentTimeBetweenSteps = 0.0f;
+
+        /** Agent trajectory total duration (seconds). Cached alongside AgentTimeBetweenSteps. */
+        float AgentTotalTime = 0.0f;
+
+        /** B2 cache generation: bumped once per fragment rebuild (i.e. every agent-file load/switch) and
+         *  stamped into FSimulationFragment::DataGeneration. The persistent movement processor uses it as a
+         *  cache-invalidation key (composite with timestep) so a file switch back to t=0 still rebuilds its
+         *  sample-index maps. NEVER reset (a reset would re-introduce ABA at the generation level); a uint32
+         *  wrap after 4 billion switches is a non-issue. Real generations therefore start at 1. */
+        uint32 SimDataGenerationCounter = 0;
 
         /** Template ID registered with TemplateRegistryInstance, used to call DestroyTemplate on file switch. */
         FMassEntityTemplateID RegisteredPedestrianTemplateID;

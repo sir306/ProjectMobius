@@ -54,6 +54,24 @@ enum EGlobalScalabilitySettings : uint8
 };
 
 /**
+ * Render performance tier for the auto-detect / override system (tasks C1 / C2).
+ *
+ * Deliberately distinct from EGlobalScalabilitySettings (which maps to the UGameUserSettings sg.*
+ * quality buckets): this tier owns a focused set of heavy render-feature cvars — ray tracing,
+ * hardware Lumen, anti-aliasing — that are toggled at runtime by UPerformanceUtilSubsystem.
+ * 'Auto' selects a tier from the detected GPU/RAM at startup; Low/Medium/High pin a tier for
+ * reproducible captures across machines.
+ */
+UENUM(BlueprintType)
+enum ERenderPerformanceTier : uint8
+{
+	ERpt_Auto = 0 UMETA(DisplayName = "Auto"),     // Detect tier from hardware (GPU/VRAM/RAM) at startup
+	ERpt_Low = 1 UMETA(DisplayName = "Low"),       // Aggressive: HW Lumen + RT shadows off, AA -> TAA
+	ERpt_Medium = 2 UMETA(DisplayName = "Medium"), // Balanced: HW Lumen off (software Lumen), RT shadows off
+	ERpt_High = 3 UMETA(DisplayName = "High"),     // Full quality == DefaultEngine.ini values (capable HW)
+};
+
+/**
  * Enum to define scalability categories for various settings.
  */
 UENUM(BlueprintType)

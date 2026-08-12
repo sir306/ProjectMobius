@@ -25,6 +25,7 @@
 #include "UI/Components/MaterialPicker.h"
 
 #include "Components/EditableTextBox.h"
+#include "Components/GridPanel.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "UI/Synth2DSlider.h"
@@ -33,6 +34,10 @@
 // include kismetmateriallibrary.h for the SetVectorParameterDefaultValue method
 #include "Components/Slider.h"
 #include "Kismet/KismetMaterialLibrary.h"
+#include "Slate/Components/SMoveableWindow.h"
+#include "UI/MobiusPanelWindowHost.h"
+
+TWeakObjectPtr<UMaterialPicker> UMaterialPicker::WindowedPicker = nullptr;
 
 void UMaterialPicker::NativeConstruct()
 {
@@ -55,11 +60,6 @@ void UMaterialPicker::NativeConstruct()
 		SaturationSlider->OnValueChanged.AddDynamic(this, &UMaterialPicker::OnSaturationSliderValueChanged);
 	}
 	
-}
-
-void UMaterialPicker::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
 }
 
 void UMaterialPicker::SynchronizeProperties()
@@ -246,14 +246,122 @@ void UMaterialPicker::SetParameterNameAndTitleText(FName NewParameterName, FText
 	// Check the texts are valid
 	if (TitleTextBlock && NewTitleText.IsEmpty() == false)
 	{
-					
+
 		// Set Title to the Parameter Name
 		TitleTextBlock->SetText(NewTitleText);
 	}
-	
+
+	// Keep a hosted window's title bar in step. The caller order is not guaranteed: the band graph may set
+	// the title before ShowAsWindow() (so ShowAsWindow picks it up) or after (so this does). Handling both
+	// is why the window title is not simply captured once at open.
+	if (PanelWindow.IsValid() && NewTitleText.IsEmpty() == false)
+	{
+		PanelWindow->SetTitle(NewTitleText);
+	}
+
 	ParameterName = NewParameterName;
 
 	GetAndAssignMaterialColourValue();
+}
+
+void UMaterialPicker::NativeDestruct()
+{
+	// MobiusPanelWindow::Close destroys synchronously and runs the closed-event lambda INLINE, so the
+	// cancel below would fire while this widget is being torn down: it would push colours back into a
+	// dying tree, and "the user cancelled" is not what is happening. Suppress it for this one route.
+	bSuppressCancelOnClose = true;
+	CloseWindow();
+
+	Super::NativeDestruct();
+}
+
+void UMaterialPicker::ShowAsWindow()
+{
+	if (PanelWindow.IsValid())
+	{
+		PanelWindow->BringToFront(true);
+		return;
+	}
+
+	// One picker window at a time. The pickers are created per band click, so this cannot be a
+	// per-instance check — see the header note on WindowedPicker.
+	if (UMaterialPicker* Previous = WindowedPicker.Get())
+	{
+		if (Previous != this)
+		{
+			Previous->CloseWindow();
+		}
+	}
+
+	// The window supplies its own themed title bar and close button, so hide the picker's in-tree one.
+	if (TopBarGrid)
+	{
+		TopBarGrid->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	const FText WindowTitle = TitleTextBlock ? TitleTextBlock->GetText() : FText::GetEmpty();
+
+	TWeakObjectPtr<UMaterialPicker> WeakThis(this);
+	PanelWindow = MobiusPanelWindow::Open(
+		this,
+		WindowTitle,
+		[WeakThis]()
+		{
+			UMaterialPicker* Picker = WeakThis.Get();
+			if (!Picker)
+			{
+				return;
+			}
+
+			// The title-bar X is a CANCEL, matching Cancel_Btn: staged edits are discarded and the
+			// confirmed colour is restored. Closing must not be a silent way to keep an unconfirmed
+			// colour, and the two close routes must not disagree. ResetNewColorValue() is exactly what
+			// Cancel runs, so this stays correct if Cancel's behaviour is ever changed.
+			//
+			// Skipped only on the teardown route (see NativeDestruct), never on a user close.
+			if (!Picker->bSuppressCancelOnClose)
+			{
+				Picker->ResetNewColorValue();
+			}
+
+			Picker->PanelWindow.Reset();
+			if (WindowedPicker.Get() == Picker)
+			{
+				WindowedPicker.Reset();
+			}
+		});
+
+	if (PanelWindow.IsValid())
+	{
+		WindowedPicker = this;
+
+		// MobiusPanelWindow::Open asks for ESizingRule::Autosized, which is right for the Settings and
+		// Custom Display cards because each carries its own width in a SizeBox. This picker does NOT: its
+		// root is a bare GridPanel whose rows and columns are FILL WEIGHTS, and fill weights only
+		// distribute SURPLUS space — they contribute almost nothing to a desired size. Autosizing against
+		// it measured 409x180 (PIE, 2026-08-07), tighter than the 600x200 it had in the viewport, with the
+		// Current/New captions overlapping their swatches and the buttons crowding the RGBA readouts.
+		//
+		// So give the window a real starting size and let the user change it. UserSized is also just better
+		// for this widget than Autosized: a colour picker is something you want to make bigger, and an
+		// autosized window cannot be dragged larger at all.
+		//
+		// 720x400 is sized from the content rather than picked: at 400 high the root's (0.12, 0.68, 0.20)
+		// rows give 48 / 272 / 80, and 80 clears the 67px natural height of a UButtonWithText, which is the
+		// measurement that drove the row fills in the first place.
+		PanelWindow->SetSizingRule(ESizingRule::UserSized);
+		PanelWindow->Resize(FVector2D(720.0, 400.0));
+	}
+}
+
+void UMaterialPicker::CloseWindow()
+{
+	MobiusPanelWindow::Close(PanelWindow);
+}
+
+bool UMaterialPicker::IsWindowOpen() const
+{
+	return PanelWindow.IsValid();
 }
 
 

@@ -97,6 +97,51 @@ public:
 	void SetPedestrianMaterial(UMaterialInstanceDynamic* MaterialInstBody,UMaterialInstanceDynamic* MaterialInstEyes, EPedestrianGender AgentGender, EAgeDemographic AgentAgeDemographic);
 
 	/**
+	 * Set the material on the empty wheelchair mesh.
+	 *
+	 * Takes NEITHER gender nor age: one chair serves every wheelchair agent, because the occupant's
+	 * own demographic mesh carries that variation. It is a separate function rather than another
+	 * parameter on SetPedestrianMaterial above so the existing BlueprintCallable signature - and
+	 * every WBP node bound to it - stays valid.
+	 *
+	 * Body only; the chair mesh has one material slot, so there is no Eyes counterpart.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRS|Subsystem|ThesisResearch")
+	void SetWheelchairMaterial(UMaterialInstanceDynamic* MaterialInstBody);
+
+	/**
+	 * Set the shared low-spec (SimpleAgent) material for every human demographic.
+	 *
+	 * The low-spec Niagara system draws all five human demographics from one SimpleAgent mesh, so a
+	 * single instance is pushed into all ten User.*MaterialBody / User.*MaterialEyes parameters. Eyes
+	 * gets the same instance as Body deliberately: if it were left alone, a switch down from high spec
+	 * would strand the MakeHuman eyes material in those parameters and it would render over the
+	 * low-poly agents.
+	 *
+	 * The empty wheelchair is NOT covered here — both spec levels draw it from the same
+	 * SM_WheelchairPlaceholder mesh, so SetWheelchairMaterial applies at either level unchanged.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRS|Subsystem|ThesisResearch")
+	void SetLowSpecPedestrianMaterial(UMaterialInstanceDynamic* MaterialInstBody);
+
+	/**
+	 * Re-push every stored material selection into the live Niagara component.
+	 *
+	 * Must be called after any SetAsset on the agent Niagara component and BEFORE Activate: a swapped-in
+	 * system comes up on its asset-default materials, so without this the user's colour choice silently
+	 * reverts on every spec change. Skips any demographic whose stored instance is null, which is what
+	 * makes it safe to call on the initial spawn path too, before the user has chosen anything.
+	 */
+	void ReapplyStoredMaterials(class UNiagaraComponent* NiagaraComponent);
+
+private:
+	/** Push one instance into all ten human User.*MaterialBody/Eyes parameters on the given component. */
+	static void ApplyLowSpecMaterialToComponent(class UNiagaraComponent* NiagaraComponent,
+	                                            UMaterialInstanceDynamic* MaterialInstBody);
+
+public:
+
+	/**
 	 * Get male material via the mobius interface, will return nullptr if the material is not set
 	 *
 	 * @return[UMaterialInstanceDynamic*] The male material instance

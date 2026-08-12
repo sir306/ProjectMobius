@@ -23,6 +23,7 @@
  */
 
 #include "DynamicPixelRenderingTexture.h"
+#include "Async/Async.h"
 #include "Engine/Texture2D.h"
 #include "IMobiusErrorReporter.h"
 // IWYU pragma: begin_keep
@@ -88,7 +89,7 @@ UDynamicPixelRenderingTexture::~UDynamicPixelRenderingTexture()
 }
 
 void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHeight, const FLinearColor InitialColor,
-                                                      TextureFilter InFilter)
+                                                      TextureFilter InFilter, TextureAddress InAddress)
 {
 	// set the initial parameters
 	TextureDimensionX = InWidth;
@@ -116,6 +117,13 @@ void UDynamicPixelRenderingTexture::InitializeTexture(int32 InWidth, int32 InHei
 	DynamicTexture->SRGB = 0; //TBD: may need to set to false, it may not be required and could be a performance hit
 	// Set the filter method
 	DynamicTexture->Filter = InFilter;
+	// Addressing. A transient texture defaults to TA_Wrap, which is wrong for every consumer of this class:
+	// a heatmap that wraps samples the opposite edge of the building. It only takes effect when the material
+	// samples with Sampler Source = "From Texture Asset" (see the header note) -- under a shared
+	// *_WorldGroupSettings sampler this, like Filter, is ignored. Setting it is what makes switching a
+	// material to the texture's own sampler safe, rather than trading a blur for edge bleeding.
+	DynamicTexture->AddressX = InAddress;
+	DynamicTexture->AddressY = InAddress;
 	// Update the texture resource - Essentially applies the changes to the texture
 	DynamicTexture->UpdateResource();
 	
@@ -243,6 +251,95 @@ void UDynamicPixelRenderingTexture::DrawLine(int32 Start_Coordinate_X, int32 End
 		e2 = 2*err;
 		if (e2 >= dy) { err += dy; Start_Coordinate_X += sx; } /* e_xy+e_x > 0 */
 		if (e2 <= dx) { err += dx; Start_Coordinate_Y += sy; } /* e_xy+e_y < 0 */
+	}
+}
+
+const TArray<FIntPoint>& UDynamicPixelRenderingTexture::GetBrushOffsets(int32 BrushRadius)
+{
+	if (CachedBrushRadius == BrushRadius)
+	{
+		return CachedBrushOffsets;
+	}
+
+	// A disc, on the same DistanceSquared <= RadiusSquared test DrawCircle uses for the density surface.
+	// A square brush would render a path R*sqrt(2) wide on the diagonals and R wide on the axes, which is
+	// not a pedestrian footprint at any radius.
+	const int32 RadiusSquared = BrushRadius * BrushRadius;
+	CachedBrushOffsets.Reset();
+	for (int32 OffsetY = -BrushRadius; OffsetY <= BrushRadius; ++OffsetY)
+	{
+		for (int32 OffsetX = -BrushRadius; OffsetX <= BrushRadius; ++OffsetX)
+		{
+			if (OffsetX * OffsetX + OffsetY * OffsetY <= RadiusSquared)
+			{
+				CachedBrushOffsets.Emplace(OffsetX, OffsetY);
+			}
+		}
+	}
+	CachedBrushRadius = BrushRadius;
+	return CachedBrushOffsets;
+}
+
+void UDynamicPixelRenderingTexture::DrawLineWithMinimumRed(int32 Start_Coordinate_X, int32 End_Coordinate_X,
+	int32 Start_Coordinate_Y, int32 End_Coordinate_Y, FLinearColor LineColor, float MinimumRedValue, int32 BrushRadius)
+{
+	const int32 DX = FMath::Abs(End_Coordinate_X - Start_Coordinate_X);
+	const int32 StepX = Start_Coordinate_X < End_Coordinate_X ? 1 : -1;
+	const int32 DY = -FMath::Abs(End_Coordinate_Y - Start_Coordinate_Y);
+	const int32 StepY = Start_Coordinate_Y < End_Coordinate_Y ? 1 : -1;
+	int32 Error = DX + DY;
+
+	// Deliberately no edge feather: DrawCircle fades its rim by alpha, but this buffer is an accumulator
+	// whose byte value IS the measurement. A feathered rim increments by (uint8)(1.884 * alpha) == 0 while
+	// still tripping the first-visit seed below, which would wrap every path in a 25-byte halo of texels
+	// nobody walked on.
+	// Cached across calls, not just across steps. The trajectory path issues one of these per agent per
+	// flush — on the order of 1900 calls, all at the same radius — so rebuilding the offset list per call
+	// would rebuild the identical disc every time. A 10 cm footprint on a 20 m floor is radius ~5, and a
+	// larger footprint or a smaller floor pushes it into the hundreds of offsets, well past what any
+	// reasonable inline allocator would hold.
+	const TArray<FIntPoint>& BrushOffsets = GetBrushOffsets(FMath::Max(0, BrushRadius));
+
+	for (;;)
+	{
+		for (const FIntPoint& Offset : BrushOffsets)
+		{
+			const int32 PixelX = Start_Coordinate_X + Offset.X;
+			const int32 PixelY = Start_Coordinate_Y + Offset.Y;
+			if (PixelX < 0 || PixelX >= TextureDimensionX || PixelY < 0 || PixelY >= TextureDimensionY)
+			{
+				continue;
+			}
+
+			uint8* PixelPtr = GetPixelPtr(PixelX, PixelY);
+			if (*(PixelPtr + 2) == 0)
+			{
+				FLinearColor FirstVisitColor = LineColor;
+				FirstVisitColor.R = FMath::Max(FirstVisitColor.R, MinimumRedValue);
+				SetPixelColor(PixelPtr, FirstVisitColor, false);
+			}
+			else
+			{
+				SetPixelColor(PixelPtr, LineColor, true);
+			}
+		}
+
+		if (Start_Coordinate_X == End_Coordinate_X && Start_Coordinate_Y == End_Coordinate_Y)
+		{
+			break;
+		}
+
+		const int32 DoubleError = 2 * Error;
+		if (DoubleError >= DY)
+		{
+			Error += DY;
+			Start_Coordinate_X += StepX;
+		}
+		if (DoubleError <= DX)
+		{
+			Error += DX;
+			Start_Coordinate_Y += StepY;
+		}
 	}
 }
 
@@ -502,31 +599,69 @@ void UDynamicPixelRenderingTexture::ClearTexture()
 
 void UDynamicPixelRenderingTexture::UpdateTextureRender() const
 {
-	
+	// Standard heatmaps can request a render update from their worker task. UTexture2D updates
+	// must be submitted on the game thread; trajectories already arrive there and retain order.
+	if (!IsInGameThread())
+	{
+		TWeakObjectPtr<UDynamicPixelRenderingTexture> WeakThis(const_cast<UDynamicPixelRenderingTexture*>(this));
+		AsyncTask(ENamedThreads::GameThread, [WeakThis]()
+		{
+			if (UDynamicPixelRenderingTexture* Texture = WeakThis.Get())
+			{
+				Texture->UpdateTextureRender();
+			}
+		});
+		return;
+	}
+
 	if (!DynamicTexture || !UpdateTextureRegion.IsValid())
 	{
 		// Handle invalid texture or region here
 		return;
 	}
-	
-	FMemory::ParallelMemcpy(UpdateBuffer.Get(), PixelBuffer.Get(), BufferSize);
 
-	ENQUEUE_RENDER_COMMAND(UpdateTextureCommand)(
-		[this](FRHICommandListImmediate& RHICmdList)
-		{
-			DynamicTexture->UpdateTextureRegions(
-				0, // MipIndex
-				1, // NumRegions
-				UpdateTextureRegion.Get(), // Region
-				TextureDimensionX * BYTES_PER_PIXEL, // SrcPitch
-				BYTES_PER_PIXEL, // bytes per pixel 
-				UpdateBuffer.Get() // Pixel Data
-			);
-		}
-	);
+	// Keep every snapshot alive until the RHI consumes it. Calling UpdateTextureRegions directly
+	// preserves submission order; wrapping it in another render command allowed older whole-texture
+	// snapshots to be applied after newer trajectory updates.
+	TSharedRef<TArray<uint8>, ESPMode::ThreadSafe> RenderBuffer = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
+	RenderBuffer->SetNumUninitialized(BufferSize);
+	FMemory::Memcpy(RenderBuffer->GetData(), PixelBuffer.Get(), BufferSize);
+	TSharedRef<FUpdateTextureRegion2D, ESPMode::ThreadSafe> RenderRegion =
+		MakeShared<FUpdateTextureRegion2D, ESPMode::ThreadSafe>(*UpdateTextureRegion);
+	const uint32 SourcePitch = TextureDimensionX * BYTES_PER_PIXEL;
+
+	DynamicTexture->UpdateTextureRegions(
+		0, 1, &RenderRegion.Get(), SourcePitch, BYTES_PER_PIXEL, RenderBuffer->GetData(),
+		[RenderBuffer, RenderRegion](uint8*, const FUpdateTextureRegion2D*) {});
 }
 
-void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
+bool UDynamicPixelRenderingTexture::CopyPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture)
+{
+	if (!PixelBuffer || !SourceTexture.PixelBuffer || BufferSize != SourceTexture.BufferSize)
+	{
+		return false;
+	}
+
+	FMemory::Memcpy(PixelBuffer.Get(), SourceTexture.PixelBuffer.Get(), BufferSize);
+	bIsBlurRequired = false;
+	return true;
+}
+
+bool UDynamicPixelRenderingTexture::MaxPixelDataFrom(const UDynamicPixelRenderingTexture& SourceTexture)
+{
+	if (!PixelBuffer || !SourceTexture.PixelBuffer || BufferSize != SourceTexture.BufferSize)
+	{
+		return false;
+	}
+
+	for (int32 ByteIndex = 0; ByteIndex < BufferSize; ++ByteIndex)
+	{
+		PixelBuffer[ByteIndex] = FMath::Max(PixelBuffer[ByteIndex], SourceTexture.PixelBuffer[ByteIndex]);
+	}
+	return true;
+}
+
+void UDynamicPixelRenderingTexture::OpenCVGaussianBlur(int32 KernelSize, bool bForceBlur)
 {
 #if !PLATFORM_MAC
 #if WITH_EDITOR
@@ -534,8 +669,13 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
 #endif
 	
 	// Check if the blur is required
-	if (bIsBlurRequired)		
+	if (bForceBlur || bIsBlurRequired)
 	{
+		KernelSize = FMath::Max(3, KernelSize);
+		if (KernelSize % 2 == 0)
+		{
+			++KernelSize;
+		}
 		/*
 		 * @note: The OpenCV UMat class is a GPU accelerated version of the Mat class, it allows for faster processing
 		 * however this has been disabled for now as it is causing crashes, this is stemming from that the this
@@ -553,7 +693,7 @@ void UDynamicPixelRenderingTexture::OpenCVGaussianBlur()
 		// upload and blur on the GPU
 		//SrcMat.copyTo(UBlurMat);
 		//cv::GaussianBlur(UBlurMat, UBlurMat, cv::Size(29,29), 0, 0);
-		cv::GaussianBlur(BlurTemp, SrcMat, cv::Size(29,29), 0, 0);
+		cv::GaussianBlur(BlurTemp, SrcMat, cv::Size(KernelSize, KernelSize), 0, 0);
 
 		// write back into the same host memory
 		//UBlurMat.copyTo(SrcMat);
@@ -815,6 +955,25 @@ FORCEINLINE uint8* UDynamicPixelRenderingTexture::GetPixelPtr(const TUniquePtr<u
 	return (BufferToGetPtr.Get() + (X_Coordinate + Y_Coordinate * TextureDimensionX) * BYTES_PER_PIXEL);
 }
 
+#if !UE_BUILD_SHIPPING
+uint8 UDynamicPixelRenderingTexture::GetRawPixelChannel(int32 X_Coordinate, int32 Y_Coordinate, int32 ChannelIndex) const
+{
+	// Read straight from the CPU buffer the draw calls mutate — deliberately NOT from the GPU texture,
+	// so a readback is valid without an UpdateTextureRender and reflects exactly what was accumulated.
+	if (!PixelBuffer.IsValid() || ChannelIndex < 0 || ChannelIndex >= BYTES_PER_PIXEL)
+	{
+		return 0;
+	}
+
+	if (X_Coordinate < 0 || X_Coordinate >= TextureDimensionX || Y_Coordinate < 0 || Y_Coordinate >= TextureDimensionY)
+	{
+		return 0;
+	}
+
+	return *(GetPixelPtr(X_Coordinate, Y_Coordinate) + ChannelIndex);
+}
+#endif
+
 float UDynamicPixelRenderingTexture::CalculateAreaOfPolygon(const TArray<FVector2D>& Vertices, const float Scale)
 {
 	float Area = 0.0f;
@@ -903,8 +1062,37 @@ void UDynamicPixelRenderingTexture::ConvertColourToCVDSimColour(FLinearColor& Ne
 }
 
 
+FLinearColor UDynamicPixelRenderingTexture::BandColourForRedValue(float RVal, const FHeatmapLOSBands& Bands)
+{
+	// Mirrors the `RVal < BAND` comparison chain in the heatmap material's custom node, in the same
+	// order. The two must agree or the exported PNG stops representing what is drawn in the world.
+	if (RVal < Bands.BandA)
+	{
+		return LOS_A_COLOR;
+	}
+	if (RVal < Bands.BandB)
+	{
+		return LOS_B_COLOR;
+	}
+	if (RVal < Bands.BandC)
+	{
+		return LOS_C_COLOR;
+	}
+	if (RVal < Bands.BandD)
+	{
+		return LOS_D_COLOR;
+	}
+	if (RVal < Bands.BandE)
+	{
+		return LOS_E_COLOR;
+	}
+	return LOS_F_COLOR; // Clamp to the highest band color
+}
+
 void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour()
 {
+	const FHeatmapLOSBands Bands = LOSBands;
+
 	// loop over the texture and apply the LOS colour
 	// loop over all pixels
 	ParallelFor(TextureDimensionY, [&](int32 y)
@@ -920,47 +1108,9 @@ void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour()
 
 			// convert the byte value to a float
 			float RVal = ByteRVal / 255.0f;
-			
-			// Determine the band and interpolate the color
-			FLinearColor NewColor = LOS_A_COLOR;
-			
-			if (RVal < LOS_A_BAND)
-			{
-				NewColor = LOS_A_COLOR;
-			}
-			else if (RVal < LOS_B_BAND)
-			{
-				//float T = (RVal - LOS_A_BAND) / (LOS_B_BAND - LOS_A_BAND);
-				//NewColor = FMath::Lerp(LOS_A_COLOR, LOS_B_COLOR, T);
-				NewColor = LOS_B_COLOR;
-			}
-			else if (RVal < LOS_C_BAND)
-			{
-				//float T = (RVal - LOS_B_BAND) / (LOS_C_BAND - LOS_B_BAND);
-				//NewColor = FMath::Lerp(LOS_B_COLOR, LOS_C_COLOR, T);
-				NewColor = LOS_C_COLOR;
-			}
-			else if (RVal < LOS_D_BAND)
-			{
-				//float T = (RVal - LOS_C_BAND) / (LOS_D_BAND - LOS_C_BAND);
-				//NewColor = FMath::Lerp(LOS_C_COLOR, LOS_D_COLOR, T);
-				NewColor = LOS_D_COLOR;
-			}
-			else if (RVal < LOS_E_BAND)
-			{
-				//float T = (RVal - LOS_D_BAND) / (LOS_E_BAND - LOS_D_BAND);
-				//NewColor = FMath::Lerp(LOS_D_COLOR, LOS_E_COLOR, T);
-				NewColor = LOS_E_COLOR;
-			}
-			// else if (RVal <= LOS_F_BAND)
-			// {
-			// 	float T = (RVal - LOS_E_BAND) / (LOS_F_BAND - LOS_E_BAND);
-			// 	NewColor = FMath::Lerp(LOS_E_COLOR, LOS_F_COLOR, T);
-			// }
-			else
-			{
-				NewColor = LOS_F_COLOR; // Clamp to the highest band color
-			}
+
+			// Determine the band colour
+			FLinearColor NewColor = BandColourForRedValue(RVal, Bands);
 
 			// To Keep the height displacement for 3D visualization, the old R value is used for the new Alpha value - as alpha isn't used
 			NewColor.A = RVal;
@@ -970,11 +1120,13 @@ void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour()
 			bIsBlurRequired = true;
 		}
 	}, EParallelForFlags::PumpRenderingThread);
-	
+
 }
 
 void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour(TUniquePtr<uint8[]>& BufferToColourPtr)
 {
+	const FHeatmapLOSBands Bands = LOSBands;
+
 	// loop over the texture and apply the LOS colour
 	// loop over all pixels
 	ParallelFor(TextureDimensionY, [&](int32 y)
@@ -990,52 +1142,14 @@ void UDynamicPixelRenderingTexture::UpdateTextureToLOSColour(TUniquePtr<uint8[]>
 
 			// convert the byte value to a float
 			float RVal = ByteRVal / 255.0f;
-			
-			// Determine the band and interpolate the color
-			FLinearColor NewColor = LOS_A_COLOR;
-			
-			if (RVal < LOS_A_BAND)
-			{
-				NewColor = LOS_A_COLOR;
-			}
-			else if (RVal < LOS_B_BAND)
-			{
-				//float T = (RVal - LOS_A_BAND) / (LOS_B_BAND - LOS_A_BAND);
-				//NewColor = FMath::Lerp(LOS_A_COLOR, LOS_B_COLOR, T);
-				NewColor = LOS_B_COLOR;
-			}
-			else if (RVal < LOS_C_BAND)
-			{
-				//float T = (RVal - LOS_B_BAND) / (LOS_C_BAND - LOS_B_BAND);
-				//NewColor = FMath::Lerp(LOS_B_COLOR, LOS_C_COLOR, T);
-				NewColor = LOS_C_COLOR;
-			}
-			else if (RVal < LOS_D_BAND)
-			{
-				//float T = (RVal - LOS_C_BAND) / (LOS_D_BAND - LOS_C_BAND);
-				//NewColor = FMath::Lerp(LOS_C_COLOR, LOS_D_COLOR, T);
-				NewColor = LOS_D_COLOR;
-			}
-			else if (RVal < LOS_E_BAND)
-			{
-				//float T = (RVal - LOS_D_BAND) / (LOS_E_BAND - LOS_D_BAND);
-				//NewColor = FMath::Lerp(LOS_D_COLOR, LOS_E_COLOR, T);
-				NewColor = LOS_E_COLOR;
-			}
-			// else if (RVal <= LOS_F_BAND)
-			// {
-			// 	float T = (RVal - LOS_E_BAND) / (LOS_F_BAND - LOS_E_BAND);
-			// 	NewColor = FMath::Lerp(LOS_E_COLOR, LOS_F_COLOR, T);
-			// }
-			else
-			{
-				NewColor = LOS_F_COLOR; // Clamp to the highest band color
-			}
+
+			// Determine the band colour
+			const FLinearColor NewColor = BandColourForRedValue(RVal, Bands);
 
 			// SetPixelColor expects a FLinearColor in linear space
 			SetPixelColor(PixelColor, NewColor, false);
 			bIsBlurRequired = true;
 		}
 	}, EParallelForFlags::PumpRenderingThread);
-	
+
 }

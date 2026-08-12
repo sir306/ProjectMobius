@@ -11,6 +11,7 @@ enum EGlobalScalabilitySettings : uint8;
 enum EScalabilitySettings : uint8;
 enum EScalabilityCategories : uint8;
 enum EPedestrianScalabilitySettings : uint8;
+enum ERenderPerformanceTier : uint8;
 
 // Delegates
 /** Delegate to broadcast new auto optimization triggered - we don't pass params as so many systems require different
@@ -144,6 +145,44 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem")
 	void SetCurrentPedestrianAvatarType(EPedestrianScalabilitySettings NewAvatarModelType);
 
+	// ----- Render performance tiers (tasks C1 / C2) -----------------------------------------------
+	// Auto-detect / override system that toggles the heavy render-feature cvars (ray tracing, hardware
+	// Lumen, anti-aliasing, distance-field AO) at runtime. This subsystem is the SINGLE runtime owner
+	// of the cvars it manages: they are applied with ECVF_SetByCode, whose priority outranks
+	// SetByScalability / SetByGameSetting, so the sg.* quality UI (ApplyScalabilityLevel* above) will
+	// not move them once a tier has been applied. Distinct from the EGlobalScalabilitySettings buckets.
+
+	/**
+	 * Detect the appropriate render tier from hardware capability — hardware ray-tracing support,
+	 * dedicated VRAM, and total system RAM. Thresholds are heuristic and tunable. (Task C1.)
+	 *
+	 * @return The detected tier (Low / Medium / High — never Auto).
+	 */
+	ERenderPerformanceTier DetectHardwareRenderTier() const;
+
+	/**
+	 * Apply a render tier's heavy-feature cvar set at runtime via ApplyConsoleCommands. High mirrors
+	 * DefaultEngine.ini exactly, so applying it on capable hardware is a value-level no-op (only the
+	 * cvar priority is bumped). Auto is resolved through DetectHardwareRenderTier(). (Task C1.)
+	 *
+	 * @param Tier The tier to apply.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem|Render Tier")
+	void ApplyRenderPerformanceTier(TEnumAsByte<ERenderPerformanceTier> Tier);
+
+	/**
+	 * Set and persist the user's render tier override, then apply it immediately. Auto re-runs
+	 * detection. Applies in any world (incl. editor/PIE) so a tier can be forced for testing. (Task C2.)
+	 *
+	 * @param NewOverride The override to persist and apply (Auto / Low / Medium / High).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem|Render Tier")
+	void SetRenderPerformanceTierOverride(TEnumAsByte<ERenderPerformanceTier> NewOverride);
+
+	/** Returns the currently-applied render tier. */
+	UFUNCTION(BlueprintCallable, Category = "Performance Util Subsystem|Render Tier")
+	TEnumAsByte<ERenderPerformanceTier> GetCurrentRenderTier() const;
+
 protected:
 	/**
 	 * Applies optimizations based on the current FPS.
@@ -160,9 +199,18 @@ private:
 	void CheckCurrentFPS();
 
 	/**
-	 * This function is called to examine what the current hardware usage is and apply optimizations based on that.
+	 * Called from the low-FPS watchdog (ApplyOptimizationsBasedOnFPS). Intentionally a no-op for the
+	 * render tier: C1 is startup hardware-detect + the C2 override only, NOT FPS-driven runtime
+	 * degradation (which would break C1's "HIGH identical on capable HW" criterion — see the .cpp).
 	 */
 	void CheckHardwareUsageAndApplyOptimizations();
+
+	/**
+	 * Resolve the persisted override (Auto -> hardware detect) and apply the resulting render tier.
+	 * Runs in Game / PIE worlds only, so the editor viewport render state is left untouched at startup.
+	 * (Tasks C1 / C2.) Called once from Initialize().
+	 */
+	void InitializeRenderPerformanceTier();
 
 public:
 	/** Delegate to notify when auto scalability changes */
@@ -181,6 +229,11 @@ protected:
 	/** Stores the global scalability setting value */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")
 	TEnumAsByte<EGlobalScalabilitySettings> GlobalScalabilitySetting;
+
+	/** Currently-applied render performance tier (tasks C1/C2). Defaults to High so first construction
+	 *  and capable hardware match DefaultEngine.ini exactly until detection/override says otherwise. */
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Performance Util Subsystem|Render Tier")
+	TEnumAsByte<ERenderPerformanceTier> CurrentRenderTier;
 
 	/** Store the current pedestrian avatar type */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Performance Util Subsystem")

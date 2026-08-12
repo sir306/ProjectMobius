@@ -3,9 +3,126 @@
 
 #include "UI/Components/BaseLoadingWidget.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "UI/Components/MobiusThemedBorder.h"
+
+namespace
+{
+	/** M_WidgetBackground's two colour params, shared by MI_LoadingInner/OuterBackground. */
+	static const FName GCardFillParam(TEXT("Background Color Tint"));
+	static const FName GCardOutlineParam(TEXT("Border Color Tint"));
+}
+
+void UBaseLoadingWidget::ThemeMaterialCard(UBorder* Border, const FLinearColor& Fill, const FLinearColor& Outline)
+{
+	if (!Border)
+	{
+		return;
+	}
+
+	// GetDynamicMaterial() only ever returns non-null for a brush that already carries a material, so this
+	// branch IS the "is the brush material-backed?" test — the whitening below must stay inside it.
+	if (UMaterialInstanceDynamic* CardMID = Border->GetDynamicMaterial())
+	{
+		// SBorder renders Background.TintColor x BrushColor x material output, so the brush tint has to stay
+		// neutral or the MID params get multiplied twice (see MEMORY reference-umg-border-double-tint).
+		Border->SetBrushColor(FLinearColor::White);
+
+		CardMID->SetVectorParameterValue(GCardFillParam, Fill);
+		CardMID->SetVectorParameterValue(GCardOutlineParam, Outline);
+		return;
+	}
+
+	// Flat-colour brush: there is no MID to write the params into, so whitening BrushColor would erase the
+	// fill and put nothing back. Same D169 single-multiplier convention as UMobiusThemedBorder::
+	// RefreshThemedBorder instead — colour on BrushColor, brush tint pinned white — so an authored dark tint
+	// cannot re-darken the theme colour. Outline WIDTH stays asset-owned; a width-0 brush draws none, so
+	// there is nothing to colour.
+	Border->SetBrushColor(Fill);
+
+	FSlateBrush Brush = Border->Background;
+	bool bBrushChanged = false;
+
+	if (!Brush.TintColor.GetSpecifiedColor().Equals(FLinearColor::White, 0.02f))
+	{
+		Brush.TintColor = FSlateColor(FLinearColor::White);
+		bBrushChanged = true;
+	}
+	if (Brush.OutlineSettings.Width > 0.0f
+		&& !Brush.OutlineSettings.Color.GetSpecifiedColor().Equals(Outline, 0.002f))
+	{
+		Brush.OutlineSettings.Color = FSlateColor(Outline);
+		bBrushChanged = true;
+	}
+	if (bBrushChanged)
+	{
+		Border->SetBrush(Brush);
+	}
+}
+
+void UBaseLoadingWidget::ApplyMobiusTheme_Implementation()
+{
+	// The "Loading Geometry: <name>" line is secondary information (SublabelText); the percent readout is
+	// the value, so it keeps the stronger LabelText. LoadingInfiniteImage is a functional spinner graphic
+	// (not a background), so it is deliberately left untinted.
+	if (LoadingText)
+	{
+		LoadingText->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::SublabelText)));
+	}
+	if (LoadedAmount)
+	{
+		LoadedAmount->SetColorAndOpacity(FSlateColor(GetThemeColor(EMobiusPaletteRole::LabelText)));
+	}
+
+	// The bar baked the LIGHT Accent (0, 0.13563, 0.52712) into FillColorAndOpacity in the asset, so it
+	// never flipped in dark. The track brush has no per-property setter in 5.5 — copy the style struct,
+	// retint, assign it back.
+	if (LoadingBar)
+	{
+		LoadingBar->SetFillColorAndOpacity(GetThemeColor(EMobiusPaletteRole::Accent));
+
+		FProgressBarStyle BarStyle = LoadingBar->GetWidgetStyle();
+		BarStyle.BackgroundImage.TintColor = FSlateColor(GetThemeColor(EMobiusPaletteRole::SliderTrack));
+		LoadingBar->SetWidgetStyle(BarStyle);
+	}
+
+	// The card frame is an unbound designer Border (one per loading WBP, currently "Border_135"), so it is
+	// matched by TYPE rather than name — a rename in the asset can't silently drop the theming. A
+	// UMobiusThemedBorder is excluded: it declares its own FillRole/OutlineRole and repaints on
+	// OnThemeChanged, so this untargeted sweep would overwrite a declared role with WellBg. An explicit
+	// ThemeMaterialCard call on a named widget still wins — that one carries intent.
+	if (WidgetTree)
+	{
+		WidgetTree->ForEachWidget([this](UWidget* Widget)
+		{
+			if (UBorder* Card = Cast<UBorder>(Widget))
+			{
+				if (Card->IsA<UMobiusThemedBorder>())
+				{
+					return;
+				}
+				// FILL ROLE CORRECTED 2026-07-30 (WellBg -> InputBg). WellBg dark is 0.05286 — BYTE-IDENTICAL
+				// to PanelHeaderBg, which the notify card now uses for the frame these Borders sit inside
+				// (ImprovedLoadingNotifyWidget.cpp). While the legacy walk was clobbering both MIDs the
+				// collision was invisible; with that carve-out in place (UIThemeSubsystem ThemeBackgroundBrush)
+				// owner-pull actually lands and an inset at the same value as its own card vanishes.
+				// InputBg is the recessed-field surface and is correct in kind for a progress readout well —
+				// dark 0.02416 (#2a2a2a) under the #414141 frame, light pure white inside #eaeaea, so it reads
+				// as an inset in BOTH themes. It also matches the baked 0.0091 (#181919) that PIE was rendering
+				// while the walk won, which the owner never complained about. Outline stays PanelDivider: it is
+				// the authoritative hairline, and InputBorder light (0.19462 ~ #7a7a7a) is far too heavy for two
+				// nested rims on a small popup.
+				ThemeMaterialCard(Card, GetThemeColor(EMobiusPaletteRole::InputBg),
+					GetThemeColor(EMobiusPaletteRole::PanelDivider));
+			}
+		});
+	}
+}
 
 void UBaseLoadingWidget::UpdateLoading(float NewLoadPercent)
 {

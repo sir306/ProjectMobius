@@ -25,7 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
 #include "MassAI/SubSystems/MassRepresentation/MRS_RepresentationSubsystem.h"
 #include "BaseChangePedestrianMaterial.generated.h"
 
@@ -38,7 +38,7 @@ class UTextBlock;
  * 
  */
 UCLASS()
-class MOBIUSWIDGETS_API UBaseChangePedestrianMaterial : public UUserWidget
+class MOBIUSWIDGETS_API UBaseChangePedestrianMaterial : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 #pragma region METHODS
@@ -80,6 +80,13 @@ public:
 	
 
 protected:
+	/**
+	 * Re-theme this widget (and its child controls) on construct and every theme change. Needed
+	 * because MaterialPropertySlider is revealed late (translucent mode, after the startup theme
+	 * walk), so a one-shot walk never reaches its handle; re-applying here keeps it on-theme.
+	 */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
 	/** Method to assign the material names to the combo box */
 	void AssignMaterialNamesToComboBox();
 
@@ -103,6 +110,58 @@ protected:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void UpdateRepSubsystemMaterialInstances();
+
+	/**
+	 * Build the empty wheelchair's dynamic material instances.
+	 *
+	 * Deliberately a SEPARATE entry point rather than a sixth array on
+	 * ConvertMaterialsToDynamicMaterialInstances: that function is BlueprintCallable, so adding a
+	 * parameter would break every WBP node calling it and force a manual re-wire. Additive costs
+	 * nothing and keeps the existing graph valid.
+	 *
+	 * @param[TArray<UMaterialInstance*>] WheelchairMaterials One material per combo option, in the
+	 *        SAME order as the DisplayName list passed to ConvertMaterialsToDynamicMaterialInstances
+	 *        (today: Solid Colour, then Translucent). One entry each, not a body/eyes pair.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void ConvertWheelchairMaterialsToDynamicInstances(const TArray<UMaterialInstance*>& WheelchairMaterials);
+
+	/**
+	 * Build the low-spec (SimpleAgent) dynamic material instances.
+	 *
+	 * The low-spec Niagara system draws all five human demographics from one SimpleAgent mesh, so this
+	 * takes ONE material per combo option — not five, and not body/eyes pairs. Pass
+	 * MI_SimpleAgentSolid then MI_SimpleAgentTransparent, matching the DisplayName order used by
+	 * ConvertMaterialsToDynamicMaterialInstances.
+	 *
+	 * Until this is wired, the material combo does nothing at low spec: the five human arrays hold
+	 * MakeHuman materials, which belong to the high-spec system only.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void ConvertLowSpecMaterialsToDynamicInstances(const TArray<UMaterialInstance*>& LowSpecMaterials);
+
+	/**
+	 * One-shot sanity check that the owning graph called BOTH conversion entry points.
+	 *
+	 * The failure this exists to catch is a graph that calls ConvertMaterialsToDynamicMaterialInstances
+	 * and not ConvertWheelchairMaterialsToDynamicInstances: every human demographic swaps material
+	 * correctly, the chair silently keeps its mesh-slot material, and nothing anywhere complains. That
+	 * reads as "the wheelchair feature is broken" rather than "one node is missing".
+	 *
+	 * Deferred to the next tick because the two calls are separate Blueprint nodes and either order is
+	 * legal - checking inline would fire spuriously on a graph that simply wires the chair second.
+	 * Runs once per widget construct, never on a tick path.
+	 */
+	void ValidateMaterialArrayWiring();
+
+	/**
+	 * Resolve the representation subsystem, null-checked.
+	 *
+	 * Both companion conversion entry points are BlueprintCallable and can therefore be wired to
+	 * Event Pre Construct, which runs BEFORE NativeConstruct caches RepresentationSubsystem. Callers
+	 * must handle nullptr rather than dereference the result.
+	 */
+	UMRS_RepresentationSubsystem* ResolveRepresentationSubsystem();
 
 #pragma endregion
 
@@ -155,6 +214,19 @@ protected:
 	/** Store the current selected material instance for child eyes */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedChildEyesMaterialInstance;
+
+	/** Store the current selected material instance for the empty wheelchair.
+	 *  BODY ONLY, and deliberately so — the chair mesh has a single material slot, so there is no
+	 *  Eyes counterpart. That is why every wheelchair index below is the RAW combo index and never
+	 *  the (index * 2) body/eyes stride the demographics above use. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedWheelchairMaterialInstance;
+
+	/** Store the current selected low-spec (SimpleAgent) material instance. Shared by all five human
+	 *  demographics — the low-spec system has one human mesh — and, like the wheelchair above, indexed
+	 *  by the RAW combo index with no body/eyes stride. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TObjectPtr<UMaterialInstanceDynamic> CurrentSelectedLowSpecMaterialInstance;
 
 	/** Checkbox to toggle random color or grey clothing */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (BindWidget))
@@ -215,6 +287,19 @@ public:
 	/** Materials for children */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
 	TArray<UMaterialInstanceDynamic*> ChildrenMaterialDynamicInstances;
+
+	/** Materials for the empty wheelchair — ONE entry per combo option (body only), not two.
+	 *  Kept out of the Num()-equality gate that guards the five human arrays for the same reason:
+	 *  it is half their length by design, so including it there would fail the gate forever and
+	 *  silently skip creating every material. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TArray<UMaterialInstanceDynamic*> WheelchairMaterialDynamicInstances;
+
+	/** Materials for the low-spec SimpleAgent human mesh — ONE entry per combo option, shared across
+	 *  all five demographics. Half the length of the human arrays by design, so it is kept out of their
+	 *  Num()-equality gate for the same reason the wheelchair array is. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pedestrian Material")
+	TArray<UMaterialInstanceDynamic*> LowSpecMaterialDynamicInstances;
 
 	/** To prevent the representation subsystem from destroying and keep the spawn materials we store a ptr to it */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pedestrian Material|Subsystem")

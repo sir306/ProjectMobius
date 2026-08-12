@@ -14,14 +14,25 @@ public class ProjectMobiusTests : ModuleRules
 			"Engine",
 			"AutomationController",
 			"ProjectMobius",
-			"Hdf5DataPlugin",
+			"MobiusDataImporter",
+			"UeHdf5Library", // Hdf5ImportMatrixTest writes .h5 fixtures via the HDF5 C API (T4)
 			"MassEntity",
 			"StructUtils",
 			"MassCommon",
 			"MassSpawner",
+			"MassRepresentation", // transitively required: PedestrianMovementProcessor.h -> SimulationFragment.h -> MRS_RepresentationSubsystem.h -> MassRepresentationSubsystem.h
 			"Json",
 			"JsonUtilities",
 			"MobiusCore",
+			"Visualization", // TrajectoryHeatmapCalibrationTest drives UDynamicPixelRenderingTexture directly
+			"UMG", // SlateVectorArtQuadTest inspects USlateVectorArtData (extent/verts/material)
+			"SlateCore", // FSlateBrush / FSlateColor in ThemeMaterialCardBrushTest
+			"Slate", // WindowCloseLifecycleTest drives FSlateApplication / SWindow / SButton::SimulateClick
+			"MobiusWidgets", // ThemeMaterialCardBrushTest calls UBaseLoadingWidget::ThemeMaterialCard
+			// TrajectoryHeatmapInGameTest's FR6 geometry-cost measurement reads the loaded building's
+			// section bounds off ARuntimeMeshBuilder's UProceduralMeshComponent. The headers already
+			// arrive through MobiusCore, but GetNumSections/GetProcMeshSection do not link without this.
+			"ProceduralMeshComponent",
 		});
 	}
 }

@@ -174,21 +174,26 @@ Blender/*
 # Assimp upstream test directory (CC-BY-SA content removed; not needed at runtime)
 UnrealFolder/ProjectMobius/Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp/test/
 
-# HDF5 machine-specific generated config (not used by UE build)
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/cmake/
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/lib/pkgconfig/
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/lib/libhdf5.settings
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/include/H5pubconf.h
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/install/share/
+# HDF5 install tree -- 100% CMake install output, see the superbuild section near the end of this
+# file. Previously only parts of it were ignored, on the stated theory that "a fresh clone must
+# compile without running cmake". That theory never held: install/lib/*.lib is excluded by the
+# repo-wide *.lib rule above, and UeHdf5Library.Build.cs hard-fails without libhdf5.lib /
+# libhdf5_hl.lib / zlib-static.lib. A fresh clone has ALWAYS needed the superbuild. Ignoring only
+# half the tree just meant 69 generated headers were committed and could go stale against the libs
+# beside them.
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/
+
+# Old renamed plugin fully removed (Hdf5DataPlugin -> MobiusDataImporter); ignore any stray regeneration.
+UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/
 
 # HDF5 third-party (scoped to vendored path)
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/**/java/.classes
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/**/*~
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/build*
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/src/H5config.h.in
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/.classpath
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/.claude/
-UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/CLAUDE.md
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/**/java/.classes
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/**/*~
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/build*
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/src/H5config.h.in
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/.classpath
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/.claude/
+UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/CLAUDE.md
 UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/CMakeUserPresets.json
 UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Source/ThirdParty/hdf5-2.0.0/HDF5Examples/CMakeUserPresets.json
 UnrealFolder/ProjectMobius/UnitTestSampleData/**/MobiusCaptures/
@@ -270,8 +275,50 @@ xcuserdata/
 
 # Derived data / build artifacts (Xcode)
 DerivedData/
-/UnrealFolder/ProjectMobius/_superbuild
 /UnrealFolder/ProjectMobius/Tools/QT_Apps/PlotUE_Data/build
+
+
+# =====================================================
+# Superbuild / CMake generated output
+# =====================================================
+# Everything in this section is produced by `run-superbuild` (UnrealFolder/ProjectMobius/
+# Setup-Superbuild.ps1 -> CMakeLists.txt). None of it belongs in the repository: it is
+# machine-, generator- and MSVC-toolset-specific, and a stale committed copy silently shadows a
+# correct local rebuild. Regenerate any of it with:
+#
+#     cd UnrealFolder/ProjectMobius && .\run-superbuild.bat
+#
+# CMake build trees. The _*/ rule is the general case: any underscore-prefixed directory directly
+# under the project root is a scratch build tree (superbuild.py --build-dir, or a hand-rolled
+# `cmake -B _whatever`). Nothing tracked has ever lived under such a path, so this cannot hide
+# real sources.
+/UnrealFolder/ProjectMobius/_superbuild
+/UnrealFolder/ProjectMobius/_*/
+/UnrealFolder/ProjectMobius/Intermediate/IfcBridgeBuild/
+
+# Generic CMake residue, wherever it lands (a build tree configured in the wrong directory is a
+# common accident and produces exactly these).
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+install_manifest.txt
+
+# Installed dependency trees. The import libs and DLLs under these were never committed (*.lib and
+# *.dll are excluded above), so the headers beside them cannot be treated as checked-in sources
+# either -- the UE external modules need the whole tree or none of it.
+/UnrealFolder/ProjectMobius/Source/ThirdParty/MobiusIfcLibrary/install/
+
+
+# =====================================================
+# Private test-data scripts
+# =====================================================
+# Copies of Scripts/PIE-*.ps1 pointed at the maintainer's private Mobius_InternalData datasets.
+# The committed scripts in Scripts/ use the repository's own TestData folder so they run on a fresh
+# clone; these exist so the private-dataset workflow keeps working without publishing dataset names
+# or a machine-specific drive layout. See Scripts/InternalTesting/README.md.
+/UnrealFolder/ProjectMobius/Scripts/InternalTesting/
 
 
 # Build and binary outputs
@@ -311,3 +358,7 @@ UnrealFolder/ProjectMobius/AGENTS.md
 UnrealFolder/ProjectMobius/BuildDocs/Docs/
 /TestData/MungensSchool
 /UnrealFolder/builds
+UnrealFolder/ProjectMobius/.mcp.json
+/UnrealFolder/ProjectMobius/.claude
+/.claude
+/UnrealFolder/ProjectMobius/.codex

@@ -25,6 +25,21 @@ public:
 	//~ UCommandlet interface
 	virtual int32 Main(const FString& Params) override;
 
+	/** True when Content/Twinmotion/ is present, so the Twinmotion-derived overrides are expected too. */
+	static bool IsTwinmotionContentPresent();
+
+	/** Every package path this commandlet is expected to produce, for the current Twinmotion state. */
+	static TArray<FString> GetExpectedAssetPaths();
+
+	/**
+	 * The expected package paths that are absent on disk.
+	 *
+	 * Answered from the file system, never from the asset registry: a commandlet or -unattended
+	 * editor never runs the initial registry scan, so a registry query there reports every asset
+	 * in the project as missing.
+	 */
+	static TArray<FString> GetMissingAssetPaths();
+
 private:
 	/** Info about one master material to generate. */
 	struct FMaterialEntry

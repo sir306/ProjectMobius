@@ -3,6 +3,8 @@
 
 #include "Fonts/FontMeasure.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Engine/Font.h" // BW3/D69: LoadObject<UFont> in SetFieldFontFace
 
 SFieldAndTitleText::SFieldAndTitleText()
 {
@@ -173,6 +175,20 @@ void SFieldAndTitleText::SetFieldText(FText InFieldText)
 	}
 }
 
+void SFieldAndTitleText::SetTextColors(const FSlateColor& InTitleColor, const FSlateColor& InFieldColor)
+{
+	// COLOUR-only reland (SetColorAndOpacity Assigns + Invalidate(Paint)); font/size/face untouched so the
+	// numeric-field Mono face and the OnPaint shrink-to-fit are preserved across a theme toggle.
+	if (TitleTextBlock.IsValid())
+	{
+		TitleTextBlock->SetColorAndOpacity(InTitleColor);
+	}
+	if (FieldTextBlock.IsValid())
+	{
+		FieldTextBlock->SetColorAndOpacity(InFieldColor);
+	}
+}
+
 void SFieldAndTitleText::SetFontSize(float InFontSize) const
 {
 	// Each field and title uses the same font size, however we could make this more flexible in the future
@@ -186,6 +202,22 @@ void SFieldAndTitleText::SetFontSize(float InFontSize) const
 	// Set the font size for the field text block
 	FontInfo = FieldTextBlock->GetFont();
 	FontInfo.Size = InFontSize;
+	FieldTextBlock->SetFont(FontInfo);
+}
+
+void SFieldAndTitleText::SetFieldFontFace(FName InTypeface)
+{
+	if (!FieldTextBlock.IsValid())
+	{
+		return;
+	}
+	FSlateFontInfo FontInfo = FieldTextBlock->GetFont();
+	// Ensure the composite Font_Inter is the font object so face names (Regular/Mono/...) resolve.
+	if (UFont* Inter = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter")))
+	{
+		FontInfo.FontObject = Inter;
+	}
+	FontInfo.TypefaceFontName = InTypeface;
 	FieldTextBlock->SetFont(FontInfo);
 }
 
@@ -226,6 +258,54 @@ int32 SFieldAndTitleText::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
                                   const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
                                   const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
+	// Shrink-to-fit: in-world flow counters allot each section a fixed cell; long title+value pairs
+	// overflowed the cell (and the widget's card) and overlapped their neighbours. When the measured
+	// text exceeds the allotted box, binary-search the largest font size that fits and push it via
+	// SetFontSize. Shrink-only (no stored base size, so no grow-back / no oscillation); a paint pass
+	// where the text already fits costs one measure.
+	if (TitleTextBlock.IsValid() && FieldTextBlock.IsValid())
+	{
+		const FVector2D Allotted = AllottedGeometry.GetLocalSize();
+		if (!Allotted.IsNearlyZero())
+		{
+			// Slot/box padding inside the internal grid (5+2 / 2+5 horizontal) — leave headroom.
+			const FVector2D FitBox(Allotted.X * 0.94f, Allotted.Y);
+			const float CurrentSize = FMath::Max(TitleTextBlock->GetFont().Size, FieldTextBlock->GetFont().Size);
+
+			const TSharedRef<FSlateFontMeasure> Measure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+			auto MeasureAt = [&](const float FontSize) -> FVector2D
+			{
+				FSlateFontInfo TitleFont = TitleTextBlock->GetFont();
+				TitleFont.Size = FontSize;
+				FSlateFontInfo FieldFont = FieldTextBlock->GetFont();
+				FieldFont.Size = FontSize;
+				const FVector2D TitleSize = Measure->Measure(TitleTextBlock->GetText(), TitleFont);
+				const FVector2D FieldSize = Measure->Measure(FieldTextBlock->GetText(), FieldFont);
+				return bVerticalStacking
+					? FVector2D(FMath::Max(TitleSize.X, FieldSize.X), TitleSize.Y + FieldSize.Y)
+					: FVector2D(TitleSize.X + FieldSize.X, FMath::Max(TitleSize.Y, FieldSize.Y));
+			};
+
+			const FVector2D CurrentMeasured = MeasureAt(CurrentSize);
+			if (CurrentMeasured.X > FitBox.X || CurrentMeasured.Y > FitBox.Y)
+			{
+				constexpr int32 MinFontSize = 6;
+				int32 Low = MinFontSize;
+				int32 High = FMath::Max(MinFontSize, static_cast<int32>(CurrentSize) - 1);
+				while (Low < High)
+				{
+					const int32 Mid = (Low + High + 1) / 2;
+					const FVector2D Size = MeasureAt(static_cast<float>(Mid));
+					if (Size.X <= FitBox.X && Size.Y <= FitBox.Y) { Low = Mid; } else { High = Mid - 1; }
+				}
+				if (static_cast<float>(Low) < CurrentSize)
+				{
+					SetFontSize(static_cast<float>(Low));
+				}
+			}
+		}
+	}
+
 	return SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle,
 	                                bParentEnabled);
 }

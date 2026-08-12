@@ -44,6 +44,37 @@ class PROJECTMOBIUS_API UPedestrianMovementProcessor : public UMassProcessor
 public:
 	UPedestrianMovementProcessor();
 
+	/**
+	 * B2 per-timestep map cache invalidation predicate (pure; unit-tested in MovementMapCacheInvalidation).
+	 * The EntityID->sample-index maps are derived from the provider's served sample blocks; this processor
+	 * is persistent across file switches, so the cache key MUST be the composite (DataGeneration, timestep),
+	 * never timestep alone: a file switch resets the clock to t=0 while a NEW fragment is built, so a
+	 * t=0 -> t=0 switch looks unchanged under a timestep-only key and would reuse the previous file's map
+	 * against the new (possibly shorter) sample array -> out-of-bounds read.
+	 *
+	 * A4 EXTENSION — the served-block identities are part of the key. The resident provider returns the
+	 * same array for a given (generation, timestep) forever, but FStreamingProvider may legitimately serve
+	 * DIFFERENT content for an unchanged (generation, timestep): a cold miss after a big scrub serves the
+	 * one-tick cosmetic stand-in (last-good/nearest-keyframe block), and the exact block replaces it a
+	 * frame later when the async read lands (also nullptr -> block for the Next window). Maps built from
+	 * the stand-in indexed into the exact block = the out-of-bounds crash this guards (found 2026-07-03,
+	 * TechnicalSchool_1000 + big skip with mobius.SimCache.ForceStreaming=1).
+	 * Pointer identity ALONE is unsafe as a key (ABA via MallocBinned address reuse — B2's original
+	 * analysis), but as a third component it is sound: generation catches file switches, and within a file
+	 * the streaming provider pins the served playhead blocks, so a served address cannot be evicted and
+	 * refilled with other content while (generation, timestep) is unchanged.
+	 *
+	 * Returns true when the generation, the timestep, OR either served block differs from what the maps
+	 * were last built for.
+	 */
+	static bool ShouldRebuildSampleIndexMaps(
+		uint32 CachedGen, int32 CachedStep, const void* CachedCurrentBlock, const void* CachedNextBlock,
+		uint32 CurGen, int32 CurStep, const void* CurrentBlock, const void* NextBlock)
+	{
+		return CachedGen != CurGen || CachedStep != CurStep
+			|| CachedCurrentBlock != CurrentBlock || CachedNextBlock != NextBlock;
+	}
+
 protected:
 #pragma region PROTECTED_METHODS
 	virtual void ConfigureQueries() override; // note this is a pure virtual function that needs to be implemented otherwise engine will crash
@@ -144,6 +175,14 @@ private:
 	UPROPERTY()
 	class UTimeDilationSubSystem* TimeDilationSubSystem;
 
+	/**
+	 * Spawn subsystem, cached source of the agent trajectory's sample interval. The agent sample
+	 * map is keyed on the agent's own grid, which is independent of the shared clock interval
+	 * (B-Risk may own that). Used to re-derive the sample index from absolute seconds.
+	 */
+	UPROPERTY()
+	class UMassEntitySpawnSubsystem* AgentSpawnSubsystem = nullptr;
+
 	/** The current Time step of the simulation */
 	UPROPERTY()
 	int32 CurrentTimeStep = 0;
@@ -172,6 +211,26 @@ private:
 	UPROPERTY()
 	TMap<int32, int32> EntityIDToNextMovementSampleIndexMap;
 
+	/**
+	 * B2 cache key: the (DataGeneration, timestep) the two lookup maps above were last built for. Plain
+	 * members (uint32 is not a reflectable UPROPERTY type, and they need no GC/serialisation). Start at
+	 * (0, INDEX_NONE) while real generations start at 1, so the first Execute always rebuilds. See
+	 * ShouldRebuildSampleIndexMaps.
+	 */
+	uint32 CachedDataGeneration = 0;
+	int32  CachedMapsTimeStep   = INDEX_NONE;
+
+	/** A4: identities of the served sample blocks the maps were last built from — third cache-key
+	 *  component (see ShouldRebuildSampleIndexMaps: the streaming provider can swap the served content
+	 *  for an unchanged (generation, timestep) when an async read lands). Stored as opaque pointers,
+	 *  ONLY ever compared — never dereferenced. */
+	const void* CachedCurrentBlockPtr = nullptr;
+	const void* CachedNextBlockPtr    = nullptr;
+
+	/** A1: last timestep we sent to ISimSampleProvider::NotifyPlayhead, so the movement direction hint
+	 *  (forward/rewind) can be derived. Starts INDEX_NONE -> first notify reads as forward. */
+	int32  PrevTimeStep = INDEX_NONE;
+
 #pragma endregion PRIVATE_VARIABLES
 
 #pragma region PRIVATE_METHODS
@@ -196,6 +255,14 @@ private:
 	 * Updates the current time step, if the subsystem is nullptr it will return and not update the time step
 	 */
 	void UpdateCurrentTimeStepAndStepPercentage();
+
+	/**
+	 * Derive CurrentTimeStep + TimeStepPercentage from the absolute simulation time (CurrentSimTime)
+	 * and the agent's native sample interval, so the agent sample map is indexed correctly even when
+	 * B-Risk owns the shared clock interval. Identity with the clock grid when the agent owns the
+	 * clock. Falls back to the shared clock's step/percentage when the agent interval is unavailable.
+	 */
+	void RecomputeAgentTimeIndex();
 	
 #pragma endregion PRIVATE_METHODS
 

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Visibility tenability failure (ETenabilityCriterion::Visibility). Atlas slot 2.
+       Warning triangle with a crossed-out eye over three haze bars.
+
+       Transparent background, strokes only: the strokes ARE the mask. Colour comes from
+       the runtime material; #333333 is an authoring colour only.
+
+       The eye corners are MITERED points, not rounded: rounding them softens the whole
+       icon and is what made an earlier draft read as cartoonish. The slash runs through
+       the pupil and overhangs the eye at both ends. The three haze bars are deliberately
+       uneven (short, longest, medium) with the top bar sitting left of centre; even,
+       symmetric bars look mechanical and merge into one block when downscaled.
+
+       Line weight 7 (~3% of the triangle width); haze bars are the heavier element at 8.
+
+       Motif keepout: all motif geometry including stroke width and round caps stays
+       inside the triangle inset 10 units per edge (apex 128,51 / base y 212). -->
+  <g fill="none" stroke="#333333">
+    <!-- Sharp warning triangle, mitered corners -->
+    <path d="M128 31 L238 222 L18 222 Z" stroke-width="7" stroke-linejoin="miter" stroke-linecap="butt"/>
+
+    <!-- Eye outline, pointed (mitered) corners -->
+    <path d="M89 134 C108 112, 150 112, 169 134 C150 156, 108 156, 89 134 Z"
+          stroke-width="7" stroke-linejoin="miter" stroke-linecap="butt"/>
+
+    <!-- Obscuration slash, through the pupil, overhanging the eye both ends -->
+    <path d="M104 105 L161 170" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- Three haze bars: short, longest, medium -->
+    <g stroke-width="8" stroke-linecap="round">
+      <path d="M83 173 H139"/>
+      <path d="M72 187 H183"/>
+      <path d="M86 200 H172"/>
+    </g>
+  </g>
+
+  <!-- Pupil -->
+  <circle cx="129" cy="134" r="14" fill="#333333" stroke="none"/>
+</svg>

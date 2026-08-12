@@ -16,6 +16,7 @@
 #include "Misc/AutomationTest.h"
 #include "HAL/PlatformMemory.h"
 #include "Util/MemoryTraceHelper.h"
+#include "MassAI/Fragments/SharedFragments/SimulationFragment.h" // A2: FSimMovementSample footprint check
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,7 +203,7 @@ bool FSimulationFragmentReloadCycleTest::RunTest(const FString& Parameters)
 //
 // Exercises the CachedEntityData array pattern used in AgentDataSubsystem
 // (move-in on HDF5 load, Empty+Shrink on JSON load) and checks for leaks.
-// Uses a self-contained struct so this module does not depend on Hdf5DataPlugin
+// Uses a self-contained struct so this module does not depend on MobiusDataImporter
 // headers that may have their own transitive includes.
 // ---------------------------------------------------------------------------
 
@@ -260,6 +261,45 @@ bool FHdf5EntityCacheLifecycleTest::RunTest(const FString& Parameters)
 	TestTrue(
 		FString::Printf(TEXT("HDF5 entity cache delta %+lldMB should be within tolerance %+lldMB"), DeltaMB, kLeakToleranceMB),
 		DeltaMB <= kLeakToleranceMB);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 4: FSimMovementSample inline footprint (perf task A2)
+//
+// FSimMovementSample is stored ~millions of times (NumTimesteps x NumAgents) in
+// FSimulationFragment::SimulationData, so its inline size is a primary memory
+// driver. A2 shrank it from ~104 B to 64 B by interning the (always-empty)
+// FString Mode into a 1-byte ModeIndex and moving the two unread step-motion
+// fields (StepDurationMS, StepVector) off the sample into FSimSampleStepMotion.
+// This mirrors the compile-time static_assert in SimulationFragment.h inside the
+// automation suite and documents the per-sample cost / regression ceiling.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimMovementSampleFootprintTest,
+	"ProjectMobius.Memory.SimulationFragment.SampleFootprint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FSimMovementSampleFootprintTest::RunTest(const FString& Parameters)
+{
+	static constexpr SIZE_T kExpectedSize = 64; // see SimulationFragment.h static_assert for the layout breakdown
+	static constexpr SIZE_T kPreA2Size    = 104;
+
+	const SIZE_T ActualSize = sizeof(FSimMovementSample);
+
+	UE_LOG(LogMobiusMemory, Warning,
+		TEXT("[SampleFootprint] sizeof(FSimMovementSample)=%llu B (A2 target=%llu B, pre-A2=%llu B)"),
+		static_cast<uint64>(ActualSize), static_cast<uint64>(kExpectedSize), static_cast<uint64>(kPreA2Size));
+
+	TestEqual(
+		TEXT("FSimMovementSample inline footprint (A2) - update this test AND the header static_assert if intentionally changed"),
+		static_cast<uint64>(ActualSize), static_cast<uint64>(kExpectedSize));
+
+	// At ~6M samples the ~40 B/sample reduction is ~240 MB; guard against silently regressing past the old size.
+	TestTrue(
+		TEXT("FSimMovementSample must not exceed its pre-A2 size"),
+		ActualSize <= kPreA2Size);
 
 	return true;
 }

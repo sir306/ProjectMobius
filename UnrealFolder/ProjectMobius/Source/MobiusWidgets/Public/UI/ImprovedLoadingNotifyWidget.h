@@ -3,16 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Blueprint/UserWidget.h"
+#include "UI/Theme/MobiusThemedUserWidget.h"
+#include "Animation/CurveSequence.h" // BW3/P6: intro fade+scale (FCurveSequence, mirrors SMoveableWindow D67)
 #include "ImprovedLoadingNotifyWidget.generated.h"
 
 class UTextBlock;
 class UBaseLoadingWidget;
+class UBorder;
 /**
- * 
+ *
  */
 UCLASS()
-class MOBIUSWIDGETS_API UImprovedLoadingNotifyWidget : public UUserWidget
+class MOBIUSWIDGETS_API UImprovedLoadingNotifyWidget : public UMobiusThemedUserWidget
 {
 	GENERATED_BODY()
 
@@ -79,9 +81,28 @@ public:
 
 #pragma region PROTECTED_METHODS
 protected:
+	/** Born-theme: title text -> LabelText, panel background Border -> RibbonBg, on construct + OnThemeChanged. */
+	virtual void ApplyMobiusTheme_Implementation() override;
+
 	void UpdateLoadingWidgets();
 
 	void SetLoadingWidgetVisibility(TObjectPtr<UBaseLoadingWidget> LoadingWidget, bool bIsVisible);
+
+	/**
+	 * §5/P6 entrance: (re)start the 150ms CubicOut intro (render-opacity 0->1 + centred scale .97->1)
+	 * on the popup root. Called from the Collapsed->visible transition in IsLoadingComplete().
+	 *
+	 * Driven by TickIntroAnimation off a Slate active timer, NOT by NativeTick — NativeTick never runs on
+	 * this widget, and driving it from there latched the card at RenderOpacity 0, i.e. invisible. The full
+	 * reasoning is in TickIntroAnimation's comment; read it before changing either function.
+	 */
+	void PlayIntroAnimation();
+
+	/**
+	 * Active-timer tick that advances the intro pose and settles it at full opacity when the curve ends.
+	 * Registered on the cached SWidget by PlayIntroAnimation and unregistered by returning Stop.
+	 */
+	EActiveTimerReturnType TickIntroAnimation(double InCurrentTime, float InDeltaTime);
 #pragma endregion PROTECTED_METHODS
 	
 #pragma endregion METHODS
@@ -98,6 +119,13 @@ public:
 	/** Text block to show current Load Title - this will inform the user what loading action is being done */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidget))
 	TObjectPtr<UTextBlock> LoadingTitleText;
+
+	/**
+	 * Panel background Border. Born-theme repaints it RibbonBg on construct + every OnThemeChanged.
+	 * BindWidgetOptional so this C++ builds/ships before the asset names the Border; absent = untouched.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true", BindWidgetOptional))
+	TObjectPtr<UBorder> LoadingBackground;
 
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
@@ -118,6 +146,16 @@ private:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
 	FText LoadingTitle;
+
+	/** §5/P6 intro animation (150ms CubicOut) + its lerp handle. Plain members (not UPROPERTY). */
+	FCurveSequence IntroAnimation;
+	FCurveHandle IntroCurve;
+
+	/**
+	 * Handle for the active timer driving IntroCurve. Held so PlayIntroAnimation can tell "already
+	 * running" from "needs registering"; TickIntroAnimation clears it when it returns Stop.
+	 */
+	TSharedPtr<FActiveTimerHandle> IntroTickerHandle;
 
 #pragma endregion PROPERTIES
 
