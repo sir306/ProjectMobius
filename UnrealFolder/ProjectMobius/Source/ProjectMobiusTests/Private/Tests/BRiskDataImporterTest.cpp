@@ -13,6 +13,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "MobiusTestDataRoots.h"
 
 namespace
 {
@@ -1778,25 +1779,16 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	// actually saw, because both are properties of the whole SET: markers landing off the building
 	// (bounding-box walls), and 26 markers collapsing onto six positions (every .smv offset is 0).
 	// Assert those directly. Skips when the fixture is not on this machine.
-	const TCHAR* InternalRoots[] =
-	{
-		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
-		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
-		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
-		// block in this file was silently SKIPPING (they report green when skipped - the whole
-		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString RealSmv;
 	// Newest export first: v2 added openings[].hostThickness, v1 dropped normal. Any of them
 	// exercises placement; only v2 exercises the real host-wall depth.
 	const TCHAR* InternalFolders[] = { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") };
 	for (const TCHAR* Folder : InternalFolders)
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Candidate = FPaths::Combine(
 				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
@@ -2197,22 +2189,13 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 	}
 
 	// --- The real export: joined exactly, by the ventId the add-in already recorded -----------
-	const TCHAR* InternalRoots[] =
-	{
-		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
-		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
-		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
-		// block in this file was silently SKIPPING (they report green when skipped - the whole
-		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString RealSmv;
 	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Candidate = FPaths::Combine(
 				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
@@ -2329,18 +2312,14 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 	// So this is the one place our IsOpenAtTime can be checked against ground truth instead of
 	// against our own reading of the manual. It caught the real defect: the window (vent 27) carries
 	// 0/0 times, which we read as "permanently open", while B-Risk had it shut for the entire run.
-	const TCHAR* InternalRoots[] =
-	{
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString SmvPath;
 	FString FlowLogPath;
 	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Dir = FPaths::Combine(FString(Root), FString(Folder), TEXT("basemodel_default"));
 			const FString Smv = FPaths::Combine(Dir, TEXT("basemodel_default.smv"));
@@ -2551,8 +2530,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters)
 {
 	// A B-Risk model exported but not yet run: the .smv names its results file because the .smv is
-	// written at authoring time, but nothing has produced it. Real instance of this shape:
-	// D:\NickWork\Mobius_InternalData\12-room-test-vents\basemodel_default.
+	// written at authoring time, but nothing has produced it. Seen for real in the private
+	// 12-room-test-vents export (see MobiusTestDataRoots.h for where those live).
 	const FString TestDir = MakeBRiskTestDir();
 	const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
 	if (!TestTrue(TEXT("SMV without results should be written"), WriteTextFile(SmvPath, MakeSmv())))
@@ -2609,18 +2588,9 @@ bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters
 	// ROOMs, LABEL pairs and a THCP the parser does not handle - so it exercises the degrade on a
 	// shape the fixture cannot reproduce. Skips when the fixture is not on this machine, matching
 	// Hdf5ImportMatrixTest / MobiusTimingTests; the drive letter moved between boxes, so try both.
-	const TCHAR* InternalRoots[] =
-	{
-		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
-		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
-		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
-		// block in this file was silently SKIPPING (they report green when skipped - the whole
-		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString RealSmv;
 	// This test needs an export that has NOT been simulated, so select on that property rather than
 	// on a folder name - the exports get re-run, and "12-room-test-v2" has results while its
@@ -2628,7 +2598,7 @@ bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters
 	const TCHAR* InternalFolders[] = { TEXT("12-room-test-vents"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-v2") };
 	for (const TCHAR* Folder : InternalFolders)
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Candidate = FPaths::Combine(
 				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));

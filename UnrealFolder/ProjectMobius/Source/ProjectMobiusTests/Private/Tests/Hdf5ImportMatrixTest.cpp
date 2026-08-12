@@ -26,6 +26,7 @@
 #include "MobiusAgentDataImporter.h"
 
 #include "hdf5.h" // via UeHdf5Library (same API the production reader uses)
+#include "MobiusTestDataRoots.h"
 
 namespace
 {
@@ -382,8 +383,11 @@ bool FHdf5ImportMatrixTest::RunTest(const FString& Parameters)
 		FMobiusAgentDataImporter::ImportAgentFile(EmptyJson, Unused, &PathError));
 
 	// ---------- Local-only large-file smoke (skips when absent) ----------
-	const FString LargeFile = TEXT("F:\\Mobius_InternalData\\TechSchoolTest\\TechnicalSchool5000DefaultExits.json");
-	if (FileManager.FileExists(*LargeFile))
+	// Private fixture, resolved via MobiusTestDataRoots.h rather than a hardcoded drive letter.
+	const FString LargeFixture = FPaths::Combine(
+		TEXT("TechSchoolTest"), TEXT("TechnicalSchool5000DefaultExits.json"));
+	const FString LargeFile = MobiusTestData::FindInternalFixture(LargeFixture);
+	if (!LargeFile.IsEmpty() && FileManager.FileExists(*LargeFile))
 	{
 		FMobiusAgentSimulationData LargeData;
 		TestTrue(TEXT("large-file smoke import"), FMobiusAgentDataImporter::ImportAgentFile(LargeFile, LargeData, &Error));
@@ -392,7 +396,7 @@ bool FHdf5ImportMatrixTest::RunTest(const FString& Parameters)
 	}
 	else
 	{
-		AddInfo(TEXT("large-file smoke SKIPPED: F:\\Mobius_InternalData fixture not present on this machine"));
+		AddInfo(MobiusTestData::DescribeMissingFixture(LargeFixture));
 	}
 
 	FileManager.DeleteDirectory(*Dir, /*RequireExists*/ false, /*Tree*/ true);

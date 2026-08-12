@@ -39,6 +39,7 @@
 #include "Ifc/MobiusIfcRenderableClasses.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
+#include "MobiusTestDataRoots.h"
 
 namespace
 {
@@ -153,34 +154,20 @@ namespace
 	}
 
 	/**
-	 * The IFC4X3_ADD2 export, which lives in Mobius_InternalData OUTSIDE the repo. Derived from
-	 * ProjectDir first (correct on any machine whose layout matches the workspace), then the known
-	 * absolute roots as a fallback -- the same pattern BRiskDataImporterTest uses for its internal
-	 * fixtures, with this box's actual root included (that file's E: entry is missing the
-	 * ProjectMobius\ level and resolves nowhere).
+	 * The IFC4X3_ADD2 export, which lives in Mobius_InternalData OUTSIDE the repo (large models
+	 * are not committed). Returns empty when it is not on this machine, and the caller skips
+	 * loudly. Root resolution is shared with every other private-fixture test through
+	 * MobiusTestDataRoots.h.
 	 */
 	FString Ifc4x3FixturePath()
 	{
 		const FString Relative = FPaths::Combine(
 			TEXT("12 RoomTest"), TEXT("Exported-model"), TEXT("ISO-Test-8-FireSmoke.ifc"));
 
-		TArray<FString> Roots;
-		Roots.Add(FPaths::ConvertRelativePathToFull(
-			FPaths::Combine(FPaths::ProjectDir(), TEXT("../../.."), TEXT("Mobius_InternalData"))));
-		Roots.Add(TEXT("E:/00_Work/ProjectMobius/Mobius_InternalData"));
-		Roots.Add(TEXT("D:/NickWork/Mobius/Mobius_InternalData"));
-		Roots.Add(TEXT("D:/NickWork/Mobius_InternalData"));
-		Roots.Add(TEXT("F:/Mobius_InternalData"));
-
-		for (const FString& Root : Roots)
-		{
-			const FString Candidate = FPaths::Combine(Root, Relative);
-			if (FPaths::FileExists(Candidate))
-			{
-				return Candidate;
-			}
-		}
-		return FString();
+		// Roots come from MobiusTestDataRoots.h. This used to list absolute drive paths, which
+		// worked on one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy
+		// of the private datasets lives somewhere the relative roots do not cover.
+		return MobiusTestData::FindInternalFixture(Relative);
 	}
 }
 

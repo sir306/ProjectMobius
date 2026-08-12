@@ -48,6 +48,7 @@
 #include "Misc/Paths.h"
 #include "ProceduralMeshComponent.h"
 #include "UnrealClient.h" // FScreenshotRequest lives here in 5.5, not in a Misc/ScreenshotRequest.h
+#include "MobiusTestDataRoots.h"
 
 namespace IfcInGame
 {
@@ -124,23 +125,10 @@ namespace IfcInGame
 		const FString Relative = FPaths::Combine(
 			TEXT("12 RoomTest"), TEXT("Exported-model"), TEXT("ISO-Test-8-FireSmoke.ifc"));
 
-		TArray<FString> Roots;
-		Roots.Add(FPaths::ConvertRelativePathToFull(
-			FPaths::Combine(FPaths::ProjectDir(), TEXT("../../.."), TEXT("Mobius_InternalData"))));
-		Roots.Add(TEXT("E:/00_Work/ProjectMobius/Mobius_InternalData"));
-		Roots.Add(TEXT("D:/NickWork/Mobius/Mobius_InternalData"));
-		Roots.Add(TEXT("D:/NickWork/Mobius_InternalData"));
-		Roots.Add(TEXT("F:/Mobius_InternalData"));
-
-		for (const FString& Root : Roots)
-		{
-			const FString Candidate = FPaths::Combine(Root, Relative);
-			if (FPaths::FileExists(Candidate))
-			{
-				return Candidate;
-			}
-		}
-		return FString();
+		// Roots come from MobiusTestDataRoots.h. This used to list absolute drive paths, which
+		// worked on one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy
+		// of the private datasets lives somewhere the relative roots do not cover.
+		return MobiusTestData::FindInternalFixture(Relative);
 	}
 
 	/**
