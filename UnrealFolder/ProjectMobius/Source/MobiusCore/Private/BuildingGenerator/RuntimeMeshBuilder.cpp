@@ -1530,38 +1530,31 @@ void ARuntimeMeshBuilder::FinalizeMeshEmit()
 			EmittedSections, DurationMs));
 	}
 
-	if (EmittedSections > 0 && !bIsDatasmithAsset)
+	// A style chosen before this load finished (the widget can be driven at any time) applies to the
+	// sections that have just been emitted, not to whatever was on screen when the button was pressed.
+	if (bBuildingMaterialStyleChosen && EmittedSections > 0 && !bIsDatasmithAsset)
 	{
-		if (bBuildingMaterialStyleChosen)
-		{
-			// A style chosen before this load finished (the widget can be driven at any time) applies to
-			// the sections that have just been emitted, not to whatever was on screen when the button
-			// was pressed. An explicit choice SURVIVES a later load: pick translucent, open another
-			// file, stay translucent.
-			SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
-		}
-		else if (SectionSourceMaterials.ContainsByPredicate(
-			[](const FMobiusMeshMaterial& Mat) { return Mat.bHasMaterial; }))
-		{
-			// No explicit choice yet AND the file carried authored colours -> land on Original Colours.
-			// Datasmith already behaves this way; this gives imported IFC the same treatment.
-			//
-			// Measured justification (HANDOFF 16.9): the same mesh, same camera, same frame renders as a
-			// murky translucent mass under the default material and as a readable building under this
-			// one. Confirmed on both the IFC2X3 and the IFC4X3_ADD2 file.
-			//
-			// It also fixes the render-mode combo disagreeing with the screen (HANDOFF 16.9a).
-			// CurrentBuildingMaterialStyle initialises to OriginalColours while
-			// bBuildingMaterialStyleChosen stays false, so GetBuildingMaterialStyle() reported
-			// OriginalColours on a building that was rendering translucent. SetBuildingMaterialStyle is
-			// the only thing that writes BOTH, so calling it here makes the getter and the material
-			// agree by construction.
-			//
-			// Gated on the file actually having colours: applying this to a model with none renders
-			// plain white, which is a worse default than the authored translucent look.
-			SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle::OriginalColours);
-		}
+		SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
 	}
+
+	// DO NOT ADD AN AUTO-DEFAULT STYLE HERE. It was tried on 2026-08-12 and REVERTED because it broke
+	// the Render Mode dropdown, which the owner confirmed had been working shortly beforehand.
+	//
+	// The attempt called SetBuildingMaterialStyle(OriginalColours) when a file carried authored colours
+	// and no style had been chosen. It looked free -- Datasmith already lands on original colours, and
+	// SetBuildingMaterialStyle is the only thing that writes both CurrentBuildingMaterialStyle and
+	// bBuildingMaterialStyleChosen, so it also made GetBuildingMaterialStyle() agree with the screen.
+	//
+	// What it actually did to the widget:
+	//   1. applied a style at load where previously NONE was applied, so the combo inherited a starting
+	//      state it was never written against; and
+	//   2. set bBuildingMaterialStyleChosen = true, so every SUBSEQUENT load took the branch above and
+	//      re-applied a style -- another behaviour the widget had never seen.
+	//
+	// Making the C++ getter self-consistent is NOT the same thing as the dropdown working, and reaching
+	// past the widget to force a style is what broke it. If an auto-default is wanted, drive it through
+	// the same path the widget uses. See the OWNER'S TWO OPEN ITEMS block at the top of
+	// HANDOFF_IFC_2026-08-11.md.
 
 	// NOT DONE HERE, AND THE ATTEMPT IS RECORDED BECAUSE IT LOOKS OBVIOUS AND IS NOT.
 	//
