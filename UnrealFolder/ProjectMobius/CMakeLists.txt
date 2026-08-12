@@ -224,6 +224,13 @@ if(SUPERBUILD_BUILD_ASSIMP)
       -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
       -DCMAKE_INSTALL_LIBDIR=lib/Mac
       -DASSIMP_INCLUDE_INSTALL_DIR=include
+      # Assimp 5.4.3 predates AppleClang's -Wnontrivial-memcall, which its own
+      # -Werror then turns into a hard failure in SceneCombiner.cpp.
+      -DASSIMP_WARNINGS_AS_ERRORS=OFF
+      # Use the bundled contrib/unzip rather than pkg-config's minizip, which on a
+      # machine with an Intel Homebrew prefix resolves to an x86_64 library and
+      # fails to link against this arm64 build.
+      -DASSIMP_BUILD_MINIZIP=ON
     )
     set(ASSIMP_RUNTIME_SRC_DIR "${ASSIMP_INST}/lib/Mac")
     set(ASSIMP_RUNTIME_PATTERNS "\"libassimp*.dylib\"")
@@ -332,6 +339,16 @@ if(SUPERBUILD_BUILD_HDF5)
     list(APPEND _hdf5_cmake_args -DCMAKE_C_FLAGS=/D__STDC_NO_COMPLEX__)
   else()
     list(APPEND _hdf5_cmake_args -DCMAKE_C_FLAGS=-D__STDC_NO_COMPLEX__)
+  endif()
+
+  # Force the architecture like the Assimp step does: an x86_64 (Rosetta) cmake --
+  # common with an Intel Homebrew prefix -- otherwise builds x86_64 static libs that
+  # the arm64 editor link then rejects.
+  if(APPLE)
+    list(APPEND _hdf5_cmake_args
+      -DCMAKE_OSX_ARCHITECTURES=arm64
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+    )
   endif()
 
   ExternalProject_Add(hdf5_ep
