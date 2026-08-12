@@ -1,0 +1,139 @@
+# AK Studio Art — Realistic Wheelchair
+
+Source: https://store.godotengine.org/asset/ak-studio-art/realistic-wheelchair-3d-model/
+Author: AK Studio Art · Licence: **CC0 1.0 Universal** (full text in `LICENSE.md`)
+Staged here 2026-08-12.
+
+CC0 is a public-domain dedication. Remeshing, decimating, LOD generation, re-UVing, texture
+re-baking, renaming and commercial redistribution are all permitted, with **no attribution
+obligation and no share-alike**. `LICENSE.md` is kept for provenance, not because it is required.
+
+Two things CC0 does *not* do: it grants no trademark or patent rights (§4a), and it carries no
+warranty of title. Both are standard and neither is a practical concern for a generic wheelchair.
+
+Provenance note, not a problem: the source prefab metadata identified this as a conversion of a
+Unity package (`Assets/AK Studio Art/WhellChair/Prefabs/WhellChair.prefab`). Same author
+dual-publishing is their prerogative; recorded here so nobody is surprised by the discrepancy later.
+
+---
+
+## What was taken, and what was left behind
+
+**Taken:** the three `.obj` meshes, their `.mtl` files, the three real textures, `LICENSE.md`.
+
+**Left behind deliberately:** `.import` sidecars, `Materials/M_WhellChair.tres`,
+`Prefabs/WhellChair.tscn`, `Scenes/Demo.tscn`, `CHANGELOG.md`, `README.md` (Godot install
+instructions), and three 4×4 placeholder textures (`T_Default_ORM.png`, `_UTG_DefaultNormal.png`,
+`_UTG_DefaultWhite.png`) that nothing references.
+
+There is **no FBX in this asset** — it ships OBJ only.
+
+---
+
+## Measured geometry (from the OBJ files, not the listing)
+
+| Mesh | Tris | Verts | Bounding box |
+|---|---|---|---|
+| `SM_WhellChair` (frame) | 4,747 | 4,012 | 56.0 × 111.4 × 106.7 cm |
+| `SM_Left_Wheel` | 2,432 | 2,457 | 12.8 × 66.3 × 66.5 cm |
+| `SM_Right_Wheel` | 2,426 | 2,432 | 12.8 × 66.3 × 66.5 cm |
+| **Total** | **9,605** | | ~75 cm wide once wheels are placed |
+
+**9,605 triangles is too many for large-scale instanced crowd rendering without LODs.** Owner's
+decision 2026-08-12: this mesh is for **high spec only**; low spec keeps the existing
+`SM_WheelchairPlaceholder` box. A remesh and/or LOD chain is planned separately.
+
+## Coordinate conversion — Godot/OBJ → Unreal
+
+- **Y-up, right-handed, metres.** Unreal is **Z-up, left-handed, centimetres**.
+- Import scale **×100**; rotate so OBJ **+Y → UE +Z**.
+- Frame pivot is already at floor level (`Y` range `0.0001 .. 1.1144`), which matches the existing
+  `SM_WheelchairPlaceholder` floor-centre convention. Preserve it.
+
+## Wheel placement (for merging into one mesh)
+
+The wheels are modelled **at origin**; their placement lived in the Godot prefab, which is not
+carried over. Offsets in **OBJ metres, Y-up**, rotation identity (the `1.2246469e-16` terms in the
+source transform are float noise, not a real rotation):
+
+| Wheel | X | Y | Z |
+|---|---|---|---|
+| Left | `+0.31133676` | `0.3306277` | `+0.22152776` |
+| Right | `−0.31134912` | `0.3306277` | `+0.21844496` |
+
+×100 for centimetres. `Y = 33.06 cm` ≈ the wheel radius (33.25 cm), i.e. wheels sit on the ground.
+The 3 mm Z asymmetry between left and right is in the source; harmless, but do not "fix" it into a
+mismatch with the frame.
+
+---
+
+## Materials — the pipeline that must be replaced
+
+**The `.mtl` files are placeholder stubs.** Every one declares a single `MaterialSlot_0` with flat
+white `Kd` and *no texture references at all* — the real texture wiring lived in the Godot `.tres`.
+
+This is good news: there is no auto-generated material graph to fight. A default slot comes across
+and we author the real material ourselves.
+
+| Texture | Res | Role | UE import setting |
+|---|---|---|---|
+| `T_WhellChair_BaseMap.png` | 2048² | Base colour | sRGB **on** |
+| `T_WhellChair_Normal.png` | 2048² | Normal | Normal-map compression |
+| `T_WhellChair_ORM.png` | 2048², 24-bit | Occlusion / Roughness / Metallic packed | sRGB **OFF**, linear |
+
+### ORM was re-encoded from TGA to PNG (2026-08-12)
+
+The asset shipped `T_WhellChair_ORM.tga`: uncompressed 32-bit, **16,777,234 bytes**. It was converted
+to 24-bit PNG — **5,267,213 bytes**, a 3.19× reduction — and the `.tga` removed. `.tga` and `.png`
+are both LFS-tracked here, so this is a direct saving on a public repo. CC0 permits the modification.
+
+**The conversion is lossless, and was verified rather than assumed.** Two silent-corruption traps in
+32-bit TGA were checked explicitly:
+
+- **Byte order.** TGA truecolour is stored **BGRA**, not RGBA. A naive read swaps red and blue.
+- **Row order.** The header's image-descriptor byte was `0x00`, meaning origin **BOTTOM-LEFT** — the
+  image is stored bottom-up and must be flipped. A missed flip yields an upside-down texture that
+  still looks plausible on a symmetric map.
+
+Verification: the TGA was decoded manually (explicit BGRA reorder, explicit bottom-up flip) and the
+resulting RGB buffer hashed against the PNG's pixel data. Both `sha256` =
+`b0ccd297d856500095424f6e6034ba17a376d981917de762adb06f7ad0c757d0` over all 4,194,304 pixels.
+
+Dropping alpha was also checked, not assumed: the descriptor declared **0 alpha bits**, and every one
+of the 4.2M alpha bytes was `255`. The channel carried no data.
+
+### Target contract — do not break the material swap
+
+The chair material is consumed by the runtime material-swap system that was fixed on 2026-08-11. A
+replacement material **must**:
+
+1. Expose the same parameters `M_WheelchairPlaceholder` declares: **`Opacity`, `DitherAlpha`,
+   `Roughness`, `BaseColour`.**
+2. Ship **two** instances — a Solid one, and a Translucent one carrying `bOverride_BlendMode` +
+   `BLEND_Translucent`. `UMaterialInstanceDynamic`s are built from these by
+   `ConvertWheelchairMaterialsToDynamicInstances`.
+3. Use **one material slot**. The Niagara chair emitter renders a single mesh with a single slot;
+   three slots would mean three emitters.
+
+Miss (1) or (2) and the Solid↔Translucent toggle silently stops affecting wheelchairs — the exact
+failure mode that cost a day on 2026-08-11, because `SetVariableMaterial` fails silently.
+
+### Intended improvement over a generic import
+
+Owner's direction: bake down to **one material on a correctly UV-mapped mesh** rather than carrying
+the generic import pipeline's slot-per-source-material. The three source meshes already share one
+material slot each and one texture set, so a merged single-slot mesh with a single UV layout is a
+short step — the merge just has to preserve the existing UV islands or re-bake to a new atlas.
+
+---
+
+## Follow-ups this asset triggers
+
+- **Wheelchair spec D6 / §5.2.** Those were sized against a 95 cm placeholder box. The real chair is
+  111.4 cm tall. The seated hover height (`GWheelchairSeatedHeightCm = 130.0`) and the configurable
+  `WheelchairBreathingHeightCm = 160.0` should be revisited against the real seat height. The spec
+  already flags this: *"When the mesh lands, revisit D6's dimensions and §5.2's 130 cm."*
+- **`HANDOFF_LowSpecPedestrianMaterials_2026-08-11.md` §1** states the chair needs no low-poly
+  variant because both spec levels draw the same mesh. That was true for a ~12-triangle box and is
+  **no longer true** once high spec uses a 9,605-triangle chair. Low spec keeps the box by owner
+  decision, so the two levels now use *different* chair meshes.
