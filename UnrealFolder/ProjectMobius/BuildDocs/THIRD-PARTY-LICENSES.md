@@ -15,6 +15,7 @@ This document covers third-party libraries, assets, and tools included in the Pr
 | ImPlot | 0.17 | MIT | `Source/MobiusWidgets/ThirdParty/ImPlot/` |
 | earcut.hpp | — | ISC | `Source/MobiusCore/ThirdParty/earcut_hpp/` |
 | portable-file-dialogs | — | WTFPL | `Source/MobiusCore/ThirdParty/PortableFileDialogs/` |
+| IFC++ (IfcPlusPlus) | recorded as `7b80900` | MIT | `Source/ThirdParty/IfcBridgeSource/IfcPlusPlus/` |
 | MakeHuman meshes | — | CC0 1.0 | `Content/MakeHuman/` |
 
 ---
@@ -85,6 +86,33 @@ Mobius uses Unreal's built-in `OpenCV` engine plugin, enabled in
 - **Location:** `Source/MobiusCore/ThirdParty/PortableFileDialogs/`
 - **License:** WTFPL
 - **URL:** https://github.com/nickvanheer/portable-file-dialogs
+
+### 2.8 IFC++ (IfcPlusPlus) and its bundled dependencies
+
+Runtime `.ifc` import. Vendored source is compiled into `MobiusIfcBridge.dll` and redistributed in binary
+form, so every bundled dependency below ships with the product.
+
+- **Location:** `Source/ThirdParty/IfcBridgeSource/IfcPlusPlus/`
+- **License:** MIT — Copyright Fabian Gerold
+- **URL:** https://github.com/ifcquery/IfcPlusPlus
+
+Bundled by IFC++, all permissive — full licence texts in
+`Source/ThirdParty/IfcBridgeSource/THIRD_PARTY_NOTICES.md`:
+
+| Bundled component | License | Copyright |
+|---|---|---|
+| Carve (CSG kernel) | MIT | Tobias Sargeant, 2006–2015 |
+| glm | MIT / "Happy Bunny" | G-Truc Creation, 2005 |
+| earcut.hpp | ISC | Mapbox, 2015 |
+| RapidJSON | MIT | THL A29 Limited (Tencent) / Milo Yip, 2015 |
+| nowide | Boost Software License 1.0 | Artyom Beilis, 2012 |
+| utf8 (utfcpp) | Boost Software License 1.0 | Nemanja Trifunovic, 2006–2016 |
+| zippy | Unlicense (public domain) | RAD Game Tools / Valve / R. Geldreich / Tenacious Software / M. Raiber |
+| miniz | Unlicense (public domain) | Rich Geldreich, 2013; Martin Raiber, 2016 |
+| zip (wrapper) | MIT (attribution gap — see notices file) | trimmed in the vendored copy |
+
+**Carve is MIT, not GPL** — it was GPL-2.0 before its 2015 relicense and old forks still carry the old text.
+The vendored copy carries the MIT header.
 
 ---
 
