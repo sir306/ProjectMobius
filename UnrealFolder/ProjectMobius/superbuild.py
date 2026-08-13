@@ -39,18 +39,21 @@ on a machine with a different Visual Studio that fails with
 
 which never tells you what IS installed.
 
-This script adds four things CMake cannot do on its own:
+This script adds five things CMake cannot do on its own:
 
   1. Pins the MSVC toolset to 14.38.33130 when it is installed -- the toolset Unreal Engine 5.5
      itself builds with -- so the dependency DLLs link the same CRT as the engine. A toolset can
      only be chosen at configure time via -T, and the correct spelling is not obvious (see
      msvc_toolset_argument below).
-  2. Explains WHY when no usable compiler is found, listing what is installed and printing the
+  2. On macOS, does the same job for Xcode: UE 5.5 accepts only 15.2 - 16.9, and every current Mac
+     ships something newer, so an in-range Xcode is selected for the run via DEVELOPER_DIR if one
+     is installed (see resolve_developer_dir below). No sudo, and the machine default is untouched.
+  3. Explains WHY when no usable compiler is found, listing what is installed and printing the
      exact override to type, instead of "could not find any instance of Visual Studio".
-  3. Detects a build tree that cannot be reused -- generated on another machine, or for a
-     different generator, toolset or CMake version -- and reconfigures, saying which it was. This
-     is the "I copied the repo and now nothing builds" case.
-  4. Prints a per-dependency [ok]/[MISSING] summary at the end, naming the file UnrealBuildTool
+  4. Detects a build tree that cannot be reused -- generated on another machine, or for a
+     different generator, toolset, Xcode or CMake version -- and reconfigures, saying which it was.
+     This is the "I copied the repo and now nothing builds" case.
+  5. Prints a per-dependency [ok]/[MISSING] summary at the end, naming the file UnrealBuildTool
      would fail on.
 
 Every option is a thin pass-through to CMake, so nothing here is load-bearing magic. If this
@@ -62,6 +65,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import plistlib
 import re
 import shutil
 import subprocess
@@ -72,11 +76,31 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent
 
 IS_WINDOWS = platform.system() == "Windows"
+IS_MACOS = platform.system() == "Darwin"
 
 # The toolset Unreal Engine 5.5 builds with. Preferred, not required: the shim's DLL boundary is a
 # C ABI, so a mismatch would most likely work anyway, but matching removes an axis of divergence in
 # the CRT for free.
 PREFERRED_MSVC_TOOLSET = "14.38.33130"
+
+# The macOS equivalent of the toolset pin above. Unreal Engine 5.5 accepts exactly this range of
+# Xcode versions -- taken from the engine's own Engine/Config/Apple/Apple_SDK.json (UE 5.5.4:
+# MainVersion 15.2, MinVersion 15.2.0, MaxVersion 16.9.0), which is what UnrealBuildTool enforces.
+# It matters here because the dependency dylibs this script produces are linked into the editor:
+# building them with a clang the engine itself refuses to use is the same class of mistake as
+# building them with the wrong MSVC toolset. A Mac bought recently ships an Xcode well past 16.9,
+# so 'whatever xcode-select points at' is the wrong default on current hardware.
+UE55_XCODE_MIN = (15, 2, 0)
+UE55_XCODE_MAX = (16, 9, 0)
+
+# Exact process names that mean "an Unreal Editor is live". Matched against the process NAME, not
+# the command line -- see unreal_editor_processes() for why that distinction is the whole point.
+#
+# The kernel truncates the recorded name (16 characters on macOS, 15 on Linux), so only names that
+# fit can ever match: "UnrealEditor" (12) and, on macOS only, "UnrealEditor-Cmd" (16). Longer
+# variants such as "UnrealEditor-Mac-DebugGame" are deliberately NOT listed -- they could never
+# match, and listing them would imply a check that does not exist.
+UNREAL_EDITOR_PROCESS_NAMES = ("UnrealEditor", "UnrealEditor-Cmd")
 
 # Visual Studio major version -> CMake generator name. Adding a row here is the ONLY change a
 # future Visual Studio release should need. (Run `cmake --help` to see the exact spelling your
@@ -391,6 +415,177 @@ def msvc_toolset_argument(toolset: str) -> str:
 
 
 # ---------------------------------------------------------------------------------------------
+# Xcode discovery (macOS only)
+#
+# The Windows half of this script pins the MSVC toolset to the one UE 5.5 builds with. This is the
+# same job for macOS, and it is more pressing rather than less: Unreal Engine 5.5 hard-refuses any
+# Xcode outside 15.2 - 16.9 (see UE55_XCODE_MIN/MAX above), and every Mac sold since is well past
+# that, so anyone following the obvious "install Xcode, run the build" path ends up with
+# dependencies compiled by a clang the engine will not use.
+# ---------------------------------------------------------------------------------------------
+def parse_version(text: str) -> tuple[int, int, int] | None:
+    """'16.4.1 (16F7)' -> (16, 4, 1). Padded to three parts so comparisons against the UE range
+    are total: bare '16' must compare as 16.0.0, not sort short."""
+    parts = [int(number) for number in re.findall(r"\d+", text)[:3]]
+    if not parts:
+        return None
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)  # type: ignore[return-value]
+
+
+def format_version(version: tuple[int, ...]) -> str:
+    return ".".join(str(part) for part in version)
+
+
+def xcode_version(developer_dir: Path) -> tuple[int, int, int] | None:
+    """Version of the Xcode owning this Developer directory, or None if it is not one.
+
+    DEVELOPER_DIR points at <Xcode.app>/Contents/Developer, so the version lives one level up in
+    Contents/version.plist. Reading the plist beats running `xcodebuild -version`: xcodebuild takes
+    seconds to answer, and errors out entirely when only the Command Line Tools are installed --
+    which is precisely one of the cases this needs to report clearly rather than crash on. It also
+    means a Command Line Tools directory (/Library/Developer/CommandLineTools, no version.plist
+    beside it) correctly returns None instead of a bogus version.
+    """
+    try:
+        with (developer_dir.parent / "version.plist").open("rb") as handle:
+            data = plistlib.load(handle)
+    except (OSError, ValueError):
+        return None
+    return parse_version(str(data.get("CFBundleShortVersionString", "")))
+
+
+def active_developer_dir() -> Path | None:
+    """The Xcode (or Command Line Tools) directory the machine is currently set to use.
+
+    DEVELOPER_DIR in the environment wins over xcode-select, matching how every Apple tool resolves
+    it -- so a caller who already exports it does not get quietly overruled by this script.
+    """
+    from_env = os.environ.get("DEVELOPER_DIR")
+    if from_env:
+        return Path(from_env)
+    try:
+        output = subprocess.check_output(["xcode-select", "-p"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return Path(output) if output else None
+
+
+def installed_xcodes() -> list[tuple[tuple[int, int, int], Path]]:
+    """Every Xcode under /Applications as (version, Developer dir), newest first.
+
+    /Applications is the only location Apple's own tooling assumes, and side-by-side installs there
+    (Xcode_15.4.app alongside Xcode.app) are the normal way to keep an older Xcode for a project
+    that needs one -- which is exactly this project's situation.
+    """
+    found = []
+    for app in Path("/Applications").glob("Xcode*.app"):
+        developer = app / "Contents" / "Developer"
+        version = xcode_version(developer)
+        if version and developer.is_dir():
+            found.append((version, developer))
+    return sorted(found, reverse=True)
+
+
+def xcode_is_supported(version: tuple[int, int, int]) -> bool:
+    return UE55_XCODE_MIN <= version <= UE55_XCODE_MAX
+
+
+def explain_no_xcode() -> str:
+    """Message for 'no full Xcode is installed'. Says which of the two cases it is, because the
+    remedies differ, and always ends with the one-line escape hatch."""
+    active = active_developer_dir()
+    if active and "CommandLineTools" in str(active):
+        situation = (f"Only the Command Line Tools are installed ({active}).\n\n"
+                     "  They can compile these dependencies, but Unreal Engine 5.5 itself needs a\n"
+                     "  full Xcode, so you will hit this again when you open the project.\n\n")
+    else:
+        situation = "No Xcode installation was found under /Applications.\n\n"
+
+    return (
+        situation +
+        f"  Unreal Engine 5.5 accepts Xcode {format_version(UE55_XCODE_MIN)} to "
+        f"{format_version(UE55_XCODE_MAX)} inclusive\n"
+        "  (its own Engine/Config/Apple/Apple_SDK.json). Older releases are at\n"
+        "      https://developer.apple.com/download/all/?q=xcode\n"
+        "  Install one, then either select it machine-wide:\n\n"
+        "      sudo xcode-select -s /Applications/Xcode_16.2.app\n\n"
+        "  or point this build at it without changing the machine default:\n\n"
+        "      python3 superbuild.py --xcode /Applications/Xcode_16.2.app\n\n"
+        "  To build the dependencies with the current toolchain regardless:\n\n"
+        "      python3 superbuild.py --xcode none"
+    )
+
+
+def resolve_developer_dir(requested: str) -> Path | None:
+    """Pick the Xcode whose clang builds the dependencies, as a Developer directory to export via
+    DEVELOPER_DIR -- or None to leave the environment untouched.
+
+    requested == 'none'  -> leave it alone; use whatever xcode-select points at
+    requested == 'auto'  -> the active Xcode if UE 5.5 accepts it, otherwise the newest installed
+                            Xcode that it does accept
+    anything else        -> that path, an Xcode.app or a Developer dir, used as given
+
+    Mirrors resolve_toolset() on the Windows side deliberately, including where it draws the line
+    between failing and warning: no usable compiler at all is fatal, but a version outside the
+    preferred range only warns, because it will very likely still produce working libraries.
+    """
+    if requested in ("", "none"):
+        note("Xcode selection skipped (--xcode none); using whatever xcode-select points at.")
+        return None
+
+    if requested != "auto":
+        chosen = Path(requested).expanduser()
+        # Accept either spelling: people copy the .app path far more readily than the Developer
+        # subdirectory buried inside it.
+        if chosen.suffix == ".app":
+            chosen = chosen / "Contents" / "Developer"
+        if not chosen.is_dir():
+            fail(f"--xcode {requested}: no such directory ({chosen}).\n\n"
+                 "  Pass the path to an Xcode.app, e.g. /Applications/Xcode_16.2.app")
+        version = xcode_version(chosen)
+        if version and not xcode_is_supported(version):
+            warn(f"Xcode {format_version(version)} at {chosen} is outside the range UE 5.5 accepts "
+                 f"({format_version(UE55_XCODE_MIN)}-{format_version(UE55_XCODE_MAX)}). Using it "
+                 "because you named it explicitly.")
+        return chosen
+
+    active = active_developer_dir()
+    active_version = xcode_version(active) if active else None
+
+    if active_version and xcode_is_supported(active_version):
+        note(f"Xcode {format_version(active_version)} ({active}) -- accepted by UE 5.5.")
+        return None  # Already correct: do not perturb the environment for no reason.
+
+    candidates = [entry for entry in installed_xcodes() if xcode_is_supported(entry[0])]
+    if candidates:
+        version, developer = candidates[0]
+        if active_version:
+            warn(f"The active Xcode is {format_version(active_version)} ({active}), outside the "
+                 f"range UE 5.5 accepts ({format_version(UE55_XCODE_MIN)}-"
+                 f"{format_version(UE55_XCODE_MAX)}).")
+        note(f"Building with Xcode {format_version(version)} instead ({developer}).")
+        note("This run only -- the machine default is unchanged. Make it permanent with:")
+        note(f"    sudo xcode-select -s {developer.parent.parent}")
+        return developer
+
+    if active_version:
+        # An Xcode is installed and usable, just newer than the engine supports. Warn rather than
+        # stop: it will almost certainly build these libraries, and refusing here would block the
+        # only Xcode the machine has.
+        warn(f"Xcode {format_version(active_version)} ({active}) is newer than UE 5.5 supports "
+             f"({format_version(UE55_XCODE_MIN)}-{format_version(UE55_XCODE_MAX)}) and no "
+             "in-range Xcode is installed under /Applications. Building the dependencies with it "
+             "anyway. Unreal Engine itself will refuse this version, so install an in-range Xcode "
+             "before opening the project: https://developer.apple.com/download/all/?q=xcode")
+        return None
+
+    fail(explain_no_xcode())
+    return None  # unreachable; fail() exits
+
+
+# ---------------------------------------------------------------------------------------------
 # Build-tree hygiene
 # ---------------------------------------------------------------------------------------------
 def read_cache_entry(cache_path: Path, key: str) -> str | None:
@@ -408,7 +603,7 @@ def read_cache_entry(cache_path: Path, key: str) -> str | None:
 
 
 def stale_reason(cache_path: Path, generator: str, toolset_arg: str,
-                 running_cmake: tuple[int, ...]) -> str | None:
+                 running_cmake: tuple[int, ...], developer_dir: Path | None = None) -> str | None:
     """Return why the existing build tree cannot be reused, or None if it can.
 
     Each of these otherwise produces a CMake error that reads like a project fault rather than a
@@ -438,6 +633,30 @@ def stale_reason(cache_path: Path, generator: str, toolset_arg: str,
         shown_new = toolset_arg or "<generator default>"
         return f"the MSVC toolset changed ({shown_old!r} -> {shown_new!r})."
 
+    # The macOS counterpart of the toolset check. CMAKE_CXX_COMPILER is no use for this: CMake
+    # usually records the /usr/bin/c++ shim, whose path is identical for every Xcode. The SDK
+    # sysroot is the entry that actually moves, since it lives inside the Developer directory --
+    # so a tree configured against a different Xcode is caught here rather than silently reused
+    # with the other clang's headers.
+    if developer_dir is not None:
+        cached_sysroot = read_cache_entry(cache_path, "CMAKE_OSX_SYSROOT") or ""
+        # CMAKE_OSX_SYSROOT is allowed to hold a bare SDK NAME ('macosx') rather than a path, and
+        # that form says nothing about which Xcode owns it. Comparing it would wipe a perfectly
+        # good build tree on every single run, so only an absolute path is evidence here.
+        if cached_sysroot and Path(cached_sysroot).is_absolute():
+            try:
+                # Resolve both sides before comparing: a trailing slash, or /Applications/Xcode.app
+                # being a symlink, must not read as a different Xcode. strict=False, because an SDK
+                # path inherited from another machine legitimately does not exist here.
+                cached_path = Path(cached_sysroot).resolve()
+                owner = developer_dir.resolve()
+                under = cached_path == owner or owner in cached_path.parents
+            except OSError:
+                under = True  # Cannot tell -- do not throw the tree away on a guess.
+            if not under:
+                return (f"it was configured against a different Xcode (SDK {cached_sysroot!r} is "
+                        f"not under {str(developer_dir)!r}).")
+
     major = read_cache_entry(cache_path, "CMAKE_CACHE_MAJOR_VERSION")
     minor = read_cache_entry(cache_path, "CMAKE_CACHE_MINOR_VERSION")
     if major and minor and (int(major), int(minor)) != running_cmake[:2]:
@@ -448,21 +667,40 @@ def stale_reason(cache_path: Path, generator: str, toolset_arg: str,
 
 
 def unreal_editor_processes() -> list[str]:
-    """Return names of running Unreal Editor processes, so we can refuse to fight one for a file
-    lock. The Assimp stage writes into Plugins/UE4_Assimp/Binaries/<Platform>, which a live editor
-    holds open, and rebuilding a dependency under a live editor can also trigger a hot-reload."""
+    """Return running Unreal Editor processes, so we can refuse to fight one for a file lock. The
+    Assimp stage writes into Plugins/UE4_Assimp/Binaries/<Platform>, which a live editor holds
+    open, and rebuilding a dependency under a live editor can also trigger a hot-reload restart.
+
+    The match must be on the process NAME. This used to run `pgrep -f UnrealEditor`, and -f matches
+    the full COMMAND LINE of every process -- so anything that merely mentions the editor counted:
+    a CrashReportClient still showing a report from a previous run, a Finder/LaunchServices helper
+    registered for .uproject files, an editor path sitting in some other tool's arguments. The
+    result was a macOS machine with no editor open being told the editor was open, on every run.
+    `pgrep -x` matches the name exactly, which is also why an exact list beats a prefix: a prefix
+    match on "UnrealEditor" would still catch UnrealEditorServices.
+    """
     try:
         if IS_WINDOWS:
+            # tasklist matches the image name only, so it never had the problem described above.
             output = subprocess.check_output(
                 ["tasklist", "/FO", "CSV", "/NH"], text=True, errors="replace")
             return [line.split(",")[0].strip('"') for line in output.splitlines()
                     if line.lower().startswith('"unrealeditor')]
-        output = subprocess.check_output(["pgrep", "-fl", "UnrealEditor"], text=True)
-        return [line.strip() for line in output.splitlines() if line.strip()]
     except (OSError, subprocess.CalledProcessError):
-        # pgrep exits 1 when nothing matches; tasklist may be absent in odd environments. Neither
-        # is a reason to stop -- this check is a courtesy, not a gate we can guarantee.
+        # tasklist may be absent in odd environments. Not a reason to stop -- this check is a
+        # courtesy, not a gate we can guarantee.
         return []
+
+    found: list[str] = []
+    for name in UNREAL_EDITOR_PROCESS_NAMES:
+        try:
+            output = subprocess.check_output(["pgrep", "-x", name], text=True)
+        except (OSError, subprocess.CalledProcessError):
+            continue  # pgrep exits 1 when nothing matches, which is the normal case.
+        # Report the pid too: if this ever fires wrongly again, the message names something the
+        # reader can look up directly instead of a bare process name they have to go hunting for.
+        found += [f"{name} (pid {pid.strip()})" for pid in output.splitlines() if pid.strip()]
+    return found
 
 
 # ---------------------------------------------------------------------------------------------
@@ -484,6 +722,12 @@ def parse_arguments() -> argparse.Namespace:
                         help="MSVC toolset version. 'auto' prefers %s, 'none' uses the generator "
                              "default, or give an exact version. Windows only."
                              % PREFERRED_MSVC_TOOLSET)
+    parser.add_argument("--xcode", default="auto",
+                        help="Xcode to build with. 'auto' uses the active one if UE 5.5 accepts "
+                             "it (%s-%s) and otherwise substitutes an installed Xcode that it "
+                             "does, 'none' uses whatever xcode-select points at, or give a path "
+                             "to an Xcode.app. macOS only."
+                             % (format_version(UE55_XCODE_MIN), format_version(UE55_XCODE_MAX)))
     parser.add_argument("--build-dir", default="_superbuild",
                         help="CMake build tree (default: _superbuild).")
     parser.add_argument("--clean", action="store_true",
@@ -543,21 +787,36 @@ def main() -> int:
         toolset_arg = msvc_toolset_argument(toolset)
         note(f"generator {generator!r}, toolset {toolset or '<generator default>'!r}")
     else:
-        # Nothing to detect off Windows: CMake's default generator (Ninja or Unix Makefiles) is
-        # correct, and -T is a Visual Studio concept. The IFC++ bridge is Win64-only today and the
-        # CMakeLists skips it on its own.
+        # CMake's default generator (Ninja or Unix Makefiles) is correct off Windows, and -T is a
+        # Visual Studio concept. The IFC++ bridge is Win64-only today and the CMakeLists skips it
+        # on its own.
         if generator == "auto":
             generator = ""
         note(f"generator {generator or '<CMake default>'!r} ({platform.system()})")
 
+    # Which Xcode compiles the dependencies. Chosen per run via DEVELOPER_DIR rather than
+    # `sudo xcode-select -s`, so this needs no privileges and leaves the machine as it found it.
+    # Setting it in our own environment is enough: cmake, the compilers it drives and anything
+    # they shell out to (xcrun in particular) all inherit it.
+    developer_dir = resolve_developer_dir(args.xcode) if IS_MACOS else None
+    if developer_dir:
+        os.environ["DEVELOPER_DIR"] = str(developer_dir)
+
+    # Used only to spot a build tree configured against a different Xcode. When resolution left
+    # the environment alone there is still an active toolchain to compare against, so ask for it.
+    sysroot_owner = developer_dir or (active_developer_dir() if IS_MACOS else None)
+
     running_editors = unreal_editor_processes()
     if running_editors and not args.allow_editor_running:
+        listing = "\n".join(f"      {name}" for name in sorted(set(running_editors)))
         fail(
-            f"Unreal Editor is running ({', '.join(sorted(set(running_editors)))}).\n\n"
+            f"Unreal Editor is running:\n\n{listing}\n\n"
             "  The Assimp stage writes into Plugins/UE4_Assimp/Binaries/<Platform>, which the\n"
             "  editor holds open, and rebuilding a dependency under a live editor can trigger a\n"
             "  hot-reload restart.\n\n"
-            "  Close the editor, or pass --allow-editor-running if this run cannot touch it."
+            "  Close the editor, or pass --allow-editor-running if this run cannot touch it.\n\n"
+            "  Those are real processes matched by name, not by command line. If none of them is\n"
+            "  an editor you opened, that is a bug in this check -- please report the lines above."
         )
 
     # -- Build-tree hygiene --------------------------------------------------------------------
@@ -582,7 +841,7 @@ def main() -> int:
         step(f"Removing build tree {build_path} (--clean)")
         shutil.rmtree(build_path, ignore_errors=True)
     elif cache_path.is_file():
-        reason = stale_reason(cache_path, generator, toolset_arg, version)
+        reason = stale_reason(cache_path, generator, toolset_arg, version, sysroot_owner)
         if reason:
             step(f"Discarding unusable build tree {build_path}")
             note(reason)

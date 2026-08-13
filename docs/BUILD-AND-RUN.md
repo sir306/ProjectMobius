@@ -51,9 +51,17 @@ Common:
 <summary><strong>macOS (Apple Silicon)</strong></summary>
 
 - macOS 11 or newer on Apple Silicon
-- Full Xcode selected via `xcode-select`
-- Unreal Engine 5.5 in the local engine source supports Xcode `15.2.0`
-  through `16.9.0`
+- A full Xcode — the Command Line Tools alone are not enough to build the engine
+- Unreal Engine 5.5 supports Xcode `15.2.0` through `16.9.0` (its own
+  `Engine/Config/Apple/Apple_SDK.json`), and **refuses anything outside that
+  range**. A recently bought Mac ships an Xcode well past `16.9`, so keeping an
+  in-range one installed alongside it is normal here — Xcode supports
+  side-by-side installs, e.g. `/Applications/Xcode_16.2.app`.
+- You do **not** have to `xcode-select` it. If the active Xcode is out of range
+  and an in-range one is installed, `superbuild.py` uses that one for the run
+  via `DEVELOPER_DIR` and says so; the machine default is left alone. Pin it
+  yourself with `--xcode /Applications/Xcode_16.2.app`, or opt out entirely
+  with `--xcode none`.
 - These notes were last tested with `Xcode 16.4`
 - Ninja is optional. With none installed CMake falls back to Unix Makefiles,
   which works; to prefer Ninja pass `--generator Ninja` to `superbuild.py` (or
@@ -117,16 +125,16 @@ python superbuild.py
 
 (`python3` on macOS/Linux. Needs Python 3.8+ and CMake 3.21+.)
 
-That is the whole thing. It detects your compiler — on Windows, your Visual
-Studio and MSVC toolset — discards a `_superbuild/` tree that cannot be reused,
-builds and installs every dependency, then verifies that each file
-UnrealBuildTool will look for is actually on disk. The IFC++ bridge is Win64-only
-today and is skipped automatically elsewhere.
+That is the whole thing. It detects your compiler — on Windows your Visual
+Studio and MSVC toolset, on macOS an Xcode the engine accepts — discards a
+`_superbuild/` tree that cannot be reused, builds and installs every dependency,
+then verifies that each file UnrealBuildTool will look for is actually on disk.
+The IFC++ bridge is Win64-only today and is skipped automatically elsewhere.
 
 You should never need to clean the build tree by hand. It is discarded and
 regenerated automatically when it was created on a different machine, by a
-different CMake, or for a different generator or MSVC toolset — and it says
-which of those happened.
+different CMake, or for a different generator, MSVC toolset or Xcode — and it
+says which of those happened.
 
 Useful switches:
 
@@ -136,7 +144,14 @@ Useful switches:
 | `--rebuild` | Also discard the installed dependency trees |
 | `--skip-ifc` | Skip the IFC++ pass (by far the longest) |
 | `--force-ifc` | Rebuild `MobiusIfcBridge` after editing its `.cpp`/`.h` |
-| `--generator` / `--toolset` | Override the auto-detected toolchain |
+| `--generator` / `--toolset` | Override the auto-detected toolchain (Windows) |
+| `--xcode` | Override the auto-selected Xcode (macOS) — a path, or `none` |
+| `--allow-editor-running` | Build even though an Unreal Editor is open |
+
+The editor check is a name match against running processes. If it fires when no
+editor is open, the error lists the processes and PIDs it matched — that is a
+bug worth reporting, not something to work around with
+`--allow-editor-running`.
 | `--help` | Everything else |
 
 ### Plain CMake
