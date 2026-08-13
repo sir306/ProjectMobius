@@ -605,6 +605,17 @@ private:
 	/** True once SetBuildingMaterialStyle has run at least once, so the default look is not disturbed. */
 	bool bBuildingMaterialStyleChosen = false;
 
+	/**
+	 * Whether the load carried MORE THAN ONE distinct section colour, i.e. colours worth showing rather
+	 * than a single flat default. Computed once from the incoming chunks at hand-off, before the first
+	 * section is emitted, because two consumers need it and one of them needs it early:
+	 *   - ApplySourceMaterialToSection, to build a coloured building straight onto the opaque parent
+	 *     instead of onto Blueprint's translucent default and restyling a frame later; and
+	 *   - DoesBuildingHaveAuthoredColours, which the render-mode widget reads to pick its own default.
+	 * One flag rather than one rule implemented twice, so those two can never disagree.
+	 */
+	bool bSourceColoursAreMeaningful = false;
+
 	/** Resolves the MI_RuntimeMeshBuilder* instance backing a style. Null (and one log line) if missing. */
 	UMaterialInterface* ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style) const;
 

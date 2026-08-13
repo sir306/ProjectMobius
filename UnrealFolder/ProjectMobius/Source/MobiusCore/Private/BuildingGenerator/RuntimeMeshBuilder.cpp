@@ -368,6 +368,7 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 	TranslucentViewRefractionSnapshot.Empty();
 	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
+	bSourceColoursAreMeaningful = false;
 	ResetMeshCollisionAndPhysics();
 
 	const FBox MeshBounds(InVertices);
@@ -659,6 +660,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	TranslucentViewRefractionSnapshot.Empty();
 	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
+	bSourceColoursAreMeaningful = false;
 
 	// Remove any flow counters, as the mesh is changing
 	FlowCounterSpawnerComponent->RemoveAllFlowCounters();
@@ -1108,6 +1110,40 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	// populated bounds. Each section is cooked WITH collision (bCreateCollision=true) in the pump; the
 	// component itself is switched from its ctor NoCollision to QueryOnly once in FinalizeMeshEmit, so
 	// the cooked geometry becomes queryable for cursor ray-traces.
+	// Decide BEFORE the first section is emitted whether this building's own colours are worth showing,
+	// so the sections can be built straight onto the opaque parent instead of being built translucent and
+	// restyled a moment later. The owner reported exactly that flash (2026-08-13): an IFC carrying
+	// materials appeared transparent and then snapped to solid once the widget's load-time selection
+	// landed. Choosing the parent up front removes the intermediate state rather than hiding it.
+	//
+	// Read off the incoming chunks because SectionSourceMaterials is not populated until the pump has
+	// run, and this has to be known before the first section exists. Must come before the MoveTemp below.
+	// Same "two distinct colours" rule as DoesBuildingHaveAuthoredColours -- which now reports this very
+	// flag, so the widget's idea of "has colours" and the builder's cannot drift apart.
+	bSourceColoursAreMeaningful = false;
+	{
+		const FMobiusMeshMaterial* FirstStyled = nullptr;
+		for (const FAssimpSubmeshBuffers& Chunk : Chunks)
+		{
+			if (!Chunk.Material.bHasMaterial)
+			{
+				continue;
+			}
+
+			if (FirstStyled == nullptr)
+			{
+				FirstStyled = &Chunk.Material;
+				continue;
+			}
+
+			if (!Chunk.Material.BaseColour.Equals(FirstStyled->BaseColour, KINDA_SMALL_NUMBER))
+			{
+				bSourceColoursAreMeaningful = true;
+				break;
+			}
+		}
+	}
+
 	PendingMeshChunks = MoveTemp(Chunks);
 	PendingChunkEmitIndex = 0;
 	ChunkEmitStartTime = FPlatformTime::Seconds();
@@ -1265,31 +1301,11 @@ bool ARuntimeMeshBuilder::DoesBuildingHaveAuthoredColours() const
 	// That costs almost nothing visually -- single-colour opaque and single-colour translucent convey the
 	// same amount -- whereas the fbx case was actively wrong.
 	//
-	// Comparing against the FIRST styled colour rather than collecting a set keeps this O(n) with no
-	// allocation, and it answers the only question being asked: is there more than one? Equals() carries
-	// a tolerance because these are floats off a file parse, and exact comparison would let rounding
-	// noise fake a second colour -- which fails toward "coloured", the wrong direction for this test.
-	const FMobiusMeshMaterial* FirstStyled = nullptr;
-	for (const FMobiusMeshMaterial& Source : SectionSourceMaterials)
-	{
-		if (!Source.bHasMaterial)
-		{
-			continue;
-		}
-
-		if (FirstStyled == nullptr)
-		{
-			FirstStyled = &Source;
-			continue;
-		}
-
-		if (!Source.BaseColour.Equals(FirstStyled->BaseColour, KINDA_SMALL_NUMBER))
-		{
-			return true;
-		}
-	}
-
-	return false;
+	// Answered from the flag computed at chunk handoff rather than recomputed here, deliberately. The
+	// emit path needs the same answer BEFORE any section exists, to pick each section's parent material;
+	// two implementations of one rule would be free to disagree, and the symptom would be a building that
+	// renders in one mode while the combo names another -- the exact class of bug this work fixed.
+	return bSourceColoursAreMeaningful;
 }
 
 void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle Style)
@@ -1486,10 +1502,25 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		return false;
 	}
 
+	// A building that carries its own colours is built OPAQUE from the first section, not built on
+	// Blueprint's translucent default and restyled once the widget catches up. Without this the whole
+	// mesh appears transparent and then snaps to solid, which is what the owner reported.
+	//
+	// Gated on !bBuildingMaterialStyleChosen so it only ever supplies the DEFAULT: once the user has
+	// picked a mode, their choice owns the parent and this must not second-guess it.
+	UMaterialInterface* Parent = nullptr;
+	if (bSourceColoursAreMeaningful && !bBuildingMaterialStyleChosen)
+	{
+		Parent = ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours);
+	}
+
 	// NOT MobiusMaterialInstanceDynamic itself -- that is a MID, and Blueprint derives it from whatever is
 	// currently on the section, so using it as a parent stacks MIDs and eventually nulls the parent.
 	// ResolveNonDynamicParent walks to the asset behind it; see its header comment.
-	UMaterialInterface* Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	if (!Parent)
+	{
+		Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	}
 	if (!Parent)
 	{
 		// The walk found no asset, which means Blueprint handed us a MID that UE had ALREADY refused to
