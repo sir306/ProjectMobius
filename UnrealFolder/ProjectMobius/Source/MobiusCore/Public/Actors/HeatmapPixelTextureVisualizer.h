@@ -702,16 +702,24 @@ public:
 	 * brightest cell". See FHeatmapLOSBands::Trajectory() for the numbers and their provenance.
 	 *
 	 * ONE SET PER MODE. Route Usage and Route Exposure are different quantities with different reference
-	 * densities (100 person/m vs 200 person*s/m^2), so a single normalised set cannot serve both — reusing
+	 * densities (100 person/m vs 240 person*s/m^2), so a single normalised set cannot serve both — reusing
 	 * Usage's edges for Exposure mis-bands it by the ratio of the references. ApplyTrajectoryLOSBands picks
 	 * whichever matches the active mode.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
 	FHeatmapLOSBands TrajectoryLOSBands = FHeatmapLOSBands::Trajectory();
 
-	/** Route Exposure's own edges. See TrajectoryLOSBands for why the two cannot be one set. */
+	/**
+	 * Route Exposure's own edges. See TrajectoryLOSBands for why the two cannot be one set.
+	 *
+	 * Initialised UNBANDED (renders empty) rather than to a stored default, because the real edges depend
+	 * on the stroke width and reference density and are derived in RefreshTrajectoryCrossingBands, which
+	 * both branches of EnsureTrajectoryFieldSized call. Until the field is sized there is no honest
+	 * banding, and the previous initialiser — a frozen quantile set built against a 200 reference that is
+	 * now 240 — silently rendered a 20 %-adrift scale during that window.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|Trajectory")
-	FHeatmapLOSBands TrajectoryExposureLOSBands = FHeatmapLOSBands::TrajectoryExposure();
+	FHeatmapLOSBands TrajectoryExposureLOSBands = FHeatmapLOSBands::Unbanded();
 
 	/**
 	 * Is this a Standard Heatmap or a Voronoi Map:
