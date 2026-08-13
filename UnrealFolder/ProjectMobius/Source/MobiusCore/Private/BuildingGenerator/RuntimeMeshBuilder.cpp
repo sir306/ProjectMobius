@@ -368,6 +368,7 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 	TranslucentViewRefractionSnapshot.Empty();
 	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
+	bSourceColoursAreMeaningful = false;
 	ResetMeshCollisionAndPhysics();
 
 	const FBox MeshBounds(InVertices);
@@ -659,6 +660,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	TranslucentViewRefractionSnapshot.Empty();
 	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
+	bSourceColoursAreMeaningful = false;
 
 	// Remove any flow counters, as the mesh is changing
 	FlowCounterSpawnerComponent->RemoveAllFlowCounters();
@@ -1108,6 +1110,40 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	// populated bounds. Each section is cooked WITH collision (bCreateCollision=true) in the pump; the
 	// component itself is switched from its ctor NoCollision to QueryOnly once in FinalizeMeshEmit, so
 	// the cooked geometry becomes queryable for cursor ray-traces.
+	// Decide BEFORE the first section is emitted whether this building's own colours are worth showing,
+	// so the sections can be built straight onto the opaque parent instead of being built translucent and
+	// restyled a moment later. The owner reported exactly that flash (2026-08-13): an IFC carrying
+	// materials appeared transparent and then snapped to solid once the widget's load-time selection
+	// landed. Choosing the parent up front removes the intermediate state rather than hiding it.
+	//
+	// Read off the incoming chunks because SectionSourceMaterials is not populated until the pump has
+	// run, and this has to be known before the first section exists. Must come before the MoveTemp below.
+	// Same "two distinct colours" rule as DoesBuildingHaveAuthoredColours -- which now reports this very
+	// flag, so the widget's idea of "has colours" and the builder's cannot drift apart.
+	bSourceColoursAreMeaningful = false;
+	{
+		const FMobiusMeshMaterial* FirstStyled = nullptr;
+		for (const FAssimpSubmeshBuffers& Chunk : Chunks)
+		{
+			if (!Chunk.Material.bHasMaterial)
+			{
+				continue;
+			}
+
+			if (FirstStyled == nullptr)
+			{
+				FirstStyled = &Chunk.Material;
+				continue;
+			}
+
+			if (!Chunk.Material.BaseColour.Equals(FirstStyled->BaseColour, KINDA_SMALL_NUMBER))
+			{
+				bSourceColoursAreMeaningful = true;
+				break;
+			}
+		}
+	}
+
 	PendingMeshChunks = MoveTemp(Chunks);
 	PendingChunkEmitIndex = 0;
 	ChunkEmitStartTime = FPlatformTime::Seconds();
@@ -1242,6 +1278,34 @@ UMaterialInterface* ARuntimeMeshBuilder::ResolveStyleParentMaterial(EMobiusBuild
 			*GetName(), *Path);
 	}
 	return Loaded;
+}
+
+bool ARuntimeMeshBuilder::DoesBuildingHaveAuthoredColours() const
+{
+	// A Datasmith scene always brings its own materials, and they never pass through
+	// SectionSourceMaterials -- the plugin's importer puts them in DatasmithMaterialsMap instead, so
+	// asking the array about a Datasmith building would always answer "no".
+	if (bIsDatasmithAsset)
+	{
+		return true;
+	}
+
+	// TWO DISTINCT COLOURS ARE REQUIRED, not one styled section. Owner ruling 2026-08-13, and the reason
+	// is a measurement rather than a preference: ISO-Test-8-FireSmoke.fbx declares a diffuse on both its
+	// sections, so bHasMaterial is legitimately true -- but the colour is 0.8/0.8/0.8 on both, assimp's
+	// default grey. Treating that as "has colours" opened the building opaque grey, which is not what
+	// "use the original colours" is for. A file whose every section is the same single colour has nothing
+	// to show off, so it belongs in the translucent default alongside a file with no colours at all.
+	//
+	// The trade is explicit: a building genuinely authored in one colour is now reported as uncoloured.
+	// That costs almost nothing visually -- single-colour opaque and single-colour translucent convey the
+	// same amount -- whereas the fbx case was actively wrong.
+	//
+	// Answered from the flag computed at chunk handoff rather than recomputed here, deliberately. The
+	// emit path needs the same answer BEFORE any section exists, to pick each section's parent material;
+	// two implementations of one rule would be free to disagree, and the symptom would be a building that
+	// renders in one mode while the combo names another -- the exact class of bug this work fixed.
+	return bSourceColoursAreMeaningful;
 }
 
 void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle Style)
@@ -1438,10 +1502,32 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		return false;
 	}
 
+	// A building that carries its own colours is built OPAQUE from the first section, not built on
+	// Blueprint's translucent default and restyled once the widget catches up. Without this the whole
+	// mesh appears transparent and then snaps to solid, which is what the owner reported.
+	//
+	// GATED ON bMeshBeingBuilt, i.e. ONLY WHILE THE EMIT PUMP IS RUNNING, and the gate is the whole
+	// correctness of this. SetMaterialOnMesh calls this function again after the load, on behalf of
+	// whatever material the widget just supplied, and its contract (see its comment) is that the source
+	// colour is layered ON TOP of the caller's material rather than overriding it. Forcing opaque there
+	// would make every translucent render mode silently do nothing on a coloured building.
+	//
+	// !bBuildingMaterialStyleChosen was tried as the gate first and is WRONG: on the procedural path the
+	// widget reaches UpdateMeshMaterial and never SetBuildingMaterialStyle, so that flag stays false for
+	// the entire session and the gate never closes.
+	UMaterialInterface* Parent = nullptr;
+	if (bSourceColoursAreMeaningful && bMeshBeingBuilt)
+	{
+		Parent = ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours);
+	}
+
 	// NOT MobiusMaterialInstanceDynamic itself -- that is a MID, and Blueprint derives it from whatever is
 	// currently on the section, so using it as a parent stacks MIDs and eventually nulls the parent.
 	// ResolveNonDynamicParent walks to the asset behind it; see its header comment.
-	UMaterialInterface* Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	if (!Parent)
+	{
+		Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	}
 	if (!Parent)
 	{
 		// The walk found no asset, which means Blueprint handed us a MID that UE had ALREADY refused to
@@ -1463,6 +1549,18 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 	{
 		bSourceColourParamProbeDone = true;
 		SourceColourProbedParent = Parent;
+
+		// "Plain Colours Transparent" means PLAIN -- white, not the source's colours. SetBuildingMaterialStyle
+		// has always known that (its bForceWhite), but the widget's procedural path never reaches that
+		// function: it goes UpdateMeshMaterial -> SetMaterialOnMesh -> here, which applied the source colour
+		// unconditionally. The result was that "Plain Colours Transparent" and "Original Colours Transparent"
+		// differed only by clear coat and read as the same mode -- owner-reported 2026-08-13.
+		//
+		// Decided per PARENT, in the same cached probe, so it costs one comparison per style change rather
+		// than a LoadObject per section. The four styles each resolve to a different MI_RuntimeMeshBuilder*
+		// asset, so the parent identifies the style unambiguously.
+		bSourceParentIsPlainWhiteStyle =
+			(Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::TransparentWhite));
 
 		FLinearColor Unused;
 		bSourceColourParamsAvailable =
@@ -1493,7 +1591,11 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		return false;
 	}
 
-	SectionMaterial->SetVectorParameterValue(FName("NewColour"), SourceMaterial.BaseColour);
+	// White for the plain-transparent style, the source's own colour for every other style. Mirrors
+	// SetBuildingMaterialStyle's bForceWhite so both routes to a style agree on what it looks like.
+	SectionMaterial->SetVectorParameterValue(
+		FName("NewColour"),
+		bSourceParentIsPlainWhiteStyle ? FLinearColor::White : SourceMaterial.BaseColour);
 	SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
 	// Alpha carries the source's opacity. Only pushed when the parameter exists, and only when the
 	// source actually asked for transparency -- overwriting the project's own opacity handling on an

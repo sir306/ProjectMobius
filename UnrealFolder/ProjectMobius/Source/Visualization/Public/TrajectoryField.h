@@ -99,15 +99,30 @@ struct FTrajectoryFieldConfig
 	float ReferenceUsageDensity = 100.0f;    // person/m
 
 	/**
-	 * 240 since 2026-08-10, up from the capture-derived 200, and it is DERIVED not fitted. Route Exposure
-	 * is banded in transit-equivalents whose top edge is 50 transits, and that edge fits the [0,1] display
-	 * channel only when CellSide * Reference * v_free >= 50 — at the shipping 15 cm cell and SFPE's
-	 * 1.40 m/s that needs >= 238.1. Below it the top edge clamps to 1.0 and band F becomes UNREACHABLE, so
+	 * 240 since 2026-08-10, up from the capture-derived 200.
+	 *
+	 * ⚠️ CORRECTED 2026-08-13 — this value is NOT derived, and the derivation that used to sit here was
+	 * wrong. It read: "the top edge fits the [0,1] display channel only when CellSide * Reference *
+	 * v_free >= 50 — at the shipping 15 cm cell and SFPE's 1.40 m/s that needs >= 238.1", which is what
+	 * 240 was picked to clear.
+	 *
+	 * The length in that inequality is the DISPLAY STROKE WIDTH, not the cell side. That is exactly the
+	 * confusion acb392a9 fixed in FHeatmapLOSBands (both factories took a parameter named CellSideMetres
+	 * while TrajectoryTransits needed the width, which made the wrong argument look right at the call
+	 * site), and this comment was the last surviving instance of it. At the shipping 45 cm width the real
+	 * bar is 50 / (0.45 * 1.40) = 79.4, not 238.1 — the two differ by exactly the 45/15 = 3x that caused
+	 * the original defect.
+	 *
+	 * What remains TRUE: below the bar, the top edge clamps to 1.0 and band F becomes UNREACHABLE, so
 	 * queueing and blocked render identically and nothing complains, because the clamp keeps the chain
 	 * monotonic. Distinguishing those two is the entire purpose of the surface.
 	 *
-	 * See FHeatmapLOSBands::MinimumExposureReferenceForFullLadder, which is what a gate should read rather
-	 * than transcribing 238.
+	 * So this is a FREE PRESENTATION CHOICE anywhere above ~79.4, not a forced value. It is a brightness
+	 * dial: the displayed value is density / Reference, so 240 renders every cell ~17 % dimmer than the
+	 * capture-derived 200 would. Open owner decision — do not treat the current number as load-bearing.
+	 *
+	 * Read FHeatmapLOSBands::MinimumExposureReferenceForFullLadder for the bar rather than transcribing
+	 * any number from this comment; it takes the same length scale as TrajectoryTransits by construction.
 	 */
 	float ReferenceExposureDensity = 240.0f; // person*s/m^2
 

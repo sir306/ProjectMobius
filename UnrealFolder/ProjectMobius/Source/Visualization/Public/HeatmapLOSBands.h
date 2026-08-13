@@ -330,9 +330,11 @@ struct VISUALIZATION_API FHeatmapLOSBands
 		const float Denominator = StrokeWidthMetres * ReferenceExposureDensity * FreeWalkSpeed;
 		if (!FMath::IsFinite(Denominator) || Denominator <= 0.0f)
 		{
-			// No valid cell size or anchor means there is no transit to count. The frozen quantile set is
-			// at least monotonic and in range; a caller landing here is banding an unsized field.
-			return TrajectoryExposure();
+			// No valid stroke width or anchor means there is no transit to count, so there is no honest
+			// banding to return. Render nothing rather than a plausible scale — a caller landing here is
+			// banding an unsized field, and the previous behaviour (a frozen quantile set built against a
+			// reference that has since changed) made that look like real data.
+			return Unbanded();
 		}
 
 		// Same reasoning as TrajectoryCrossings: the 0/1 edge is the ROUTE THRESHOLD, not an is-it-nonzero
@@ -370,25 +372,32 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	}
 
 	/**
-	 * The same treatment for Route Exposure, normalised against ReferenceExposureDensity
-	 * (200 person*s/m^2). Exposure needs its OWN set: it is a different quantity with a different
-	 * reference, so reusing the Usage edges would mis-band it by the ratio of the two references.
+	 * "No valid banding" — every edge at 1.0, so every cell reads as LOS_A (the no-data colour) and the
+	 * surface renders EMPTY. Use where a band set is structurally required but cannot honestly be derived.
 	 *
-	 *   BandA..BandB  <= 12.95 person*s/m^2  p50
-	 *   BandB..BandC  <= 30.62               p75
-	 *   BandC..BandD  <= 62.74               p90
-	 *   BandD..BandE  <= 126.74              p97
+	 * This replaces a frozen quantile set (`TrajectoryExposure()`, deleted 2026-08-13) whose four edges
+	 * were arithmetically 200-based — 0.0648/0.1531/0.3137/0.6337 are 12.95/30.62/62.74/126.74 divided by
+	 * **200** — while ReferenceExposureDensity has been **240** since 2026-08-10. Decoded against the live
+	 * reference those edges meant 15.55/36.7/75.3/152.1, so the legend was 20 % adrift from the pixels. It
+	 * was reachable two ways: as the fallback in TrajectoryTransits, and as the member initialiser for
+	 * AHeatmapPixelTextureVisualizer::TrajectoryExposureLOSBands, i.e. the value in force until the field
+	 * is first sized.
 	 *
-	 * Same capture and method as Trajectory(), person_seconds column. PROVISIONAL under D9.
+	 * An empty surface is the deliberate choice over a plausible one. The failure this guards is a map
+	 * that looks authoritative and is silently mis-scaled; a blank surface is wrong in a way somebody
+	 * notices. Do NOT "improve" this by substituting a nice-looking default — that is the deleted bug.
+	 *
+	 * (Only a fully saturated cell, normalised exactly 1.0, takes LOS_F, since bands are "first edge the
+	 * value is strictly below". That is intentional: saturation is still worth seeing.)
 	 */
-	static FHeatmapLOSBands TrajectoryExposure()
+	static FHeatmapLOSBands Unbanded()
 	{
 		FHeatmapLOSBands Bands;
-		Bands.BandA = 0.5f / 255.0f; // no-data threshold, as above
-		Bands.BandB = 0.0648f;       //  12.95 person*s/m^2 (p50)
-		Bands.BandC = 0.1531f;       //  30.62 person*s/m^2 (p75)
-		Bands.BandD = 0.3137f;       //  62.74 person*s/m^2 (p90)
-		Bands.BandE = 0.6337f;       // 126.74 person*s/m^2 (p97)
+		Bands.BandA = 1.0f;
+		Bands.BandB = 1.0f;
+		Bands.BandC = 1.0f;
+		Bands.BandD = 1.0f;
+		Bands.BandE = 1.0f;
 		return Bands;
 	}
 };

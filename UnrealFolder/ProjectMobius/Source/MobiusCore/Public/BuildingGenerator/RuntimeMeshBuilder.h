@@ -583,6 +583,14 @@ private:
 	/** Probe state for the above; re-evaluated per load AND whenever the resolved parent changes. */
 	bool bSourceColourParamProbeDone = false;
 	bool bSourceColourParamsAvailable = false;
+
+	/**
+	 * True when the resolved parent is the TransparentWhite style asset, i.e. "Plain Colours Transparent".
+	 * That style is PLAIN by definition, so sections take white instead of their source colour — the same
+	 * rule SetBuildingMaterialStyle applies via bForceWhite. Cached with the probe above because the parent
+	 * identifies the style, so it is one comparison per style change rather than a lookup per section.
+	 */
+	bool bSourceParentIsPlainWhiteStyle = false;
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> SourceColourProbedParent = nullptr;
 
@@ -604,6 +612,17 @@ private:
 
 	/** True once SetBuildingMaterialStyle has run at least once, so the default look is not disturbed. */
 	bool bBuildingMaterialStyleChosen = false;
+
+	/**
+	 * Whether the load carried MORE THAN ONE distinct section colour, i.e. colours worth showing rather
+	 * than a single flat default. Computed once from the incoming chunks at hand-off, before the first
+	 * section is emitted, because two consumers need it and one of them needs it early:
+	 *   - ApplySourceMaterialToSection, to build a coloured building straight onto the opaque parent
+	 *     instead of onto Blueprint's translucent default and restyling a frame later; and
+	 *   - DoesBuildingHaveAuthoredColours, which the render-mode widget reads to pick its own default.
+	 * One flag rather than one rule implemented twice, so those two can never disagree.
+	 */
+	bool bSourceColoursAreMeaningful = false;
 
 	/** Resolves the MI_RuntimeMeshBuilder* instance backing a style. Null (and one log line) if missing. */
 	UMaterialInterface* ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style) const;
@@ -686,6 +705,31 @@ public:
 	/** The style currently applied. Until one is requested, sections keep the BP-supplied material. */
 	UFUNCTION(BlueprintPure, Category = "MeshGenerator|Material")
 	EMobiusBuildingMaterialStyle GetBuildingMaterialStyle() const { return CurrentBuildingMaterialStyle; }
+
+	/**
+	 * True when the building that was just loaded brought MEANINGFUL colours of its own: a Datasmith
+	 * scene (which always arrives with materials), or a procedural build — IFC, fbx, obj — carrying at
+	 * least TWO distinct section colours. Format-agnostic on purpose: the IFC-only LastIfcLoadStats
+	 * would have answered "no" for an fbx that does have colours.
+	 *
+	 * "Two distinct" rather than "any styled section" is an owner ruling (2026-08-13) forced by a real
+	 * file: an fbx can declare a diffuse on every section and have it be one flat default grey, which
+	 * satisfies bHasMaterial while having nothing to show. See the implementation comment for the
+	 * measurement and the trade-off it accepts.
+	 *
+	 * Exists so WBP_SetBuildingMat can pick its OWN starting render mode: a file with authored colours
+	 * opens on an original-colours entry, a file without opens translucent. Deliberately a pure read that
+	 * changes nothing. The previous attempt at this behaviour instead applied a style from C++ at load
+	 * (bb2601db, reverted in 6c75daee) and the combo went on disagreeing anyway, because applying a style
+	 * is not the same as telling the widget. Answering the question and letting the widget act through
+	 * its own selection path is what keeps the two in step.
+	 *
+	 * Safe to call from the OnMeshBuilt handler: SectionSourceMaterials is fully populated by the emit
+	 * pump before FinalizeMeshEmit broadcasts, and bIsDatasmithAsset is still set when the Datasmith
+	 * drain broadcasts.
+	 */
+	UFUNCTION(BlueprintPure, Category = "MeshGenerator|Material")
+	bool DoesBuildingHaveAuthoredColours() const;
 
 	// ---------------------------------------------------------------------------------------------
 	// One parameterless entry point per style, for the widget buttons.
