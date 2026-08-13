@@ -176,14 +176,36 @@ short step — the merge just has to preserve the existing UV islands or re-bake
 
 ---
 
+## Status
+
+**Imported and live at high spec (2026-08-13).** The merged mesh is
+`/Game/01_Dev/PedestrianMovement/Wheelchair/SM_Wheelchair`, and the high-spec pedestrian Niagara
+system renders it. **Low spec still renders the ~12-triangle `SM_WheelchairPlaceholder` box**, by
+decision — 9,605 triangles instanced across a crowd defeats the purpose of the low-spec level. The two
+levels therefore now draw *different* chair meshes.
+
+Textures are **not** wired yet: the chair renders with the flat-coloured `M_WheelchairPlaceholder`
+that the box used. Both levels are still served one material through a single parameter, so texturing
+that shared material would make the low-spec box sample this chair's UV atlas. Resolving that needs a
+spec-gated material, which is a separate change.
+
 ## Follow-ups this asset triggers
 
-- **Wheelchair spec D6 / §5.2.** Those were sized against a 95 cm placeholder box. The merged chair
-  is **111.5 cm** tall — 16.5 cm taller, so expect the seated agent to sit visibly low against it
-  until this is revisited. The seated hover height (`GWheelchairSeatedHeightCm = 130.0`) and the configurable
-  `WheelchairBreathingHeightCm = 160.0` should be revisited against the real seat height. The spec
-  already flags this: *"When the mesh lands, revisit D6's dimensions and §5.2's 130 cm."*
-- **`HANDOFF_LowSpecPedestrianMaterials_2026-08-11.md` §1** states the chair needs no low-poly
-  variant because both spec levels draw the same mesh. That was true for a ~12-triangle box and is
-  **no longer true** once high spec uses a 9,605-triangle chair. Low spec keeps the box by owner
-  decision, so the two levels now use *different* chair meshes.
+- **Seat height is now measured: 45 cm** (44–46 cm, area-weighted over upward-facing faces inside the
+  seat footprint). That is the standard real-world wheelchair seat height of 45–50 cm, which
+  independently corroborates that the import's scale, up-axis and floor pivot are all correct.
+  Note the chair's **111.5 cm total height is the wrong figure** for occupant reasoning — it includes
+  the push handles.
+- **Agent seated-height constants were sized against the 95 cm box** and want revisiting, but they are
+  **not the same kind of value:**
+  - `GWheelchairSeatedHeightCm` (130 cm) only anchors the height shown in the agent UI stats —
+    cosmetic.
+  - ⛔ `WheelchairBreathingHeightCm` (160 cm) is a **tenability analysis input**: it selects whether
+    an agent's exposure is sampled from the upper or lower smoke layer, so changing it **moves
+    published FED, visibility and temperature results.** It is under a deliberate freeze pending
+    stakeholder review. Treat the 45 cm measurement as *disclosure material* — a seated adult's nose
+    sits roughly 70–75 cm above the seat, i.e. ~115–120 cm rather than the 160 cm standing figure
+    currently applied to every agent. **Document the simplification; do not silently change the
+    constant.**
+- **LODs / remesh.** The mesh ships with a single LOD. An LOD chain or a decimated variant is what
+  would let the low-spec level use the real chair and retire the placeholder box.
