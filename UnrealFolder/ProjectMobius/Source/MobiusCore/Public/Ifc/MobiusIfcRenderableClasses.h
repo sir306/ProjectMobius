@@ -140,6 +140,22 @@ namespace MobiusIfc
 	 * callers. FMobiusIfcClassStats tracks both AnnotationCount (always) and
 	 * AnnotationRenderedCount (only non-zero once this is true) so flipping it is visible in the
 	 * summary line.
+	 *
+	 * WARNING: THIS FLAG IS NOT A RENDERING-ONLY DECISION. IT RESCALES TRAJECTORY ANALYSIS.
+	 *
+	 * The imported building's bounds ARE the heatmap's extent and origin:
+	 *     FinalizeMeshEmit -> OnMeshBuilt -> UpdateSpawnLocationAndHeatmapSize
+	 *       -> HeatmapBoundingSize = BoundExtents * 2 -> InitializeHeatmap -> HeatmapMeshSize2D
+	 *
+	 * On ISO-Test-8-FireSmoke.ifc the single IfcGeographicElement is a 40 x 22 m ground plate. Turning
+	 * annotations on admits it, and the rendered hull jumps 2178.6 x 1237.2 -> 4000.0 x 2200.0 cm,
+	 * silently re-scaling the trajectory lattice underneath the heatmap. There is no error and nothing
+	 * on screen says the analysis grid just changed.
+	 *
+	 * So before flipping this, decide the second question too: whether a site-scale IfcGeographicElement
+	 * should be excluded from the analysis bounds separately from the sensors. "Draw the sensors" and
+	 * "include a 40 x 22 m site plate in the analysis bounds" are two different decisions that this one
+	 * boolean currently couples together.
 	 */
 	inline constexpr bool bMobiusIfcRenderAnnotationClasses = false;
 
