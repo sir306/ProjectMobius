@@ -818,16 +818,30 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	 * rather than assumed.
 	 *
 	 * The default is B-Risk's own default, which is what a real door or window carries. It is NOT
-	 * universal: the 12-room export's three wall-leakage paths (ids 32/33/34) carry 1.0, because a
-	 * leakage width is already a calibrated EFFECTIVE area and a second contraction correction
-	 * would double-count it. Those three are permanently open while the doors shut at 60 s, so
-	 * they are the dominant path for most of that run - assuming 0.68 there ran them at 68 % of
-	 * B-Risk's own flow.
+	 * universal: the 12-room export's three wall-leakage paths (ids 32/33/34) carry 1.0. SR282
+	 * §4.6.2 (printed p.19) gives the rule - "In cases, where the top of the vent is flush with the
+	 * ceiling, then a value of 1.0 is recommended" - and the geometry agrees exactly: those three are
+	 * 3.999 m tall with a zero sill in rooms rooms.xml declares as 4.000 m. §7.12.2 (printed p.65)
+	 * says the same thing again for the spill-plume case. Those three are permanently open while the
+	 * doors shut at 60 s, so they are the dominant path for most of that run - assuming 0.68 there
+	 * ran them at 68 % of B-Risk's own flow.
+	 *
+	 * ZERO IS A VALUE, NOT AN ABSENCE. SR282 §4.6.2(d) (printed p.20) closes a vent sampled shut by
+	 * "setting the discharge coefficient to zero", and adds that "if using this option causes the
+	 * initial state of the vent to be closed, then using the vent opening options will not
+	 * subsequently open the vent". So cd = 0 means SHUT FOR THE WHOLE RUN and IsOpenAtTime honours
+	 * it. Substituting the 0.68 default there would draw full flow through an opening B-Risk has
+	 * shut - the same failure de87f506 fixed for the schedule path. The manual states no valid range
+	 * at all, only that 0.6-0.7 is "typical" and that "the user is responsible for entering an
+	 * appropriate value", so the bounds enforced on import are ours: [0, 1].
 	 *
 	 * Populated by the same vents.xml join that sets bHasSchedule; when that flag is false no
 	 * record was matched and this is the default rather than a value read from the file.
 	 */
 	double DischargeCoefficient = BRiskDefaultDischargeCoefficient;
+
+	/** True when cd is exactly zero, i.e. B-Risk holds this opening shut for the entire run. */
+	bool IsShutByDischargeCoefficient() const { return DischargeCoefficient == 0.0; }
 
 	/**
 	 * Is the opening open at this simulation time?
@@ -851,12 +865,17 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	 * Reporting it open was the old behaviour and was wrong in the worst direction for an evacuation
 	 * model: a window drawn open all run, with flow through it, that B-Risk had shut throughout.
 	 *
+	 * A cd = 0 vent is likewise SHUT for the whole run, for the same shape of reason: SR282 §4.6.2(d)
+	 * says that is how B-Risk closes a vent sampled shut, and that the opening options "will not
+	 * subsequently open" it. Its schedule is therefore irrelevant and must not be consulted - see
+	 * DischargeCoefficient. Both closures are checked before the times, not after.
+	 *
 	 * NOTE: an earlier version of this comment claimed "every trigger is False across the test data".
 	 * That is false - vent 27 of the 12-room export carries autoopenvent=True + triggerFR=True.
 	 */
 	bool IsOpenAtTime(double TimeSeconds) const
 	{
-		if (bAutoOpenVent)
+		if (bAutoOpenVent || IsShutByDischargeCoefficient())
 		{
 			return false;
 		}

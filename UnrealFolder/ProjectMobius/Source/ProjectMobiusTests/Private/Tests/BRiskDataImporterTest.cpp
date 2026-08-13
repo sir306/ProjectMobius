@@ -2191,14 +2191,40 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 
 		TestEqual(TEXT("A vents.xml record with no <cd> gets B-Risk's default, not 0"),
 			ImportWithCdTag(TEXT("")), BRiskDefaultDischargeCoefficient, 1.0e-9);
-		TestEqual(TEXT("<cd>0</cd> is rejected as out of range, not used"),
-			ImportWithCdTag(TEXT("<cd>0</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
-		TestEqual(TEXT("a negative <cd> is rejected"),
+		// Zero is a VALUE, not an absence, and the distinction is the whole point of this block.
+		// SR282 §4.6.2(d) closes a vent sampled shut by "setting the discharge coefficient to zero",
+		// and the opening options "will not subsequently open" it. Substituting 0.68 there would draw
+		// full flow through an opening B-Risk had shut. A MISSING <cd> is the opposite case and must
+		// still land on the default - the two are asserted next to each other so neither can drift
+		// into the other.
+		TestEqual(TEXT("<cd>0</cd> is a value B-Risk uses to hold a vent shut, and is kept"),
+			ImportWithCdTag(TEXT("<cd>0</cd>")), 0.0, 1.0e-9);
+		TestEqual(TEXT("a negative <cd> is rejected - it would invert the mass flux"),
 			ImportWithCdTag(TEXT("<cd>-0.5</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
 		TestEqual(TEXT("<cd> above 1 is rejected - it is a fraction of the geometric area"),
 			ImportWithCdTag(TEXT("<cd>1.4</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
 		TestEqual(TEXT("<cd>1</cd> is in range and IS used - this is the leakage-path case"),
 			ImportWithCdTag(TEXT("<cd>1</cd>")), 1.0, 1.0e-9);
+
+		// A cd=0 opening is shut for the ENTIRE run, so its schedule must not be consulted. The
+		// fixture's record carries opentime 15 / closetime 45, which would otherwise report open at
+		// t=30 - that is the assertion that would fail if the closure were applied after the times
+		// rather than before them.
+		FBRiskVentGeometry ShutByCd;
+		ShutByCd.DischargeCoefficient = 0.0;
+		ShutByCd.bHasSchedule = true;
+		ShutByCd.OpenTimeSeconds = 15.0;
+		ShutByCd.CloseTimeSeconds = 45.0;
+		TestTrue(TEXT("cd=0 reports shut by discharge coefficient"),
+			ShutByCd.IsShutByDischargeCoefficient());
+		TestFalse(TEXT("cd=0 is shut inside its own open window, not just outside it"),
+			ShutByCd.IsOpenAtTime(30.0));
+		TestFalse(TEXT("cd=0 is shut at t=0"), ShutByCd.IsOpenAtTime(0.0));
+
+		FBRiskVentGeometry OpenNormally = ShutByCd;
+		OpenNormally.DischargeCoefficient = BRiskDefaultDischargeCoefficient;
+		TestTrue(TEXT("the same schedule at cd=0.68 IS open at t=30 - the control"),
+			OpenNormally.IsOpenAtTime(30.0));
 	}
 
 	// --- Ambiguity is refused, not guessed ----------------------------------------------------
@@ -3063,13 +3089,25 @@ bool FBRiskVentFlowTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("cd does not change stream temperature - it cancels in the mass-weighted mean"),
 		LeakFlow.OutTemperatureC, Flow.OutTemperatureC, 1.0e-9);
 
+	// cd = 0 is B-Risk holding the vent shut (SR282 §4.6.2d), NOT a missing value, so zero flux is
+	// the right answer here and must not be "corrected" to the default. The caller skips these vents
+	// via IsOpenAtTime anyway; this asserts the maths agrees with that decision rather than fighting
+	// it, so the two cannot disagree about whether an opening flows.
+	FBRiskVentGeometry ShutByCd = Vent;
+	ShutByCd.DischargeCoefficient = 0.0;
+	const FBRiskVentFlow ShutFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, ShutByCd);
+	TestEqual(TEXT("cd=0 produces zero out-flow - B-Risk has this opening shut"),
+		ShutFlow.MassFlowOutKgs, 0.0, 1.0e-12);
+	TestEqual(TEXT("cd=0 produces zero in-flow too"), ShutFlow.MassFlowInKgs, 0.0, 1.0e-12);
+	TestFalse(TEXT("cd=0 reports no flow at all"), ShutFlow.bHasFlow);
+
 	// An out-of-range cd on a vent built in code (not parsed) must not reach the flow maths. The
 	// importer already range-checks, but this function is public and takes any FBRiskVentGeometry.
 	FBRiskVentGeometry Nonsense = Vent;
-	Nonsense.DischargeCoefficient = 0.0;
-	const FBRiskVentFlow NonsenseFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
-	TestEqual(TEXT("cd=0 falls back to the default rather than silently zeroing all flow"),
-		NonsenseFlow.MassFlowOutKgs, Flow.MassFlowOutKgs, 1.0e-12);
+	Nonsense.DischargeCoefficient = -0.5;
+	const FBRiskVentFlow NegativeFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
+	TestEqual(TEXT("a negative cd falls back to the default rather than inverting the flux"),
+		NegativeFlow.MassFlowOutKgs, Flow.MassFlowOutKgs, 1.0e-12);
 	Nonsense.DischargeCoefficient = 7.5;
 	const FBRiskVentFlow AbsurdFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
 	TestEqual(TEXT("an absurd cd falls back to the default too"),

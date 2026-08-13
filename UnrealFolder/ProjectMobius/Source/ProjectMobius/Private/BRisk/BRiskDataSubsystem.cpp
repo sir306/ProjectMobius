@@ -2006,15 +2006,20 @@ FBRiskVentFlow UBRiskDataSubsystem::ComputeWallVentFlow(
 		return Out; // closed / degenerate opening
 	}
 
-	// Discharge coefficient is PER VENT and is read from B-Risk's own vents.xml (SR282 §7.6), not
-	// assumed. It was formerly hardcoded to B-Risk's 0.68 default, which is right for a door or
-	// window but wrong for a wall-leakage path: a leakage width is already a calibrated effective
-	// area, so B-Risk writes 1.0 and a second contraction correction double-counts. In the 12-room
-	// export that is ids 32/33/34, which are permanently open while the doors shut at 60 s - so the
-	// hardcode ran the dominant late-run flow path at 68 % of B-Risk's own figure.
-	// The importer has already range-checked and defaulted this; clamp defensively because a vent
-	// built in code rather than parsed can still carry anything.
-	const double Cd = (Vent.DischargeCoefficient > 0.0 && Vent.DischargeCoefficient <= 1.0)
+	// Discharge coefficient is PER VENT and is read from B-Risk's own vents.xml (SR282 §4.6.2,
+	// printed p.19 - an earlier comment here cited §7.6, which is not where it lives), not assumed.
+	// It was formerly hardcoded to B-Risk's 0.68 default, which is right for a door or window but
+	// wrong for the three wall-leakage paths of the 12-room export (ids 32/33/34), which carry 1.0.
+	// The manual's rule is geometric: "In cases, where the top of the vent is flush with the ceiling,
+	// then a value of 1.0 is recommended" - and those three are 3.999 m tall with a zero sill in
+	// 4.000 m rooms. They are permanently open while the doors shut at 60 s, so the hardcode ran the
+	// dominant late-run flow path at 68 % of B-Risk's own figure.
+	//
+	// Zero is IN band and means shut for the whole run (SR282 §4.6.2d) - the caller already skips
+	// those via IsOpenAtTime, and letting a 0 through here produces zero flux, which is the right
+	// answer rather than a bug. Only genuinely impossible values fall back, because this function is
+	// public and takes any FBRiskVentGeometry, including one built in code rather than parsed.
+	const double Cd = (Vent.DischargeCoefficient >= 0.0 && Vent.DischargeCoefficient <= 1.0)
 		? Vent.DischargeCoefficient
 		: BRiskDefaultDischargeCoefficient;
 
