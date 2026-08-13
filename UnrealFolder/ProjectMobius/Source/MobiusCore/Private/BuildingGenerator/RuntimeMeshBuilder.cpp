@@ -1506,10 +1506,17 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 	// Blueprint's translucent default and restyled once the widget catches up. Without this the whole
 	// mesh appears transparent and then snaps to solid, which is what the owner reported.
 	//
-	// Gated on !bBuildingMaterialStyleChosen so it only ever supplies the DEFAULT: once the user has
-	// picked a mode, their choice owns the parent and this must not second-guess it.
+	// GATED ON bMeshBeingBuilt, i.e. ONLY WHILE THE EMIT PUMP IS RUNNING, and the gate is the whole
+	// correctness of this. SetMaterialOnMesh calls this function again after the load, on behalf of
+	// whatever material the widget just supplied, and its contract (see its comment) is that the source
+	// colour is layered ON TOP of the caller's material rather than overriding it. Forcing opaque there
+	// would make every translucent render mode silently do nothing on a coloured building.
+	//
+	// !bBuildingMaterialStyleChosen was tried as the gate first and is WRONG: on the procedural path the
+	// widget reaches UpdateMeshMaterial and never SetBuildingMaterialStyle, so that flag stays false for
+	// the entire session and the gate never closes.
 	UMaterialInterface* Parent = nullptr;
-	if (bSourceColoursAreMeaningful && !bBuildingMaterialStyleChosen)
+	if (bSourceColoursAreMeaningful && bMeshBeingBuilt)
 	{
 		Parent = ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours);
 	}
@@ -1543,6 +1550,18 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		bSourceColourParamProbeDone = true;
 		SourceColourProbedParent = Parent;
 
+		// "Plain Colours Transparent" means PLAIN -- white, not the source's colours. SetBuildingMaterialStyle
+		// has always known that (its bForceWhite), but the widget's procedural path never reaches that
+		// function: it goes UpdateMeshMaterial -> SetMaterialOnMesh -> here, which applied the source colour
+		// unconditionally. The result was that "Plain Colours Transparent" and "Original Colours Transparent"
+		// differed only by clear coat and read as the same mode -- owner-reported 2026-08-13.
+		//
+		// Decided per PARENT, in the same cached probe, so it costs one comparison per style change rather
+		// than a LoadObject per section. The four styles each resolve to a different MI_RuntimeMeshBuilder*
+		// asset, so the parent identifies the style unambiguously.
+		bSourceParentIsPlainWhiteStyle =
+			(Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::TransparentWhite));
+
 		FLinearColor Unused;
 		bSourceColourParamsAvailable =
 			Parent->GetVectorParameterValue(FMaterialParameterInfo(TEXT("NewColour")), Unused);
@@ -1572,7 +1591,11 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		return false;
 	}
 
-	SectionMaterial->SetVectorParameterValue(FName("NewColour"), SourceMaterial.BaseColour);
+	// White for the plain-transparent style, the source's own colour for every other style. Mirrors
+	// SetBuildingMaterialStyle's bForceWhite so both routes to a style agree on what it looks like.
+	SectionMaterial->SetVectorParameterValue(
+		FName("NewColour"),
+		bSourceParentIsPlainWhiteStyle ? FLinearColor::White : SourceMaterial.BaseColour);
 	SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
 	// Alpha carries the source's opacity. Only pushed when the parameter exists, and only when the
 	// source actually asked for transparency -- overwriting the project's own opacity handling on an

@@ -583,6 +583,14 @@ private:
 	/** Probe state for the above; re-evaluated per load AND whenever the resolved parent changes. */
 	bool bSourceColourParamProbeDone = false;
 	bool bSourceColourParamsAvailable = false;
+
+	/**
+	 * True when the resolved parent is the TransparentWhite style asset, i.e. "Plain Colours Transparent".
+	 * That style is PLAIN by definition, so sections take white instead of their source colour — the same
+	 * rule SetBuildingMaterialStyle applies via bForceWhite. Cached with the probe above because the parent
+	 * identifies the style, so it is one comparison per style change rather than a lookup per section.
+	 */
+	bool bSourceParentIsPlainWhiteStyle = false;
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> SourceColourProbedParent = nullptr;
 
