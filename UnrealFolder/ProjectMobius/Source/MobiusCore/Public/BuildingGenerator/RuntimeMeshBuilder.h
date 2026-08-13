@@ -687,6 +687,31 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MeshGenerator|Material")
 	EMobiusBuildingMaterialStyle GetBuildingMaterialStyle() const { return CurrentBuildingMaterialStyle; }
 
+	/**
+	 * True when the building that was just loaded brought MEANINGFUL colours of its own: a Datasmith
+	 * scene (which always arrives with materials), or a procedural build — IFC, fbx, obj — carrying at
+	 * least TWO distinct section colours. Format-agnostic on purpose: the IFC-only LastIfcLoadStats
+	 * would have answered "no" for an fbx that does have colours.
+	 *
+	 * "Two distinct" rather than "any styled section" is an owner ruling (2026-08-13) forced by a real
+	 * file: an fbx can declare a diffuse on every section and have it be one flat default grey, which
+	 * satisfies bHasMaterial while having nothing to show. See the implementation comment for the
+	 * measurement and the trade-off it accepts.
+	 *
+	 * Exists so WBP_SetBuildingMat can pick its OWN starting render mode: a file with authored colours
+	 * opens on an original-colours entry, a file without opens translucent. Deliberately a pure read that
+	 * changes nothing. The previous attempt at this behaviour instead applied a style from C++ at load
+	 * (bb2601db, reverted in 6c75daee) and the combo went on disagreeing anyway, because applying a style
+	 * is not the same as telling the widget. Answering the question and letting the widget act through
+	 * its own selection path is what keeps the two in step.
+	 *
+	 * Safe to call from the OnMeshBuilt handler: SectionSourceMaterials is fully populated by the emit
+	 * pump before FinalizeMeshEmit broadcasts, and bIsDatasmithAsset is still set when the Datasmith
+	 * drain broadcasts.
+	 */
+	UFUNCTION(BlueprintPure, Category = "MeshGenerator|Material")
+	bool DoesBuildingHaveAuthoredColours() const;
+
 	// ---------------------------------------------------------------------------------------------
 	// One parameterless entry point per style, for the widget buttons.
 	//

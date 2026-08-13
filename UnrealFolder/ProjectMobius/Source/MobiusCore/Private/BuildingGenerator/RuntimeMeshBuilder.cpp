@@ -1244,6 +1244,54 @@ UMaterialInterface* ARuntimeMeshBuilder::ResolveStyleParentMaterial(EMobiusBuild
 	return Loaded;
 }
 
+bool ARuntimeMeshBuilder::DoesBuildingHaveAuthoredColours() const
+{
+	// A Datasmith scene always brings its own materials, and they never pass through
+	// SectionSourceMaterials -- the plugin's importer puts them in DatasmithMaterialsMap instead, so
+	// asking the array about a Datasmith building would always answer "no".
+	if (bIsDatasmithAsset)
+	{
+		return true;
+	}
+
+	// TWO DISTINCT COLOURS ARE REQUIRED, not one styled section. Owner ruling 2026-08-13, and the reason
+	// is a measurement rather than a preference: ISO-Test-8-FireSmoke.fbx declares a diffuse on both its
+	// sections, so bHasMaterial is legitimately true -- but the colour is 0.8/0.8/0.8 on both, assimp's
+	// default grey. Treating that as "has colours" opened the building opaque grey, which is not what
+	// "use the original colours" is for. A file whose every section is the same single colour has nothing
+	// to show off, so it belongs in the translucent default alongside a file with no colours at all.
+	//
+	// The trade is explicit: a building genuinely authored in one colour is now reported as uncoloured.
+	// That costs almost nothing visually -- single-colour opaque and single-colour translucent convey the
+	// same amount -- whereas the fbx case was actively wrong.
+	//
+	// Comparing against the FIRST styled colour rather than collecting a set keeps this O(n) with no
+	// allocation, and it answers the only question being asked: is there more than one? Equals() carries
+	// a tolerance because these are floats off a file parse, and exact comparison would let rounding
+	// noise fake a second colour -- which fails toward "coloured", the wrong direction for this test.
+	const FMobiusMeshMaterial* FirstStyled = nullptr;
+	for (const FMobiusMeshMaterial& Source : SectionSourceMaterials)
+	{
+		if (!Source.bHasMaterial)
+		{
+			continue;
+		}
+
+		if (FirstStyled == nullptr)
+		{
+			FirstStyled = &Source;
+			continue;
+		}
+
+		if (!Source.BaseColour.Equals(FirstStyled->BaseColour, KINDA_SMALL_NUMBER))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle Style)
 {
 	CurrentBuildingMaterialStyle = Style;
