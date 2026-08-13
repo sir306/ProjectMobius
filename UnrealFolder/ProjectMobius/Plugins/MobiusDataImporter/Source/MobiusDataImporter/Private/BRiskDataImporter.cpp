@@ -860,6 +860,7 @@ namespace
 			double SillHeight = 0.0;
 			double OpenTimeSeconds = 0.0;
 			double CloseTimeSeconds = 0.0;
+			double DischargeCoefficient = BRiskDefaultDischargeCoefficient;
 			bool bAutoOpenVent = false;
 			bool bClaimed = false;
 		};
@@ -879,6 +880,26 @@ namespace
 			Schedule.SillHeight = GetChildDouble(VentNode, TEXT("sillheight"));
 			Schedule.OpenTimeSeconds = GetChildDouble(VentNode, TEXT("opentime"));
 			Schedule.CloseTimeSeconds = GetChildDouble(VentNode, TEXT("closetime"));
+
+			// Discharge coefficient. The default is passed explicitly because a MISSING <cd> must
+			// fall back to B-Risk's 0.68, not to GetChildDouble's own 0.0 - a zero here would
+			// silently zero every slab of flow through the opening rather than fail loudly.
+			Schedule.DischargeCoefficient = GetChildDouble(
+				VentNode, TEXT("cd"), BRiskDefaultDischargeCoefficient);
+
+			// A present-but-nonsense value is a different case from a missing one and must not be
+			// used. cd is the fraction of the geometric area that actually flows, so it is bounded
+			// (0, 1]; outside that we keep the default and say so, because the alternative is a
+			// flow number that looks authoritative and is not.
+			if (!(Schedule.DischargeCoefficient > 0.0) || Schedule.DischargeCoefficient > 1.0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk vent %d has an out-of-range discharge coefficient <cd>%g</cd>. ")
+					TEXT("Expected (0, 1]. Using B-Risk's default %g for this opening."),
+					Schedule.Id, Schedule.DischargeCoefficient,
+					BRiskDefaultDischargeCoefficient);
+				Schedule.DischargeCoefficient = BRiskDefaultDischargeCoefficient;
+			}
 
 			// B-Risk writes the literal "True"/"False". A vent in this mode ignores its open/close
 			// times entirely and starts SHUT - see FBRiskVentGeometry::IsOpenAtTime.
@@ -917,6 +938,7 @@ namespace
 
 			Vent.OpenTimeSeconds = Schedule.OpenTimeSeconds;
 			Vent.CloseTimeSeconds = Schedule.CloseTimeSeconds;
+			Vent.DischargeCoefficient = Schedule.DischargeCoefficient;
 			Vent.bAutoOpenVent = Schedule.bAutoOpenVent;
 			Vent.bHasSchedule = true;
 

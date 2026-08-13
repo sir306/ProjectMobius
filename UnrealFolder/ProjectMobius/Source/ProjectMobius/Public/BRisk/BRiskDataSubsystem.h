@@ -381,8 +381,10 @@ public:
 	/**
 	 * Smokeview-style derived natural flow through one wall vent at a single time, computed
 	 * from the two sides' two-layer hydrostatic pressure profiles (CCFM.VENTS/CFAST algorithm,
-	 * SR282 §7.11.1). Qualitative fallback used because B-Risk does not export per-vent flow.
-	 * Pure; pass pre-sampled side state + vent geometry.
+	 * SR282 §7.11.1). Qualitative fallback, used because B-Risk's per-vent flow log is OPTIONAL and
+	 * absent from some exports - not, as this comment used to say, because no such export exists.
+	 * Where wallventflows.txt is present it is the ground truth to test this against.
+	 * Pure; pass pre-sampled side state + vent geometry, including its discharge coefficient.
 	 */
 	static FBRiskVentFlow ComputeWallVentFlow(
 		const FBRiskVentSideState& From,

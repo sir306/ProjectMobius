@@ -34,8 +34,11 @@ struct PROJECTMOBIUS_API FBRiskVentSideState
  * Smokeview-style derived flow through one wall vent at a single time. Bidirectional: a
  * doorway usually pushes hot gas OUT the top while drawing cool air IN the bottom, so both
  * gross streams and a representative colour temperature for each are reported. QUALITATIVE
- * fallback only (B-Risk does not export per-vent flow; Smokeview itself computes it) —
- * validated visually, not numerically. See UBRiskDataSubsystem::ComputeWallVentFlow.
+ * fallback only (Smokeview itself computes it the same way) — validated visually, not
+ * numerically. B-Risk CAN export per-vent flow as wallventflows.txt, which an earlier version of
+ * this comment denied; it is optional, so this still has to exist, but where it is present it is
+ * the oracle these magnitudes should be checked against. That check has not been done.
+ * See UBRiskDataSubsystem::ComputeWallVentFlow.
  */
 USTRUCT(BlueprintType)
 struct PROJECTMOBIUS_API FBRiskVentFlow

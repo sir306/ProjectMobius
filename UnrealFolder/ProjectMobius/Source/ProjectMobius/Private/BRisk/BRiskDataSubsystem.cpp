@@ -1987,8 +1987,13 @@ FBRiskVentFlow UBRiskDataSubsystem::ComputeWallVentFlow(
 	// Cross-vent hydrostatic flow per CCFM.VENTS/CFAST (SR282 §7.11.1): build each side's
 	// two-layer pressure profile over the opening, integrate the Bernoulli slab flux, and
 	// split by sign about the neutral plane into bidirectional out/in streams. Qualitative
-	// fallback only (B-Risk exports no per-vent flow; Smokeview computes it the same way).
-	constexpr double Cd = 0.68;             // discharge coefficient (SR282 §7.6 / vents.xml)
+	// fallback only; Smokeview computes it the same way.
+	//
+	// NOTE: an earlier version of this comment said "B-Risk exports no per-vent flow". That is
+	// wrong - B-Risk can write wallventflows.txt, which carries per-vent flow per timestep and is
+	// the only ground truth for vent state we have (it is what proved vent 27 never opens). It is
+	// optional and absent from some exports, so this computation still has to exist, but the file
+	// is the oracle to test this against - which has not been done for MAGNITUDE yet, only state.
 	constexpr double DensityConstant = 353.0; // rho = 353 / T[K] zone-model approximation
 	constexpr double Gravity = 9.81;
 	constexpr double AmbientTempC = 20.0;
@@ -2000,6 +2005,18 @@ FBRiskVentFlow UBRiskDataSubsystem::ComputeWallVentFlow(
 	{
 		return Out; // closed / degenerate opening
 	}
+
+	// Discharge coefficient is PER VENT and is read from B-Risk's own vents.xml (SR282 §7.6), not
+	// assumed. It was formerly hardcoded to B-Risk's 0.68 default, which is right for a door or
+	// window but wrong for a wall-leakage path: a leakage width is already a calibrated effective
+	// area, so B-Risk writes 1.0 and a second contraction correction double-counts. In the 12-room
+	// export that is ids 32/33/34, which are permanently open while the doors shut at 60 s - so the
+	// hardcode ran the dominant late-run flow path at 68 % of B-Risk's own figure.
+	// The importer has already range-checked and defaulted this; clamp defensively because a vent
+	// built in code rather than parsed can still carry anything.
+	const double Cd = (Vent.DischargeCoefficient > 0.0 && Vent.DischargeCoefficient <= 1.0)
+		? Vent.DischargeCoefficient
+		: BRiskDefaultDischargeCoefficient;
 
 	auto DensityAtTempC = [](double TempC) -> double
 	{

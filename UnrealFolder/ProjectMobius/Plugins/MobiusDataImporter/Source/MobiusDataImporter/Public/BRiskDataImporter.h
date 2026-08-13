@@ -684,6 +684,16 @@ enum class EBRiskVentKind : uint8
 	Leakage
 };
 
+/**
+ * B-Risk's default <cd>, used for any opening whose vents.xml record could not be matched.
+ *
+ * Namespace scope rather than a static member of FBRiskVentGeometry on purpose: that struct is
+ * dll-exported, and a static constexpr member of an exported struct is ODR-used the moment anything
+ * binds it to a const& (every TestEqual overload does), which is the one MSVC/dllimport combination
+ * that fails to link. An inline variable has no such interaction.
+ */
+inline constexpr double BRiskDefaultDischargeCoefficient = 0.68;
+
 /** Horizontal vent/opening geometry parsed from a B-Risk VENTGEOM block. */
 struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 {
@@ -798,6 +808,26 @@ struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 	 * <opentime>/<closetime> and overrides them. See IsOpenAtTime for why that forces closed.
 	 */
 	bool bAutoOpenVent = false;
+
+	/**
+	 * Discharge coefficient for this opening, from vents.xml <cd>. Dimensionless, 0..1.
+	 *
+	 * Multiplies the Bernoulli slab flux in ComputeWallVentFlow: the jet contracts as it passes
+	 * through the opening (vena contracta), so the effective flow area is smaller than the
+	 * geometric one. B-Risk exposes this PER VENT and its users edit it, so it must be read
+	 * rather than assumed.
+	 *
+	 * The default is B-Risk's own default, which is what a real door or window carries. It is NOT
+	 * universal: the 12-room export's three wall-leakage paths (ids 32/33/34) carry 1.0, because a
+	 * leakage width is already a calibrated EFFECTIVE area and a second contraction correction
+	 * would double-count it. Those three are permanently open while the doors shut at 60 s, so
+	 * they are the dominant path for most of that run - assuming 0.68 there ran them at 68 % of
+	 * B-Risk's own flow.
+	 *
+	 * Populated by the same vents.xml join that sets bHasSchedule; when that flag is false no
+	 * record was matched and this is the default rather than a value read from the file.
+	 */
+	double DischargeCoefficient = BRiskDefaultDischargeCoefficient;
 
 	/**
 	 * Is the opening open at this simulation time?

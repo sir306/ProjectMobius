@@ -2086,6 +2086,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
  * also reaches .smv-only scenarios and there is one code path instead of two.
  *
  * The join is the part that can silently go wrong, so most of this test is about refusing to guess.
+ *
+ * Also covers the per-vent DISCHARGE COEFFICIENT, because it is carried by the same <Vent> record
+ * and applied by the same join - splitting it into its own test would duplicate the fixture lookup
+ * and add a second skip branch. The numeric consequence (cd is a pure multiplier on flow) is
+ * asserted separately, in ProjectMobius.BRisk.Hazard.VentFlow.
  */
 bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 {
@@ -2136,7 +2141,8 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 		// MakeSmv's single VENTGEOM is fromRoom 1, toRoom 2, sill 0.
 		WriteTextFile(FPaths::Combine(TestDir, TEXT("vents.xml")),
 			TEXT("<Vents><Vent><id>1</id><fromroom>1</fromroom><toroom>2</toroom>")
-			TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime></Vent></Vents>"));
+			TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime>")
+			TEXT("<cd>0.9</cd></Vent></Vents>"));
 
 		FBRiskScenarioData Data;
 		FString Error;
@@ -2148,8 +2154,51 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("Open time from vents.xml"), Data.Vents[0].OpenTimeSeconds, 15.0, 1.0e-9);
 			TestEqual(TEXT("Close time from vents.xml"), Data.Vents[0].CloseTimeSeconds, 45.0, 1.0e-9);
 			TestTrue(TEXT("Shut at the start"), !Data.Vents[0].IsOpenAtTime(0.0));
+
+			// The discharge coefficient rides the same join. A value that is neither B-Risk's
+			// default nor 1.0 is used deliberately, so a test that passes cannot be passing
+			// because the field happened to keep its default.
+			TestEqual(TEXT("Discharge coefficient from vents.xml"),
+				Data.Vents[0].DischargeCoefficient, 0.9, 1.0e-9);
 		}
 		IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	}
+
+	// --- A missing or nonsense <cd> falls back to B-Risk's default, never to zero ---------------
+	//
+	// The failure this guards is specific and silent: the XML helper's own default is 0.0, and Cd
+	// multiplies every slab of flux, so reading a missing tag straight through would zero all flow
+	// through the opening and still report a successful import.
+	{
+		const auto ImportWithCdTag = [&](const TCHAR* CdTag) -> double
+		{
+			const FString TestDir = MakeBRiskTestDir();
+			const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+			WriteTextFile(SmvPath, MakeSmv());
+			WriteTextFile(FPaths::Combine(TestDir, TEXT("vents.xml")),
+				FString(TEXT("<Vents><Vent><id>1</id><fromroom>1</fromroom><toroom>2</toroom>"))
+				+ TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime>")
+				+ CdTag + TEXT("</Vent></Vents>"));
+
+			FBRiskScenarioData Data;
+			FString Error;
+			const bool bOk = FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)
+				&& Data.Vents.Num() == 1;
+			const double Cd = bOk ? Data.Vents[0].DischargeCoefficient : -1.0;
+			IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+			return Cd;
+		};
+
+		TestEqual(TEXT("A vents.xml record with no <cd> gets B-Risk's default, not 0"),
+			ImportWithCdTag(TEXT("")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		TestEqual(TEXT("<cd>0</cd> is rejected as out of range, not used"),
+			ImportWithCdTag(TEXT("<cd>0</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		TestEqual(TEXT("a negative <cd> is rejected"),
+			ImportWithCdTag(TEXT("<cd>-0.5</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		TestEqual(TEXT("<cd> above 1 is rejected - it is a fraction of the geometric area"),
+			ImportWithCdTag(TEXT("<cd>1.4</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		TestEqual(TEXT("<cd>1</cd> is in range and IS used - this is the leakage-path case"),
+			ImportWithCdTag(TEXT("<cd>1</cd>")), 1.0, 1.0e-9);
 	}
 
 	// --- Ambiguity is refused, not guessed ----------------------------------------------------
@@ -2291,6 +2340,60 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d of %d openings scheduled; %d doors open and shut, %d auto-opening (shown shut), %d never change"),
 		Scheduled, RealData.Vents.Num(), Doors, AutoOpening, NeverChanging));
+
+	// --- Discharge coefficient, on the real export ---------------------------------------------
+	//
+	// The regression this pins is a hardcoded Cd = 0.68 in ComputeWallVentFlow, which ignored the
+	// per-vent <cd> that B-Risk writes and its users edit.
+	//
+	// Do NOT reduce this to "leakage paths carry 1.0" - that reading is wrong and the file says so.
+	// This export has TWO different things called leakage: 15 CLOSED-DOOR leakage paths, which are
+	// the gap around a shut door and carry 0.68 like the door itself, and 3 WALL leakage paths
+	// (ids 32/33/34, "wall leakage #1->#2 / #1->exterior / #2->exterior"), which carry 1.0 because
+	// a wall-leakage width is already a calibrated effective area. Asserting per Kind would pass
+	// for the wrong reason or fail for a correct file; the ids are the honest key here.
+	//
+	// Re-derive any of this from the fixture rather than trusting this comment:
+	//   grep -o '<cd>[^<]*</cd>' vents.xml | sort | uniq -c        -> 31 x 0.68, 3 x 1
+	TArray<int32> NonDefaultCdVentIds;
+	for (const FBRiskVentGeometry& Vent : RealData.Vents)
+	{
+		TestTrue(FString::Printf(TEXT("vent %d has a physical discharge coefficient in (0, 1]"), Vent.VentId),
+			Vent.DischargeCoefficient > 0.0 && Vent.DischargeCoefficient <= 1.0);
+
+		if (!FMath::IsNearlyEqual(
+			Vent.DischargeCoefficient, BRiskDefaultDischargeCoefficient, 1.0e-9))
+		{
+			NonDefaultCdVentIds.Add(Vent.VentId);
+		}
+	}
+	NonDefaultCdVentIds.Sort();
+
+	// The load-bearing assertion. If someone re-hardcodes Cd, every vent lands on the default and
+	// this list empties - which is the only symptom the old defect ever had.
+	TestEqual(TEXT("3 openings carry a discharge coefficient that is NOT B-Risk's default"),
+		NonDefaultCdVentIds.Num(), 3);
+	if (NonDefaultCdVentIds.Num() == 3)
+	{
+		TestEqual(TEXT("...and they are the three wall-leakage paths, ids 32/33/34"),
+			FString::Printf(TEXT("%d,%d,%d"),
+				NonDefaultCdVentIds[0], NonDefaultCdVentIds[1], NonDefaultCdVentIds[2]),
+			FString(TEXT("32,33,34")));
+		for (const int32 VentId : NonDefaultCdVentIds)
+		{
+			const FBRiskVentGeometry* Wall = RealData.Vents.FindByPredicate(
+				[VentId](const FBRiskVentGeometry& V) { return V.VentId == VentId; });
+			if (Wall)
+			{
+				TestEqual(FString::Printf(TEXT("wall-leakage vent %d carries cd 1.0"), VentId),
+					Wall->DischargeCoefficient, 1.0, 1.0e-9);
+			}
+		}
+	}
+	AddInfo(FString::Printf(
+		TEXT("discharge coefficients: %d of %d openings at B-Risk's default %g; %d read from <cd> as non-default"),
+		RealData.Vents.Num() - NonDefaultCdVentIds.Num(), RealData.Vents.Num(),
+		BRiskDefaultDischargeCoefficient, NonDefaultCdVentIds.Num()));
 
 	return true;
 }
@@ -2927,6 +3030,50 @@ bool FBRiskVentFlowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("out stream hotter than in stream"), Flow.OutTemperatureC > Flow.InTemperatureC);
 	TestTrue(TEXT("neutral plane lies within the opening"),
 		Flow.NeutralPlaneHeightM > 0.0 && Flow.NeutralPlaneHeightM < 2.0);
+
+	// --- Discharge coefficient is read from the vent, and is a pure multiplier ------------------
+	//
+	// This is the check that the <cd> fix is actually wired through, and it is exact rather than
+	// qualitative. Cd multiplies every slab's flux and appears nowhere in the pressure profile, so
+	// two otherwise identical vents must produce mass flows in exactly the ratio of their Cd, with
+	// an IDENTICAL neutral plane. That second half matters: if Cd ever leaked into the pressure
+	// integral the ratio could still look right while the flow split moved.
+	//
+	// Concretely, this is the 12-room export's wall-leakage case. Those three openings carry
+	// <cd>1</cd> (a leakage width is already a calibrated effective area, so a second contraction
+	// correction would double-count), and the old hardcoded 0.68 ran them at 68 % of B-Risk's own
+	// flow for the whole period after the doors shut at 60 s.
+	TestEqual(TEXT("a vent defaults to B-Risk's own discharge coefficient"),
+		Vent.DischargeCoefficient, BRiskDefaultDischargeCoefficient, 1.0e-12);
+
+	FBRiskVentGeometry Leakage = Vent;
+	Leakage.DischargeCoefficient = 1.0; // what vents.xml carries for ids 32/33/34
+	const FBRiskVentFlow LeakFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Leakage);
+
+	TestTrue(TEXT("a cd=1.0 opening flows MORE than the same opening at 0.68"),
+		LeakFlow.MassFlowOutKgs > Flow.MassFlowOutKgs);
+	TestEqual(TEXT("out-stream scales exactly with cd"),
+		Flow.MassFlowOutKgs / LeakFlow.MassFlowOutKgs,
+		BRiskDefaultDischargeCoefficient, 1.0e-9);
+	TestEqual(TEXT("in-stream scales exactly with cd"),
+		Flow.MassFlowInKgs / LeakFlow.MassFlowInKgs,
+		BRiskDefaultDischargeCoefficient, 1.0e-9);
+	TestEqual(TEXT("cd does not move the neutral plane - it is not part of the pressure profile"),
+		LeakFlow.NeutralPlaneHeightM, Flow.NeutralPlaneHeightM, 1.0e-12);
+	TestEqual(TEXT("cd does not change stream temperature - it cancels in the mass-weighted mean"),
+		LeakFlow.OutTemperatureC, Flow.OutTemperatureC, 1.0e-9);
+
+	// An out-of-range cd on a vent built in code (not parsed) must not reach the flow maths. The
+	// importer already range-checks, but this function is public and takes any FBRiskVentGeometry.
+	FBRiskVentGeometry Nonsense = Vent;
+	Nonsense.DischargeCoefficient = 0.0;
+	const FBRiskVentFlow NonsenseFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
+	TestEqual(TEXT("cd=0 falls back to the default rather than silently zeroing all flow"),
+		NonsenseFlow.MassFlowOutKgs, Flow.MassFlowOutKgs, 1.0e-12);
+	Nonsense.DischargeCoefficient = 7.5;
+	const FBRiskVentFlow AbsurdFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
+	TestEqual(TEXT("an absurd cd falls back to the default too"),
+		AbsurdFlow.MassFlowOutKgs, Flow.MassFlowOutKgs, 1.0e-12);
 
 	// Closed opening (zero width) produces no flow.
 	FBRiskVentGeometry Closed = Vent;
