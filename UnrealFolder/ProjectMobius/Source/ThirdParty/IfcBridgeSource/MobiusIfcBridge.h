@@ -312,7 +312,7 @@ typedef struct MobiusIfcMaterialLayer
 
 /* One IFC product (an IfcWall, IfcDoor, IfcSpace, ... -- one entry per GUID that produced at
  * least one triangle; entities IFC++ gave zero geometry, such as IfcProject/IfcBuildingStorey/
- * *Type/*Style definitions, do not appear here at all -- see MobiusIfc_GetProductsWithoutGeometryCount).
+ * *Type / *Style definitions, do not appear here at all -- see MobiusIfc_GetProductsWithoutGeometryCount).
  *
  * Ownership and lifetime: every pointer in this struct, and every pointer inside the sections and
  * layers it points to, is owned by the MobiusIfcScene that produced it (via MobiusIfc_GetProducts) and
@@ -410,7 +410,7 @@ MOBIUSIFC_API int32_t MobiusIfc_GetProducts(const MobiusIfcScene* scene,
                                              const MobiusIfcProduct** outProducts, int32_t* outCount);
 
 /* Number of IFC entities in the source file that IFC++ produced literally zero triangles for
- * (IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey, *Type/*Style definitions, and similar --
+ * (IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey, *Type / *Style definitions, and similar --
  * see HANDOFF_IFC_2026-08-11.md 5.1). This is NOT related to the allowlist/ifcClass filtering
  * described above -- it is purely "IFC++ itself gave this entity no shape", counted before any
  * caller-side rendering policy is applied. Useful as a sanity check against the harness's own

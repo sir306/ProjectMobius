@@ -160,7 +160,7 @@ namespace MobiusIfc
 
 	/**
 	 * True for classes that structurally never carry a shape at all: spatial-structure containers
-	 * (IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey) and *Type/*Style/IfcTypeProduct type
+	 * (IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey) and *Type / *Style/IfcTypeProduct type
 	 * declarations. In the normal getShapeInputData()-driven pipeline these should never reach
 	 * ClassifyClass() (they have no shape to be enumerated by), but if a caller ever classifies the
 	 * full product list instead (e.g. a future diagnostic pass), checking this FIRST keeps them out
@@ -187,7 +187,7 @@ namespace MobiusIfc
 		/** Genuine surprises only -- a new schema's new class. Drives the loud report. */
 		int32 UnknownCount = 0;
 
-		/** Quiet counterpart to UnknownCount: spatial containers / *Type/*Style, expected shapeless. */
+		/** Quiet counterpart to UnknownCount: spatial containers / *Type / *Style, expected shapeless. */
 		int32 KnownNonRepresentableCount = 0;
 
 		/** Dropped-class name -> count, for GENUINE Unknown verdicts only (never false-alarms

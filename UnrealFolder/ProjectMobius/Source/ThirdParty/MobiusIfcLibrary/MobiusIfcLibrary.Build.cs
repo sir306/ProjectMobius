@@ -53,16 +53,18 @@ public class MobiusIfcLibrary : ModuleRules
 		//       include/MobiusIfcBridge.h
 		//       lib/MobiusIfcBridge.lib
 		//       bin/MobiusIfcBridge.dll
-		// Platform check FIRST, before any path probing. Otherwise a fresh checkout on Mac/Linux
-		// (where install/ has not been populated because the CMake step was never run) reports
+		// Platform check FIRST, before any path probing. Otherwise a fresh checkout on an unsupported
+		// platform (where install/ has not been populated because the CMake step was never run) reports
 		// "include dir not found, run the CMake install step" and sends a porter chasing the wrong
-		// problem, when the real answer is "this module is Win64-only".
+		// problem, when the real answer is "this platform is not wired".
 		//
-		// Mac/Linux are a deliberate TODO, not an oversight: Mobius ships Win64 only today. The shim
-		// itself (extern "C", no STL types in the interface) is portable, so porting later is a CMake
-		// toolchain plus a branch here. Hard-fail rather than assimp's silent no-op, which would defer
-		// the failure to an inscrutable link error far from this file (UeHdf5Library's discipline).
-		if (Target.Platform != UnrealTargetPlatform.Win64)
+		// Win64 and macOS are wired: the superbuild produces MobiusIfcBridge.dll (+ import lib) on
+		// Windows and libMobiusIfcBridge.dylib on macOS. Linux/others remain a deliberate TODO -- the
+		// shim is portable extern "C" with no STL in the interface, so porting is a CMake toolchain plus
+		// a branch here. Hard-fail rather than assimp's silent no-op, which would defer the failure to an
+		// inscrutable link error far from this file (UeHdf5Library's discipline).
+		if (Target.Platform != UnrealTargetPlatform.Win64 &&
+		    Target.Platform != UnrealTargetPlatform.Mac)
 		{
 			throw new BuildException($"MobiusIfcLibrary module not set up for platform {Target.Platform}");
 		}
@@ -141,13 +143,31 @@ public class MobiusIfcLibrary : ModuleRules
 				RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/" + DllName, DllPath);
 			}
 		}
+		else if (Target.Platform == UnrealTargetPlatform.Mac)
+		{
+			// macOS: link the shared library directly. There is no import lib and no delay-load on Mac;
+			// the dylib's install_name is @rpath/libMobiusIfcBridge.dylib (Build-MobiusIfcBridge.sh sets
+			// CMAKE_INSTALL_NAME_DIR=@rpath), so staging it next to the consuming binary lets dyld
+			// resolve it via @rpath. Mirrors UE_AssimpLibrary's macOS branch (assimp loads the same way).
+			string BinDir    = Path.Combine(IfcRoot, "bin");
+			string DylibName = "libMobiusIfcBridge.dylib";
+			string DylibPath = Path.Combine(BinDir, DylibName);
+
+			if (!Directory.Exists(BinDir)) throw new BuildException($"MobiusIfcLibrary bin dir not found: {BinDir}. {SuperbuildRemedy}");
+			if (!File.Exists(DylibPath)) throw new BuildException($"MobiusIfcLibrary dylib not found: {DylibPath}. {SuperbuildRemedy}");
+
+			PublicAdditionalLibraries.Add(DylibPath);
+
+			// Stage next to this module's binary and the packaged/editor target output so dyld resolves
+			// it via @rpath at run time.
+			RuntimeDependencies.Add("$(BinaryOutputDir)/" + DylibName, DylibPath);
+			RuntimeDependencies.Add("$(TargetOutputDir)/" + DylibName, DylibPath);
+		}
 		else
 		{
-			// Mac/Linux are a deliberate TODO, not an oversight: Mobius ships Win64 only today.
-			// The shim itself (extern "C", no STL types in the interface) is portable, so porting
-			// later is just adding a CMake toolchain + a platform branch here — but a silent no-op
-			// on an unsupported platform (assimp's approach) would surface as an inscrutable link
-			// error far from this file. Hard-fail instead, matching UeHdf5Library's discipline.
+			// Linux/others: not wired yet. The early platform guard already rejects these, so this
+			// branch is defensive -- it keeps the failure legible if that guard is later relaxed
+			// without adding the corresponding case here.
 			throw new BuildException($"MobiusIfcLibrary module not set up for platform {Target.Platform}");
 		}
 	}

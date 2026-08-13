@@ -58,7 +58,7 @@ set(SUPERBUILD_CTEST_CONFIG "Release" CACHE STRING "Configuration ctest is invok
 
 option(SUPERBUILD_BUILD_ASSIMP "Build and stage Assimp" ON)
 option(SUPERBUILD_BUILD_HDF5   "Build HDF5" ON)
-option(SUPERBUILD_BUILD_IFC    "Build the MobiusIfcBridge DLL (IFC++ shim). Win64/MSVC only." ON)
+option(SUPERBUILD_BUILD_IFC    "Build the MobiusIfcBridge shim (IFC++). Win64/MSVC (.dll) and macOS (.dylib)." ON)
 
 option(SUPERBUILD_PRUNE_ASSIMP_VARIANTS
   "Delete previously-installed assimp-vcNNN-mt.* before installing, so exactly one toolset variant remains"
@@ -364,10 +364,11 @@ if(SUPERBUILD_BUILD_HDF5)
 endif()
 
 # =============================================================================================
-# 3) MobiusIfcBridge -- the IFC++ shim DLL consumed by MobiusIfcLibrary (Win64/MSVC only)
+# 3) MobiusIfcBridge -- the IFC++ shim consumed by MobiusIfcLibrary (Win64/MSVC .dll + macOS .dylib)
 # =============================================================================================
 #
-# This delegates to Source/ThirdParty/IfcBridgeSource/Build-MobiusIfcBridge.ps1 instead of
+# This delegates to Source/ThirdParty/IfcBridgeSource/Build-MobiusIfcBridge.{ps1 on Windows, sh on
+# macOS} instead of
 # re-expressing the recipe as two more ExternalProject_Add calls. That is deliberate. The script
 # already encodes several things that are easy to get wrong and expensive to discover twice:
 #
@@ -387,18 +388,24 @@ endif()
 # Modelled as add_custom_command(OUTPUT ...) rather than a bare target so an already-built tree
 # no-ops: the IfcPlusPlus pass is a ~310 MB build tree with a 155 MB static lib and takes a long
 # time, and it must not re-run on every incremental superbuild.
-set(IFC_BRIDGE_DLL "${IFC_INSTALL_DIR}/bin/MobiusIfcBridge.dll")
-set(IFC_BRIDGE_LIB "${IFC_INSTALL_DIR}/lib/MobiusIfcBridge.lib")
+set(IFC_BRIDGE_DLL   "${IFC_INSTALL_DIR}/bin/MobiusIfcBridge.dll")
+set(IFC_BRIDGE_LIB   "${IFC_INSTALL_DIR}/lib/MobiusIfcBridge.lib")
+set(IFC_BRIDGE_DYLIB "${IFC_INSTALL_DIR}/bin/libMobiusIfcBridge.dylib")
 
+# Resolve whether and how the shim can be built on THIS platform. Windows drives the PowerShell
+# script (which resolves a Visual Studio generator + MSVC toolset); macOS drives the portable shell
+# script (single-config clang, no toolset to resolve). Both delegate to a script beside the vendored
+# source so the two-pass IFC++/shim build stays out of this file. Linux is a deliberate TODO: the
+# shell script would very likely build it, but MobiusIfcLibrary.Build.cs has no Linux branch to
+# consume the result yet.
 set(_ifc_supported FALSE)
+set(_ifc_platform "")
 if(SUPERBUILD_BUILD_IFC)
-  if(NOT WIN32)
-    message(STATUS "MobiusIfcBridge: skipped -- Win64/MSVC only today (MobiusIfcLibrary.Build.cs hard-fails on other platforms).")
-  elseif(NOT EXISTS "${IFC_BRIDGE_SRC}/CMakeLists.txt")
+  if(NOT EXISTS "${IFC_BRIDGE_SRC}/CMakeLists.txt")
     message(WARNING
       "MobiusIfcBridge: skipped -- vendored IFC++ bridge source not found at ${IFC_BRIDGE_SRC}. "
       "The Unreal build will fail on MobiusIfcLibrary until this is present and built.")
-  else()
+  elseif(WIN32)
     find_program(MOBIUS_POWERSHELL_EXE
       NAMES pwsh powershell
       DOC "PowerShell used to drive Build-MobiusIfcBridge.ps1 (PowerShell 7 'pwsh' or Windows PowerShell 5.1)")
@@ -408,32 +415,52 @@ if(SUPERBUILD_BUILD_IFC)
         "Build it by hand: powershell -File \"${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.ps1\"")
     else()
       set(_ifc_supported TRUE)
+      set(_ifc_platform "windows")
     endif()
+  elseif(APPLE)
+    set(_ifc_supported TRUE)
+    set(_ifc_platform "apple")
+  else()
+    message(STATUS
+      "MobiusIfcBridge: skipped -- only Win64 and macOS are wired today "
+      "(MobiusIfcLibrary.Build.cs hard-fails on other platforms).")
   endif()
 endif()
 
 if(_ifc_supported)
-  # Forward the resolved toolset so IFC++, Assimp and HDF5 are all built with the same MSVC ABI.
-  # CMAKE_GENERATOR_TOOLSET arrives as e.g. "version=14.38.33130"; the script wants the bare version.
-  #
-  # The sentinel matters: `powershell -File script.ps1 -Toolset ""` silently DROPS the empty
-  # argument, and the script then dies with "Missing an argument for parameter 'Toolset'". Pass the
-  # word "none" instead of an empty string to mean "use the generator default".
-  set(_ifc_toolset_arg "none")
-  if(CMAKE_GENERATOR_TOOLSET MATCHES "version=([0-9.]+)")
-    set(_ifc_toolset_arg "${CMAKE_MATCH_1}")
-  elseif(CMAKE_GENERATOR_TOOLSET MATCHES "^[0-9.]+$")
-    set(_ifc_toolset_arg "${CMAKE_GENERATOR_TOOLSET}")
-  endif()
+  if(_ifc_platform STREQUAL "windows")
+    # Forward the resolved toolset so IFC++, Assimp and HDF5 are all built with the same MSVC ABI.
+    # CMAKE_GENERATOR_TOOLSET arrives as e.g. "version=14.38.33130"; the script wants the bare version.
+    #
+    # The sentinel matters: `powershell -File script.ps1 -Toolset ""` silently DROPS the empty
+    # argument, and the script then dies with "Missing an argument for parameter 'Toolset'". Pass the
+    # word "none" instead of an empty string to mean "use the generator default".
+    set(_ifc_toolset_arg "none")
+    if(CMAKE_GENERATOR_TOOLSET MATCHES "version=([0-9.]+)")
+      set(_ifc_toolset_arg "${CMAKE_MATCH_1}")
+    elseif(CMAKE_GENERATOR_TOOLSET MATCHES "^[0-9.]+$")
+      set(_ifc_toolset_arg "${CMAKE_GENERATOR_TOOLSET}")
+    endif()
 
-  set(_ifc_command
-    "${MOBIUS_POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass
-    -File "${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.ps1"
-    -Config "${SUPERBUILD_IFC_CONFIG}"
-    -Generator "${CMAKE_GENERATOR}"
-    -Toolset "${_ifc_toolset_arg}"
-    -PolicyMinimum "${SUPERBUILD_IFC_POLICY_MIN}"
-  )
+    set(_ifc_command
+      "${MOBIUS_POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass
+      -File "${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.ps1"
+      -Config "${SUPERBUILD_IFC_CONFIG}"
+      -Generator "${CMAKE_GENERATOR}"
+      -Toolset "${_ifc_toolset_arg}"
+      -PolicyMinimum "${SUPERBUILD_IFC_POLICY_MIN}"
+    )
+    set(_ifc_driver  "${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.ps1")
+    set(_ifc_outputs "${IFC_BRIDGE_DLL}" "${IFC_BRIDGE_LIB}")
+  else()  # apple -- no generator/toolset to resolve; the shell script defaults are correct
+    set(_ifc_command
+      bash "${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.sh"
+      --config "${SUPERBUILD_IFC_CONFIG}"
+      --policy-min "${SUPERBUILD_IFC_POLICY_MIN}"
+    )
+    set(_ifc_driver  "${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.sh")
+    set(_ifc_outputs "${IFC_BRIDGE_DYLIB}")  # macOS: one .dylib, no separate import lib
+  endif()
 
   if(SUPERBUILD_IFC_FORCE)
     # A plain target always runs; use this when you have edited MobiusIfcBridge.cpp/.h and want the
@@ -446,19 +473,20 @@ if(_ifc_supported)
       VERBATIM
     )
   else()
+    # Modelled as add_custom_command(OUTPUT ...) so an already-built tree no-ops on incremental runs.
     add_custom_command(
-      OUTPUT "${IFC_BRIDGE_DLL}" "${IFC_BRIDGE_LIB}"
+      OUTPUT ${_ifc_outputs}
       COMMAND ${_ifc_command}
       DEPENDS
         "${IFC_BRIDGE_SRC}/MobiusIfcBridge.cpp"
         "${IFC_BRIDGE_SRC}/MobiusIfcBridge.h"
         "${IFC_BRIDGE_SRC}/CMakeLists.txt"
-        "${IFC_BRIDGE_SRC}/Build-MobiusIfcBridge.ps1"
+        "${_ifc_driver}"
       COMMENT "Building IFC++ and MobiusIfcBridge -> ${IFC_INSTALL_DIR} (first run takes a while)"
       USES_TERMINAL
       VERBATIM
     )
-    add_custom_target(ifc_bridge ALL DEPENDS "${IFC_BRIDGE_DLL}" "${IFC_BRIDGE_LIB}")
+    add_custom_target(ifc_bridge ALL DEPENDS ${_ifc_outputs})
   endif()
 endif()
 
@@ -547,11 +575,16 @@ if(SUPERBUILD_ENABLE_TESTS)
     endif()
   endif()
 
-  # IFC: these three are precisely the paths MobiusIfcLibrary.Build.cs throws a BuildException on.
+  # IFC: precisely the paths MobiusIfcLibrary.Build.cs throws a BuildException on. Win64 produces an
+  # import lib + DLL; macOS a single .dylib (no import lib), so the checks split like HDF5's do.
   if(_ifc_supported)
     add_path_exists_test(ifc_bridge_header "${IFC_INSTALL_DIR}/include/MobiusIfcBridge.h")
-    add_path_exists_test(ifc_bridge_lib    "${IFC_BRIDGE_LIB}")
-    add_path_exists_test(ifc_bridge_dll    "${IFC_BRIDGE_DLL}")
+    if(WIN32)
+      add_path_exists_test(ifc_bridge_lib   "${IFC_BRIDGE_LIB}")
+      add_path_exists_test(ifc_bridge_dll   "${IFC_BRIDGE_DLL}")
+    elseif(APPLE)
+      add_path_exists_test(ifc_bridge_dylib "${IFC_BRIDGE_DYLIB}")
+    endif()
   endif()
 
   # Optional Unreal automation and GenerateProjectFiles/build checks

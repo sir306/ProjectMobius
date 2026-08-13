@@ -126,11 +126,24 @@ EXPECTED_ARTIFACTS = [
      "Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/lib"),
     ("ifc", "IFC bridge header",
      "Source/ThirdParty/MobiusIfcLibrary/install/include/MobiusIfcBridge.h"),
-    ("ifc", "IFC bridge import lib",
-     "Source/ThirdParty/MobiusIfcLibrary/install/lib/MobiusIfcBridge.lib"),
-    ("ifc", "IFC bridge DLL",
-     "Source/ThirdParty/MobiusIfcLibrary/install/bin/MobiusIfcBridge.dll"),
 ]
+
+# The IFC bridge's binary artifact differs by platform: Win64 produces an import lib + DLL, macOS a
+# single .dylib (no import lib). List only what the current platform actually produces, so the closing
+# summary neither misses the real file nor demands a Windows .lib on a Mac. Linux is not wired (the
+# summary loop skips IFC there entirely).
+if IS_WINDOWS:
+    EXPECTED_ARTIFACTS += [
+        ("ifc", "IFC bridge import lib",
+         "Source/ThirdParty/MobiusIfcLibrary/install/lib/MobiusIfcBridge.lib"),
+        ("ifc", "IFC bridge DLL",
+         "Source/ThirdParty/MobiusIfcLibrary/install/bin/MobiusIfcBridge.dll"),
+    ]
+elif IS_MACOS:
+    EXPECTED_ARTIFACTS += [
+        ("ifc", "IFC bridge dylib",
+         "Source/ThirdParty/MobiusIfcLibrary/install/bin/libMobiusIfcBridge.dylib"),
+    ]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -536,7 +549,12 @@ def resolve_developer_dir(requested: str) -> Path | None:
         return None
 
     if requested != "auto":
-        chosen = Path(requested).expanduser()
+        # Resolve to an absolute path immediately. This value ends up in DEVELOPER_DIR, which is
+        # inherited by cmake and every compiler probe it spawns -- and those run from deeply nested
+        # scratch dirs (CMakeFiles/CMakeScratch/TryCompile-*). A relative --xcode resolves fine here
+        # (against the repo root) but points at nothing from there, so xcrun dies with
+        # "missing DEVELOPER_DIR path: ../../../Xcode.app/Contents/Developer".
+        chosen = Path(requested).expanduser().resolve()
         # Accept either spelling: people copy the .app path far more readily than the Developer
         # subdirectory buried inside it.
         if chosen.suffix == ".app":
@@ -788,8 +806,8 @@ def main() -> int:
         note(f"generator {generator!r}, toolset {toolset or '<generator default>'!r}")
     else:
         # CMake's default generator (Ninja or Unix Makefiles) is correct off Windows, and -T is a
-        # Visual Studio concept. The IFC++ bridge is Win64-only today and the CMakeLists skips it
-        # on its own.
+        # Visual Studio concept. On macOS the CMakeLists drives the IFC++ bridge via
+        # Build-MobiusIfcBridge.sh; on Linux it skips IFC on its own (not yet ported).
         if generator == "auto":
             generator = ""
         note(f"generator {generator or '<CMake default>'!r} ({platform.system()})")
@@ -878,7 +896,7 @@ def main() -> int:
 
     # -- Build ---------------------------------------------------------------------------------
     step(f"Building ({args.config})")
-    if not args.skip_ifc and IS_WINDOWS:
+    if not args.skip_ifc and (IS_WINDOWS or IS_MACOS):
         note("The IFC++ pass is the long one -- expect tens of minutes on a first run.")
 
     if run([cmake, "--build", build_path, "--config", args.config, "--parallel"]) != 0:
@@ -894,8 +912,8 @@ def main() -> int:
     skipped = {"assimp": args.skip_assimp, "hdf5": args.skip_hdf5, "ifc": args.skip_ifc}
     missing = []
     for dependency, label, relative in EXPECTED_ARTIFACTS:
-        # The IFC bridge is Win64-only; a macOS/Linux run is complete without it.
-        if dependency == "ifc" and not IS_WINDOWS:
+        # The IFC bridge is wired for Win64 and macOS; a Linux run is complete without it (not ported).
+        if dependency == "ifc" and not (IS_WINDOWS or IS_MACOS):
             continue
         present = (PROJECT_DIR / relative).exists()
         if present:
