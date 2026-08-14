@@ -804,7 +804,13 @@ bool UBRiskDataSubsystem::GenerateAndLoadHazardVisuals()
 			}
 		}
 	}
-	HazardVisualizerActor->SetFlowTemperatureRange(20.0f, static_cast<float>(MaxUpperTempC));
+	// The colourbar floor is the scenario's own ambient, not a constant. It used to be a hardcoded
+	// 20.0f, which happened to equal the equally hardcoded ambient inside ComputeWallVentFlow - so
+	// every exterior in-stream landed exactly on the bottom of the ramp and painted pure blue. That
+	// was a coincidence between two unrelated literals, and moving one without the other would have
+	// made the in-bands take on a tint that meant nothing. Both now come from the same source.
+	HazardVisualizerActor->SetFlowTemperatureRange(
+		static_cast<float>(ScenarioData.Ambient.ExteriorTempC), static_cast<float>(MaxUpperTempC));
 
 	// The visualizer is respawned per load and starts with its own default, so a user who ticked the
 	// box before loading a second scenario would silently lose it. Push the kept flag onto the new
@@ -866,8 +872,9 @@ bool UBRiskDataSubsystem::UpdateSmokeAtTime(float TimeSeconds)
 				RoomGeometryScale,
 				bHasUpperOpticalDensity ? UpperOpticalDensity : 0.0,
 				bHasLowerOpticalDensity ? LowerOpticalDensity : 0.0,
-				bHasUpperTemperature ? UpperTemperatureC : 24.0,
-				bHasLowerTemperature ? LowerTemperatureC : 24.0)
+				bHasUpperTemperature ? UpperTemperatureC : ScenarioData.Ambient.InteriorTempC,
+				bHasLowerTemperature ? LowerTemperatureC : ScenarioData.Ambient.InteriorTempC,
+				ScenarioData.Ambient.InteriorTempC)
 			: FBRiskSmokeVisualState();
 
 		UE_LOG(LogBRiskDataSubsystem, Log,
@@ -940,26 +947,28 @@ bool UBRiskDataSubsystem::UpdateHazardVisualsAtTime(float TimeSeconds)
 		bUpdatedAny |= HazardVisualizerActor->SetFireState(FireIndex, FireState);
 	}
 
-	// Derived Smokeview-style vent flow (B-Risk exports none): compute per vent from the two
-	// rooms' sampled layer state and push to the visualizer's in/out flow indicators.
+	// Derived Smokeview-style vent flow: compute per vent from the two rooms' sampled layer state
+	// and push to the visualizer's in/out flow indicators. B-Risk CAN export per-vent flow -
+	// wallventflows.txt - but only when the modeller ticks the box, and it is present in just 1 of
+	// the 14 exports on this machine. So this derived path has to exist and has to be right on its
+	// own; the log is the oracle we test it against, not a source we can rely on.
 	if (ScenarioData.Vents.Num() > 0)
 	{
-		auto BuildVentSide = [this, TimeSeconds](int32 RoomId) -> FBRiskVentSideState
+		// Side assembly lives in the static MakeVentSideState so the automation suite can gate the
+		// SHIPPED join rather than a restatement of it. It also reports WHY a side came out exterior:
+		// B-Risk's outside is inferred from an id above every declared room, and without that
+		// distinction a room that simply failed to import becomes outdoor air at ambient - a
+		// confident wrong answer instead of a visible fault.
+		int32 UnresolvedSides = 0;
+		int32 SidesMissingChannels = 0;
+		auto BuildVentSide = [this, TimeSeconds, &UnresolvedSides, &SidesMissingChannels](int32 RoomId)
 		{
-			FBRiskVentSideState Side;
-			const FBRiskRoomGeometry* Room = ScenarioData.Rooms.FindByPredicate(
-				[RoomId](const FBRiskRoomGeometry& R) { return R.RoomId == RoomId; });
-			if (!Room)
-			{
-				Side.bIsExterior = true;
-				return Side;
-			}
-			Side.FloorZM = Room->Origin.Z;
-			double Value = 0.0;
-			if (SampleRoomChannelAtTime(RoomId, TEXT("ULT"), TimeSeconds, Value)) { Side.UpperTempC = Value; }
-			if (SampleRoomChannelAtTime(RoomId, TEXT("LLT"), TimeSeconds, Value)) { Side.LowerTempC = Value; }
-			if (SampleRoomChannelAtTime(RoomId, TEXT("HGT"), TimeSeconds, Value)) { Side.LayerHeightM = Value; }
-			if (SampleRoomChannelAtTime(RoomId, TEXT("PRS"), TimeSeconds, Value)) { Side.PressurePa = Value; }
+			EBRiskVentSideResolution Resolution = EBRiskVentSideResolution::Interior;
+			bool bAllChannelsRead = true;
+			FBRiskVentSideState Side = MakeVentSideState(
+				ScenarioData, RoomId, static_cast<double>(TimeSeconds), Resolution, bAllChannelsRead);
+			UnresolvedSides += (Resolution == EBRiskVentSideResolution::MissingRoom) ? 1 : 0;
+			SidesMissingChannels += bAllChannelsRead ? 0 : 1;
 			return Side;
 		};
 
@@ -985,9 +994,29 @@ bool UBRiskDataSubsystem::UpdateHazardVisualsAtTime(float TimeSeconds)
 			{
 				To.FloorZM = From.FloorZM; // exterior uses the From-room floor as the common datum
 			}
-			VentFlows[VentIndex] = ComputeWallVentFlow(From, To, Vent);
+
+			// Ambient comes from the scenario's own input1.xml <temp_exterior>, not a constant. It
+			// cancels out of the pressure difference on a room-to-room opening but NOT on a
+			// room-to-exterior one, where the outside side's integral is identically zero - which is
+			// why the old hardcoded 20 C ran vent 34 of the 12-room export at 36% of B-Risk's own
+			// figure. Measured against wallventflows.txt the file's value puts every checked vent
+			// inside 0.5%.
+			VentFlows[VentIndex] = ComputeWallVentFlow(From, To, Vent, ScenarioData.Ambient.ExteriorTempC);
 		}
 		HazardVisualizerActor->SetVentFlows(VentFlows);
+
+		// Warn ONCE per load, off the per-vent path. Both cases below silently become 20 C still air
+		// inside the flow integral, so a flow band is still drawn and still looks plausible.
+		if ((UnresolvedSides > 0 || SidesMissingChannels > 0) && !bHasWarnedUnresolvedVentSide)
+		{
+			bHasWarnedUnresolvedVentSide = true;
+			UE_LOG(LogBRiskDataSubsystem, Warning,
+				TEXT("B-Risk vent flow: %d vent side(s) name a room this scenario never declared, and ")
+				TEXT("%d interior side(s) had no ULT/LLT/HGT/PRS channel. Those sides fall back to ")
+				TEXT("still ambient air, so their flow bands are drawn from defaults rather than from ")
+				TEXT("the fire. Check the room set and the zone CSV column names."),
+				UnresolvedSides, SidesMissingChannels);
+		}
 	}
 
 	HazardVisualizerActor->SetSimulationTime(TimeSeconds);
@@ -1015,6 +1044,7 @@ void UBRiskDataSubsystem::ClearHazardVisuals()
 	}
 	HazardVisualizerActor = nullptr;
 	bHasWarnedMissingHazardSeries = false;
+	bHasWarnedUnresolvedVentSide = false;
 }
 
 void UBRiskDataSubsystem::LogScenarioSummary(
@@ -1155,15 +1185,96 @@ bool UBRiskDataSubsystem::SampleSeriesAtTime(int32 ZoneTableIndex, const FString
 bool UBRiskDataSubsystem::SampleRoomChannelAtTime(int32 OneBasedIndex, const TCHAR* BaseName,
                                                   double TimeSeconds, double& OutValue) const
 {
+	return SampleRoomChannel(ScenarioData, OneBasedIndex, BaseName, TimeSeconds, OutValue);
+}
+
+bool UBRiskDataSubsystem::SampleRoomChannel(const FBRiskScenarioData& Data, int32 OneBasedIndex,
+                                            const TCHAR* BaseName, double TimeSeconds, double& OutValue)
+{
+	// Same lookup the member did: B-Risk packs every room into one CSV with a "_<id>" suffixed
+	// column per channel, and the 1-based id - not the array index into Rooms - selects the column.
 	const FString FullName = FString::Printf(TEXT("%s_%d"), BaseName, OneBasedIndex);
-	for (int32 TableIndex = 0; TableIndex < ScenarioData.ZoneTables.Num(); ++TableIndex)
+	for (const FBRiskZoneTable& Table : Data.ZoneTables)
 	{
-		if (SampleSeriesAtTime(TableIndex, FullName, TimeSeconds, OutValue))
+		const FBRiskSeries* Found = Table.Series.FindByPredicate(
+			[&FullName](const FBRiskSeries& Series) { return Series.Name == FullName; });
+		if (!Found)
 		{
+			continue;
+		}
+
+		const TArray<double>& Times = Table.TimeSeconds;
+		const TArray<double>& Values = Found->Values;
+		if (Times.Num() == 0 || Values.Num() != Times.Num())
+		{
+			continue;
+		}
+		if (TimeSeconds <= Times[0])
+		{
+			OutValue = Values[0];
 			return true;
 		}
+		if (TimeSeconds >= Times.Last())
+		{
+			OutValue = Values.Last();
+			return true;
+		}
+
+		int32 Lo = 0;
+		int32 Hi = Times.Num() - 1;
+		while (Hi - Lo > 1)
+		{
+			const int32 Mid = (Lo + Hi) / 2;
+			if (Times[Mid] <= TimeSeconds) { Lo = Mid; }
+			else                           { Hi = Mid; }
+		}
+		OutValue = FMath::Lerp(Values[Lo], Values[Hi], (TimeSeconds - Times[Lo]) / (Times[Hi] - Times[Lo]));
+		return true;
 	}
 	return false;
+}
+
+FBRiskVentSideState UBRiskDataSubsystem::MakeVentSideState(
+	const FBRiskScenarioData& Data,
+	int32 RoomId,
+	double TimeSeconds,
+	EBRiskVentSideResolution& OutResolution,
+	bool& OutAllChannelsRead)
+{
+	OutAllChannelsRead = true;
+
+	FBRiskVentSideState Side;
+	const FBRiskRoomGeometry* Room = Data.Rooms.FindByPredicate(
+		[RoomId](const FBRiskRoomGeometry& R) { return R.RoomId == RoomId; });
+	if (!Room)
+	{
+		// An id ABOVE every declared room is B-Risk's exterior, which is how it names the outside.
+		// An id that falls in a HOLE below that is a room we failed to import, and treating it as
+		// outdoor air would put ambient on one side of a wall that has a real room behind it.
+		int32 HighestDeclared = INDEX_NONE;
+		for (const FBRiskRoomGeometry& Candidate : Data.Rooms)
+		{
+			HighestDeclared = FMath::Max(HighestDeclared, Candidate.RoomId);
+		}
+		OutResolution = (RoomId > HighestDeclared)
+			? EBRiskVentSideResolution::Exterior
+			: EBRiskVentSideResolution::MissingRoom;
+		Side.bIsExterior = true;
+		return Side;
+	}
+
+	OutResolution = EBRiskVentSideResolution::Interior;
+	Side.FloorZM = Room->Origin.Z;
+
+	// Each assignment is conditional, and the struct defaults are 20 C / 0 m / 0 Pa. A missing
+	// channel therefore does not fail - it quietly makes the room look like still ambient air and
+	// still reports a flow. Track it so the caller can say so once.
+	double Value = 0.0;
+	if (SampleRoomChannel(Data, RoomId, TEXT("ULT"), TimeSeconds, Value)) { Side.UpperTempC = Value; }   else { OutAllChannelsRead = false; }
+	if (SampleRoomChannel(Data, RoomId, TEXT("LLT"), TimeSeconds, Value)) { Side.LowerTempC = Value; }   else { OutAllChannelsRead = false; }
+	if (SampleRoomChannel(Data, RoomId, TEXT("HGT"), TimeSeconds, Value)) { Side.LayerHeightM = Value; } else { OutAllChannelsRead = false; }
+	if (SampleRoomChannel(Data, RoomId, TEXT("PRS"), TimeSeconds, Value)) { Side.PressurePa = Value; }   else { OutAllChannelsRead = false; }
+	return Side;
 }
 
 namespace
@@ -1951,7 +2062,8 @@ FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 	double UpperOpticalDensity,
 	double LowerOpticalDensity,
 	double UpperTemperatureC,
-	double LowerTemperatureC)
+	double LowerTemperatureC,
+	double AmbientInteriorTempC)
 {
 	FBRiskSmokeVisualState SmokeState;
 	const double ClampedUpperOpticalDensity = FMath::Max(UpperOpticalDensity, 0.0);
@@ -1970,8 +2082,14 @@ FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 		1.0f);
 	SmokeState.UpperTemperatureC = static_cast<float>(UpperTemperatureC);
 	SmokeState.LowerTemperatureC = static_cast<float>(LowerTemperatureC);
+	// SmokeHeat is a 0-1 visual ramp from "room as it started" to 200 K above that. The baseline was
+	// a hardcoded 24.0, which is this dataset's own starting room temperature (input1.xml
+	// <temp_interior> 297 K at B-Risk's 273 offset) rather than a physical constant - so a scenario
+	// authored at a different interior temperature would have shown smoke as already warm at t=0.
+	// It now comes from the file. Note this is the INTERIOR ambient; the vent-flow routine takes the
+	// EXTERIOR one, and they are separate B-Risk inputs.
 	SmokeState.SmokeHeat = FMath::Clamp(
-		static_cast<float>((UpperTemperatureC - 24.0) / 200.0),
+		static_cast<float>((UpperTemperatureC - AmbientInteriorTempC) / 200.0),
 		0.0f,
 		1.0f);
 	SmokeState.LayerHeightWorldCm = static_cast<float>((RoomOriginZMeters + LayerHeight) * static_cast<double>(GeometryScaleCmPerMeter));
@@ -1982,7 +2100,8 @@ FBRiskSmokeVisualState UBRiskDataSubsystem::ComputeSmokeVisualState(
 FBRiskVentFlow UBRiskDataSubsystem::ComputeWallVentFlow(
 	const FBRiskVentSideState& From,
 	const FBRiskVentSideState& To,
-	const FBRiskVentGeometry& Vent)
+	const FBRiskVentGeometry& Vent,
+	double AmbientTempC)
 {
 	// Cross-vent hydrostatic flow per CCFM.VENTS/CFAST (SR282 §7.11.1): build each side's
 	// two-layer pressure profile over the opening, integrate the Bernoulli slab flux, and
@@ -1993,10 +2112,12 @@ FBRiskVentFlow UBRiskDataSubsystem::ComputeWallVentFlow(
 	// wrong - B-Risk can write wallventflows.txt, which carries per-vent flow per timestep and is
 	// the only ground truth for vent state we have (it is what proved vent 27 never opens). It is
 	// optional and absent from some exports, so this computation still has to exist, but the file
-	// is the oracle to test this against - which has not been done for MAGNITUDE yet, only state.
+	// is the oracle to test this against, and it now IS tested - both for state
+	// (ProjectMobius.BRisk.Importer.VentStateVsBRiskFlowLog) and for magnitude
+	// (ProjectMobius.BRisk.Hazard.VentFlowMagnitudeVsBRiskLog), which pins the median per-vent
+	// out-stream error against B-Risk's own kg/s at every timestep of the 12-room export.
 	constexpr double DensityConstant = 353.0; // rho = 353 / T[K] zone-model approximation
 	constexpr double Gravity = 9.81;
-	constexpr double AmbientTempC = 20.0;
 	constexpr int32 NumSlabs = 24;
 	constexpr double FlowEpsilonKgs = 1.0e-6;
 

@@ -1296,6 +1296,61 @@ namespace
 	}
 
 	/**
+	 * Parse input1.xml's ambient temperatures into Celsius.
+	 *
+	 * B-Risk stores these as whole kelvin at an offset of 273 (not 273.15) - see
+	 * BRiskKelvinToCelsiusOffset for the evidence and for why that is B-Risk's quirk rather than a
+	 * defect here. Absent tags leave the bHas* flags false so the caller can tell a real 20 C apart
+	 * from the fallback.
+	 *
+	 * Sanity-bounded in KELVIN before converting. A scenario whose ambient is outside 200-400 K is
+	 * not a scenario, it is a parse that latched onto the wrong tag, and letting it through would
+	 * feed a negative or absurd density straight into the vent-flow pressure integral.
+	 */
+	void ParseAmbientConditionsXml(const FString& XmlPath, FBRiskAmbientConditions& OutAmbient)
+	{
+		if (!FPaths::FileExists(XmlPath))
+		{
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			return; // ParseTenabilityEndpointsXml already warned about this same file.
+		}
+
+		const FXmlNode* RootNode = XmlFile.GetRootNode();
+		const auto ReadKelvin =
+			[RootNode](const TCHAR* Tag, double& OutCelsius, bool& bHasFlag)
+		{
+			const FXmlNode* Node = FindNodeByTagRecursive(RootNode, Tag);
+			if (!Node)
+			{
+				return;
+			}
+			double Kelvin = 0.0;
+			if (!TryParseDouble(Node->GetContent().TrimStartAndEnd(), Kelvin))
+			{
+				return;
+			}
+			if (Kelvin < 200.0 || Kelvin > 400.0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk <%s> is %g K, outside the plausible 200-400 K band. Ignoring it and ")
+					TEXT("using the fallback ambient %g C."),
+					Tag, Kelvin, BRiskFallbackAmbientTempC);
+				return;
+			}
+			OutCelsius = Kelvin - BRiskKelvinToCelsiusOffset;
+			bHasFlag = true;
+		};
+
+		ReadKelvin(TEXT("temp_exterior"), OutAmbient.ExteriorTempC, OutAmbient.bHasExteriorTemp);
+		ReadKelvin(TEXT("temp_interior"), OutAmbient.InteriorTempC, OutAmbient.bHasInteriorTemp);
+	}
+
+	/**
 	 * Parse input1.xml <soot_yield> (g soot per g fuel; 0.07 for pre-flashover VM2).
 	 *
 	 * Separate from ParseTenabilityEndpointsXml because soot_yield is NOT inside <tenability> - it
@@ -1533,6 +1588,7 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	const FString InputXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("input1.xml")));
 	ParseTenabilityEndpointsXml(InputXmlPath, OutData.TenabilityEndpoints);
 	ParseSootYieldXml(InputXmlPath, OutData.SootYieldGPerG, OutData.bHasSootYield);
+	ParseAmbientConditionsXml(InputXmlPath, OutData.Ambient);
 	if (FPaths::FileExists(InputXmlPath))
 	{
 		OutData.ReferencedFiles.AddUnique(InputXmlPath);

@@ -694,6 +694,71 @@ enum class EBRiskVentKind : uint8
  */
 inline constexpr double BRiskDefaultDischargeCoefficient = 0.68;
 
+/**
+ * Ambient temperature used when input1.xml does not supply one. Same value the vent-flow routine
+ * hardcoded before 2026-08-14; kept only as a fallback so a scenario without the tag behaves as it
+ * always did rather than silently jumping.
+ */
+inline constexpr double BRiskFallbackAmbientTempC = 20.0;
+
+/**
+ * Interior ambient used when input1.xml does not supply <temp_interior>: the temperature a room
+ * starts at before the fire touches it.
+ *
+ * 24 C is both B-Risk's own default (every zone CSV in this tree opens with every room at exactly
+ * 24) and the value the smoke-visual routine hardcoded until 2026-08-14, so a scenario without the
+ * tag is unchanged. Deliberately a DIFFERENT constant from BRiskFallbackAmbientTempC: B-Risk models
+ * an interior and an exterior ambient as two separate user inputs (SR282 Table 2, printed p.14), and
+ * collapsing them is exactly the mistake that made a 2026-08-07 investigation test 297 K on an
+ * exterior vent side and wrongly conclude ambient was not the problem.
+ */
+inline constexpr double BRiskFallbackInteriorTempC = 24.0;
+
+/**
+ * B-Risk's OWN kelvin/Celsius offset, which is 273 and not 273.15.
+ *
+ * This looks like a bug and is not ours to fix. B-Risk's input screen takes ambient temperatures in
+ * Celsius (SR282 Table 2, printed p.14) and writes whole kelvin to input1.xml. Evidence it uses 273:
+ * distributions.xml declares <units>K</units> with whole-kelvin bounds, none of which end in .15;
+ * the string "273.15" appears in no file of any export in this tree; and every zone CSV starts its
+ * rooms at EXACTLY 24 C while input1.xml carries <temp_interior>297</temp_interior>, which
+ * 297 - 273.15 = 23.85 cannot produce. That "24" is not display rounding - the next row of the same
+ * CSV prints 23.9795126181685.
+ *
+ * So a user who typed 15 C gets <temp_exterior>288</temp_exterior>, and reading it back as 14.85
+ * would put a 0.15 C bias between the ambient and the ULT/LLT channels it is subtracted from - which
+ * come out of that same CSV on this same convention. Measured against B-Risk's own wallventflows.txt
+ * the 273 reading is also simply closer: worst median vent error 0.5% against 2.3% at 273.15.
+ *
+ * B-Risk's SOLVER does treat the stored number as a true absolute temperature (SR282 nomenclature:
+ * "T = reference temperature of ambient air (K)"). The 0.15 K gap is therefore internal to B-Risk,
+ * between its UI/CSV convention and its physics. Disclose it; do not silently "correct" it.
+ */
+inline constexpr double BRiskKelvinToCelsiusOffset = 273.0;
+
+/** Ambient conditions B-Risk was configured with, read from input1.xml. */
+struct MOBIUSDATAIMPORTER_API FBRiskAmbientConditions
+{
+	/** <temp_exterior> converted to Celsius. This is the outside of any room-to-exterior opening. */
+	double ExteriorTempC = BRiskFallbackAmbientTempC;
+
+	/** True when input1.xml actually supplied temp_exterior, so the fallback is never mistaken for it. */
+	bool bHasExteriorTemp = false;
+
+	/**
+	 * <temp_interior> converted to Celsius - the temperature B-Risk starts every room at.
+	 *
+	 * Captured for reporting and for future use; the vent-flow routine does NOT consume it. An
+	 * earlier investigation (2026-08-07) tested this value as the vent-flow ambient, measured that
+	 * it made room-to-exterior flow worse, and concluded "ambient is not the problem". It was the
+	 * right idea applied to the wrong one of the two fields - the exterior side needs temp_exterior.
+	 */
+	double InteriorTempC = BRiskFallbackInteriorTempC;
+
+	/** True when input1.xml actually supplied temp_interior. */
+	bool bHasInteriorTemp = false;
+};
+
 /** Horizontal vent/opening geometry parsed from a B-Risk VENTGEOM block. */
 struct MOBIUSDATAIMPORTER_API FBRiskVentGeometry
 {
@@ -1083,6 +1148,13 @@ struct MOBIUSDATAIMPORTER_API FBRiskScenarioData
 
 	/** True when input1.xml actually supplied soot_yield, so 0.0 is not mistaken for a real value. */
 	bool bHasSootYield = false;
+
+	/**
+	 * input1.xml's ambient temperatures. ExteriorTempC is what the vent-flow routine uses for the
+	 * outside of a room-to-exterior opening; it hardcoded 20 C until 2026-08-14, which cost up to
+	 * 63.7% of the mass flow on the openings that matter most in a real model.
+	 */
+	FBRiskAmbientConditions Ambient;
 
 	/** All rooms declared in ROOM blocks, in declaration order. */
 	TArray<FBRiskRoomGeometry> Rooms;

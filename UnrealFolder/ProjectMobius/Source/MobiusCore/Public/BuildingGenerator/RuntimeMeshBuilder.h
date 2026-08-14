@@ -568,31 +568,48 @@ private:
 	static UMaterialInterface* ResolveNonDynamicParent(UMaterialInterface* InMaterial);
 
 	/**
-	 * One reused MID per section for the given parent. Rebuilt only when the parent changes, so a widget
-	 * click restyles in place instead of orphaning a MID per section per click.
+	 * One reused MID per section for the given parent. Rebuilt only when THAT SECTION's parent changes.
+	 *
+	 * The parent is tracked PER SECTION, not once for the whole building, and that is load-bearing rather
+	 * than tidiness. Sections no longer share a parent: a section whose source authored transparency (a
+	 * window) resolves to the translucent instance while its neighbours resolve to the opaque one, so the
+	 * two alternate down the array. The previous single SectionColourMIDParent Reset() the entire MID
+	 * array whenever the incoming parent differed, which under alternation would have discarded every
+	 * MID already handed to the mesh component on each call.
 	 */
 	UMaterialInstanceDynamic* GetOrCreateSectionMID(int32 SectionIdx, UMaterialInterface* Parent);
 
-	/** Section colour MIDs and the parent they were built from; see GetOrCreateSectionMID. */
+	/** Section colour MIDs, index-parallel to the sections. Each MID's own Parent records what it was built from. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> SectionColourMIDs;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> SectionColourMIDParent = nullptr;
-
-	/** Probe state for the above; re-evaluated per load AND whenever the resolved parent changes. */
-	bool bSourceColourParamProbeDone = false;
-	bool bSourceColourParamsAvailable = false;
+	/**
+	 * The parent a section should use for a given style: the style's own instance, except that a section
+	 * whose source authored transparency keeps a translucent instance even under an opaque style, so
+	 * imported windows stay windows. See the implementation for the owner ruling behind it.
+	 */
+	UMaterialInterface* ResolveSectionParentForStyle(EMobiusBuildingMaterialStyle Style,
+	                                                 const struct FMobiusMeshMaterial* Source);
 
 	/**
-	 * True when the resolved parent is the TransparentWhite style asset, i.e. "Plain Colours Transparent".
-	 * That style is PLAIN by definition, so sections take white instead of their source colour — the same
-	 * rule SetBuildingMaterialStyle applies via bForceWhite. Cached with the probe above because the parent
-	 * identifies the style, so it is one comparison per style change rather than a lookup per section.
+	 * Does this section's source ask to be see-through? Alpha carries opacity in FMobiusMeshMaterial
+	 * (1 = opaque), filled by both import paths — IFC's IfcSurfaceStyleRendering transparency and
+	 * assimp's AI_MATKEY_OPACITY for fbx/obj.
 	 */
-	bool bSourceParentIsPlainWhiteStyle = false;
+	static bool IsSourceAuthoredTranslucent(const struct FMobiusMeshMaterial* Source);
+
+	/**
+	 * Whether a parent carries the colour parameters, one entry per distinct parent. A map rather than
+	 * the single cached slot this used to be, because a load now resolves TWO parents and they interleave
+	 * per section — a one-slot cache would re-probe (and re-warn) on every alternation.
+	 * Cleared per load alongside the rest of the source-colour state.
+	 */
 	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> SourceColourProbedParent = nullptr;
+	TMap<TObjectPtr<UMaterialInterface>, bool> SourceColourParamsAvailableByParent;
+
+	/** Memoised ResolveStyleParentMaterial results — it does a LoadObject, and it is now called per section. */
+	UPROPERTY(Transient)
+	TMap<EMobiusBuildingMaterialStyle, TObjectPtr<UMaterialInterface>> StyleParentCache;
 
 	/** Sections that actually received a source-authored material, for the load summary line. */
 	int32 SourceMaterialSectionsApplied = 0;
@@ -625,7 +642,7 @@ private:
 	bool bSourceColoursAreMeaningful = false;
 
 	/** Resolves the MI_RuntimeMeshBuilder* instance backing a style. Null (and one log line) if missing. */
-	UMaterialInterface* ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style) const;
+	UMaterialInterface* ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style);
 
 	/** Pump that pushes up to SectionsEmittedPerTick sections per frame. Returns false once drained. */
 	bool EmitNextChunkSection(float DeltaTime);
