@@ -2925,13 +2925,13 @@ bool FTrajBand7RouteThresholdWidthTest::RunTest(const FString& Parameters)
 
 	const float Threshold = FTrajectoryField::DeriveRouteThresholdCrossings(WidthCm, CellCm);
 	TestTrue(*FString::Printf(
-		TEXT("T-BAND-7: the derived route threshold is a real crossing count, not the old half-byte test ")
+		TEXT("T-BAND-8: the derived route threshold is a real crossing count, not the old half-byte test ")
 		TEXT("(%.4f crossings at %.0f cm / %.0f cm)"), Threshold, WidthCm, CellCm),
 		Threshold > 0.0f);
 
 	const FHeatmapLOSBands Bands =
 		FHeatmapLOSBands::TrajectoryCrossings(WidthCm / 100.0f, Reference, Threshold);
-	TestTrue(TEXT("T-BAND-7: the route threshold sits strictly below the 1-crossing edge"),
+	TestTrue(TEXT("T-BAND-8: the route threshold sits strictly below the 1-crossing edge"),
 		Bands.BandA < Bands.BandB);
 
 	// Lay a straight axial path across the middle of a field and count the rows that clear the threshold.
@@ -2975,15 +2975,15 @@ bool FTrajBand7RouteThresholdWidthTest::RunTest(const FString& Parameters)
 		MaxLit = FMath::Max(MaxLit, Lit);
 	}
 
-	TestTrue(TEXT("T-BAND-7: the stroke lights at least one row at every phase"), MinLit >= 1);
+	TestTrue(TEXT("T-BAND-8: the stroke lights at least one row at every phase"), MinLit >= 1);
 	TestEqual(*FString::Printf(
-		TEXT("T-BAND-7: the drawn width is CONSTANT across sub-cell phases (saw %d..%d rows)"),
+		TEXT("T-BAND-8: the drawn width is CONSTANT across sub-cell phases (saw %d..%d rows)"),
 		MinLit, MaxLit), MinLit, MaxLit);
 
 	// And it is the right width. Stated as the configuration's own exact answer, so this follows the dial.
 	const int32 ExpectedRows = FMath::Max(1, FMath::RoundToInt32(WidthCm / CellCm));
 	TestEqual(*FString::Printf(
-		TEXT("T-BAND-7: %.0f cm of stroke on %.0f cm cells draws %d rows (%.1f cm)"),
+		TEXT("T-BAND-8: %.0f cm of stroke on %.0f cm cells draws %d rows (%.1f cm)"),
 		WidthCm, CellCm, ExpectedRows, ExpectedRows * CellCm), MaxLit, ExpectedRows);
 
 	// NON-VACUITY: the OLD half-byte edge must give a different, wider answer on at least one phase, or
@@ -3018,7 +3018,7 @@ bool FTrajBand7RouteThresholdWidthTest::RunTest(const FString& Parameters)
 			WorstLitOld = FMath::Max(WorstLitOld, LitOld);
 		}
 		TestTrue(*FString::Printf(
-			TEXT("T-BAND-7: the old half-byte edge draws a WIDER stroke at its worst phase (%d rows ")
+			TEXT("T-BAND-8: the old half-byte edge draws a WIDER stroke at its worst phase (%d rows ")
 			TEXT("against %d), so the threshold is what is being measured"), WorstLitOld, ExpectedRows),
 			WorstLitOld > ExpectedRows);
 	}
@@ -3248,6 +3248,530 @@ bool FTrajOffset3LatticePhaseTest::RunTest(const FString& Parameters)
 	// reasons unrelated to D-C and would keep passing through a regression.
 	TestTrue(TEXT("T-OFFSET-3: without the origin phasing at least one fixture lands in the wrong texel, ")
 		TEXT("so this gate can actually fail"), UnphasedFailures > 0);
+
+	return true;
+}
+
+// =====================================================================================================
+// T-ORACLE-3 -- the same physical pass reads the same on any grid.
+//
+// THE BUG CLASS THIS GATES. Twice now, a length scale has been confused for the other one: the exposure
+// ladder was derived against the cell side where its usage twin uses the stroke width (every edge 3x too
+// demanding), and the representability bar for ReferenceExposureDensity was computed the same way (238.1
+// where the real figure is 190.5). Both were caught by hand, months apart, by someone re-reading a
+// comment. The mechanical answer is a gate that deposits ONE physical pass into fields of different cell
+// size and demands the same answer -- because every one of those defects makes the answer move with the
+// cell.
+//
+// ⚠️ WHAT IS INVARIANT IS THE WIDTH AVERAGE, NOT THE CENTRELINE, and the difference is the whole design of
+// this test. The handoff that requested it (`HANDOFF_CdAndHeatmapBands_2026-08-13.md` §5a item 1) asked
+// for "the same pass at s = 10 / 15 / 25 / 45 cm must yield an identical RVal". Written that way against
+// the peak cell it FAILS, and correctly so: BuildKernel splats a DISC, so convolving a line with it gives
+// a semicircular lateral profile whose peak depends on how many cells span the stroke. Measured on the
+// shipping 45 cm stroke, the centreline reads 2.222 / 2.676 / 2.776 / 2.806 person/m at s = 45 / 25 / 15 /
+// 10 cm -- a 26% spread, converging on 4/(pi*w) from below as the grid refines.
+//
+// The band edges are defined on the WIDTH AVERAGE (edge_N = (N + 0.5) / (width x Reference), and owner
+// ruling 2026-08-14 on D5b confirmed that is the intended reading: the stroke is a fixed-width ribbon and
+// a band describes the ribbon, not its hottest line). That quantity IS invariant, exactly, by mass
+// conservation -- and this test asserts it across a 4.5x range of cell sizes.
+//
+// The cross-section sum is taken in the MIDDLE of a long straight pass. The kernel leaks along the path
+// as well as across it, so a column near an end is short of mass; away from the ends what leaks out of a
+// column equals what leaks in, and the sum is the canonical cell total exactly. Being a full-column sum it
+// is also independent of sub-cell phase, which is why no phase sweep is needed here.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajOracle3UsageResolutionTest,
+	"ProjectMobius.Heatmap.Trajectory.Oracle.T_ORACLE_3_UsageResolutionInvariance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajOracle3UsageResolutionTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float WidthCm = Defaults->TrajectoryDisplayPathWidthCm;
+	const float WidthM = WidthCm / 100.0f;
+	const float Reference = FTrajectoryFieldConfig().ReferenceUsageDensity;
+
+	// One person walking a straight line down the middle of a 10 x 4 m patch. Long enough that a column
+	// sampled at the midpoint is many kernel radii from either end even at the coarsest cell.
+	constexpr double ExtentXCm = 1000.0;
+	constexpr double ExtentYCm = 400.0;
+	constexpr double PathYCm = 200.0;
+	constexpr double PathStartXCm = 100.0;
+	constexpr double PathEndXCm = 900.0;
+
+	// The exact value the ladder places "one crossing" at. Reference-free in the sense that matters: it
+	// contains the stroke width and NOT the cell, which is the entire claim under test.
+	const double ExpectedDensity = 1.0 / static_cast<double>(WidthM);        // person/m
+	const double ExpectedRVal = ExpectedDensity / static_cast<double>(Reference);
+
+	double FirstRVal = -1.0;
+	double PeakSpreadMin = TNumericLimits<double>::Max();
+	double PeakSpreadMax = -TNumericLimits<double>::Max();
+	int32 Measured = 0;
+
+	for (const float CellCm : { 10.0f, 15.0f, 25.0f, 45.0f })
+	{
+		FTrajectoryField Field = MakeField(ExtentXCm, ExtentYCm, CellCm, WidthCm);
+		if (!TestTrue(*FString::Printf(TEXT("T-ORACLE-3: the %.0f cm field is valid"), CellCm),
+			Field.IsValid()))
+		{
+			continue;
+		}
+
+		// Deposited as ONE segment: the DDA books per-cell person-metres along it, so the canonical mass in
+		// a mid-path cell is one cell side regardless of how the segment was chopped. Duration is
+		// irrelevant to Route Usage and is only here because DepositSegment needs one.
+		Field.DepositSegment(FVector2D(PathStartXCm, PathYCm), FVector2D(PathEndXCm, PathYCm), 1.0f);
+
+		const float EffectiveCellCm = Field.GetEffectiveCmPerTexel();
+		const double EffectiveCellM = static_cast<double>(EffectiveCellCm) / 100.0;
+		const FIntPoint Dims = Field.GetGridDims();
+		const TArray<float>& Presented = Field.GetPresentation(ETrajectoryMapMode::RouteUsage);
+		if (!TestTrue(*FString::Printf(TEXT("T-ORACLE-3: the %.0f cm field presented a grid"), CellCm),
+			Presented.Num() >= Dims.X * Dims.Y) || !(EffectiveCellM > 0.0))
+		{
+			continue;
+		}
+
+		// Mid-path column, then the WHOLE column so the sum is the cross-section rather than a sample of it.
+		const int32 Column = FMath::Clamp(
+			FMath::FloorToInt32(((PathStartXCm + PathEndXCm) * 0.5) / EffectiveCellCm), 0, Dims.X - 1);
+		double ColumnPersonMetres = 0.0;
+		double PeakCell = 0.0;
+		for (int32 Row = 0; Row < Dims.Y; ++Row)
+		{
+			const double Value = static_cast<double>(Presented[Row * Dims.X + Column]);
+			ColumnPersonMetres += Value;
+			PeakCell = FMath::Max(PeakCell, Value);
+		}
+
+		// Width average: the column's person-metres spread over the ribbon's area (width x one cell of
+		// path), which is the density a band edge is stated in.
+		const double WidthAverageDensity = ColumnPersonMetres / (static_cast<double>(WidthM) * EffectiveCellM);
+		const double RVal = WidthAverageDensity / static_cast<double>(Reference);
+
+		TestEqual(*FString::Printf(
+			TEXT("T-ORACLE-3: one pass reads %.6f person/m width-averaged on a %.0f cm cell (effective ")
+			TEXT("%.4f) -- the ladder places one crossing at %.6f, and this must not move with the grid"),
+			WidthAverageDensity, CellCm, EffectiveCellCm, ExpectedDensity),
+			RVal, ExpectedRVal, ExpectedRVal * 1.0e-3);
+
+		if (FirstRVal < 0.0)
+		{
+			FirstRVal = RVal;
+		}
+		else
+		{
+			TestEqual(*FString::Printf(
+				TEXT("T-ORACLE-3: the %.0f cm cell agrees with the first cell size measured"), CellCm),
+				RVal, FirstRVal, FirstRVal * 1.0e-3);
+		}
+
+		// Recorded, deliberately NOT asserted invariant -- see the header. Its spread is what makes the
+		// width average the right quantity to gate, and printing it keeps the reason next to the evidence.
+		const double PeakDensity = PeakCell / (EffectiveCellM * EffectiveCellM);
+		PeakSpreadMin = FMath::Min(PeakSpreadMin, PeakDensity);
+		PeakSpreadMax = FMath::Max(PeakSpreadMax, PeakDensity);
+		++Measured;
+	}
+
+	TestTrue(TEXT("T-ORACLE-3: every cell size was actually measured"), Measured == 4);
+
+	// NON-VACUITY, and the D5b evidence in one assertion. If the CENTRELINE were also cell-invariant then
+	// the distinction this test is built around would be imaginary and the width-average assertions above
+	// would be passing for a reason that has nothing to do with mass conservation. It is not: the disc
+	// kernel's lateral profile is semicircular, so the peak climbs toward 4/(pi*w) as the grid refines.
+	TestTrue(*FString::Printf(
+		TEXT("T-ORACLE-3: the CENTRELINE is NOT cell-invariant (%.4f..%.4f person/m across the sweep), ")
+		TEXT("which is why the width average is the quantity the bands are defined on"),
+		PeakSpreadMin, PeakSpreadMax),
+		Measured == 4 && (PeakSpreadMax - PeakSpreadMin) > (PeakSpreadMax * 0.05));
+
+	return true;
+}
+
+// =====================================================================================================
+// T-BAND-8 -- the Route Exposure dwell ladder means the SECONDS the D5 ruling fixed it to mean.
+//
+// WHY THIS GATE EXISTS AT ALL. Until 2026-08-14 the exposure ladder (2 / 5 / 15 / 50 transit-equivalents)
+// had NO test of any kind -- the T-BAND-* set covers TrajectoryCrossings only. That is how it shipped for
+// a month with band F opening at 12.6 seconds of standing, i.e. with everything from thirteen seconds to
+// ten minutes painting one colour, inside exactly the regime the surface exists to show. Nothing could
+// have caught it, because nothing anywhere converted an edge into a quantity a human could sanity-check.
+//
+// THE RULING (D5) is that the edges sit at approximately 1 / 3 / 10 / 30 SECONDS of standing at the
+// shipping stroke. The transit constants 4 / 12 / 40 / 120 are DERIVED from that, so this test asserts the
+// seconds and lets the constants be whatever hits them -- the reverse (asserting 4/12/40/120) would be
+// comparing the implementation to itself and would survive a stroke-width change that silently moved
+// every second.
+//
+// FOUR PROPERTIES, in the order a regression would hit them:
+//
+//   1. SECONDS. Each edge converts to its ruled second count, within 2%. The 2% is the room the ruling
+//      leaves for round transit constants: 120 transits is 30.29 s, not 30.00.
+//   2. THE CONVERSION IS REAL, not algebra agreeing with itself. StandingDwellSecondsAtEdge is a closed
+//      form that dropped both the cell size and the walking speed. That is re-derived here THROUGH AN
+//      ACTUAL FTrajectoryField -- its real BuildKernel weights, its real effective cell -- and the two
+//      routes must agree. If the closed form ever stops describing the kernel, this is what says so.
+//   3. CELL-INDEPENDENCE. Sweeping the cell must not move a second. This is the property that makes the
+//      figure quotable in a deck: it survives D2b's snap and any future silhouette-quality dial.
+//   4. REPRESENTABILITY. Band F must stay reachable, and MinimumExposureReferenceForFullLadder must be
+//      computing the bar for the ladder that actually ships. Those disagreed by construction until the
+//      top step was named -- it was a literal 50 in that helper while the ladder said 120.
+//
+// NON-VACUITY is asserted twice: the superseded 2/5/15/50 ladder must FAIL property 1, and the cell sweep
+// is paired with a width sweep that must MOVE the seconds.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajBand8ExposureDwellTest,
+	"ProjectMobius.Heatmap.Trajectory.Bands.T_BAND_8_ExposureDwellLadder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajBand8ExposureDwellTest::RunTest(const FString& Parameters)
+{
+	using namespace TrajectoryOracle;
+
+	// Shipping configuration read from the same sources the runtime reads, never transcribed -- the whole
+	// point is that a dial change propagates into the expectation instead of reddening a literal.
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float ShipCellCm = Defaults->TrajectoryWorldCmPerTexel;
+	const float ShipWidthCm = Defaults->TrajectoryDisplayPathWidthCm;
+	const float ShipWidthM = ShipWidthCm / 100.0f;
+	const float Reference = FTrajectoryFieldConfig().ReferenceExposureDensity;
+	constexpr float VFree = FHeatmapLOSBands::FreeWalkSpeedSFPE;
+
+	const FHeatmapLOSBands Bands = FHeatmapLOSBands::TrajectoryTransits(ShipWidthM, Reference, VFree);
+	const float Edges[4] = { Bands.BandB, Bands.BandC, Bands.BandD, Bands.BandE };
+
+	// -- 1. The ruled seconds. Transcribed from the D5 ruling, NOT from the transit constants.
+	const double RuledSeconds[4] = { 1.0, 3.0, 10.0, 30.0 };
+	const TCHAR* const BandNames[4] = { TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E/F") };
+	constexpr double RulingTolerance = 0.02;   // 2% -- the slack round transit constants need
+
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const double Seconds = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+			Edges[Index], ShipWidthM, Reference);
+		const double Error = FMath::Abs(Seconds - RuledSeconds[Index]) / RuledSeconds[Index];
+		TestTrue(*FString::Printf(
+			TEXT("T-BAND-8: band %s opens at %.3f s of standing, ruled %.0f s (%.2f%% out, limit %.0f%%). ")
+			TEXT("If the ladder was re-tuned deliberately, update the ruled seconds here AND the ")
+			TEXT("calibration block on FHeatmapLOSBands::TrajectoryTransits together."),
+			BandNames[Index], Seconds, RuledSeconds[Index], Error * 100.0, RulingTolerance * 100.0),
+			Error <= RulingTolerance);
+	}
+
+	// NON-VACUITY (a). The superseded ladder must fail the very check that just passed, or the tolerance is
+	// wide enough to accept anything and property 1 asserts nothing. 50 transits was 12.62 s against a
+	// ruled 30 -- if this ever holds, someone has widened RulingTolerance past usefulness.
+	{
+		const double SupersededTopEdge = 50.0 / (static_cast<double>(ShipWidthM) * Reference * VFree);
+		const double SupersededSeconds = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+			static_cast<float>(SupersededTopEdge), ShipWidthM, Reference);
+		TestTrue(*FString::Printf(
+			TEXT("T-BAND-8: the superseded 50-transit top step (%.2f s) is rejected by the same check that ")
+			TEXT("accepts the shipping one, so property 1 can actually fail"), SupersededSeconds),
+			FMath::Abs(SupersededSeconds - 30.0) / 30.0 > RulingTolerance);
+	}
+
+	// -- 2. The closed form re-derived through a REAL field and its REAL kernel.
+	//
+	// StandingDwellSecondsAtEdge claims seconds = Edge * Ref * (pi*w^2/4), with no cell size in it. The
+	// independent route goes the long way round: a stationary agent's person-seconds land in the canonical
+	// cell and BuildKernel spreads them, so the cell keeps only the CENTRE TAP's share; the displayed value
+	// is that share divided by the cell area and the reference. Inverting,
+	//
+	//     seconds = Edge * Ref * CellArea / CentreTapWeight
+	//
+	// which contains the cell twice and must still land on the same number. Reading the weight from
+	// Field.GetKernelWeights() rather than computing 1/(pi*R^2) is the point: this is the assertion that
+	// fails if BuildKernel's shape rule ever changes out from under the legend.
+	{
+		FTrajectoryField Field = MakeField(4000.0, 2200.0, ShipCellCm, ShipWidthCm);
+		const float EffectiveCellM = Field.GetEffectiveCmPerTexel() / 100.0f;
+		const float RadiusTexels = Field.GetKernelRadiusTexels();
+
+		const TArray<FIntPoint>& Offsets = Field.GetKernelOffsets();
+		const TArray<float>& Weights = Field.GetKernelWeights();
+		int32 CentreTap = INDEX_NONE;
+		for (int32 Tap = 0; Tap < Offsets.Num(); ++Tap)
+		{
+			if (Offsets[Tap] == FIntPoint(0, 0))
+			{
+				CentreTap = Tap;
+				break;
+			}
+		}
+
+		if (TestTrue(TEXT("T-BAND-8: the shipping kernel has a centre tap"),
+			CentreTap != INDEX_NONE && Weights.IsValidIndex(CentreTap)) && EffectiveCellM > 0.0f)
+		{
+			const double CentreWeight = static_cast<double>(Weights[CentreTap]);
+			const double CellArea = static_cast<double>(EffectiveCellM) * EffectiveCellM;
+
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				const double ViaKernel = static_cast<double>(Edges[Index]) * Reference * CellArea
+					/ CentreWeight;
+				const double ViaClosedForm = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+					Edges[Index], ShipWidthM, Reference);
+				TestEqual(*FString::Printf(
+					TEXT("T-BAND-8: band %s -- the closed form (%.4f s) matches the real kernel's centre ")
+					TEXT("tap (%.4f s, weight %.7f, effective cell %.4f m)"),
+					BandNames[Index], ViaClosedForm, ViaKernel, CentreWeight, EffectiveCellM),
+					ViaKernel, ViaClosedForm, ViaClosedForm * 1.0e-4);
+			}
+
+			// The phase-invariance the calibration block leans on. The centre cell's farthest corner sits
+			// sqrt(2) texels from a disc centre displaced by half a cell on both axes, so a radius of at
+			// least that covers the cell WHATEVER the sub-cell placement and the weight cannot depend on
+			// phase. Below it, the quoted seconds become a lower bound rather than the number.
+			TestTrue(*FString::Printf(
+				TEXT("T-BAND-8: kernel radius %.4f texels >= sqrt(2), so the centre tap is phase-invariant ")
+				TEXT("and the dwell figure is exact rather than a best case"), RadiusTexels),
+				RadiusTexels >= UE_SQRT_2);
+		}
+	}
+
+	// -- 3. Cell-independence, and NON-VACUITY (b): the width must move what the cell cannot.
+	{
+		const double ShippingTop = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+			Bands.BandE, ShipWidthM, Reference);
+
+		for (const float CellCm : { 5.0f, 10.0f, ShipCellCm, 45.0f, 90.0f })
+		{
+			FTrajectoryField Field = MakeField(4000.0, 2200.0, CellCm, ShipWidthCm);
+			const FHeatmapLOSBands Swept = FHeatmapLOSBands::TrajectoryTransits(
+				ShipWidthM, Field.GetConfig().ReferenceExposureDensity, VFree);
+			const double Seconds = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+				Swept.BandE, ShipWidthM, Reference);
+			TestEqual(*FString::Printf(
+				TEXT("T-BAND-8: the top band still opens at %.3f s on a %.0f cm cell (effective %.4f)"),
+				ShippingTop, CellCm, Field.GetEffectiveCmPerTexel()),
+				Seconds, ShippingTop, ShippingTop * 1.0e-4);
+		}
+
+		const float WiderM = ShipWidthM * 2.0f;
+		const FHeatmapLOSBands Wider = FHeatmapLOSBands::TrajectoryTransits(WiderM, Reference, VFree);
+		const double WiderSeconds = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+			Wider.BandE, WiderM, Reference);
+		TestTrue(*FString::Printf(
+			TEXT("T-BAND-8: doubling the stroke DOES move the top band (%.3f s vs %.3f s), so the cell ")
+			TEXT("sweep above is not passing because nothing was connected"), WiderSeconds, ShippingTop),
+			!FMath::IsNearlyEqual(WiderSeconds, ShippingTop, ShippingTop * 0.01));
+	}
+
+	// -- 4. Representability, and that the helper computing it knows which ladder ships.
+	{
+		TestTrue(*FString::Printf(
+			TEXT("T-BAND-8: the top edge %.6f leaves band F reachable inside the [0,1] channel"),
+			Bands.BandE), Bands.BandE < 1.0f);
+
+		const float MinimumReference = FHeatmapLOSBands::MinimumExposureReferenceForFullLadder(
+			ShipWidthM, VFree);
+		TestTrue(*FString::Printf(
+			TEXT("T-BAND-8: the shipping reference %.1f clears the %.1f the full ladder needs"),
+			Reference, MinimumReference), Reference >= MinimumReference);
+
+		// The helper and the ladder must be talking about the same top step. Recovering it from the helper
+		// is what catches the two drifting apart -- which they silently would have, since the helper held a
+		// literal 50 while the ladder was re-tuned to 120.
+		const double RecoveredTopStep = static_cast<double>(MinimumReference) * ShipWidthM * VFree;
+		const double LadderTopStep = static_cast<double>(Bands.BandE) * ShipWidthM * Reference * VFree;
+		TestEqual(*FString::Printf(
+			TEXT("T-BAND-8: MinimumExposureReferenceForFullLadder is sized for the %.1f-transit top step ")
+			TEXT("the ladder actually uses, not a stale one"), LadderTopStep),
+			RecoveredTopStep, LadderTopStep, LadderTopStep * 1.0e-4);
+	}
+
+	return true;
+}
+
+// =====================================================================================================
+// T-LEGEND-1 -- the colour key prints the numbers the surface is actually banded by.
+//
+// WHY. Every other gate in this file asserts the CONTRACT (what an edge means) or the RENDER (what colour
+// a value takes). Nothing asserted the third thing a user actually reads: the legend. That matters more
+// than it sounds, because the legend is the only place the numbers appear in a form somebody can quote --
+// and this surface has already shipped a key that was 20% adrift from its own pixels for three days
+// without anything noticing, because nothing looked.
+//
+// The specific risk after the 2026-08-14 D5 work is a UNIT PAIRING: the exposure column changed from
+// transit-equivalents to seconds, and the header changed with it. Those are two edits in two places. One
+// line reverting either leaves a legend confidently labelling transits as seconds, which is worse than
+// the bug it replaced -- it would read as authoritative.
+//
+// Each surface is checked by INVERTING the printed text back to the physical quantity and comparing
+// against the shipped conversion, never against a table. A table here would be a fourth copy of the
+// ladder and would agree with itself after the ladder moved.
+// -----------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTrajLegend1PrintsBandedNumbersTest,
+	"ProjectMobius.Heatmap.Trajectory.Legend.T_LEGEND_1_KeyPrintsTheBandedNumbers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTrajLegend1PrintsBandedNumbersTest::RunTest(const FString& Parameters)
+{
+	// Values are printed with trailing zeros trimmed ("1", not "1.0"), so parse rather than string-match,
+	// and allow half of the last printed digit.
+	auto ValueOf = [](const FHeatmapLegendContents& Contents, int32 Row) -> double
+	{
+		return FCString::Atod(*Contents.Rows[Row].Value.ToString());
+	};
+	constexpr double PrintTolerance = 0.05;
+
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const float WidthM = Defaults->TrajectoryDisplayPathWidthCm / 100.0f;
+	const FTrajectoryFieldConfig Config;
+
+	// ---- Route Exposure: the column is SECONDS, and the header says so -------------------------------
+	{
+		const FHeatmapLOSBands Bands = FHeatmapLOSBands::TrajectoryTransits(
+			WidthM, Config.ReferenceExposureDensity, FHeatmapLOSBands::FreeWalkSpeedSFPE);
+		const FHeatmapLegendContents Key = FHeatmapLegend::RouteExposure(
+			Bands, WidthM, Config.ReferenceExposureDensity, FHeatmapLOSBands::FreeWalkSpeedSFPE);
+
+		if (TestTrue(TEXT("T-LEGEND-1: the exposure key has six bands and data"),
+			Key.bHasData && Key.Rows.Num() == 6))
+		{
+			const float Edges[5] = { Bands.BandA, Bands.BandB, Bands.BandC, Bands.BandD, Bands.BandE };
+			for (int32 Row = 1; Row < 5; ++Row)
+			{
+				const double Expected = FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+					Edges[Row], WidthM, Config.ReferenceExposureDensity);
+				TestEqual(*FString::Printf(
+					TEXT("T-LEGEND-1: exposure row %d prints %.3f s, the standing dwell its edge means"),
+					Row, Expected), ValueOf(Key, Row), Expected, PrintTolerance);
+			}
+
+			// The top row repeats the last edge behind a ">" -- an open-ended band has no upper bound to
+			// print, and printing the previous edge without the qualifier would state the opposite.
+			TestEqual(TEXT("T-LEGEND-1: the open top band repeats the last edge"),
+				ValueOf(Key, 5),
+				static_cast<double>(FHeatmapLOSBands::StandingDwellSecondsAtEdge(
+					Bands.BandE, WidthM, Config.ReferenceExposureDensity)), PrintTolerance);
+			TestEqual(TEXT("T-LEGEND-1: and qualifies it with '>'"), Key.Rows[5].Qualifier.ToString(),
+				FString(TEXT(">")));
+		}
+
+		// THE UNIT PAIRING. The values above are seconds; the header must say seconds. This is the
+		// assertion that catches the column silently reverting to transit-equivalents.
+		const FString Header = Key.ValueHeader.ToString();
+		TestTrue(*FString::Printf(
+			TEXT("T-LEGEND-1: the exposure header names the unit the column is printed in -- got '%s', ")
+			TEXT("which must carry '(s)' while the values are seconds"), *Header),
+			Header.Contains(TEXT("(s)")));
+
+		// The caveat is a disclosure obligation: the steps are a readability choice with no published
+		// standard behind them, and this tooltip is the only place a reader is ever told so. Asserted by
+		// PRESENCE and substance, deliberately NOT by matching the wording.
+		//
+		// A substring check against the sentence currently shipping would pass forever and then fail the
+		// day somebody improves the phrasing — a false alarm that trains the next reader to edit the test
+		// until it goes quiet, which is how a real disclosure gets deleted. What must not happen is the
+		// tooltip going empty or becoming a bare restatement of the header, and a length floor catches
+		// exactly that while leaving the words free.
+		TestTrue(*FString::Printf(
+			TEXT("T-LEGEND-1: the exposure header carries a substantive tooltip (%d chars) — this column ")
+			TEXT("prints a one-stationary-person yardstick against steps that are not a published ")
+			TEXT("standard, and neither fact is inferable from the number alone"),
+			Key.ValueHeaderTooltip.ToString().Len()),
+			Key.ValueHeaderTooltip.ToString().Len() > 200);
+	}
+
+	// ---- Route Usage: the column is PASSES ------------------------------------------------------------
+	{
+		const FHeatmapLOSBands Bands = FHeatmapLOSBands::TrajectoryCrossings(
+			WidthM, Config.ReferenceUsageDensity);
+		const FHeatmapLegendContents Key = FHeatmapLegend::RouteUsage(
+			Bands, WidthM, Config.ReferenceUsageDensity);
+
+		if (TestTrue(TEXT("T-LEGEND-1: the usage key has six bands and data"),
+			Key.bHasData && Key.Rows.Num() == 6))
+		{
+			// Edges are half-steps -- (N + 0.5) crossings -- so the printed count is the edge with the half
+			// taken back off. Inverting through the same width and reference the bands were built from.
+			const float Edges[5] = { Bands.BandA, Bands.BandB, Bands.BandC, Bands.BandD, Bands.BandE };
+			for (int32 Row = 1; Row < 5; ++Row)
+			{
+				const double Passes = FMath::RoundToDouble(
+					static_cast<double>(Edges[Row]) * WidthM * Config.ReferenceUsageDensity - 0.5);
+				TestEqual(*FString::Printf(TEXT("T-LEGEND-1: usage row %d prints %.0f passes"), Row, Passes),
+					ValueOf(Key, Row), Passes, PrintTolerance);
+			}
+		}
+
+		TestTrue(*FString::Printf(TEXT("T-LEGEND-1: the usage header reads 'passes', not the internal ")
+			TEXT("'crossings' -- got '%s'"), *Key.ValueHeader.ToString()),
+			Key.ValueHeader.ToString().Contains(TEXT("passes")));
+	}
+
+	// ---- Density: the column must invert back to Fruin's published boundaries -------------------------
+	//
+	// The one surface with a real standard behind it, so the strongest available assertion is available
+	// here and nowhere else: the printed m^2/person must be Fruin's own numbers.
+	{
+		const FHeatmapLegendContents Key = FHeatmapLegend::Density(FHeatmapLOSBands::Density());
+		const double Fruin[5] = { 3.24, 2.32, 1.39, 0.93, 0.46 };
+
+		if (TestTrue(TEXT("T-LEGEND-1: the density key has six bands and data"),
+			Key.bHasData && Key.Rows.Num() == 6))
+		{
+			for (int32 Row = 0; Row < 5; ++Row)
+			{
+				TestEqual(*FString::Printf(
+					TEXT("T-LEGEND-1: density row %d prints Fruin's %.2f m2/person"), Row, Fruin[Row]),
+					ValueOf(Key, Row), Fruin[Row], 0.01);
+			}
+			// The qualifier FLIPS relative to the trajectory surfaces: more m^2/person means EMPTIER, so
+			// the open end is at the top. Getting this backwards inverts the whole key's meaning.
+			TestEqual(TEXT("T-LEGEND-1: density band A is the open '>' end"),
+				Key.Rows[0].Qualifier.ToString(), FString(TEXT(">")));
+			TestEqual(TEXT("T-LEGEND-1: and density band F is the '<' end"),
+				Key.Rows[5].Qualifier.ToString(), FString(TEXT("<")));
+		}
+	}
+
+	// ---- The no-heatmap-loaded path still prints a real key ------------------------------------------
+	//
+	// Owner report 2026-08-14: switching surface before loading a dataset changed nothing on screen,
+	// because the key returned bHasData = false and the widget drew blank. Every input to both ladders has
+	// a class default, so the key a heatmap WOULD print is knowable in advance. This asserts it is printed,
+	// and that it is the same key -- a preview, not a placeholder.
+	{
+		const FHeatmapLegendContents DefaultExposure =
+			AHeatmapPixelTextureVisualizer::GetDefaultLegendContents(true, true);
+		const FHeatmapLegendContents DefaultUsage =
+			AHeatmapPixelTextureVisualizer::GetDefaultLegendContents(true, false);
+		const FHeatmapLegendContents DefaultDensity =
+			AHeatmapPixelTextureVisualizer::GetDefaultLegendContents(false, false);
+
+		TestTrue(TEXT("T-LEGEND-1: all three surfaces print a key with no heatmap registered"),
+			DefaultExposure.bHasData && DefaultUsage.bHasData && DefaultDensity.bHasData);
+		TestTrue(TEXT("T-LEGEND-1: and all three fill six rows"),
+			DefaultExposure.Rows.Num() == 6 && DefaultUsage.Rows.Num() == 6
+			&& DefaultDensity.Rows.Num() == 6);
+
+		// Distinct titles, or the surface switch the owner reported is still invisible even though the key
+		// is now populated.
+		TestTrue(TEXT("T-LEGEND-1: the three surfaces are told apart by their titles"),
+			!DefaultExposure.Title.EqualTo(DefaultUsage.Title)
+			&& !DefaultUsage.Title.EqualTo(DefaultDensity.Title));
+
+		const FHeatmapLOSBands Live = FHeatmapLOSBands::TrajectoryTransits(
+			WidthM, Config.ReferenceExposureDensity, FHeatmapLOSBands::FreeWalkSpeedSFPE);
+		const FHeatmapLegendContents LiveExposure = FHeatmapLegend::RouteExposure(
+			Live, WidthM, Config.ReferenceExposureDensity, FHeatmapLOSBands::FreeWalkSpeedSFPE);
+		if (DefaultExposure.Rows.Num() == 6 && LiveExposure.Rows.Num() == 6)
+		{
+			TestEqual(TEXT("T-LEGEND-1: the pre-load exposure key PREVIEWS the live one rather than "
+				"guessing"), ValueOf(DefaultExposure, 4), ValueOf(LiveExposure, 4), PrintTolerance);
+		}
+	}
 
 	return true;
 }

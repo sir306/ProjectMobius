@@ -895,10 +895,66 @@ bool FTrajectoryExportRenderShareInputsTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// The no-data threshold must sit below one byte, or every faint-but-real texel is painted as
-		// untouched ground - the defect the pre-refit edge set shipped with (it sat at byte 24.5).
-		TestTrue(*FString::Printf(TEXT("%s: no-data edge is below byte 1 (%.6f < %.6f)"), Case.Name,
-			CpuBands.BandA, 1.0f / 255.0f), CpuBands.BandA < (1.0f / 255.0f));
+		// THE 0/1 EDGE IS THE ROUTE THRESHOLD, and this assertion was rewritten on 2026-08-14 because it
+		// had been gating a contract that stopped existing on 2026-08-10.
+		//
+		// It used to demand `BandA < 1/255` -- "the no-data threshold must sit below one byte, or every
+		// faint-but-real texel is painted as untouched ground", written against the pre-refit edge set that
+		// sat at byte 24.5. Then D-E replaced the is-it-nonzero test with a threshold DERIVED from the
+		// kernel that draws the stroke, because a cell holding a sliver of kernel spill was painting the
+		// same colour as one holding a whole crossing -- so the stroke rendered as wide as the kernel's
+		// SUPPORT rather than as wide as the stroke. Half a byte became a FLOOR (HeatmapLOSBands.h, the
+		// `FMath::Max` in TrajectoryCrossings), never a ceiling. A route threshold above byte 1 is now the
+		// intended behaviour, so the old assertion could only ever fail once it started running.
+		//
+		// It did exactly that: this whole namespace had never been executed until 2026-08-13, and the first
+		// run reported `RouteUsage: no-data edge is below byte 1 (0.007386 < 0.003922)`. That red was the
+		// test being a generation behind the code, not the material being wrong.
+		//
+		// What replaces it gates the CURRENT contract on both sides, so it is strictly stronger than the
+		// bound it removes:
+		//   (a) the edge equals what the shipping width/cell pair derives, not merely "something small" --
+		//       this is the assertion that would have caught the material drifting from the runtime, which
+		//       is the failure class this file exists for;
+		//   (b) the floor still holds, so byte 0 and only byte 0 reads as no-data. That is the surviving
+		//       half of the old intent and it must not be lost with the rest of it.
+		{
+			// Both sets come from the SHIPPED derivation, never re-implemented here. The crossings ->
+			// transits threshold conversion is not the obvious one (it divides by the stroke's width in
+			// cells to recover a dimensionless cut fraction of the kernel's marginal, and does not involve
+			// v_free at all), so a hand-written expectation would be a fourth copy of exactly the
+			// arithmetic this codebase has already lost twice.
+			const AHeatmapPixelTextureVisualizer* HeatmapDefaults =
+				GetDefault<AHeatmapPixelTextureVisualizer>();
+			FHeatmapLOSBands ExpectedUsage;
+			FHeatmapLOSBands ExpectedExposure;
+			AHeatmapPixelTextureVisualizer::DeriveTrajectoryBands(
+				HeatmapDefaults->TrajectoryDisplayPathWidthCm, HeatmapDefaults->TrajectoryWorldCmPerTexel,
+				FTrajectoryFieldConfig(), ExpectedUsage, ExpectedExposure);
+
+			// Both surfaces are checked against their OWN set rather than one being skipped: a mode that
+			// silently kept the other's threshold is precisely what T_PIX_2 exists to notice.
+			const bool bUsage = (Case.Mode == ETrajectoryMapMode::RouteUsage);
+			const FHeatmapLOSBands& ExpectedBands = bUsage ? ExpectedUsage : ExpectedExposure;
+
+			// Half a byte of slack: the live push derives from the EFFECTIVE cell (D2b snaps it down to
+			// divide the major axis evenly) while the expectation uses the class default, and that gap is
+			// sub-byte by construction. Tighter would redden on floor geometry alone; looser would admit a
+			// real threshold change. Same tolerance and same reasoning as T-BAND-6.
+			constexpr float HalfAByte = 0.5f / 255.0f;
+			TestTrue(*FString::Printf(
+				TEXT("%s: the no-data edge is the DERIVED route threshold (%.6f, byte %.2f), not a stale ")
+				TEXT("is-it-nonzero test -- expected %.6f (byte %.2f) from the shipping %.1f cm stroke on ")
+				TEXT("%.1f cm cells"), Case.Name, CpuBands.BandA, CpuBands.BandA * 255.0f,
+				ExpectedBands.BandA, ExpectedBands.BandA * 255.0f,
+				HeatmapDefaults->TrajectoryDisplayPathWidthCm, HeatmapDefaults->TrajectoryWorldCmPerTexel),
+				FMath::Abs(CpuBands.BandA - ExpectedBands.BandA) <= HalfAByte);
+
+			TestTrue(*FString::Printf(
+				TEXT("%s: the edge still clears half a byte (%.6f >= %.6f), so byte 0 and only byte 0 ")
+				TEXT("reads as no data"), Case.Name, CpuBands.BandA, 0.5f / 255.0f),
+				CpuBands.BandA >= (0.5f / 255.0f));
+		}
 
 		// Fixed reference, not auto-exposure. Guards the display's comparability across captures.
 		//
