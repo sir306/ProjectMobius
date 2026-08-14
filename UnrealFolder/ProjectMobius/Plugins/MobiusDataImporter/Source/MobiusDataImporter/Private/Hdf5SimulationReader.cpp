@@ -746,6 +746,39 @@ bool FHdf5SimulationReader::IsValidSimulationFile(const FString& FilePath)
 	return Format == EHdf5FormatType::Mobius || Format == EHdf5FormatType::Juelich;
 }
 
+bool FHdf5SimulationReader::HasWktGeometry(const FString& FilePath)
+{
+	if (!FilePath.EndsWith(TEXT(".h5"), ESearchCase::IgnoreCase) || !FPaths::FileExists(FilePath))
+	{
+		return false;
+	}
+
+	FScopeLock Hdf5Guard(&GetHdf5LibraryLock());
+
+	FTCHARToUTF8 FilePathUtf8(*FilePath);
+
+	// Guard before H5Fopen so a mislabelled .h5 answers "no" instead of pushing an HDF5 error.
+	if (H5Fis_hdf5(FilePathUtf8.Get()) <= 0)
+	{
+		return false;
+	}
+
+	H5open();
+
+	const hid_t TempFileId = H5Fopen(FilePathUtf8.Get(), H5F_ACC_RDONLY, H5P_DEFAULT);
+	if (TempFileId < 0)
+	{
+		return false;
+	}
+
+	const htri_t bAttributeExists = H5Aexists(TempFileId, "wkt_geometry");
+
+	H5Fclose(TempFileId);
+
+	// No H5close() -- see CloseFile().
+	return bAttributeExists > 0;
+}
+
 EHdf5FormatType FHdf5SimulationReader::DetectFormat(const FString& FilePath)
 {
 	if (!FPaths::FileExists(FilePath))

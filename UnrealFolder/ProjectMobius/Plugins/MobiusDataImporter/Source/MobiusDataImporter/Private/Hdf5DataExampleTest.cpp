@@ -53,7 +53,6 @@ void FHdf5DataExampleTest::RunExampleFile()
 	if (FileId < 0)
 	{
 		UE_LOG(LogHdf5DataExampleTest, Error, TEXT("Failed to open HDF5 file: %s"), *ExamplePath);
-		H5close();
 		return;
 	}
 
@@ -67,7 +66,10 @@ void FHdf5DataExampleTest::RunExampleFile()
 	}
 
 	H5Fclose(FileId);
-	H5close();
+
+	// No H5close() -- it terminates the library process-wide, not just this file, and would
+	// invalidate ids held by any reader running alongside this diagnostic.
+	// See FHdf5SimulationReader::CloseFile().
 }
 
 void FHdf5DataExampleTest::TestSimulationReader()
