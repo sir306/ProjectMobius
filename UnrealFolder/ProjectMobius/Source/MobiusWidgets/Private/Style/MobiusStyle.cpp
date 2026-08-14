@@ -8,6 +8,95 @@
 #include "Styling/SlateTypes.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Font.h"
+#include "Engine/FontFace.h"
+#include "AssetRegistry/ARFilter.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "Modules/ModuleManager.h"
+
+namespace MobiusFonts
+{
+	/**
+	 * Permanently GC-root every UFont / UFontFace under /Game. PACKAGED-BUILD CRASH FIX — see below.
+	 *
+	 * `FSlateFontInfo::FontObject` is a raw UObject pointer. It is a UPROPERTY, so it IS visible to the
+	 * collector while the FSlateFontInfo lives inside a UObject (a WBP text block, a USlateWidgetStyleAsset).
+	 * It is NOT visible once the struct has been COPIED into a plain C++ owner — and Mobius copies it in two
+	 * places on every UI build:
+	 *   - `FSlateStyleSet` (this file's "Mobius.Text.*" ramp) is not a UObject;
+	 *   - `STextBlock::SetTextStyle` copies the whole FTextBlockStyle by value into the SWidget, so
+	 *     `SFieldAndTitleText`'s title/field blocks each hold their own copy of the font pointer
+	 *     (`SFieldAndTitleText::Construct` <- `UFieldAndTextWidget::RebuildWidget`).
+	 *
+	 * In the EDITOR the asset registry and editor world keep the font referenced, so it is never collected —
+	 * this reproduces ONLY in a package, and PIE cannot verify the fix. In a package the explicit
+	 * `CollectGarbage()` at the end of `UMassEntitySpawnSubsystem::CreatePedestrianTemplateData` (the
+	 * agent-file switch, `bHadExistingFileState` branch) collected the font, and the NEXT switch's
+	 * `UStatisticSubsystem::ResetForFileSwitch` broadcast re-measured the panel text through the now-dangling
+	 * pointer: `FSlateFontInfo::GetCompositeFont` -> `UObjectBaseUtility::GetInterfaceAddress` ->
+	 * EXCEPTION_ACCESS_VIOLATION reading 0xffffffffffffffff. Hence "crashes when you load files in quick
+	 * succession": switch 1 has no prior state so it skips the GC, switch 2 GCs the font, switch 3 crashes.
+	 *
+	 * Rooting only Font_Inter was NOT enough and was PROVEN so with a repackage: the pedestrian panel's title
+	 * and field rows carry SWS_AgentDisplayTitle / SWS_AgentDisplayField, which reference a SECOND composite
+	 * UFont (MobiusCustomFonts), and that one still died. Naming assets one at a time is whack-a-mole, so
+	 * this roots the whole (small: 2 UFont + ~10 UFontFace) set instead. Fonts are process-lifetime resources
+	 * in this app — nothing ever wants one collected mid-session.
+	 *
+	 * Called from FMobiusStyle::Create(), which runs lazily on the first Get() — i.e. at UI build time, well
+	 * after game content is mounted and the cooked asset registry is available.
+	 */
+	void RootProjectFonts()
+	{
+		static bool bHasRooted = false;
+		if (bHasRooted)
+		{
+			return;
+		}
+		bHasRooted = true;
+
+		const FAssetRegistryModule& AssetRegistryModule =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+
+		FARFilter Filter;
+		Filter.bRecursivePaths = true;
+		Filter.PackagePaths.Add(TEXT("/Game"));
+		Filter.ClassPaths.Add(UFont::StaticClass()->GetClassPathName());
+		Filter.ClassPaths.Add(UFontFace::StaticClass()->GetClassPathName());
+
+		TArray<FAssetData> FontAssets;
+		AssetRegistryModule.Get().GetAssets(Filter, FontAssets);
+
+		for (const FAssetData& FontAsset : FontAssets)
+		{
+			if (UObject* Font = FontAsset.GetAsset())
+			{
+				if (!Font->IsRooted())
+				{
+					Font->AddToRoot();
+				}
+			}
+		}
+
+		// Belt and braces: if the registry sweep found nothing (an early/commandlet path where the registry
+		// is not populated yet), still pin the two composite fonts the UI is known to bind by hard path, so
+		// this is never weaker than naming them individually.
+		static const TCHAR* KnownFontPaths[] = {
+			TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter"),
+			TEXT("/Game/01_Dev/Widgets/Fonts/MobiusCustomFonts.MobiusCustomFonts"),
+		};
+		for (const TCHAR* FontPath : KnownFontPaths)
+		{
+			if (UFont* Font = LoadObject<UFont>(nullptr, FontPath))
+			{
+				if (!Font->IsRooted())
+				{
+					Font->AddToRoot();
+				}
+			}
+		}
+	}
+}
 
 TSharedPtr<FSlateStyleSet> FMobiusStyle::StyleInstance = nullptr;
 
@@ -75,6 +164,7 @@ TSharedRef<FSlateStyleSet> FMobiusStyle::Create()
 	// App typeface: Inter (composite UFont at /Game). Create() runs lazily on first Get(), by which
 	// point game content is mounted, so this LoadObject is safe; falls back to the engine default
 	// face if the asset is unavailable (e.g. an early cook/commandlet path).
+	MobiusFonts::RootProjectFonts();
 	UFont* InterFont = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter"));
 	auto InterFontStyle = [InterFont](const char* Typeface, int32 Size) -> FSlateFontInfo
 	{
