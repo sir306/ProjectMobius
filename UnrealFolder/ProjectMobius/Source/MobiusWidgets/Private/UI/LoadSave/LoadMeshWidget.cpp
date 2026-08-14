@@ -26,6 +26,8 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Hdf5SimulationReader.h"
+#include "UI/MobiusConfirmDialog.h"
 
 void ULoadMeshWidget::NativeConstruct()
 {
@@ -125,6 +127,10 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 
 		// Update the game instance with the new data file
 		UpdateMobiusGameInstanceData();
+
+		// The mirror of ULoadAgentDataWidget::OfferEmbeddedGeometry: an .h5 picked as GEOMETRY may
+		// also hold the trajectories. Ask, do not assume -- see that function for the reasoning.
+		OfferEmbeddedAgentData(MeshFilePath);
 	}
 	else
 	{
@@ -133,11 +139,50 @@ void ULoadMeshWidget::DialogClosed(const FString& AgentFilePath, const FString& 
 			Feedback->ReportError(
 				FText::FromString("Invalid Mesh File"),
 				FText::FromString("Unsupported mesh file type selected."),
-				FText::FromString("Supported types: .fbx, .obj, .udatasmith, .ifc, .wkt"),
+				// .h5 belongs here: the dialog filter offers it and bMeshSuccess accepts it
+				// (NativeFileDialogSubsystem), so omitting it made this message contradict the
+				// picker the user had just used.
+				FText::FromString("Supported types: .fbx, .obj, .udatasmith, .ifc, .wkt, .h5"),
 				FText::FromString("Load Mesh"));
 		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));
 	}
+}
+
+void ULoadMeshWidget::OfferEmbeddedAgentData(const FString& MeshFilePath)
+{
+	// Only an .h5 can hold both. DetectFormat is heavier than the geometry side's H5Aexists probe
+	// (it opens and runs two H5Lexists), which is fine once at file-pick time -- do not reuse it
+	// anywhere hotter.
+	if (!MeshFilePath.EndsWith(TEXT(".h5"), ESearchCase::IgnoreCase)
+		|| FHdf5SimulationReader::DetectFormat(MeshFilePath) == EHdf5FormatType::Unknown)
+	{
+		return;
+	}
+
+	UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld());
+	if (!MobiusGameInstance || MobiusGameInstance->GetPedestrianDataFilePath() == MeshFilePath)
+	{
+		return;
+	}
+
+	const FText Body = MobiusGameInstance->GetPedestrianDataFilePath().IsEmpty()
+		? FText::FromString(TEXT("Load the agent trajectories from this file as well?"))
+		: FText::FromString(TEXT("Load the agent trajectories from this file as well? This "
+			"replaces the agent data currently loaded."));
+
+	if (!MobiusConfirmDialog::ShowYesNo(
+			this,
+			FText::FromString(TEXT("Agent Vectors Detected")),
+			FText::FromString(FString::Printf(
+				TEXT("'%s' also contains agent trajectory data."),
+				*FPaths::GetCleanFilename(MeshFilePath))),
+			Body))
+	{
+		return;
+	}
+
+	MobiusGameInstance->SetPedestrianDataFilePath(MeshFilePath);
 }
 
 void ULoadMeshWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)

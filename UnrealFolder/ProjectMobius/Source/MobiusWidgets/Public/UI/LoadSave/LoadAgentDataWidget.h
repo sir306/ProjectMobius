@@ -66,6 +66,17 @@ public:
 	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
 
 protected:
+	/**
+	 * If the chosen agent .h5 also carries a root `wkt_geometry`, ask whether to load it as the
+	 * geometry too. Asks rather than auto-loads: the user may have paired these trajectories with
+	 * different geometry on purpose. Silent no-op when there is no embedded geometry, when it is
+	 * already the loaded mesh, or when the user declines.
+	 *
+	 * ⚠️ Blocks on a modal while open - only ever call this from the file-pick callback.
+	 */
+	void OfferEmbeddedGeometry(const FString& AgentFilePath);
+
+
 	/** Mirrors OnPedestrianVectorFileUpdated into the displayed filename. */
 	virtual void BindGameInstanceFileDelegate() override;
 	virtual void UnbindGameInstanceFileDelegate() override;

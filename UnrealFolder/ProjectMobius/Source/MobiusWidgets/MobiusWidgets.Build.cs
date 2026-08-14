@@ -37,6 +37,9 @@ public class MobiusWidgets : ModuleRules
                 "Json",
                 "JsonUtilities",
                 "MobiusCore", "Niagara",
+                // FHdf5SimulationReader, for the cross-load prompts in the Load*/Widget file-pick
+                // callbacks ("this .h5 also contains geometry / agent vectors - load it too?").
+                "MobiusDataImporter",
             }
         );
 
