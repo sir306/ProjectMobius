@@ -627,8 +627,11 @@ void USimulationPlayBar::FileChanging()
 
 void USimulationPlayBar::SetPlayButtonStyle() const
 {
-	// Check the PlayPauseButton and the SlatePlayButtonStyle
-	if (!PlayPauseButton && !SlatePlayButtonStyle && !SlatePauseButtonStyle)
+	// Check the PlayPauseButton and the SlatePlayButtonStyle.
+	// FIX (2026-08-14): this was `&&`, so it only returned when ALL THREE were null and any single null
+	// was dereferenced two lines below — a latent null deref that becomes a guaranteed crash the moment
+	// either style asset is unassigned in WBP_MobiusBottomBar.
+	if (!PlayPauseButton || !SlatePlayButtonStyle || !SlatePauseButtonStyle)
 	{
 		return;
 	}
