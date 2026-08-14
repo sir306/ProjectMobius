@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 /**
  * MIT License
  * Copyright (c) 2025 ProjectMobius contributors
@@ -56,6 +56,7 @@
 #include "Slate/SlateBrushAsset.h"
 #include "UserConfig/UserProjectSettings.h"
 #include "Style/MobiusStyle.h"
+#include "Style/MobiusButtonGeometry.h"
 #include "Styling/SlateTypes.h"
 #include "Styling/SlateWidgetStyleAsset.h"
 #include "UI/Components/ButtonWithText.h"
@@ -777,16 +778,14 @@ FButtonStyle UUIThemeSubsystem::GetThemedTabStyle(const bool bSelected, const bo
 	using namespace MobiusTheme;
 	const bool bLight = CurrentTheme == EMobiusUITheme::Light;
 
-	// Base off the shared tab SWS so padding / sound / non-brush params stay identical to today.
+	// A10b step 6 (2026-08-14): base the tab on the NAMED C++ geometry instead of loading
+	// SWS_SettingButtonStyle. That asset supplied shape + PressedSlateSound = click_Cue; both now come
+	// from MobiusButtonGeometry::Tab / MobiusButtonSound::ApplyPressedCue, the same pair UBaseButton
+	// already builds its panel and tab families from. Its authored 0,20,0,20 padding was overridden
+	// below to FMargin(0,4) anyway, so nothing it carried survived to a pixel except the cue.
 	FButtonStyle Style;
-	if (const USlateWidgetStyleAsset* TabStyleAsset = LoadObject<USlateWidgetStyleAsset>(nullptr,
-		TEXT("/Game/01_Dev/Widgets/WidgetMaterials/SlateStyleSheets/UI_Styles/SWS_SettingButtonStyle.SWS_SettingButtonStyle")))
-	{
-		if (const FButtonStyle* Base = TabStyleAsset->GetStyle<FButtonStyle>())
-		{
-			Style = *Base;
-		}
-	}
+	MobiusButtonGeometry::Tab.ApplyToButtonStyle(Style);
+	MobiusButtonSound::ApplyPressedCue(Style);
 
 	// Swap each state's brush to the themed tab material (selected vs default) for the current theme.
 	// NOTE: this material is NOT what hid the label — the real cause was the 40px vertical padding below
@@ -1941,22 +1940,12 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 {
 	using namespace MobiusTheme;
 
-	// Ribbon tab style (inactive/hover/press states) — mutate the loaded asset's style struct in
-	// place; live SButtons hold a pointer to it and repaint on the InvalidateAllWidgets that follows.
-	if (const USlateWidgetStyleAsset* TabStyleAsset = LoadObject<USlateWidgetStyleAsset>(nullptr,
-		TEXT("/Game/01_Dev/Widgets/WidgetMaterials/SlateStyleSheets/UI_Styles/SWS_SettingButtonStyle.SWS_SettingButtonStyle")))
-	{
-		if (FButtonStyle* TabStyle = const_cast<FButtonStyle*>(TabStyleAsset->GetStyle<FButtonStyle>()))
-		{
-			TabStyle->Normal.TintColor = bLight ? FLinearColor(0.7913f, 0.7913f, 0.7913f) : FLinearColor(0.0284f, 0.0284f, 0.0284f);
-			TabStyle->Hovered.TintColor = bLight ? FLinearColor(0.8500f, 0.8500f, 0.8500f) : FLinearColor(0.0370f, 0.0370f, 0.0370f);
-			TabStyle->Pressed.TintColor = bLight ? FLinearColor(0.9131f, 0.9131f, 0.9131f) : FLinearColor(0.0452f, 0.0452f, 0.0452f);
-			// 7a/4b tab text: inactive dim, active/hover bright(er).
-			TabStyle->NormalForeground = bLight ? FLinearColor(0.1329f, 0.1329f, 0.1329f) : FLinearColor(0.323f, 0.323f, 0.323f);   // #666666 / #9a9a9a
-			TabStyle->HoveredForeground = bLight ? FLinearColor(0.0160f, 0.0160f, 0.0160f) : FLinearColor(0.8228f, 0.8228f, 0.8228f); // #222222 / #eaeaea
-			TabStyle->PressedForeground = TabStyle->HoveredForeground;
-		}
-	}
+	// A10b step 6 (2026-08-14): the SWS_SettingButtonStyle colour block that used to sit here was a DEAD
+	// WRITE and is deleted. Its only reader was GetThemedTabStyle, which copied the asset and then
+	// overwrote every field it had just been given: all four brushes get SetResourceObject(TabMaterial)
+	// + TintColor = White, all four foregrounds are re-derived, and both paddings are replaced. So none
+	// of the tints or foregrounds above ever reached a pixel. Same shape as the SWS_PanelButtonStyle
+	// branch deleted in 6b176090; GetThemedTabStyle now builds from MobiusButtonGeometry::Tab instead.
 
 	// Sweep every Slate style/brush ASSET under the widget folder. Several widgets (playbar
 	// play/pause, gear button, hide/show bar) re-copy their style from these shared assets at
@@ -1970,7 +1959,11 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 	{
 		if (AssetData.AssetClassPath == USlateWidgetStyleAsset::StaticClass()->GetClassPathName())
 		{
-			// The tab style is handled explicitly above with exact palette values.
+			// Nothing READS SWS_SettingButtonStyle any more (GetThemedTabStyle builds from
+			// MobiusButtonGeometry::Tab as of 2026-08-14), but it is still on disk — and letting it into
+			// the branch below would MUTATE the shared asset object in memory on every theme apply, which
+			// dirties a public-repo .uasset and lets a Save All in that editor bake theme colours to disk.
+			// Skip it until the asset itself is deleted, then delete this too.
 			if (AssetData.AssetName == TEXT("SWS_SettingButtonStyle"))
 			{
 				continue;
@@ -2047,78 +2040,12 @@ void UUIThemeSubsystem::ApplySharedStyles(const bool bLight)
 				// work (round the MI background + bake an accent ring, OR a texture glyph on a RoundedBox).
 				// Only the ACCENT-RING colour is queued; the C++ swap path (SetPlayButtonStyle) stays intact.
 			}
-			// Button LABELS come from separate text-style assets (SWS_*TextStyle) — without this
-			// the light theme leaves white labels on light buttons.
-			else if (FTextBlockStyle* TextStyle = const_cast<FTextBlockStyle*>(StyleAsset->GetStyle<FTextBlockStyle>()))
-			{
-				const FString TextAssetName = AssetData.AssetName.ToString();
-				if (TextAssetName == TEXT("SWS_FlowRemoveButtonTextStyle"))
-				{
-					// A10 (2026-08-04): this skip is load-bearing, but NOT for the reason it used to claim
-					// ("danger red — theme-independent"). The authored value (0.7836, 0.0409, 0.0252 =
-					// #E7392D) is a DETECTOR, not a rendered colour.
-					//
-					// UButtonWithText::RefreshThemedLabelStyle reads THIS asset's ColorAndOpacity and treats a
-					// saturated value (max channel - min channel > 0.05) as "the label is a deliberate SIGNAL,
-					// not chrome", then paints the label from EMobiusPaletteRole::DangerText. So what reaches
-					// the screen is the palette pair in both themes and never #E7392D — which measures only
-					// 2.1:1 on the dark ButtonBg and is the accessibility bug DangerText exists to fix
-					// (measurements in MobiusThemePalette.h, owner ruling 2026-07-28).
-					//
-					// Sole consumer: WBP_RemoveFlowCounterToWorld.RemoveFC_Button, a UButtonWithText whose
-					// bFollowThemePalette is defaulted true and bIsRibbonButton unset, so that path does run.
-					// Let it fall through to the Contains("Button") branch below and the greyscale test would
-					// instead see a grey ButtonText, silently demoting the Remove label to chrome.
-				}
-				else if (TextAssetName == TEXT("SWS_FlowCounterTextStyle"))
-				{
-					// In-world counter card is a light surface in BOTH themes (material-brush card),
-					// so its text is pinned black. A value-remap here ping-ponged it white via the
-					// playbar {white<->black} row and the in-world labels vanished.
-					const FSlateColor PinnedBlack(FLinearColor::Black);
-					if (TextStyle->ColorAndOpacity != PinnedBlack)
-					{
-						TextStyle->ColorAndOpacity = PinnedBlack;
-						bChanged = true;
-					}
-				}
-				else if (TextAssetName.Contains(TEXT("Button")))
-				{
-					// Button-label assets: EXPLICIT per-theme colour (idempotent, direction-safe).
-					// The generic TextMap remap is order-dependent: a pass run against mixed state
-					// (extra ReapplyTheme calls, editor+PIE both mutating the shared asset) walked
-					// black -> white through the playbar row and every ButtonWithText label except
-					// the red Remove went invisible.
-					const FSlateColor LabelColor(PaletteColor(EMobiusPaletteRole::ButtonText, bLight));
-					if (TextStyle->ColorAndOpacity != LabelColor)
-					{
-						TextStyle->ColorAndOpacity = LabelColor;
-						bChanged = true;
-					}
-				}
-				else
-				{
-					bChanged |= RemapSlate(TextStyle->ColorAndOpacity, bLight, TextMap, /*bGuardNeutralWhite*/ false);
-				}
-				// Q28/B8: SWS text styles (rail labels, agent-window rows, ButtonWithText labels) → Font_Inter.
-				// Idempotent (only converts non-Inter faces), preserving each asset's authored size; a "Mono"
-				// / "Field" / "Value" asset name picks the JetBrains-Mono face for numeric/path readouts.
-				if (UFont* Inter = GetInterFont())
-				{
-					if (TextStyle->Font.FontObject != Inter)
-					{
-						const FString AssetName = AssetData.AssetName.ToString();
-						const bool bMono = AssetName.Contains(TEXT("Mono")) || AssetName.Contains(TEXT("Field")) || AssetName.Contains(TEXT("Value"));
-						int32 Size = FMath::RoundToInt(static_cast<float>(TextStyle->Font.Size));
-						if (Size <= 0)
-						{
-							Size = 15;
-						}
-						TextStyle->Font = FSlateFontInfo(Inter, Size, FName(bMono ? TEXT("Mono") : TEXT("Regular")));
-						bChanged = true;
-					}
-				}
-			}
+			// A10b step 6 (2026-08-14): the SWS_*TextStyle branch that stood here is DELETED. It retinted and
+			// re-faced seven text-style assets that no widget reads any more — UButtonWithText and
+			// UFieldAndTextWidget both build from the shared Mobius.Text.* ramp now, and each pushes its own
+			// colour (ApplyThemedLabelColor / RefreshThemedStyle), size (per-consumer fit-to-box) and Mono face
+			// (SetFieldFontFace). The branch also carried the last writer that MUTATED a shared .uasset in
+			// memory on every theme apply, which is what let a Save All bake theme colours into the public repo.
 			StyleAssetsThemed += bChanged ? 1 : 0;
 		}
 		else if (AssetData.AssetClassPath == USlateBrushAsset::StaticClass()->GetClassPathName())

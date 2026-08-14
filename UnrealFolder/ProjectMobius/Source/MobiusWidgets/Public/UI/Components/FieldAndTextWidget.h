@@ -33,14 +33,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
 	bool bAutoCenter = false;
 
-	/** Slate Title Text Style sheet */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
-	TObjectPtr<USlateWidgetStyleAsset> TitleTextStyle;
-
-	/** Slate Field Text Style sheet */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FieldAndTextWidget")
-	TObjectPtr<USlateWidgetStyleAsset> FieldTextStyle;
-
 protected:
 	TSharedPtr<SFieldAndTitleText> FieldAndTextWidget;
 

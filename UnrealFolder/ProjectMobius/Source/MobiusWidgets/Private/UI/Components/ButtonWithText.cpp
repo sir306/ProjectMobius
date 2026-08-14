@@ -64,13 +64,12 @@ void UButtonWithText::ApplyMobiusButtonStyle()
 TSharedRef<SWidget> UButtonWithText::RebuildWidget()
 {
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	// Custom Button Text. Editor-assigned SWS_* style assets take precedence; the shared Mobius
-	// style set is the fallback so unstyled buttons still match the app theme (was FCoreStyle).
+	// Custom Button Text. A10b step 6 (2026-08-14): the per-button SWS_* style asset override is gone —
+	// every label now reads the shared Mobius style set, so a new button is themed by construction.
 	MyButtonText =
 		SNew(STextBlock)
 		.Text(ButtonTextValue)
-		.TextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>()
-			           : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"))
+		.TextStyle(&FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"))
 		// Label FOLLOWS the button style foreground (themed by GetThemedTabStyle / ApplySharedStyles)
 		// rather than the SWS text style's baked colour. FIX (2026-07-21): ribbon-tab labels rendered
 		// WHITE/invisible because the walk's per-widget ApplyThemedLabelColor wasn't landing on them
@@ -145,8 +144,7 @@ void UButtonWithText::RefreshTextStyle()
 {
 	if (MyButtonText.IsValid())
 	{
-		MyButtonText->SetTextStyle(MobiusButtonTextStyle ? MobiusButtonTextStyle->GetStyle<FTextBlockStyle>()
-			                           : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"));
+		MyButtonText->SetTextStyle(&FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Label"));
 	}
 }
 

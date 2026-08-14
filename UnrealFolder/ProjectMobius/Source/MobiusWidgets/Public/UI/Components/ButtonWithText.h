@@ -78,17 +78,17 @@ public:
 
 	/**
 	 * A5 (2026-07-28): the LABEL half of the SWS retirement — A4 moved the button's brushes and foregrounds
-	 * onto the palette and explicitly left MobiusButtonTextStyle behind. Re-pushes the label's text style
-	 * (font face/size stay asset-owned, per the owner's geometry-vs-colour split) and then sets the label
-	 * COLOUR explicitly, so the label no longer needs UUIThemeSubsystem::ApplySharedStyles to mutate the
-	 * shared SWS_*TextStyle asset in place on every theme apply — the thing A6 deletes.
+	 * onto the palette. Re-pushes the label's text style and then sets the label COLOUR explicitly, so the
+	 * label does not need UUIThemeSubsystem::ApplySharedStyles to mutate a shared style asset in place on
+	 * every theme apply.
 	 *
-	 * Colour rule: the ButtonText role, UNLESS the assigned text style carries a SATURATED authored colour,
-	 * which means the label is a deliberate SIGNAL rather than chrome — then it takes the DangerText role.
-	 * The asset is only the detector; the value is the palette's, so the destructive red is theme-correct in
-	 * both directions instead of the single authored red that only has contrast on a dark button. Tested by
-	 * saturation, not by asset name, because §6c warns that the name-matched branches in ApplySharedStyles
-	 * die silently on a rename. Destructive = red TEXT on the normal surface, not a red fill (owner, 07-28).
+	 * Colour rule: the ButtonText role, unless bIsDangerLabel is set — then DangerText.
+	 *
+	 * A10b step 6 (2026-08-14): the label's style asset property is GONE. Font face AND size now come from
+	 * "Mobius.Text.Label" for every button, so a label is right by construction and there is nothing per-
+	 * button left to author. The older doc here described a greyscale DETECTOR that read the assigned text
+	 * style's authored colour to mean "this label is a signal" — that inference was replaced by the
+	 * declared bIsDangerLabel bool in 9019f14d and the asset it detected on no longer reaches this code.
 	 *
 	 * Ribbon tabs are excluded — ApplyRibbonTabStyle owns their label colour (active vs inactive accent).
 	 * So are buttons with bFollowThemePalette cleared (A20): that flag means the OWNER drives this button's
@@ -133,10 +133,6 @@ public:
 	/** Text to be set on the button */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Content")
 	FText ButtonTextValue;
-
-	/** Slate style for the LABEL. Falls back to the shared "Mobius.Text.Label" when unset. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mobius|Style")
-	TObjectPtr<USlateWidgetStyleAsset> MobiusButtonTextStyle;
 
 	/**
 	 * This button's label is a DESTRUCTIVE-ACTION signal, so it paints from EMobiusPaletteRole::DangerText

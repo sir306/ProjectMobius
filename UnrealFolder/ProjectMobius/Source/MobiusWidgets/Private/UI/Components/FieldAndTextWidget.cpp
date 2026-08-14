@@ -11,15 +11,18 @@
 
 TSharedRef<SWidget> UFieldAndTextWidget::RebuildWidget()
 {
-	// Editor-assigned SWS_* style assets take precedence; shared Mobius style set is the fallback
-	// so unstyled instances still match the app theme (was FCoreStyle NormalText for both).
+	// A10b step 6 (2026-08-14): the per-instance SWS_* style asset overrides are gone — both blocks read
+	// the shared Mobius style set. Nothing was lost with them: RefreshThemedStyle below overwrites BOTH
+	// colours from the LabelText role, every consumer pushes its own size (FlowSectionCounter,
+	// FlowCounterWidget, PedestrianDataDisplay, and OnPaint's shrink-to-fit), and the agent-stat Mono face
+	// is declared explicitly via SetFieldFontFace. The assets supplied nothing that reached a pixel.
 	FieldAndTextWidget = SNew(SFieldAndTitleText)
 		.FieldText(FieldText)
 		.TitleText(TitleText)
 		.VerticalStacking(bIsTitleAboveField)
 		.AutoCenterTextToWidget(bAutoCenter)
-		.TitleTextStyle(TitleTextStyle ? TitleTextStyle->GetStyle<FTextBlockStyle>() : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Header"))
-		.FieldTextStyle(FieldTextStyle ? FieldTextStyle->GetStyle<FTextBlockStyle>() : &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field"));
+		.TitleTextStyle(&FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Header"))
+		.FieldTextStyle(&FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field"));
 
 	// Cold-start correctness: colour the freshly built blocks for the current theme (the walk relands
 	// again on every toggle).

@@ -39,10 +39,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vertical Text")
 	FText Text;
 
-	/** Optional FTextBlockStyle style asset; falls back to Mobius.Text.Label when unset. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vertical Text")
-	TObjectPtr<USlateWidgetStyleAsset> TextStyle;
-
 	/** Upright stacked letters (default) or rotated line. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vertical Text")
 	EVerticalTextMode Mode = EVerticalTextMode::StackedUpright;
