@@ -1261,15 +1261,23 @@ bool ARuntimeMeshBuilder::IsSourceAuthoredTranslucent(const FMobiusMeshMaterial*
 UMaterialInterface* ARuntimeMeshBuilder::ResolveSectionParentForStyle(EMobiusBuildingMaterialStyle Style,
                                                                      const FMobiusMeshMaterial* Source)
 {
-	// A SOURCE-AUTHORED TRANSLUCENT SECTION STAYS TRANSLUCENT UNDER AN OPAQUE STYLE. Owner-reported
-	// 2026-08-14: "materials that are supposed to be translucent should be the translucent variant when
-	// in original colours, not solid windows."
+	// ORIGINAL COLOURS IS THE ONLY MIXED STYLE. Owner's specification, 2026-08-14, for all four entries:
 	//
-	// "Original Colours" names the COLOUR channel, not the blend mode — its promise is that the building
-	// looks the way the file authored it. A file that authored glass at 30% opacity did not author a
-	// solid white panel, so honouring the alpha is what the label already claims. The two explicitly
-	// transparent styles are unaffected: they are a deliberate override of the whole building, and a
-	// section that is already translucent has nothing to keep.
+	//   Original Colours            what the model would be if imported -- solid walls, TRANSLUCENT
+	//                               WINDOWS. The only style that varies per section.
+	//   Original Colours Box Dissolve   EVERY material on the masked variant. Uniform.
+	//   Plain Colours Transparent   EVERY material plain white and translucent. Uniform.
+	//   Original Colours Transparent    source colours, EVERYTHING translucent. Uniform.
+	//
+	// So the source-alpha exception applies to OriginalColours ALONE. The other three are deliberate
+	// whole-building overrides and a section's own authored blend mode has no say in them -- including
+	// the cut-out, which an earlier revision of this function wrongly treated as "opaque-ish" and let
+	// windows escape from. A style that is described as "every material uses X" must produce exactly one
+	// parent across the building, or the mode stops meaning anything.
+	//
+	// Why the exception is right for Original Colours specifically: that label names the COLOUR channel,
+	// not the blend mode, and its promise is that the building looks the way the file authored it. A file
+	// that authored glass at 30% opacity did not author a solid panel.
 	//
 	// The window keeps the CLEAR-COAT translucent instance rather than the plain one because that is the
 	// variant carrying source colours; MI_RuntimeMeshBuilderTranslucent forces white by design. Its
@@ -1283,10 +1291,7 @@ UMaterialInterface* ARuntimeMeshBuilder::ResolveSectionParentForStyle(EMobiusBui
 	// COLLECTION parameter (see MobiusRenderCaptureCommands.cpp:88) and therefore global to the building.
 	// A window authored at 0.9 and one at 0.2 render alike. Making them differ needs a per-instance
 	// scalar in M_RuntimeMaster, i.e. a material change, not a code change.
-	const bool bStyleIsOpaqueish = (Style == EMobiusBuildingMaterialStyle::OriginalColours ||
-	                                Style == EMobiusBuildingMaterialStyle::OriginalColoursCutOut);
-
-	if (bStyleIsOpaqueish && IsSourceAuthoredTranslucent(Source))
+	if (Style == EMobiusBuildingMaterialStyle::OriginalColours && IsSourceAuthoredTranslucent(Source))
 	{
 		if (UMaterialInterface* TranslucentParent =
 			ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColoursTransparent))
@@ -1398,19 +1403,20 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 		// BlueprintCallable so the clear-coat look can still be switched on by hand for comparison.
 		switch (Style)
 		{
-		// SetDatasmithMeshToSolidMaterials MUST NOT run here, and this is the Datasmith half of the
-		// owner's 2026-08-14 report that windows come back solid in Original Colours.
+		// ORIGINAL COLOURS IS THE ONLY MIXED STYLE — the same rule as the procedural path, see
+		// ResolveSectionParentForStyle for the owner's four-entry specification.
 		//
 		// SetDatasmithToOriginalMatStyle already assigns PER SLOT from FDatasmithMaterials::bIsOpaque:
 		// opaque slots take MeshMaterials[i*2], authored-translucent slots take [i*2+1], which is exactly
-		// the behaviour wanted and is what the import itself does (BuildDatasmithMaterialsForMesh). Its
-		// own comment says the point is "so we are able to override opacity with the slider".
-		// SetDatasmithMeshToSolidMaterials then looped every slot onto [i*2] unconditionally, flattening
-		// the windows it had just placed correctly. It also notes it "never runs in practice" — this
+		// what "as imported" means and is what the import itself does (BuildDatasmithMaterialsForMesh).
+		// Its own comment says the point is "so we are able to override opacity with the slider".
+		// SetDatasmithMeshToSolidMaterials MUST NOT follow it here: that loops every slot onto [i*2]
+		// unconditionally, flattening the windows it had just placed correctly, which was the Datasmith
+		// half of the owner's "solid windows" report. It also notes it "never runs in practice" — this
 		// dispatch had made it run, one call too late.
 		//
-		// Nothing is lost by dropping it: its only other effect, ApplyRefractionForCurrentView, is the
-		// last thing SetDatasmithToOriginalMatStyle does anyway.
+		// Nothing is lost by dropping it from THIS case: its only other effect,
+		// ApplyRefractionForCurrentView, is the last thing SetDatasmithToOriginalMatStyle does anyway.
 		case EMobiusBuildingMaterialStyle::OriginalColours:
 			SetDatasmithToOriginalMatStyle();
 			SetDatasmithMeshToUseClearCoatMaterials(false);
@@ -1418,6 +1424,11 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 
 		case EMobiusBuildingMaterialStyle::OriginalColoursCutOut:
 			SetDatasmithToOriginalMatStyle();
+			// KEPT here, unlike the case above, and deliberately: the cut-out is a UNIFORM style — every
+			// material takes the same variant — so the per-slot placement SetDatasmithToOriginalMatStyle
+			// just made is exactly what has to be flattened. Datasmith has no masked master, so the solid
+			// variant plus the box dissolve is its equivalent of the procedural MI_RuntimeMeshBuilderMasked.
+			SetDatasmithMeshToSolidMaterials();
 			SetDatasmithMeshToUseClearCoatMaterials(false);
 			// The Datasmith equivalent of "cut out" is the box dissolve, which needs its bounds set by
 			// the caller (SetDatasmithDissolveMeshSizeAndOrigin) -- enabling it here without bounds
@@ -1639,18 +1650,22 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		}
 	}
 
-	// A SECTION THE SOURCE AUTHORED TRANSLUCENT KEEPS A TRANSLUCENT PARENT UNDER AN OPAQUE STYLE, so an
-	// imported window is a window and not a solid panel — owner-reported 2026-08-14. Applied here, after
-	// the parent has been resolved, so it covers BOTH routes into this function with one rule: the emit
-	// pump above, and the widget's UpdateMeshMaterial -> SetMaterialOnMesh -> here.
+	// A SECTION THE SOURCE AUTHORED TRANSLUCENT KEEPS A TRANSLUCENT PARENT UNDER **ORIGINAL COLOURS**, so
+	// an imported window is a window and not a solid panel — owner-reported 2026-08-14. Applied here,
+	// after the parent has been resolved, so it covers BOTH routes into this function with one rule: the
+	// emit pump above, and the widget's UpdateMeshMaterial -> SetMaterialOnMesh -> here.
+	//
+	// ORIGINAL COLOURS ONLY, and matching ResolveSectionParentForStyle exactly — see its comment for the
+	// owner's four-entry specification. The masked cut-out is NOT included: "box dissolve" means every
+	// material on the masked variant, so a window escaping to a translucent parent there is the bug, not
+	// the feature. These two tests are one rule expressed twice; they must be changed together.
 	//
 	// Keyed on the resolved parent rather than on CurrentBuildingMaterialStyle, because on the procedural
 	// path that member is never written (the widget does not call SetBuildingMaterialStyle) and would
 	// name the wrong style. A parent that is not one of the style assets — Blueprint supplying something
 	// of its own — is deliberately left alone rather than guessed at.
 	if (IsSourceAuthoredTranslucent(&SourceMaterial) &&
-		(Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours) ||
-		 Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColoursCutOut)))
+		Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours))
 	{
 		if (UMaterialInterface* TranslucentParent =
 			ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColoursTransparent))
