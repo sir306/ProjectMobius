@@ -201,7 +201,15 @@ namespace MobiusTheme
 		static TWeakObjectPtr<UFont> Cached;
 		if (!Cached.IsValid())
 		{
-			Cached = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter"));
+			UFont* Loaded = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter"));
+			// Permanent GC root: this shared font is stored as a raw FSlateFontInfo.FontObject across many Slate
+			// widgets that keep no GC reference. Without rooting, a file-switch GC collects it and those pointers
+			// dangle (0xdd) -> SIGSEGV in font measure. AddToRoot pins the single instance for the process.
+			if (Loaded && !Loaded->IsRooted())
+			{
+				Loaded->AddToRoot();
+			}
+			Cached = Loaded;
 		}
 		return Cached.Get();
 	}
