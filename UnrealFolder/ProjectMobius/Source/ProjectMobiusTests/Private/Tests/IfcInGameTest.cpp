@@ -310,8 +310,12 @@ namespace IfcInGame
 	 * This exists because the style->instance mapping is the kind of thing that looks obviously right
 	 * and silently isn't: it was chosen from asset NAMES, and names lie. The names were then verified
 	 * against the instances' own base_property_overrides (Opaque=BLEND_OPAQUE, Masked=BLEND_MASKED,
-	 * Translucent=BLEND_TRANSLUCENT, TranslucentClearcoat=BLEND_TRANSLUCENT+MSM_CLEAR_COAT), and this
-	 * test pins the wiring so a renamed or moved asset fails here instead of in someone's viewport.
+	 * Translucent=BLEND_TRANSLUCENT, TranslucentClearcoat=BLEND_TRANSLUCENT), and this test pins the
+	 * wiring so a renamed or moved asset fails here instead of in someone's viewport.
+	 *
+	 * "TranslucentClearcoat" is now a name only: the instance carries MSM_DEFAULT_LIT, because clear
+	 * coat is deferred and a translucent surface is forward shaded. The asset keeps its name so the
+	 * mapping above stays greppable -- the shading model is not asserted here.
 	 */
 	class FCheckMaterialStylesCommand : public IAutomationLatentCommand
 	{
