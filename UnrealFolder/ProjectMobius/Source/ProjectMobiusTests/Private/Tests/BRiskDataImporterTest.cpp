@@ -2227,6 +2227,59 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 			OpenNormally.IsOpenAtTime(30.0));
 	}
 
+	// --- Ambient temperatures come from the file, on B-Risk's own 273 offset ------------------
+	//
+	// SYNTHETIC VALUES ON PURPOSE. Every one of the fourteen real exports on this machine carries
+	// the same <temp_exterior>288</temp_exterior> / <temp_interior>297</temp_interior>, so a test
+	// asserting 15/24 against a real export would pass just as happily if someone re-hardcoded
+	// those numbers. Only a fixture with DIFFERENT values can tell reading from assuming.
+	//
+	// The offset is 273, not 273.15, because that is what B-Risk uses: distributions.xml declares
+	// <units>K</units> with whole-kelvin bounds none of which end in .15, the string "273.15"
+	// appears in no export, and every zone CSV starts its rooms at exactly 24 C from a stored 297.
+	{
+		const auto ImportWithAmbient = [&](const TCHAR* AmbientTags) -> FBRiskAmbientConditions
+		{
+			const FString TestDir = MakeBRiskTestDir();
+			const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+			WriteTextFile(SmvPath, MakeSmv());
+			WriteTextFile(FPaths::Combine(TestDir, TEXT("input1.xml")),
+				FString(TEXT("<input>")) + AmbientTags + TEXT("</input>"));
+
+			FBRiskScenarioData Data;
+			FString Error;
+			FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error);
+			IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+			return Data.Ambient;
+		};
+
+		const FBRiskAmbientConditions Both = ImportWithAmbient(
+			TEXT("<temp_exterior>300</temp_exterior><temp_interior>310</temp_interior>"));
+		TestTrue(TEXT("temp_exterior was found"), Both.bHasExteriorTemp);
+		TestTrue(TEXT("temp_interior was found"), Both.bHasInteriorTemp);
+		TestEqual(TEXT("300 K reads as 27 C on B-Risk's own 273 offset, not 26.85"),
+			Both.ExteriorTempC, 27.0, 1.0e-9);
+		TestEqual(TEXT("310 K reads as 37 C, and the interior field is kept separate"),
+			Both.InteriorTempC, 37.0, 1.0e-9);
+
+		const FBRiskAmbientConditions None = ImportWithAmbient(TEXT(""));
+		TestFalse(TEXT("an absent temp_exterior is reported absent, not defaulted silently"),
+			None.bHasExteriorTemp);
+		TestEqual(TEXT("and falls back to the value vent flow used to hardcode"),
+			None.ExteriorTempC, BRiskFallbackAmbientTempC, 1.0e-9);
+		TestEqual(TEXT("the interior fallback is B-Risk's 24 C, NOT the exterior's 20"),
+			None.InteriorTempC, BRiskFallbackInteriorTempC, 1.0e-9);
+
+		// Bounded in KELVIN before converting. Without this a parse that latched onto the wrong tag
+		// could put a negative absolute temperature into rho = 353/T and invert the pressure field.
+		const FBRiskAmbientConditions Absurd = ImportWithAmbient(
+			TEXT("<temp_exterior>29</temp_exterior><temp_interior>1200</temp_interior>"));
+		TestFalse(TEXT("29 K is not a room, it is a parse error - rejected"), Absurd.bHasExteriorTemp);
+		TestFalse(TEXT("1200 K likewise"), Absurd.bHasInteriorTemp);
+		TestEqual(TEXT("a rejected exterior ambient leaves the fallback in place"),
+			Absurd.ExteriorTempC, BRiskFallbackAmbientTempC, 1.0e-9);
+	}
+
 	// --- Ambiguity is refused, not guessed ----------------------------------------------------
 	//
 	// This is the case that matters. The .smv's VENTGEOM order is NOT the vents.xml id order -
@@ -2645,6 +2698,288 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 		TEXT("Cross-checked %d vent/time pairs against wallventflows.txt across %d timesteps: %d disagreements ")
 		TEXT("(%d transition samples excluded, %d open records in the log)"),
 		Checked, SortedTimes.Num(), Mismatches, SkippedAtTransition, Present.Num()));
+
+	return true;
+}
+
+// --- Vent-flow MAGNITUDE against B-Risk's own flow log ------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentFlowMagnitudeVsFlowLogTest,
+	"ProjectMobius.BRisk.Hazard.VentFlowMagnitudeVsBRiskLog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentFlowMagnitudeVsFlowLogTest::RunTest(const FString& Parameters)
+{
+	// The sibling test above proves we agree with B-Risk about which vents are OPEN. This one proves
+	// we agree about HOW MUCH flows, which until now was only ever measured by a Python script
+	// (_CurrentHandoff\tools\briskproof\Compare-VentFlowMagnitude.py) that nothing enforced.
+	//
+	// It gates the SHIPPED physics, not a copy of it: ComputeWallVentFlow is public and static and
+	// takes both sides by value, and FBRiskVentSideState's own header says the caller fills it from
+	// the zone CSV. The ~8 lines of side assembly restated below mirror BuildVentSide in
+	// UpdateHazardVisualsAtTime; that lambda is one caller of a by-value API, not a gate on it.
+	//
+	// WHAT IS MEASURED: gross OUT-stream only, as a median percentage error over the run. Not the
+	// in-stream, not the neutral-plane height, not flow direction. A vent matching here is evidence
+	// about magnitude and nothing else.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
+	FString SmvPath;
+	FString FlowLogPath;
+	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
+	{
+		for (const FString& Root : InternalRoots)
+		{
+			const FString Dir = FPaths::Combine(FString(Root), FString(Folder), TEXT("basemodel_default"));
+			const FString Smv = FPaths::Combine(Dir, TEXT("basemodel_default.smv"));
+			const FString Log = FPaths::Combine(Dir, TEXT("wallventflows.txt"));
+			if (FPaths::FileExists(Smv) && FPaths::FileExists(Log))
+			{
+				SmvPath = Smv;
+				FlowLogPath = Log;
+				break;
+			}
+		}
+		if (!SmvPath.IsEmpty())
+		{
+			break;
+		}
+	}
+	if (SmvPath.IsEmpty())
+	{
+		// wallventflows.txt is written only when the modeller ticks the box - it is present in just
+		// ONE of the fourteen exports on this machine. The derived computation therefore has to keep
+		// existing and be right on its own; this gate can only ever cover the one export that has an
+		// oracle at all.
+		AddInfo(TEXT("flow-magnitude cross-check SKIPPED: no 12-room fixture with a wallventflows.txt on this machine"));
+		return true;
+	}
+
+	FBRiskScenarioData Data;
+	FString ImportError;
+	if (!TestTrue(TEXT("The export should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &ImportError)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *ImportError));
+		return false;
+	}
+
+	TArray<FString> Lines;
+	if (!TestTrue(TEXT("The flow log should read"), FFileHelper::LoadFileToStringArray(Lines, *FlowLogPath)))
+	{
+		return false;
+	}
+
+	// A vent record is MULTI-LINE and the state test above deliberately reads only the header line,
+	// because presence is all it needs. Magnitude is different: the header carries the TOPMOST slab
+	// and the indented continuation lines carry the lower ones, where a negative value is flow the
+	// other way. Summing header lines alone silently drops most of the flow - which is precisely the
+	// mistake that makes a magnitude check look like it passes.
+	//
+	// Header line: Time from to vent# #slabs <zlo> "to" <zhi> ventflow [entrain]  (>=9 tokens, and
+	// the first five are integers). Continuation: <zlo> "to" <zhi> ventflow        (exactly 4).
+	struct FLoggedFlow
+	{
+		double OutKgs = 0.0;
+		double InKgs = 0.0;
+	};
+	TMap<FString, FLoggedFlow> Logged;
+	TSet<int32> LoggedTimes;
+	FString CurrentKey;
+	int32 ContinuationLines = 0;
+	for (const FString& Line : Lines)
+	{
+		TArray<FString> Tok;
+		Line.TrimStartAndEnd().ParseIntoArrayWS(Tok);
+
+		bool bHeader = Tok.Num() >= 9;
+		if (bHeader)
+		{
+			for (int32 k = 0; k < 5; ++k)
+			{
+				if (Tok[k].Contains(TEXT(".")) || !Tok[k].IsNumeric())
+				{
+					bHeader = false;
+					break;
+				}
+			}
+		}
+		if (bHeader)
+		{
+			const int32 T = FCString::Atoi(*Tok[0]);
+			LoggedTimes.Add(T);
+			CurrentKey = FString::Printf(TEXT("%d|%s|%s|%s"), T, *Tok[1], *Tok[2], *Tok[3]);
+			const double Flow = FCString::Atod(*Tok[8]);
+			FLoggedFlow& Entry = Logged.FindOrAdd(CurrentKey);
+			Entry.OutKgs += FMath::Max(Flow, 0.0);
+			Entry.InKgs += FMath::Max(-Flow, 0.0);
+			continue;
+		}
+
+		// Continuation: an indented "<zlo> to <zhi> <flow>" belonging to the record above it.
+		if (Tok.Num() == 4 && Tok[1].Equals(TEXT("to")) && !CurrentKey.IsEmpty())
+		{
+			const double Flow = FCString::Atod(*Tok[3]);
+			FLoggedFlow& Entry = Logged.FindOrAdd(CurrentKey);
+			Entry.OutKgs += FMath::Max(Flow, 0.0);
+			Entry.InKgs += FMath::Max(-Flow, 0.0);
+			++ContinuationLines;
+		}
+	}
+
+	if (!TestTrue(TEXT("The flow log should contain timesteps"), LoggedTimes.Num() > 0))
+	{
+		return false;
+	}
+	// If this ever reads zero the parser has silently degraded to the presence-only form and every
+	// magnitude below would be measured against the top slab alone.
+	TestTrue(TEXT("Continuation slabs were parsed, not just header lines"), ContinuationLines > 100);
+
+	// Same normalisation as the state test: B-Risk prints the pair LOW ROOM FIRST whichever way
+	// vents.xml declares it, and numbers vents per pair from 1 in .smv order.
+	auto NormalisedPair = [](const FBRiskVentGeometry& V)
+	{
+		return FIntPoint(FMath::Min(V.FromRoomId, V.ToRoomId), FMath::Max(V.FromRoomId, V.ToRoomId));
+	};
+	TMap<FIntPoint, int32> PairCounter;
+	TArray<int32> VentNumber;
+	VentNumber.Reserve(Data.Vents.Num());
+	for (const FBRiskVentGeometry& Vent : Data.Vents)
+	{
+		int32& Next = PairCounter.FindOrAdd(NormalisedPair(Vent));
+		VentNumber.Add(++Next);
+	}
+
+	// Sides come from the SHIPPED static assembly, not a restatement of it. That is the whole point
+	// of the extraction: a test that rebuilt the join itself could pass while production's copy was
+	// broken. MakeVentSideState samples by TIME and interpolates, so no row lookup is needed and the
+	// check does not quietly depend on the log's integer time grid coinciding with the CSV's.
+	//
+	// Ambient is read from the scenario the same way production reads it. Before 2026-08-14 this was
+	// a hardcoded 20 C and the exterior vents below sat at -3.3%, -6.2% and -63.7%.
+	const double AmbientC = Data.Ambient.ExteriorTempC;
+	TestTrue(TEXT("The export supplies its own exterior ambient rather than falling back"),
+		Data.Ambient.bHasExteriorTemp);
+
+	// Tolerances are the measured medians with the file's own ambient. They REPLACE a pinned-at-HEAD
+	// set that centred vent 34 on -63.7% with a +/-6 window; if a median moves, either the physics
+	// changed or the fixture did - do not widen a window to make a change pass.
+	struct FVentExpectation
+	{
+		int32 VentId;
+		double ExpectedMedianPct;
+		double TolerancePct;
+		const TCHAR* Description;
+	};
+	static const FVentExpectation Expectations[] = {
+		{ 32, +0.1, 2.0, TEXT("wall leakage 1->2, cd 1.0") },
+		{ 29, +0.3, 2.0, TEXT("closed-door leakage 1->2, cd 0.68") },
+		{ 26, +0.3, 2.0, TEXT("closed-door leakage 1->exterior, cd 0.68 - was -6.2% at 20 C") },
+		{ 33, +0.3, 2.0, TEXT("wall leakage 1->exterior, cd 1.0 - was -3.3% at 20 C") },
+		{ 34, +0.5, 2.0, TEXT("wall leakage 2->exterior, cd 1.0 - was -63.7% at 20 C") },
+	};
+
+	TArray<int32> SortedTimes = LoggedTimes.Array();
+	SortedTimes.Sort();
+
+	int32 TotalSamples = 0;
+	int32 VentsMeasured = 0;
+	bool bMissingRoomSeen = false;
+	bool bMissingChannelSeen = false;
+	bool bExteriorSeen = false;
+	for (const FVentExpectation& Expected : Expectations)
+	{
+		const int32 VentIndex = Data.Vents.IndexOfByPredicate(
+			[&Expected](const FBRiskVentGeometry& V) { return V.VentId == Expected.VentId; });
+		if (!TestTrue(*FString::Printf(TEXT("Vent id %d is present in the export"), Expected.VentId),
+			Data.Vents.IsValidIndex(VentIndex)))
+		{
+			continue;
+		}
+		const FBRiskVentGeometry& Vent = Data.Vents[VentIndex];
+		const FIntPoint Pair = NormalisedPair(Vent);
+
+		TArray<double> Errors;
+		for (const int32 T : SortedTimes)
+		{
+			const FLoggedFlow* Reference = Logged.Find(
+				FString::Printf(TEXT("%d|%d|%d|%d"), T, Pair.X, Pair.Y, VentNumber[VentIndex]));
+			if (!Reference || Reference->OutKgs < 1.0e-5)
+			{
+				continue; // absent == shut, and a zero out-stream has no percentage to take
+			}
+			// Sides are built LOW ROOM FIRST to match the log's own convention, NOT in the order
+			// vents.xml declares them. Vents 28/29 are declared 2->1 while the log calls that pair
+			// 1->2; feeding the declared order here would compare our out-stream against B-Risk's
+			// in-stream and produce a confident, entirely wrong number.
+			EBRiskVentSideResolution FromResolution = EBRiskVentSideResolution::Interior;
+			EBRiskVentSideResolution ToResolution = EBRiskVentSideResolution::Interior;
+			bool bFromChannels = true;
+			bool bToChannels = true;
+			FBRiskVentSideState From = UBRiskDataSubsystem::MakeVentSideState(
+				Data, Pair.X, static_cast<double>(T), FromResolution, bFromChannels);
+			FBRiskVentSideState To = UBRiskDataSubsystem::MakeVentSideState(
+				Data, Pair.Y, static_cast<double>(T), ToResolution, bToChannels);
+
+			// No side of this export should ever resolve as MissingRoom: rooms 1 and 2 are declared
+			// and room 3 is B-Risk's exterior, i.e. above them both. If this ever trips, a room
+			// failed to import and its wall is being treated as open to outdoor air.
+			bMissingRoomSeen |= (FromResolution == EBRiskVentSideResolution::MissingRoom)
+				|| (ToResolution == EBRiskVentSideResolution::MissingRoom);
+			bMissingChannelSeen |= !bFromChannels || !bToChannels;
+			bExteriorSeen |= (ToResolution == EBRiskVentSideResolution::Exterior);
+
+			if (To.bIsExterior)
+			{
+				To.FloorZM = From.FloorZM;
+			}
+			if (From.bIsExterior)
+			{
+				From.FloorZM = To.FloorZM;
+			}
+
+			const FBRiskVentFlow Flow = UBRiskDataSubsystem::ComputeWallVentFlow(From, To, Vent, AmbientC);
+			Errors.Add((Flow.MassFlowOutKgs - Reference->OutKgs) / Reference->OutKgs * 100.0);
+		}
+
+		if (!TestTrue(*FString::Printf(TEXT("Vent id %d has flow-log samples to compare"), Expected.VentId),
+			Errors.Num() > 0))
+		{
+			continue;
+		}
+		Errors.Sort();
+		const double MedianPct = Errors[Errors.Num() / 2];
+		TotalSamples += Errors.Num();
+		++VentsMeasured;
+
+		AddInfo(FString::Printf(
+			TEXT("vent %d (%s): median %+.1f%% over %d samples (expected %+.1f%% +/- %.1f)"),
+			Expected.VentId, Expected.Description, MedianPct, Errors.Num(),
+			Expected.ExpectedMedianPct, Expected.TolerancePct));
+
+		TestEqual(
+			*FString::Printf(TEXT("Vent %d median out-stream error against B-Risk's own flow log"),
+				Expected.VentId),
+			MedianPct, Expected.ExpectedMedianPct, Expected.TolerancePct);
+	}
+
+	// Guard the guard. If the pair keying ever drifted, every lookup would miss, every vent would
+	// report "no samples", and the assertions above would simply not run - a green suite proving
+	// nothing. These two make that failure loud.
+	TestEqual(TEXT("Every expected vent was actually measured"), VentsMeasured, static_cast<int32>(UE_ARRAY_COUNT(Expectations)));
+	TestTrue(TEXT("The magnitude check compared a healthy number of samples"), TotalSamples > 200);
+
+	// Side resolution, checked here rather than in its own test because this is the only place a
+	// real scenario's vents are assembled outside the running app.
+	TestFalse(TEXT("No vent side names a room this export never declared"), bMissingRoomSeen);
+	TestFalse(TEXT("Every interior vent side found all four layer channels"), bMissingChannelSeen);
+	TestTrue(TEXT("The exterior really was reached (room 3 resolves as outside, not as a hole)"), bExteriorSeen);
+
+	AddInfo(FString::Printf(
+		TEXT("Magnitude-checked %d vent/time samples across %d vents and %d timesteps against ")
+		TEXT("wallventflows.txt (%d continuation slabs parsed) at the export's own ambient %.2f C. ")
+		TEXT("With the previously hardcoded 20 C the exterior vents 26/33/34 sat at -6.2%%/-3.3%%/-63.7%%."),
+		TotalSamples, VentsMeasured, SortedTimes.Num(), ContinuationLines, AmbientC));
 
 	return true;
 }

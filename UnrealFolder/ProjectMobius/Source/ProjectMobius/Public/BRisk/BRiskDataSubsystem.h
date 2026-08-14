@@ -24,6 +24,25 @@ class ABRiskHazardVisualizer;
 class ABRiskSmokeVisualizer;
 class UTimeDilationSubSystem;
 
+/**
+ * How a vent side's room id resolved against the scenario's declared rooms.
+ *
+ * Exterior is inferred rather than declared: B-Risk numbers the outside N+1 and rooms.xml simply
+ * does not list it. That inference is right for every export we have, but on its own it cannot tell
+ * "outside" apart from "a room that failed to import" - and the second case silently becomes
+ * outdoor air at ambient, which is a confidently wrong answer rather than a visible failure.
+ * MissingRoom is that case: an id below the highest declared room, with no geometry behind it.
+ */
+enum class EBRiskVentSideResolution : uint8
+{
+	/** A declared room; layer state was sampled from the zone CSV. */
+	Interior,
+	/** Above every declared room id, so genuinely the outside. */
+	Exterior,
+	/** A gap in the declared rooms. Treated as exterior to stay usable, but it is a data fault. */
+	MissingRoom
+};
+
 /** World subsystem that owns the active B-Risk scenario. */
 UCLASS(Config = Game, DefaultConfig)
 class PROJECTMOBIUS_API UBRiskDataSubsystem : public UWorldSubsystem
@@ -376,7 +395,8 @@ public:
 		double UpperOpticalDensity,
 		double LowerOpticalDensity,
 		double UpperTemperatureC,
-		double LowerTemperatureC);
+		double LowerTemperatureC,
+		double AmbientInteriorTempC = BRiskFallbackInteriorTempC);
 
 	/**
 	 * Smokeview-style derived natural flow through one wall vent at a single time, computed
@@ -385,11 +405,54 @@ public:
 	 * absent from some exports - not, as this comment used to say, because no such export exists.
 	 * Where wallventflows.txt is present it is the ground truth to test this against.
 	 * Pure; pass pre-sampled side state + vent geometry, including its discharge coefficient.
+	 *
+	 * AmbientTempC is the OUTSIDE air temperature and should come from the scenario's own
+	 * input1.xml (FBRiskAmbientConditions::ExteriorTempC), not be assumed. It sets the reference
+	 * density the whole pressure integral is expressed against, and it is the temperature an
+	 * exterior side donates. On a room-to-room opening it cancels out of the pressure difference
+	 * and is inert; on a room-to-exterior opening it does NOT cancel - the exterior side's integral
+	 * is identically zero - so it moves the neutral plane, the mass flux and hence the drawn band.
+	 * Hardcoding 20 C cost up to 63.7% of B-Risk's own figure on those openings.
+	 * The default exists so a scenario with no temp_exterior behaves exactly as it did before.
 	 */
 	static FBRiskVentFlow ComputeWallVentFlow(
 		const FBRiskVentSideState& From,
 		const FBRiskVentSideState& To,
-		const FBRiskVentGeometry& Vent);
+		const FBRiskVentGeometry& Vent,
+		double AmbientTempC = BRiskFallbackAmbientTempC);
+
+	/**
+	 * Sample one room channel ("ULT", "LLT", "HGT", "PRS", ...) from a scenario at a time, without
+	 * needing a live subsystem. Static twin of SampleRoomChannelAtTime, which now forwards to it.
+	 */
+	static bool SampleRoomChannel(
+		const FBRiskScenarioData& Data,
+		int32 OneBasedIndex,
+		const TCHAR* BaseName,
+		double TimeSeconds,
+		double& OutValue);
+
+	/**
+	 * Assemble one side of a wall vent from a scenario at a time - the pressure/layer state
+	 * ComputeWallVentFlow consumes.
+	 *
+	 * Static, and taking the scenario by reference, so the SHIPPED assembly is what gets tested
+	 * rather than a test-local restatement of it. This was a lambda inside UpdateHazardVisualsAtTime
+	 * until 2026-08-14; extracting it is what lets
+	 * ProjectMobius.BRisk.Hazard.VentFlowMagnitudeVsBRiskLog gate the join as well as the physics.
+	 *
+	 * @param OutResolution      Whether the id was a real room, the outside, or a missing room.
+	 * @param OutAllChannelsRead False when any of ULT/LLT/HGT/PRS was absent for an interior room -
+	 *                           the side then carries defaults, which would quietly become 20 C air.
+	 *                           Reported rather than logged: this runs per vent per frame, and the
+	 *                           caller warns once instead.
+	 */
+	static FBRiskVentSideState MakeVentSideState(
+		const FBRiskScenarioData& Data,
+		int32 RoomId,
+		double TimeSeconds,
+		EBRiskVentSideResolution& OutResolution,
+		bool& OutAllChannelsRead);
 
 private:
 	UFUNCTION()
@@ -471,6 +534,14 @@ private:
 	bool bHasWarnedMissingSmokeSeries = false;
 	bool bHasWarnedMissingSmokeComponent = false;
 	bool bHasWarnedMissingHazardSeries = false;
+
+	/**
+	 * Warn-once latch for a vent side that could not be assembled: a missing room, or an interior
+	 * room with no layer channels. Both silently degrade to 20 C outdoor air in the flow integral,
+	 * which is a wrong number rather than an absent one. Latched because this is a per-vent,
+	 * per-frame path and logging in it would cost more than the defect.
+	 */
+	bool bHasWarnedUnresolvedVentSide = false;
 	float RoomGeometryScale = 100.0f;
 	int32 LoadGeneration = 0;
 	FThreadSafeBool bIsLoading;
