@@ -27,6 +27,7 @@
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"         // FTSTicker for staggered tile emit
 #include "HeatmapLOSBands.h"            // FHeatmapLOSBands is a by-value UPROPERTY below
+#include "HeatmapLegend.h"              // FHeatmapLegendContents is returned by value from a UFUNCTION
 #include "TrajectoryField.h"            // FTrajectoryField member + ETrajectoryMapMode UPROPERTY
 #include "GameFramework/Actor.h"
 #include "HeatmapPixelTextureVisualizer.generated.h"
@@ -258,6 +259,41 @@ public:
 	ETrajectoryMapMode GetTrajectoryMapMode() const { return TrajectoryMapMode; }
 
 	/**
+	 * The printed colour-band key for whatever this actor is CURRENTLY showing - title, unit header, and
+	 * six rows A..F, in the unit that surface is measured in.
+	 *
+	 * This is the actor's job rather than the widget's because the answer needs four pieces of state that
+	 * only live here: which surface is on (bTrajectoryHeatmap), which trajectory quantity (TrajectoryMapMode),
+	 * the stroke width the edges were derived from, and the field's reference densities. A widget that
+	 * gathered those itself would be a second place that has to be updated whenever a mode is added.
+	 *
+	 * Returns the LIVE band structs, inverted - never a table. If the edges move, the key moves with them.
+	 *
+	 * ⚠️ Check FHeatmapLegendContents::bHasData before printing the rows. An unsized or unbandable surface
+	 * renders empty on purpose and the key must say so rather than showing six plausible numbers.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Heatmap|Legend")
+	FHeatmapLegendContents GetLegendContents() const;
+
+	/**
+	 * The key a heatmap WOULD print at the shipping configuration, with no actor and no dataset required.
+	 *
+	 * Exists because "nothing loaded yet" is not the same as "nothing to say". Every input to both
+	 * trajectory ladders has a class default, so the ladder is knowable in advance, and at the shipping
+	 * configuration these are the SAME numbers a live actor produces — this is a preview, not a placeholder.
+	 * The only input that can legitimately differ is the effective cell after D2b's clamp, and it feeds
+	 * nothing the key prints: it moves the route threshold, which the key shows as band A's "0" regardless.
+	 *
+	 * bHasData is therefore TRUE here. Reserve the false branch for a surface that genuinely cannot be
+	 * banded.
+	 *
+	 * @param bTrajectory     false for the Fruin density key, true for one of the two trajectory keys.
+	 * @param bRouteExposure  ignored unless bTrajectory. Matches UHeatmapSubsystem's remembered selection.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Heatmap|Legend")
+	static FHeatmapLegendContents GetDefaultLegendContents(bool bTrajectory, bool bRouteExposure);
+
+	/**
 	 * As statical widgets require updated agent floor counts, we can quickly itterate
 	 * over the data and update these counts without having to update the heatmap texture
 	 *
@@ -477,7 +513,28 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	float MaxAddHeight;
 
-	/** Value to store the heatmap mesh plane size */
+	/**
+	 * The heatmap mesh plane size, in cm. Also the trajectory field's EXTENT — EnsureTrajectoryFieldSized
+	 * passes it straight to FTrajectoryField::Initialise — so anything that moves this re-lattices the
+	 * trajectory surface as a side effect.
+	 *
+	 * ⚠️ FIVE WRITERS, not the three the handoff docs carried until 2026-08-14. Named by FUNCTION rather
+	 * than by line, because the count was wrong for months precisely because it was maintained as a list of
+	 * line numbers that drifted:
+	 *
+	 *   1. the CONSTRUCTOR's initialiser list (204.8 x 204.8) — invisible to a `HeatmapMeshSize2D =` grep,
+	 *      which is how the count stuck at three;
+	 *   2. PostInitializeComponents, from the aggregate mesh bounds;
+	 *   3. InitializeHeatmap, from its MeshSize argument;
+	 *   4. UpdateMeshSize — UNREACHED in shipping, kept because it is BlueprintCallable;
+	 *   5. GenerateMeshVerticesUVsAndTriangles, from its MeshSize argument.
+	 *
+	 * Shipping order resolves as 1 → 2 → 3 → 5. The ORDERING ITSELF is still an open owner decision (D7):
+	 * writers 2 and 3 can disagree about what the floor's extent is, and which wins decides the lattice.
+	 * Do not "tidy" any of them away without that ruling — the imported building's bounds reach this
+	 * property through writer 2, so a change here surfaces as a trajectory alignment regression with its
+	 * cause several files away.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Heatmap|MaterialsAndTextures")
 	FVector2D HeatmapMeshSize2D;
 
@@ -780,6 +837,35 @@ private:
 	 * const: it writes only through the MID and the texture object, never to this actor.
 	 */
 	void ApplyTrajectoryLOSBands() const;
+
+public:
+	/**
+	 * Derives BOTH trajectory band sets from one (stroke width, cell, config) triple.
+	 *
+	 * Static and parameterised because two callers need it from different sources:
+	 * RefreshTrajectoryCrossingBands passes the field's effective cell, GetDefaultLegendContents passes the
+	 * class default so the colour key can be drawn before a heatmap exists. Extracted rather than copied
+	 * because the crossings -> transits threshold conversion is the kind of arithmetic that drifts silently
+	 * between two hand-written copies, and this surface has already produced two defects of exactly that
+	 * shape.
+	 *
+	 * PUBLIC as of 2026-08-14, for a third caller: T_PIX_2_ExportAndRenderShareInputs, which asserts the
+	 * pushed band set IS this derivation. That gate previously hard-coded a property of the pre-2026-08-10
+	 * contract and went red the first time it ran. Rewriting it against a private helper would have meant a
+	 * fourth hand-written copy of the threshold conversion inside the test — i.e. the test could agree with
+	 * itself while disagreeing with the runtime, which is the failure mode this function was extracted to
+	 * prevent. Nothing about it wants encapsulation: it reads no members and mutates nothing.
+	 *
+	 * @param DisplayPathWidthCm  The stroke width. Both ladders are expressed on the WIDTH, never the cell.
+	 * @param CmPerTexel          The cell the stroke was rasterised at — effective, not requested, where a
+	 *                            field exists. Feeds ONLY the route threshold.
+	 * @param Config              Supplies both reference densities.
+	 */
+	static void DeriveTrajectoryBands(float DisplayPathWidthCm, float CmPerTexel,
+		const FTrajectoryFieldConfig& Config, FHeatmapLOSBands& OutUsageBands,
+		FHeatmapLOSBands& OutExposureBands);
+
+private:
 
 	/**
 	 * Recomputes TrajectoryLOSBands from the field's EFFECTIVE cell size and pushes it to both consumers.

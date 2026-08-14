@@ -454,6 +454,28 @@ void UHeatmapSubsystem::SetTrajectoryRouteExposureEnabled(bool bEnabled)
 	}
 }
 
+FHeatmapLegendContents UHeatmapSubsystem::GetActiveHeatmapLegend() const
+{
+	for (AHeatmapPixelTextureVisualizer* Heatmap : Heatmaps)
+	{
+		if (IsValid(Heatmap))
+		{
+			return Heatmap->GetLegendContents();
+		}
+	}
+
+	// No actor registered - but the key is still fully knowable, so PRINT IT. Every input to both ladders
+	// has a class default, and at the shipping configuration the defaults produce the same numbers a live
+	// heatmap does, so this is a preview rather than a placeholder.
+	//
+	// This deliberately replaced an earlier version that returned bHasData=false here. That was wrong in
+	// practice as well as in feel: the key sat blank until a dataset loaded, so switching surface before
+	// loading changed nothing on screen and the control looked dead. "Nothing loaded yet" is not the same
+	// as "nothing to say", and the remembered selection below is exactly what says which key to draw.
+	return AHeatmapPixelTextureVisualizer::GetDefaultLegendContents(
+		bTrajectoryHeatmapsEnabled, bRouteExposureEnabled);
+}
+
 void UHeatmapSubsystem::UpdateHeatmapTextureRender()
 {
 	if(Heatmaps.Num() > 0)

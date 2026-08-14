@@ -401,8 +401,83 @@ void AHeatmapPixelTextureVisualizer::ApplyTrajectoryLOSBands() const
 	}
 }
 
-void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
+FHeatmapLegendContents AHeatmapPixelTextureVisualizer::GetLegendContents() const
 {
+	// The density surface has no live FHeatmapLOSBands to read: its colouriser compares against the
+	// LOS_*_BAND macros in DynamicPixelRenderingTexture.cpp, and its material carries the same numbers as
+	// asset defaults. FHeatmapLOSBands::Density() is the reflected, module-public copy of that same set, so
+	// it is the closest thing to a source of truth this side of the module boundary. The three copies are
+	// equal by duplication rather than by construction - noted on FHeatmapLegend::Density, and the reason a
+	// gate belongs here eventually.
+	if (!bTrajectoryHeatmap)
+	{
+		return FHeatmapLegend::Density(FHeatmapLOSBands::Density());
+	}
+
+	// The SAME arguments RefreshTrajectoryCrossingBands hands the band factories, and for the same reason:
+	// the stroke WIDTH is the length scale both ladders are expressed in, not the cell. Passing the cell
+	// here would print a key 3x off the pixels at the shipping 45/15 - the exact defect corrected on
+	// 2026-08-11, reintroduced one file over.
+	const float StrokeWidthMetres = TrajectoryDisplayPathWidthCm / 100.0f;
+	const FTrajectoryFieldConfig& Config = TrajectoryField.GetConfig();
+
+	if (TrajectoryMapMode == ETrajectoryMapMode::RouteExposure)
+	{
+		return FHeatmapLegend::RouteExposure(TrajectoryExposureLOSBands, StrokeWidthMetres,
+			Config.ReferenceExposureDensity, FHeatmapLOSBands::FreeWalkSpeedSFPE);
+	}
+
+	return FHeatmapLegend::RouteUsage(TrajectoryLOSBands, StrokeWidthMetres, Config.ReferenceUsageDensity);
+}
+
+FHeatmapLegendContents AHeatmapPixelTextureVisualizer::GetDefaultLegendContents(bool bTrajectory,
+	bool bRouteExposure)
+{
+	// Density needs no actor at all: its ladder is Fruin's and does not depend on a grid, a stroke or a
+	// reference the way the trajectory ones do.
+	if (!bTrajectory)
+	{
+		return FHeatmapLegend::Density(FHeatmapLOSBands::Density());
+	}
+
+	// The trajectory ladders DO depend on configuration, but every input has a class default, so the key a
+	// heatmap WOULD print is knowable before one exists. That matters because the alternative — showing
+	// nothing until a dataset is loaded — reads on screen as a broken widget, and because the answer is not
+	// merely a plausible stand-in: at the shipping configuration these are the same numbers the live actor
+	// produces. The one input that can legitimately differ is the cell, which D2b's clamp may coarsen; it
+	// feeds only the route threshold, and the route threshold is the band the key prints as "0" either way.
+	//
+	// Sourced from the CDO rather than typed, for the same reason T-BAND-6 does it
+	// (TrajectoryHeatmapCalibrationTest.cpp): a transcribed default is a copy that goes stale silently.
+	const AHeatmapPixelTextureVisualizer* Defaults = GetDefault<AHeatmapPixelTextureVisualizer>();
+	const FTrajectoryFieldConfig DefaultConfig; // carries the shipping reference densities
+
+	FHeatmapLOSBands UsageBands;
+	FHeatmapLOSBands ExposureBands;
+	DeriveTrajectoryBands(Defaults->TrajectoryDisplayPathWidthCm, Defaults->TrajectoryWorldCmPerTexel,
+		DefaultConfig, UsageBands, ExposureBands);
+
+	const float StrokeWidthMetres = Defaults->TrajectoryDisplayPathWidthCm / 100.0f;
+
+	if (bRouteExposure)
+	{
+		return FHeatmapLegend::RouteExposure(ExposureBands, StrokeWidthMetres,
+			DefaultConfig.ReferenceExposureDensity, FHeatmapLOSBands::FreeWalkSpeedSFPE);
+	}
+
+	return FHeatmapLegend::RouteUsage(UsageBands, StrokeWidthMetres, DefaultConfig.ReferenceUsageDensity);
+}
+
+void AHeatmapPixelTextureVisualizer::DeriveTrajectoryBands(float DisplayPathWidthCm, float CmPerTexel,
+	const FTrajectoryFieldConfig& Config, FHeatmapLOSBands& OutUsageBands, FHeatmapLOSBands& OutExposureBands)
+{
+	// STATIC, and takes its inputs rather than reading members, because there are now TWO callers that
+	// source them differently: RefreshTrajectoryCrossingBands passes the field's EFFECTIVE cell, and
+	// GetDefaultLegendContents passes the class-default cell so the colour key can be drawn before any
+	// heatmap exists. The crossings -> transits threshold conversion below is subtle enough that a second
+	// hand-written copy would drift, and drift between two copies of exactly this derivation is the failure
+	// this surface keeps producing.
+	//
 	// D9 / 2026-08-10 — DERIVE the Route Usage band edges from the STROKE WIDTH, not from the cell.
 	//
 	// An edge means "N + 0.5 crossings". One crossing deposits one cell side of person-metres into the
@@ -440,15 +515,12 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
 	// the width, but "is this cell part of the stroke at all" is a question about how the stroke was
 	// rasterised, and that is a function of width AND cell. Using the EFFECTIVE cm/texel, not the
 	// requested one, for the same reason the grid does — D2b and D-A both move it.
-	const float EffectiveCmPerTexel = (TrajectoryField.GetEffectiveCmPerTexel() > 0.0f)
-		? TrajectoryField.GetEffectiveCmPerTexel()
-		: TrajectoryWorldCmPerTexel;
 	const float RouteThresholdCrossings =
-		FTrajectoryField::DeriveRouteThresholdCrossings(TrajectoryDisplayPathWidthCm, EffectiveCmPerTexel);
+		FTrajectoryField::DeriveRouteThresholdCrossings(DisplayPathWidthCm, CmPerTexel);
 
-	TrajectoryLOSBands = FHeatmapLOSBands::TrajectoryCrossings(
-		TrajectoryDisplayPathWidthCm / 100.0f, // stroke width cm -> metres
-		TrajectoryField.GetConfig().ReferenceUsageDensity,
+	OutUsageBands = FHeatmapLOSBands::TrajectoryCrossings(
+		DisplayPathWidthCm / 100.0f, // stroke width cm -> metres
+		Config.ReferenceUsageDensity,
 		RouteThresholdCrossings);
 
 	// ---- Route Exposure, banded in transit-equivalents (SPEC §5.2) -------------------------------------
@@ -484,18 +556,35 @@ void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
 	// across the kernel's rows — so dividing by that recovers the dimensionless CUT FRACTION of the kernel's
 	// marginal. For exposure the natural unit is already one transit per free-speed pass (that is what t0
 	// means), so the same fraction IS the threshold in transits, with nothing left to tune.
-	const float WidthInCells = (EffectiveCmPerTexel > 0.0f)
-		? (TrajectoryDisplayPathWidthCm / EffectiveCmPerTexel)
+	const float WidthInCells = (CmPerTexel > 0.0f)
+		? (DisplayPathWidthCm / CmPerTexel)
 		: 0.0f;
 	const float RouteThresholdTransits = (WidthInCells > 0.0f)
 		? (RouteThresholdCrossings / WidthInCells)
 		: 0.0f;
 
-	TrajectoryExposureLOSBands = FHeatmapLOSBands::TrajectoryTransits(
-		TrajectoryDisplayPathWidthCm / 100.0f, // stroke width cm -> metres (see the derivation above)
-		TrajectoryField.GetConfig().ReferenceExposureDensity,
+	OutExposureBands = FHeatmapLOSBands::TrajectoryTransits(
+		DisplayPathWidthCm / 100.0f, // stroke width cm -> metres (see the derivation above)
+		Config.ReferenceExposureDensity,
 		FHeatmapLOSBands::FreeWalkSpeedSFPE,
 		RouteThresholdTransits);
+}
+
+void AHeatmapPixelTextureVisualizer::RefreshTrajectoryCrossingBands()
+{
+	// The EFFECTIVE cell, not the requested one — D2b's grid clamp can coarsen it, and the route threshold
+	// is a question about how the stroke was rasterised. Falls back to the requested value before the field
+	// has ever been sized; safe because TrajectoryDisplayPathWidthCm is UPROPERTY-clamped above zero, so
+	// TrajectoryCrossings' degenerate-input fallback stays unreachable from here.
+	const float EffectiveCmPerTexel = (TrajectoryField.GetEffectiveCmPerTexel() > 0.0f)
+		? TrajectoryField.GetEffectiveCmPerTexel()
+		: TrajectoryWorldCmPerTexel;
+
+	// This deliberately OVERWRITES both UPROPERTYs. The edges are a computed contract, not a preference: a
+	// value typed into the details panel cannot know the reference density, and honouring it would
+	// reintroduce band meaning drifting per building.
+	DeriveTrajectoryBands(TrajectoryDisplayPathWidthCm, EffectiveCmPerTexel, TrajectoryField.GetConfig(),
+		TrajectoryLOSBands, TrajectoryExposureLOSBands);
 
 	// Push immediately rather than leaving it to the ApplyTrajectoryLOSBands() at the end of
 	// EnsureTrajectoryFieldSized: that call sits inside the texture-resize branch and is skipped whenever

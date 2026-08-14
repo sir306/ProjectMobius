@@ -32,6 +32,35 @@
 #include "HeatmapLOSBands.generated.h"
 
 /**
+ * The persons/m^2 that the DENSITY surface encodes as a full red channel, i.e. the divisor every edge
+ * below is normalised by. 2.1739 is 1 / 0.46, the reciprocal of Fruin's LOS_F boundary in m^2/person.
+ *
+ * Named 2026-08-14 because it had existed only inside comments here and beside the LOS_*_BAND macros in
+ * DynamicPixelRenderingTexture.cpp, while anything wanting to convert an edge back into m^2/person had to
+ * retype it. That is the "constant whose justification lives in a drifting comment" shape that has already
+ * cost this surface two defects. FHeatmapLegend::Density is the first consumer.
+ *
+ * Namespace scope rather than a static member of FHeatmapLOSBands on purpose: that struct is dll-exported,
+ * and a static constexpr member of an exported struct is ODR-used the moment anything binds it to a const&,
+ * which is the one MSVC/dllimport combination that fails to link. Same reasoning as
+ * BRiskDefaultDischargeCoefficient.
+ */
+inline constexpr float FruinMaxDensityPersonsPerSqM = 2.1739f;
+
+/**
+ * The TOP step of the Route Exposure transit ladder — the band E/F edge in transit-equivalents.
+ *
+ * Named because it is used in two places that must not disagree: FHeatmapLOSBands::TrajectoryTransits, which
+ * sets the edge, and MinimumExposureReferenceForFullLadder, which computes the smallest reference at which
+ * that edge still fits the [0,1] display channel. Those were a literal 50 in both until the 2026-08-14 D5
+ * re-tune, and changing one without the other reports the representability bar for a ladder that no longer
+ * exists. Namespace scope for the same dll-export reason as FruinMaxDensityPersonsPerSqM above.
+ *
+ * 120 transits = 30.29 s of standing at the shipping 45 cm stroke. See TrajectoryTransits for the ruling.
+ */
+inline constexpr float TransitLadderTopStep = 120.0f;
+
+/**
  * Upper edges of the five lower Level of Service colour bands, expressed in normalised red-channel
  * units (stored byte / 255). A value falls in the first band whose edge it is strictly below; anything
  * at or above BandE takes the sixth (LOS_F) colour.
@@ -283,15 +312,49 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 * One transit reads as "one person crossed this cell at normal walking pace". Two is either two people
 	 * or one person at half speed — the same countable UX as crossings, anchored on a published free speed.
 	 *
-	 * ⚠️ **THE ANCHOR IS PRINCIPLED; THE LADDER IS NOT, AND THE UI MUST SAY SO.** Crossings work because a
-	 * crossing is a discrete countable event. Person-seconds is a product of count x time and no physical
-	 * principle fixes the count, so the STEPS below (roughly x3, geometric because a standing agent racks up
-	 * hundreds of transits while a crossing is one) are a readability choice. There is no published standard
-	 * for this surface. Do not let the legend imply otherwise.
+	 * ⚠️ **THE ANCHOR IS PRINCIPLED; THE STEPS ARE A CHOICE, AND THE UI MUST SAY SO.** Crossings work
+	 * because a crossing is a discrete countable event. Person-seconds is a product of count x time and no
+	 * physical principle fixes the count, so the STEPS below are a readability choice and there is no
+	 * published standard for this surface. What changed on 2026-08-14 (owner ruling D5) is that the choice
+	 * is now made against a STATED PHYSICAL TARGET instead of by feel — see the calibration block below.
+	 * Still say "relative, not thresholds" in the legend; do not say "uncalibrated".
 	 *
-	 *   A  0        nobody was ever here      D  <= 15   noticeably delayed
-	 *   B  <= 2     free-flow pass-through    E  <= 50   queueing
-	 *   C  <= 5     light use / slight slow   F  >  50   stationary / blocked
+	 *   A  0         nobody was ever here      D  <= 40    noticeably delayed   (~10 s)
+	 *   B  <= 4      free-flow pass-through    E  <= 120   queueing             (~30 s)
+	 *   C  <= 12     light use / slight slow   F  >  120   stationary / blocked
+	 *
+	 * CALIBRATION — WHAT THE STEPS WERE CHOSEN AGAINST (D5, 2026-08-14). The readable physical quantity is
+	 * how long ONE STATIONARY person must stand on a spot to reach an edge. That conversion is exact,
+	 * needs no cell size and no walking speed, and is StandingDwellSecondsAtEdge() below:
+	 *
+	 *     seconds = NormalisedEdge * ReferenceExposureDensity * (pi * w^2 / 4)
+	 *
+	 * because a stationary agent deposits its person-seconds into a DISC of diameter w — area pi*w^2/4 —
+	 * and the display value is a density. Equivalently, on the transit scale, seconds = T * pi*w / (4*v).
+	 * At the shipping 45 cm stroke and Ref = 240 the ladder therefore reads:
+	 *
+	 *     T =   4  ->  1.01 s        T =  40  ->  10.10 s
+	 *     T =  12  ->  3.03 s        T = 120  ->  30.29 s
+	 *
+	 * i.e. approximately 1 / 3 / 10 / 30 seconds of standing, which is the ruling. The step ratios stay
+	 * roughly x3 for the same reason as before: a standing agent racks up transits far faster than a
+	 * crossing accrues.
+	 *
+	 * WHY THE PREVIOUS 2 / 5 / 15 / 50 WAS RE-TUNED, from the pixels rather than from taste. Under the same
+	 * conversion its edges were 0.50 / 1.26 / 3.79 / 12.62 s. Band F therefore opened at 12.6 seconds, so
+	 * everything from thirteen seconds to ten minutes painted the SAME colour — inside exactly the queueing
+	 * regime this surface exists to show. At the other end, band B closed at half a second, so an ordinary
+	 * walking pause already left "free-flow". Both ends were compressed into the range nobody is asking
+	 * about. Byte separation moved the same way: the old edges quantised to bytes 3 / 8 / 25 / 84, where a
+	 * one-byte rounding is 17% of the B edge; the new ones land at 7 / 20 / 67 / 202.
+	 *
+	 * THE DISC IS NOT AN APPROXIMATION AT THE SHIPPING CONFIGURATION, which is what makes the seconds
+	 * figure quotable. BuildKernel's disc-coverage rule gives the centre tap weight
+	 * Area(disc intersect centre cell) / (pi*R^2) with R = w/(2s) = 1.5 texels. The centre cell's farthest corner
+	 * sits sqrt(2) = 1.4142 texels from the disc centre for ANY sub-cell phase up to half a cell, and
+	 * 1.4142 < 1.5, so the cell is FULLY covered and the weight is exactly 1/(pi*R^2) = 0.1414711 whatever
+	 * the sub-cell placement. The dwell figure is therefore phase-invariant, not a best case.
+	 * T_BAND_8_ExposureDwellLadder gates both halves of that.
 	 *
 	 * DERIVATION OF THE EDGE. CORRECTED 2026-08-11 — the version below used to stop at the canonical cell
 	 * and concluded edge(T) = T / (s * Ref * v_free), which made every edge (w / s) too demanding: 3x at
@@ -307,12 +370,18 @@ struct VISUALIZATION_API FHeatmapLOSBands
 	 * surviving length scale is the STROKE WIDTH — the same scale TrajectoryCrossings uses, which is also
 	 * what makes the two ladders comparable to one another.
 	 *
-	 * REPRESENTABILITY — no longer binding, kept because the number moved. The top edge fits the [0,1]
-	 * channel when w * Ref * v_free >= 50, i.e. Ref >= 79.4 at w = 0.45 m and v_free = 1.40. Cleared
-	 * comfortably by the shipping 240 AND by the pre-2026-08-10 200. Under the old cell-side denominator
-	 * the same test read Ref >= 238.1, which is the ONLY reason
-	 * FTrajectoryFieldConfig::ReferenceExposureDensity was raised 200 -> 240; that constraint is gone, so
-	 * the reference is now a presentation choice. Left at 240 for continuity, not necessity.
+	 * REPRESENTABILITY — BINDING AGAIN AFTER THE D5 RE-TUNE, and it is what bounds any future one. The top
+	 * edge fits the [0,1] channel only when w * Ref * v_free >= the top step. At w = 0.45 and v_free = 1.40
+	 * that ceiling is 151.2 transits = 38.17 s of standing, so the new top step of 120 (30.29 s) sits at
+	 * RVal 0.7937 with headroom, but a ladder asking for a 60-second top band would NOT fit and would need
+	 * Ref >= 378. Raising the reference is a SEPARATE decision — it rescales every byte on the surface —
+	 * so do not smuggle one in to buy a rounder top number.
+	 *
+	 * The old note here said the constraint was gone. That was true of the OLD ladder only: with a top step
+	 * of 50 the bar was Ref >= 79.4, cleared by anything. Under the cell-side denominator that predated
+	 * 2026-08-11 the same test read Ref >= 238.1, which is the only reason
+	 * FTrajectoryFieldConfig::ReferenceExposureDensity was ever raised 200 -> 240. It stays at 240 — now
+	 * because 200 would put the ceiling at 31.8 s and leave the 30.29 s top edge with almost none.
 	 *
 	 * @param StrokeWidthMetres The DISPLAY STROKE WIDTH, not the cell side — see the derivation above.
 	 *                          Passing the cell side is the defect this rename exists to prevent.
@@ -347,10 +416,16 @@ struct VISUALIZATION_API FHeatmapLOSBands
 
 		// Geometric, and clamped against the previous edge so a degenerate configuration yields an
 		// unreachable-free monotonic chain rather than a scrambled one.
-		Bands.BandB = FMath::Clamp(2.0f / Denominator, Bands.BandA, 1.0f);
-		Bands.BandC = FMath::Clamp(5.0f / Denominator, Bands.BandB, 1.0f);
-		Bands.BandD = FMath::Clamp(15.0f / Denominator, Bands.BandC, 1.0f);
-		Bands.BandE = FMath::Clamp(50.0f / Denominator, Bands.BandD, 1.0f);
+		//
+		// D5, 2026-08-14: 2 / 5 / 15 / 50 -> 4 / 12 / 40 / 120. These are the transit values that put the
+		// edges at approximately 1 / 3 / 10 / 30 seconds of standing at the shipping stroke; the seconds are
+		// the ruled quantity and these are derived from them, not the other way round. Re-tuning means
+		// picking new SECONDS and converting with StandingDwellSecondsAtEdge below — and checking the top
+		// step still clears the representability ceiling in the doc comment.
+		Bands.BandB = FMath::Clamp(4.0f / Denominator, Bands.BandA, 1.0f);
+		Bands.BandC = FMath::Clamp(12.0f / Denominator, Bands.BandB, 1.0f);
+		Bands.BandD = FMath::Clamp(40.0f / Denominator, Bands.BandC, 1.0f);
+		Bands.BandE = FMath::Clamp(TransitLadderTopStep / Denominator, Bands.BandD, 1.0f);
 
 		return Bands;
 	}
@@ -366,9 +441,51 @@ struct VISUALIZATION_API FHeatmapLOSBands
 		// Takes the SAME length scale as TrajectoryTransits, and must keep doing so — a gate that fed this
 		// the cell side while the ladder used the width would compute a threshold for a configuration that
 		// does not exist and pass while band F was unreachable. That is precisely the failure it exists to
-		// catch. At w = 0.45 and v_free = 1.40 this returns 79.4.
+		// catch. At w = 0.45 and v_free = 1.40 this returns 190.5.
+		//
+		// The top step is NAMED rather than repeated as a literal. It was a literal 50 until 2026-08-14, and
+		// the D5 re-tune to 120 would have left this function computing the bar for a ladder that no longer
+		// exists — reporting 79.4 while band F actually needed 190.5, i.e. passing a configuration where the
+		// top band is unreachable. That is the exact failure mode the comment above claims it catches.
 		const float Divisor = StrokeWidthMetres * FreeWalkSpeed;
-		return (Divisor > 0.0f) ? (50.0f / Divisor) : 0.0f;
+		return (Divisor > 0.0f) ? (TransitLadderTopStep / Divisor) : 0.0f;
+	}
+
+	/**
+	 * Person-seconds ONE STATIONARY agent must accrue on a spot for that cell to reach `NormalisedEdge`.
+	 * The physical reading of an exposure band, and the quantity the D5 ruling picked the ladder against.
+	 *
+	 *     seconds = NormalisedEdge * ReferenceExposureDensity * (pi * w^2 / 4)
+	 *
+	 * DERIVATION, and why neither the cell size nor the walking speed appears. The display value is a
+	 * DENSITY (person*s/m^2) once normalised out by the reference, and a stationary agent's person-seconds
+	 * land in a disc of diameter w — the splat kernel is a disc of radius w/2 — whose area is pi*w^2/4. So
+	 * the cell's density is (seconds / disc area) and inverting gives the line above. The cell size drops
+	 * out because the kernel's centre weight 1/(pi*R^2) carries an s^2 that the per-cell area divides back
+	 * out; v_free drops out because nobody is walking. Cross-check on the transit scale, where both do
+	 * appear and then cancel: seconds = T * pi*w / (4*v_free) = T * 0.25245 s at the shipping configuration.
+	 *
+	 * ⚠️ HONEST ONLY FOR ONE STATIONARY PERSON. A cell reading 10 s could equally be two people standing
+	 * for five, or forty walking passes. Person-seconds cannot distinguish those and neither can this. Any
+	 * UI printing these MUST carry that qualifier — see FHeatmapLegend::RouteExposure.
+	 *
+	 * EXACT, NOT APPROXIMATE, AT THE SHIPPING CONFIGURATION. See the phase-invariance argument on
+	 * TrajectoryTransits: with R = 1.5 texels the centre cell is fully covered at every sub-cell phase, so
+	 * the centre weight is exactly 1/(pi*R^2). Below R = sqrt(2) = 1.4142 texels — i.e. a stroke narrower
+	 * than 2*sqrt(2) cells — the disc stops covering the centre cell at half-cell phase, the true weight
+	 * becomes phase-dependent and drops below the flat-disc value, and this then returns a LOWER bound on
+	 * the seconds. Flagged rather than corrected: the shipping 45 cm on 15 cm cells gives R = 1.5 and is not
+	 * near that boundary, and a phase-averaged figure would be less quotable, not more.
+	 *
+	 * @param NormalisedEdge   A band edge in [0,1], i.e. one of FHeatmapLOSBands' members.
+	 * @param StrokeWidthMetres  The DISPLAY STROKE WIDTH, same scale as everywhere else on this struct.
+	 * @param ReferenceExposureDensity  person*s/m^2 that EncodeToDisplay maps to byte 255.
+	 */
+	static float StandingDwellSecondsAtEdge(float NormalisedEdge, float StrokeWidthMetres,
+	                                        float ReferenceExposureDensity)
+	{
+		const float DiscAreaSquareMetres = PI * StrokeWidthMetres * StrokeWidthMetres * 0.25f;
+		return NormalisedEdge * ReferenceExposureDensity * DiscAreaSquareMetres;
 	}
 
 	/**

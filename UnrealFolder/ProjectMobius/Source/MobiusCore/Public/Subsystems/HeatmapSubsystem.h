@@ -25,6 +25,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HeatmapLegend.h"              // FHeatmapLegendContents is returned by value from a UFUNCTION
 #include "MassEntitySubsystem.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "HeatmapSubsystem.generated.h"
@@ -205,6 +206,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Heatmap|Subsystem|Update")
 	void SetTrajectoryRouteExposureEnabled(bool bEnabled);
 
+	/**
+	 * The printed colour-band key for the surface the registered heatmaps are currently showing.
+	 *
+	 * This is the ONE call WBP_HeatmapColourBands needs. Get the world subsystem, call this, push the
+	 * six rows into the text blocks. Re-call it after anything that changes the active surface - the two
+	 * setters above, and SetTrajectoryMapMode on an actor.
+	 *
+	 * Reads the FIRST registered heatmap, because the two setters above apply to every actor and remember
+	 * the selection for actors registering later, so the set cannot legitimately disagree with itself. If
+	 * per-heatmap keys are ever wanted, call AHeatmapPixelTextureVisualizer::GetLegendContents directly on
+	 * the actor rather than adding an index here - the actor is the thing that knows.
+	 *
+	 * With NO heatmap registered the title and unit header still describe the remembered selection, but
+	 * bHasData is false: the mode is known and the edges are not. That is deliberately not the same as
+	 * returning a default-constructed struct, which would blank the title and read as a broken widget.
+	 *
+	 * ⚠️ Check bHasData before printing the rows. See FHeatmapLegendContents.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Heatmap|Legend")
+	FHeatmapLegendContents GetActiveHeatmapLegend() const;
 
 	void UpdateHeatmapTextureRender();
 
