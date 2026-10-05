@@ -252,9 +252,13 @@ typedef struct MobiusIfcSection
 
 	/* Interleaved xyz unit normals, parallel to `vertices`. Each is the flat face normal of the
 	 * triangle that corner belongs to, derived from that same triangle's already-converted positions,
-	 * so a normal cannot disagree with the geometry it came from. A degenerate/zero-area source
-	 * triangle yields an exact (0,0,0) sentinel rather than NaN -- treat it as "renormalize or
-	 * discard". Never NULL when vertCount > 0. */
+	 * so a normal cannot disagree with the geometry it came from.
+	 *
+	 * EVERY normal here is a unit vector. There is no zero sentinel: as of 2026-08-12 a triangle whose
+	 * cross product falls at or below 1e-8 is DROPPED rather than emitted with a (0,0,0) normal, so a
+	 * degenerate triangle never reaches this buffer. Callers no longer need a "renormalize or discard"
+	 * path. See EmitTriangle in MobiusIfcBridge.cpp for why dropping is area-preserving and why
+	 * removing the VERTEX instead would be wrong. Never NULL when vertCount > 0. */
 	const float* normals;
 
 	/* Triangle list, indices local to THIS SECTION (0-based, range [0, vertCount)). Never NULL when
@@ -308,7 +312,7 @@ typedef struct MobiusIfcMaterialLayer
 
 /* One IFC product (an IfcWall, IfcDoor, IfcSpace, ... -- one entry per GUID that produced at
  * least one triangle; entities IFC++ gave zero geometry, such as IfcProject/IfcBuildingStorey/
- * *Type/*Style definitions, do not appear here at all -- see MobiusIfc_GetProductsWithoutGeometryCount).
+ * *Type / *Style definitions, do not appear here at all -- see MobiusIfc_GetProductsWithoutGeometryCount).
  *
  * Ownership and lifetime: every pointer in this struct, and every pointer inside the sections and
  * layers it points to, is owned by the MobiusIfcScene that produced it (via MobiusIfc_GetProducts) and
@@ -406,7 +410,7 @@ MOBIUSIFC_API int32_t MobiusIfc_GetProducts(const MobiusIfcScene* scene,
                                              const MobiusIfcProduct** outProducts, int32_t* outCount);
 
 /* Number of IFC entities in the source file that IFC++ produced literally zero triangles for
- * (IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey, *Type/*Style definitions, and similar --
+ * (IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey, *Type / *Style definitions, and similar --
  * see HANDOFF_IFC_2026-08-11.md 5.1). This is NOT related to the allowlist/ifcClass filtering
  * described above -- it is purely "IFC++ itself gave this entity no shape", counted before any
  * caller-side rendering policy is applied. Useful as a sanity check against the harness's own

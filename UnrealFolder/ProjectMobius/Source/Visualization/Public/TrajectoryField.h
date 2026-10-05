@@ -99,15 +99,30 @@ struct FTrajectoryFieldConfig
 	float ReferenceUsageDensity = 100.0f;    // person/m
 
 	/**
-	 * 240 since 2026-08-10, up from the capture-derived 200, and it is DERIVED not fitted. Route Exposure
-	 * is banded in transit-equivalents whose top edge is 50 transits, and that edge fits the [0,1] display
-	 * channel only when CellSide * Reference * v_free >= 50 — at the shipping 15 cm cell and SFPE's
-	 * 1.40 m/s that needs >= 238.1. Below it the top edge clamps to 1.0 and band F becomes UNREACHABLE, so
+	 * 240 since 2026-08-10, up from the capture-derived 200.
+	 *
+	 * ⚠️ CORRECTED 2026-08-13 — this value is NOT derived, and the derivation that used to sit here was
+	 * wrong. It read: "the top edge fits the [0,1] display channel only when CellSide * Reference *
+	 * v_free >= 50 — at the shipping 15 cm cell and SFPE's 1.40 m/s that needs >= 238.1", which is what
+	 * 240 was picked to clear.
+	 *
+	 * The length in that inequality is the DISPLAY STROKE WIDTH, not the cell side. That is exactly the
+	 * confusion acb392a9 fixed in FHeatmapLOSBands (both factories took a parameter named CellSideMetres
+	 * while TrajectoryTransits needed the width, which made the wrong argument look right at the call
+	 * site), and this comment was the last surviving instance of it. At the shipping 45 cm width the real
+	 * bar is 50 / (0.45 * 1.40) = 79.4, not 238.1 — the two differ by exactly the 45/15 = 3x that caused
+	 * the original defect.
+	 *
+	 * What remains TRUE: below the bar, the top edge clamps to 1.0 and band F becomes UNREACHABLE, so
 	 * queueing and blocked render identically and nothing complains, because the clamp keeps the chain
 	 * monotonic. Distinguishing those two is the entire purpose of the surface.
 	 *
-	 * See FHeatmapLOSBands::MinimumExposureReferenceForFullLadder, which is what a gate should read rather
-	 * than transcribing 238.
+	 * So this is a FREE PRESENTATION CHOICE anywhere above ~79.4, not a forced value. It is a brightness
+	 * dial: the displayed value is density / Reference, so 240 renders every cell ~17 % dimmer than the
+	 * capture-derived 200 would. Open owner decision — do not treat the current number as load-bearing.
+	 *
+	 * Read FHeatmapLOSBands::MinimumExposureReferenceForFullLadder for the bar rather than transcribing
+	 * any number from this comment; it takes the same length scale as TrajectoryTransits by construction.
 	 */
 	float ReferenceExposureDensity = 240.0f; // person*s/m^2
 
@@ -557,10 +572,16 @@ private:
 	/**
 	 * D-D — the SUB-CELL PHASE TABLE, and what the deposit path actually splats.
 	 *
+	 * ⚠️ EVERY NUMBER IN THIS BLOCK WAS RE-DERIVED 2026-08-14. It was written against a 20 cm cell and the
+	 * cell went to 15 cm on 2026-08-10 (D-E, the stroke-width fix) without the prose following — so this
+	 * comment quoted 10 cm, R = 1.125 and 64 phases against a shipping configuration of 7.5 cm, R = 1.5 and
+	 * 81. All of them were arithmetic ON the cell size, which is exactly the kind of number that goes stale
+	 * silently. If the cell moves again, these move with it.
+	 *
 	 * THE DEFECT IT REMOVES. The DDA knows exactly where inside a cell a segment ran, but the old
 	 * DepositCell took only the integer index, so every stamp was centred on a CELL CENTRE. The drawn
-	 * stroke's centroid was therefore quantised to the lattice — up to half a cell (10 cm at the shipping
-	 * 20 cm) from the agent, in either direction. That is a rendering error, not a measurement one: the
+	 * stroke's centroid was therefore quantised to the lattice — up to half a cell (7.5 cm at the shipping
+	 * 15 cm) from the agent, in either direction. That is a rendering error, not a measurement one: the
 	 * canonical accumulators were always right, the picture was not. It is what remained visible after the
 	 * D-A/D-B/D-C alignment work, and no amount of lattice alignment can remove it, because it is not a
 	 * lattice offset — it is the loss of the position WITHIN a cell.
@@ -572,11 +593,12 @@ private:
 	 *
 	 * WHAT IT COSTS. The footprint grows: a disc offset by up to half a cell reaches one ring further, so
 	 * the half extent is ceil(R + 0.5) rather than ceil(R - 0.5) — 25 taps instead of 9 at the shipping
-	 * R = 1.125. Memory is nothing (64 phases x 25 floats).
+	 * R = 1.5. Memory is nothing (81 phases x 25 floats). The tap count happens to be 25 at both the old
+	 * R = 1.125 and the current R = 1.5, which is part of why the stale figure survived a re-read.
 	 *
 	 * RESIDUAL. Placement is quantised to a bin, so the centroid error falls from half a cell to half a
-	 * bin — cell / (2 * Bins), i.e. 10 cm -> 1.1 cm at 9 bins on a 20 cm cell. Raise the bin count if that
-	 * ever matters; it costs only build time and memory, and nothing per deposit.
+	 * bin — cell / (2 * Bins), i.e. 7.5 cm -> 0.83 cm at 9 bins on a 15 cm cell. Raise the bin count if
+	 * that ever matters; it costs only build time and memory, and nothing per deposit.
 	 *
 	 * All phases share PhaseKernelOffsets; PhaseKernelWeights is Bins^2 blocks of PhaseKernelTapCount,
 	 * indexed (BinY * Bins + BinX) * TapCount + Tap.

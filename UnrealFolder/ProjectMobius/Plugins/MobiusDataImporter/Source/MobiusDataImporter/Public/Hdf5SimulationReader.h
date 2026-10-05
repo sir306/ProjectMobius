@@ -309,6 +309,18 @@ public:
 	 */
 	static bool IsValidSimulationFile(const FString& FilePath);
 
+	/**
+	 * Cheap probe: does this file carry a root `wkt_geometry` attribute?
+	 *
+	 * Deliberately does NOT go through OpenFile(), which also runs format detection and
+	 * PopulateCachedCounts(). Callers on the game thread (the pedestrian-file setter) only need
+	 * the yes/no, and a large trajectory file makes the difference visible.
+	 *
+	 * @param FilePath - Path to check. A non-.h5 or unreadable path is simply "no".
+	 * @return true if the file opens and has a root wkt_geometry attribute
+	 */
+	static bool HasWktGeometry(const FString& FilePath);
+
 	// ========== Format Detection ==========
 
 	/**

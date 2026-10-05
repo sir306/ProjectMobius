@@ -32,6 +32,9 @@ protected:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 
+	/** Unbinds OnSelectedAgentInfoChanged — the subsystem outlives this widget. See NativeConstruct. */
+	virtual void NativeDestruct() override;
+
 	/** Born-theme: repaint the popup background surface (RibbonBg) on construct + every OnThemeChanged. */
 	virtual void ApplyMobiusTheme_Implementation() override;
 

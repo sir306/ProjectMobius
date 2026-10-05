@@ -140,7 +140,7 @@ struct FMobiusIfcLoadStats
 	/** Products IFC++ produced at least one triangle for, before any render filtering. */
 	int32 ProductsWithGeometry = 0;
 
-	/** Entities IFC++ produced zero triangles for (IfcProject, IfcSite, *Type/*Style, ...). */
+	/** Entities IFC++ produced zero triangles for (IfcProject, IfcSite, *Type / *Style, ...). */
 	int32 ProductsWithoutGeometry = 0;
 
 	/** Products that survived the allowlist and produced at least one submesh. */

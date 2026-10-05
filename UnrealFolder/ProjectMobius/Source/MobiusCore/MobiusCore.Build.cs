@@ -84,11 +84,12 @@ public class MobiusCore : ModuleRules
 		// on the C ABI by accident. RuntimeDependencies still stage the DLL from a private
 		// dependency.
 		//
-		// Win64-gated because MobiusIfcLibrary.Build.cs hard-fails on any other platform (Mobius
-		// ships Win64 only). MOBIUS_WITH_IFC_BRIDGE lets the loader still compile elsewhere and
-		// return a clear "IFC import is Win64-only in this build" error instead of breaking the Mac
-		// branch below.
-		if (Target.Platform == UnrealTargetPlatform.Win64)
+		// Enabled where MobiusIfcLibrary.Build.cs can supply the shim: Win64 (MobiusIfcBridge.dll) and
+		// macOS (libMobiusIfcBridge.dylib), both produced by the superbuild. On any other platform
+		// MOBIUS_WITH_IFC_BRIDGE=0 lets the loader still compile and return a clear "IFC import is not
+		// available in this build" error instead of failing to link.
+		if (Target.Platform == UnrealTargetPlatform.Win64 ||
+		    Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PrivateDependencyModuleNames.Add("MobiusIfcLibrary");
 			PrivateDefinitions.Add("MOBIUS_WITH_IFC_BRIDGE=1");

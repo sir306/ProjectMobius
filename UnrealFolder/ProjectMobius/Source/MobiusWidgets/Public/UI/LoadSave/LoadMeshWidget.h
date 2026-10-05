@@ -68,6 +68,15 @@ public:
 	void OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage);
 
 protected:
+	/**
+	 * If the chosen mesh .h5 also carries agent trajectories, ask whether to load them too.
+	 * Mirror of ULoadAgentDataWidget::OfferEmbeddedGeometry. Silent no-op when the file holds no
+	 * agent data, when it is already the loaded pedestrian file, or when the user declines.
+	 *
+	 * ⚠️ Blocks on a modal while open - only ever call this from the file-pick callback.
+	 */
+	void OfferEmbeddedAgentData(const FString& MeshFilePath);
+
 	/** Mirrors OnMeshFileChanged into the displayed filename. */
 	virtual void BindGameInstanceFileDelegate() override;
 	virtual void UnbindGameInstanceFileDelegate() override;

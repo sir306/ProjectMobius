@@ -14,6 +14,7 @@
 #include "Components/WidgetComponent.h"
 #include "UI/Components/FieldAndTextWidget.h"
 #include "Fonts/FontMeasure.h"
+#include "Style/MobiusStyle.h"
 
 
 UWidgetUtilHelpers::UWidgetUtilHelpers()
@@ -365,13 +366,12 @@ int32 UWidgetUtilHelpers::FindFittingFontSizeForFieldAndText(class UFieldAndText
 	if (!W || BoxPx.X <= 0.f || BoxPx.Y <= 0.f || MaxSize < MinSize)
 		return FMath::Max(MinSize, 0);
 
-	// Choose styles (or fallback to Core NormalText)
-	const FTextBlockStyle& TitleStyle = (W->TitleTextStyle)
-		                                    ? *W->TitleTextStyle->GetStyle<FTextBlockStyle>()
-		                                    : FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
-	const FTextBlockStyle& FieldStyle = (W->FieldTextStyle)
-		                                    ? *W->FieldTextStyle->GetStyle<FTextBlockStyle>()
-		                                    : FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
+	// A10b step 6 (2026-08-14): read the same shared styles UFieldAndTextWidget::RebuildWidget builds from,
+	// now that the per-instance SWS_* overrides are gone. This also fixes a latent mismatch — the old
+	// fallback measured against FCoreStyle "NormalText" while the widget rendered Mobius.Text.Header /
+	// Mobius.Text.Field, so the fitted size was computed from a font the widget never used.
+	const FTextBlockStyle& TitleStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Header");
+	const FTextBlockStyle& FieldStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Field");
 
 	const FSlateFontInfo TitleBase = TitleStyle.Font;
 	const FSlateFontInfo FieldBase = FieldStyle.Font;

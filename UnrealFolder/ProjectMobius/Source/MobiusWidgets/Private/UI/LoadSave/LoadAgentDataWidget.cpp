@@ -26,6 +26,8 @@
 #include "GameInstances/ProjectMobiusGameInstance.h"
 #include "Subsystems/NativeFileDialogSubsystem.h"
 #include "Subsystems/MobiusUserFeedbackSubsystem.h"
+#include "Hdf5SimulationReader.h"
+#include "UI/MobiusConfirmDialog.h"
 //#include "MassAI/Subsystems/TimeDilationSubSystem.h"
 
 void ULoadAgentDataWidget::NativeConstruct()
@@ -125,6 +127,16 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 
 		// Update the game instance with the new data file
 		UpdateMobiusGameInstanceData();
+
+		// A Juelich .h5 can carry the scene it was simulated in as a root `wkt_geometry`
+		// attribute, and the geometry loader already knows how to read one
+		// (FAssimpMeshLoaderRunnable::LoadWKTFile). ASK rather than load it automatically: the
+		// user may have deliberately paired these trajectories with different geometry, and
+		// silently replacing their scene is worse than not offering.
+		//
+		// Deliberately AFTER the agent load above, so the thing that was actually asked for is
+		// never held up by the secondary question.
+		OfferEmbeddedGeometry(AgentFilePath);
 	}
 	else
 	{
@@ -138,6 +150,43 @@ void ULoadAgentDataWidget::DialogClosed(const FString& AgentFilePath, const FStr
 		}
 		UE_LOG(LogTemp, Warning, TEXT("The file dialog was canceled or an error occurred"));
 	}
+}
+
+void ULoadAgentDataWidget::OfferEmbeddedGeometry(const FString& AgentFilePath)
+{
+	if (!FHdf5SimulationReader::HasWktGeometry(AgentFilePath))
+	{
+		return;
+	}
+
+	UProjectMobiusGameInstance* MobiusGameInstance = IProjectMobiusInterface::GetMobiusGameInstance(GetWorld());
+	if (!MobiusGameInstance)
+	{
+		return;
+	}
+
+	// Already the loaded geometry -- nothing to offer, and asking would be noise.
+	if (MobiusGameInstance->GetSimulationMeshFilePath() == AgentFilePath)
+	{
+		return;
+	}
+
+	const FText Body = MobiusGameInstance->GetSimulationMeshFilePath().IsEmpty()
+		? FText::FromString(TEXT("Load the geometry from this file as well?"))
+		: FText::FromString(TEXT("Load the geometry from this file as well? This replaces the "
+			"geometry currently loaded."));
+
+	if (!MobiusConfirmDialog::ShowYesNo(
+			this,
+			FText::FromString(TEXT("Geometry Detected")),
+			FText::FromString(FString::Printf(
+				TEXT("'%s' also contains geometry."), *FPaths::GetCleanFilename(AgentFilePath))),
+			Body))
+	{
+		return;
+	}
+
+	MobiusGameInstance->SetSimulationMeshFilePath(AgentFilePath);
 }
 
 void ULoadAgentDataWidget::OnDialogError(const FString& ErrorTitle, const FString& ErrorMessage)

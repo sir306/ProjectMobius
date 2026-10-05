@@ -29,6 +29,7 @@
 #include "MassAI/SubSystems/AgentDataSubsystem.h"
 #include "MobiusAgentDataImporter.h"
 #include "SimData/SimDiskCache.h"
+#include "MobiusTestDataRoots.h"
 
 namespace
 {
@@ -222,10 +223,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FMobiusTimingLargeFileImportTest::RunTest(const FString& Parameters)
 {
 	IFileManager& FileManager = IFileManager::Get();
-	const FString LargeFile = TEXT("F:\\Mobius_InternalData\\TechSchoolTest\\TechnicalSchool5000DefaultExits.json");
-	if (!FileManager.FileExists(*LargeFile))
+	// Private fixture, resolved via MobiusTestDataRoots.h rather than a hardcoded drive letter.
+	const FString LargeFixture = FPaths::Combine(
+		TEXT("TechSchoolTest"), TEXT("TechnicalSchool5000DefaultExits.json"));
+	const FString LargeFile = MobiusTestData::FindInternalFixture(LargeFixture);
+	if (LargeFile.IsEmpty() || !FileManager.FileExists(*LargeFile))
 	{
-		AddInfo(TEXT("SKIPPED: F:\\Mobius_InternalData large fixture not present on this machine"));
+		AddInfo(MobiusTestData::DescribeMissingFixture(LargeFixture));
 		return true;
 	}
 	const double Megabytes = static_cast<double>(FileManager.FileSize(*LargeFile)) / (1024.0 * 1024.0);

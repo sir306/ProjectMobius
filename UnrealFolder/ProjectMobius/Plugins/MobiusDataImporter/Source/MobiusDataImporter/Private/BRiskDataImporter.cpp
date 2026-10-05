@@ -860,6 +860,7 @@ namespace
 			double SillHeight = 0.0;
 			double OpenTimeSeconds = 0.0;
 			double CloseTimeSeconds = 0.0;
+			double DischargeCoefficient = BRiskDefaultDischargeCoefficient;
 			bool bAutoOpenVent = false;
 			bool bClaimed = false;
 		};
@@ -879,6 +880,43 @@ namespace
 			Schedule.SillHeight = GetChildDouble(VentNode, TEXT("sillheight"));
 			Schedule.OpenTimeSeconds = GetChildDouble(VentNode, TEXT("opentime"));
 			Schedule.CloseTimeSeconds = GetChildDouble(VentNode, TEXT("closetime"));
+
+			// Discharge coefficient. The default is passed explicitly because a MISSING <cd> must
+			// fall back to B-Risk's 0.68, not to GetChildDouble's own 0.0 - a zero here would
+			// silently zero every slab of flow through the opening rather than fail loudly.
+			Schedule.DischargeCoefficient = GetChildDouble(
+				VentNode, TEXT("cd"), BRiskDefaultDischargeCoefficient);
+
+			// A present-but-nonsense value is a different case from a missing one and must not be
+			// used. cd is the fraction of the geometric area that actually flows, so we bound it to
+			// [0, 1]; outside that we keep the default and say so, because the alternative is a flow
+			// number that looks authoritative and is not.
+			//
+			// ZERO IS IN BAND, deliberately. SR282 §4.6.2(d) closes a vent sampled shut by "setting
+			// the discharge coefficient to zero", and says the opening options "will not subsequently
+			// open" it - so 0 means shut for the whole run, and FBRiskVentGeometry::IsOpenAtTime
+			// reports it shut. Rejecting it as out-of-range and substituting 0.68 would draw full
+			// flow through an opening B-Risk had shut. Nothing in the manual states a valid range at
+			// all; the bounds here are ours.
+			if (Schedule.DischargeCoefficient < 0.0 || Schedule.DischargeCoefficient > 1.0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk vent %d has an out-of-range discharge coefficient <cd>%g</cd>. ")
+					TEXT("Expected [0, 1]. Using B-Risk's default %g for this opening."),
+					Schedule.Id, Schedule.DischargeCoefficient,
+					BRiskDefaultDischargeCoefficient);
+				Schedule.DischargeCoefficient = BRiskDefaultDischargeCoefficient;
+			}
+			else if (Schedule.DischargeCoefficient == 0.0)
+			{
+				// Worth a line: this opening carries no flow and is drawn shut for the entire run,
+				// which is a visible difference on screen and is NOT what its open/close times say.
+				UE_LOG(LogBRiskDataImporter, Log,
+					TEXT("B-Risk vent %d carries <cd>0</cd>, which B-Risk uses to hold a vent shut ")
+					TEXT("(SR282 4.6.2d). It is reported SHUT for the whole run and its open/close ")
+					TEXT("times (%g / %g) do not apply."),
+					Schedule.Id, Schedule.OpenTimeSeconds, Schedule.CloseTimeSeconds);
+			}
 
 			// B-Risk writes the literal "True"/"False". A vent in this mode ignores its open/close
 			// times entirely and starts SHUT - see FBRiskVentGeometry::IsOpenAtTime.
@@ -917,6 +955,7 @@ namespace
 
 			Vent.OpenTimeSeconds = Schedule.OpenTimeSeconds;
 			Vent.CloseTimeSeconds = Schedule.CloseTimeSeconds;
+			Vent.DischargeCoefficient = Schedule.DischargeCoefficient;
 			Vent.bAutoOpenVent = Schedule.bAutoOpenVent;
 			Vent.bHasSchedule = true;
 
@@ -1257,6 +1296,61 @@ namespace
 	}
 
 	/**
+	 * Parse input1.xml's ambient temperatures into Celsius.
+	 *
+	 * B-Risk stores these as whole kelvin at an offset of 273 (not 273.15) - see
+	 * BRiskKelvinToCelsiusOffset for the evidence and for why that is B-Risk's quirk rather than a
+	 * defect here. Absent tags leave the bHas* flags false so the caller can tell a real 20 C apart
+	 * from the fallback.
+	 *
+	 * Sanity-bounded in KELVIN before converting. A scenario whose ambient is outside 200-400 K is
+	 * not a scenario, it is a parse that latched onto the wrong tag, and letting it through would
+	 * feed a negative or absurd density straight into the vent-flow pressure integral.
+	 */
+	void ParseAmbientConditionsXml(const FString& XmlPath, FBRiskAmbientConditions& OutAmbient)
+	{
+		if (!FPaths::FileExists(XmlPath))
+		{
+			return;
+		}
+
+		FXmlFile XmlFile(XmlPath);
+		if (!XmlFile.IsValid())
+		{
+			return; // ParseTenabilityEndpointsXml already warned about this same file.
+		}
+
+		const FXmlNode* RootNode = XmlFile.GetRootNode();
+		const auto ReadKelvin =
+			[RootNode](const TCHAR* Tag, double& OutCelsius, bool& bHasFlag)
+		{
+			const FXmlNode* Node = FindNodeByTagRecursive(RootNode, Tag);
+			if (!Node)
+			{
+				return;
+			}
+			double Kelvin = 0.0;
+			if (!TryParseDouble(Node->GetContent().TrimStartAndEnd(), Kelvin))
+			{
+				return;
+			}
+			if (Kelvin < 200.0 || Kelvin > 400.0)
+			{
+				UE_LOG(LogBRiskDataImporter, Warning,
+					TEXT("B-Risk <%s> is %g K, outside the plausible 200-400 K band. Ignoring it and ")
+					TEXT("using the fallback ambient %g C."),
+					Tag, Kelvin, BRiskFallbackAmbientTempC);
+				return;
+			}
+			OutCelsius = Kelvin - BRiskKelvinToCelsiusOffset;
+			bHasFlag = true;
+		};
+
+		ReadKelvin(TEXT("temp_exterior"), OutAmbient.ExteriorTempC, OutAmbient.bHasExteriorTemp);
+		ReadKelvin(TEXT("temp_interior"), OutAmbient.InteriorTempC, OutAmbient.bHasInteriorTemp);
+	}
+
+	/**
 	 * Parse input1.xml <soot_yield> (g soot per g fuel; 0.07 for pre-flashover VM2).
 	 *
 	 * Separate from ParseTenabilityEndpointsXml because soot_yield is NOT inside <tenability> - it
@@ -1494,6 +1588,7 @@ bool FBRiskDataImporter::ImportScenarioFromSmv(const FString& SmvFilePath, FBRis
 	const FString InputXmlPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(SmvDirectory, TEXT("input1.xml")));
 	ParseTenabilityEndpointsXml(InputXmlPath, OutData.TenabilityEndpoints);
 	ParseSootYieldXml(InputXmlPath, OutData.SootYieldGPerG, OutData.bHasSootYield);
+	ParseAmbientConditionsXml(InputXmlPath, OutData.Ambient);
 	if (FPaths::FileExists(InputXmlPath))
 	{
 		OutData.ReferencedFiles.AddUnique(InputXmlPath);

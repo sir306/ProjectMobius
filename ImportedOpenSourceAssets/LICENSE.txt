@@ -46,6 +46,27 @@ and are licensed under the MIT License (see ../LICENSE):
                            License: CC BY 4.0
                            Source: https://icon-icons.com/icon/x-square/197594
 
+  ak_studio_art_wheelchair/
+                           Realistic wheelchair 3D model (3 OBJ meshes, base
+                           colour / normal / ORM textures).
+                           Author: AK Studio Art
+                           License: CC0 1.0 Universal (public domain
+                           dedication) - see
+                           ak_studio_art_wheelchair/LICENSE.md
+                           Source: https://store.godotengine.org/asset/
+                                   ak-studio-art/realistic-wheelchair-3d-model/
+                           Modifications: Godot project files, placeholder
+                           textures and import sidecars removed. The packed
+                           ORM texture was re-encoded from 32-bit TGA to
+                           24-bit PNG (lossless, verified by full-image
+                           hash; the discarded alpha channel was constant)
+                           and the .tga removed. Meshes are expected to be
+                           merged, re-scaled to UE units and given LODs;
+                           CC0 permits all of this and requires no
+                           attribution. See
+                           ak_studio_art_wheelchair/NOTES.md for
+                           measurements and the coordinate conversion.
+
 
 3. Fonts — SIL Open Font License
 ----------------------------------

@@ -17,8 +17,16 @@
 
 namespace
 {
-	/** Filename of our shim DLL. Fixed by Source\ThirdParty\IfcBridgeSource\CMakeLists.txt (no debug postfix). */
+	/**
+	 * Filename of our shim shared library, staged beside the binary by MobiusIfcLibrary.Build.cs.
+	 * Platform-specific: Windows produces MobiusIfcBridge.dll; macOS produces libMobiusIfcBridge.dylib
+	 * (CMake's default lib prefix + .dylib). Only referenced where MOBIUS_WITH_IFC_BRIDGE is set.
+	 */
+#if PLATFORM_MAC
+	const TCHAR* const GMobiusIfcBridgeDllName = TEXT("libMobiusIfcBridge.dylib");
+#else
 	const TCHAR* const GMobiusIfcBridgeDllName = TEXT("MobiusIfcBridge.dll");
+#endif
 
 	/**
 	 * How much of the file head to scan for FILE_SCHEMA. The STEP header (ISO-10303-21 HEADER

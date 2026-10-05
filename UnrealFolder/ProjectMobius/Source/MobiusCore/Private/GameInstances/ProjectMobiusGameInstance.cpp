@@ -304,6 +304,12 @@ void UProjectMobiusGameInstance::SetLogWindowEnabled(bool bEnabled)
 void UProjectMobiusGameInstance::SetPedestrianDataFilePath(const FString& NewPedestrianDataFilePath)
 {
 	PedestrianDataFilePath = NewPedestrianDataFilePath;
+
+	// NOTE: cross-loading an .h5's embedded geometry is deliberately NOT done here. It is a
+	// user-facing question ("geometry detected, load it too?"), so it lives at the file-pick
+	// widget where there is someone to ask -- see ULoadAgentDataWidget::DialogClosed. This
+	// setter is also called by the startup preload subsystem and by automation tests, neither of
+	// which can answer a prompt.
 	OnPedestrianVectorFileChanged.Broadcast(NewPedestrianDataFilePath);
 	OnPedestrianVectorFileUpdated.Broadcast();
 }

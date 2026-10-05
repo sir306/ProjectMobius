@@ -215,6 +215,14 @@ void SFieldAndTitleText::SetFieldFontFace(FName InTypeface)
 	// Ensure the composite Font_Inter is the font object so face names (Regular/Mono/...) resolve.
 	if (UFont* Inter = LoadObject<UFont>(nullptr, TEXT("/Game/01_Dev/Widgets/Fonts/Font_Inter.Font_Inter")))
 	{
+		// Root the shared font permanently. FontInfo.FontObject below is a raw pointer inside a Slate widget,
+		// which the GC cannot see; on a file-switch GC the font is collected and every live text block's
+		// FontObject dangles (reads 0xdddddddd...) -> SIGSEGV in FSlateFontInfo::GetCompositeFont during measure.
+		// AddToRoot keeps this single asset alive for the whole process, independent of any widget's lifetime.
+		if (!Inter->IsRooted())
+		{
+			Inter->AddToRoot();
+		}
 		FontInfo.FontObject = Inter;
 	}
 	FontInfo.TypefaceFontName = InTypeface;

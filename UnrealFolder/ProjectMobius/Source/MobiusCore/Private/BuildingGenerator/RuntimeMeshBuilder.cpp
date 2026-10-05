@@ -368,6 +368,7 @@ void ARuntimeMeshBuilder::GenerateMobiusMesh(TArray<FVector> InVertices, TArray<
 	TranslucentViewRefractionSnapshot.Empty();
 	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
+	bSourceColoursAreMeaningful = false;
 	ResetMeshCollisionAndPhysics();
 
 	const FBox MeshBounds(InVertices);
@@ -659,6 +660,7 @@ void ARuntimeMeshBuilder::UpdateMeshFileName()
 	TranslucentViewRefractionSnapshot.Empty();
 	bTranslucentViewActive = false;
 	bIsDatasmithAsset = false;
+	bSourceColoursAreMeaningful = false;
 
 	// Remove any flow counters, as the mesh is changing
 	FlowCounterSpawnerComponent->RemoveAllFlowCounters();
@@ -958,15 +960,12 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 
 	// Fresh load: re-probe whether the (Blueprint-supplied) building material can express source
 	// colours, since the material may have been swapped since the last load.
-	bSourceColourParamProbeDone = false;
-	bSourceColourParamsAvailable = false;
-	SourceColourProbedParent = nullptr;
+	SourceColourParamsAvailableByParent.Reset();
 	SourceMaterialSectionsApplied = 0;
 	// Per-section colours belong to the mesh that is being replaced, not to the next one. Same for the
 	// section MIDs -- section 3 of the next building is not section 3 of this one.
 	SectionSourceMaterials.Reset();
 	SectionColourMIDs.Reset();
-	SectionColourMIDParent = nullptr;
 
 	// The loader is no longer needed. Properly stop, drop the CPU-side mesh
 	// buffers, and delete the runnable. The previous code path nulled
@@ -1108,6 +1107,40 @@ void ARuntimeMeshBuilder::GetTheAsyncMeshData()
 	// populated bounds. Each section is cooked WITH collision (bCreateCollision=true) in the pump; the
 	// component itself is switched from its ctor NoCollision to QueryOnly once in FinalizeMeshEmit, so
 	// the cooked geometry becomes queryable for cursor ray-traces.
+	// Decide BEFORE the first section is emitted whether this building's own colours are worth showing,
+	// so the sections can be built straight onto the opaque parent instead of being built translucent and
+	// restyled a moment later. The owner reported exactly that flash (2026-08-13): an IFC carrying
+	// materials appeared transparent and then snapped to solid once the widget's load-time selection
+	// landed. Choosing the parent up front removes the intermediate state rather than hiding it.
+	//
+	// Read off the incoming chunks because SectionSourceMaterials is not populated until the pump has
+	// run, and this has to be known before the first section exists. Must come before the MoveTemp below.
+	// Same "two distinct colours" rule as DoesBuildingHaveAuthoredColours -- which now reports this very
+	// flag, so the widget's idea of "has colours" and the builder's cannot drift apart.
+	bSourceColoursAreMeaningful = false;
+	{
+		const FMobiusMeshMaterial* FirstStyled = nullptr;
+		for (const FAssimpSubmeshBuffers& Chunk : Chunks)
+		{
+			if (!Chunk.Material.bHasMaterial)
+			{
+				continue;
+			}
+
+			if (FirstStyled == nullptr)
+			{
+				FirstStyled = &Chunk.Material;
+				continue;
+			}
+
+			if (!Chunk.Material.BaseColour.Equals(FirstStyled->BaseColour, KINDA_SMALL_NUMBER))
+			{
+				bSourceColoursAreMeaningful = true;
+				break;
+			}
+		}
+	}
+
 	PendingMeshChunks = MoveTemp(Chunks);
 	PendingChunkEmitIndex = 0;
 	ChunkEmitStartTime = FPlatformTime::Seconds();
@@ -1212,8 +1245,78 @@ bool ARuntimeMeshBuilder::EmitNextChunkSection(float /*DeltaTime*/)
 	return true;
 }
 
-UMaterialInterface* ARuntimeMeshBuilder::ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style) const
+bool ARuntimeMeshBuilder::IsSourceAuthoredTranslucent(const FMobiusMeshMaterial* Source)
 {
+	// Alpha is the opacity channel of FMobiusMeshMaterial::BaseColour, filled by BOTH import paths:
+	// IFC's IfcSurfaceStyleRendering transparency (MobiusIfcMeshLoader.cpp:365) and assimp's
+	// AI_MATKEY_OPACITY, falling back to the diffuse alpha, for fbx/obj (AsyncAssimpMeshLoader.cpp:1059).
+	// So this one test covers every procedural format.
+	//
+	// KEEP THE THRESHOLD STRICT. "< 1.0" and not "< 0.99": a source that says 1.0 is opaque, and a source
+	// that says 0.999 asked for transparency, however faintly. Rounding a nearly-opaque window up to
+	// opaque would put it back on the solid parent, which is the defect this exists to fix.
+	return Source != nullptr && Source->bHasMaterial && Source->BaseColour.A < 1.0f;
+}
+
+UMaterialInterface* ARuntimeMeshBuilder::ResolveSectionParentForStyle(EMobiusBuildingMaterialStyle Style,
+                                                                     const FMobiusMeshMaterial* Source)
+{
+	// ORIGINAL COLOURS IS THE ONLY MIXED STYLE. Owner's specification, 2026-08-14, for all four entries:
+	//
+	//   Original Colours            what the model would be if imported -- solid walls, TRANSLUCENT
+	//                               WINDOWS. The only style that varies per section.
+	//   Original Colours Box Dissolve   EVERY material on the masked variant. Uniform.
+	//   Plain Colours Transparent   EVERY material plain white and translucent. Uniform.
+	//   Original Colours Transparent    source colours, EVERYTHING translucent. Uniform.
+	//
+	// So the source-alpha exception applies to OriginalColours ALONE. The other three are deliberate
+	// whole-building overrides and a section's own authored blend mode has no say in them -- including
+	// the cut-out, which an earlier revision of this function wrongly treated as "opaque-ish" and let
+	// windows escape from. A style that is described as "every material uses X" must produce exactly one
+	// parent across the building, or the mode stops meaning anything.
+	//
+	// Why the exception is right for Original Colours specifically: that label names the COLOUR channel,
+	// not the blend mode, and its promise is that the building looks the way the file authored it. A file
+	// that authored glass at 30% opacity did not author a solid panel.
+	//
+	// The window keeps the CLEAR-COAT translucent instance rather than the plain one because that is the
+	// variant carrying source colours; MI_RuntimeMeshBuilderTranslucent forces white by design. Its
+	// shading model was moved off MSM_ClearCoat in 31b7f8ad, so despite the asset name it is an ordinary
+	// forward-shaded translucent instance and is safe to pair with a translucent blend mode.
+	//
+	// Opacity then comes from MPC_BuildingSettings.OpacityAmount, which WBP_SetBuildingMat's slider
+	// writes — so these sections follow the slider with no extra plumbing, which is the second half of
+	// what the owner asked for. CONSEQUENCE, and it is deliberate: on the procedural path the authored
+	// alpha CLASSIFIES a section but does not set its opacity value, because OpacityAmount is a
+	// COLLECTION parameter (see MobiusRenderCaptureCommands.cpp:88) and therefore global to the building.
+	// A window authored at 0.9 and one at 0.2 render alike. Making them differ needs a per-instance
+	// scalar in M_RuntimeMaster, i.e. a material change, not a code change.
+	if (Style == EMobiusBuildingMaterialStyle::OriginalColours && IsSourceAuthoredTranslucent(Source))
+	{
+		if (UMaterialInterface* TranslucentParent =
+			ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColoursTransparent))
+		{
+			return TranslucentParent;
+		}
+		// Asset missing — ResolveStyleParentMaterial logged it. Fall through to the style's own parent
+		// rather than returning null, so a missing asset costs a solid window and not an unrendered one.
+	}
+
+	return ResolveStyleParentMaterial(Style);
+}
+
+UMaterialInterface* ARuntimeMeshBuilder::ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle Style)
+{
+	// Memoised: this is now called once per SECTION rather than once per style change, and the body does
+	// a LoadObject. On the 208-section IFC that would be 208 synchronous package lookups per restyle.
+	if (const TObjectPtr<UMaterialInterface>* Cached = StyleParentCache.Find(Style))
+	{
+		if (IsValid(*Cached))
+		{
+			return *Cached;
+		}
+	}
+
 	// The four instances already in the project, one per style. Hardcoded paths follow the existing
 	// precedent in this file (CreateRuntimeOpaqueMaterials hardcodes MI_Opaque the same way).
 	//
@@ -1240,8 +1343,39 @@ UMaterialInterface* ARuntimeMeshBuilder::ResolveStyleParentMaterial(EMobiusBuild
 		UE_LOG(LogTemp, Error,
 			TEXT("[Building %s] building material style asset not found: %s. Sections keep their current material."),
 			*GetName(), *Path);
+		return nullptr; // not cached: a missing asset must keep reporting itself, not fail silently once
 	}
+
+	StyleParentCache.Add(Style, Loaded);
 	return Loaded;
+}
+
+bool ARuntimeMeshBuilder::DoesBuildingHaveAuthoredColours() const
+{
+	// A Datasmith scene always brings its own materials, and they never pass through
+	// SectionSourceMaterials -- the plugin's importer puts them in DatasmithMaterialsMap instead, so
+	// asking the array about a Datasmith building would always answer "no".
+	if (bIsDatasmithAsset)
+	{
+		return true;
+	}
+
+	// TWO DISTINCT COLOURS ARE REQUIRED, not one styled section. Owner ruling 2026-08-13, and the reason
+	// is a measurement rather than a preference: ISO-Test-8-FireSmoke.fbx declares a diffuse on both its
+	// sections, so bHasMaterial is legitimately true -- but the colour is 0.8/0.8/0.8 on both, assimp's
+	// default grey. Treating that as "has colours" opened the building opaque grey, which is not what
+	// "use the original colours" is for. A file whose every section is the same single colour has nothing
+	// to show off, so it belongs in the translucent default alongside a file with no colours at all.
+	//
+	// The trade is explicit: a building genuinely authored in one colour is now reported as uncoloured.
+	// That costs almost nothing visually -- single-colour opaque and single-colour translucent convey the
+	// same amount -- whereas the fbx case was actively wrong.
+	//
+	// Answered from the flag computed at chunk handoff rather than recomputed here, deliberately. The
+	// emit path needs the same answer BEFORE any section exists, to pick each section's parent material;
+	// two implementations of one rule would be free to disagree, and the symptom would be a building that
+	// renders in one mode while the combo names another -- the exact class of bug this work fixed.
+	return bSourceColoursAreMeaningful;
 }
 
 void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle Style)
@@ -1254,17 +1388,48 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 	// control to the calls that widget was already making.
 	if (bIsDatasmithAsset)
 	{
+		// Every style asks for Default Lit shading rather than clear coat. MF_ControlDatasmithMaterial
+		// and MF_ControlDatasmithMaterialTransparency each blend between an MSM_CLEAR_COAT and an
+		// MSM_DEFAULT_LIT ShadingModel node under the "Default Lit Shading" scalar, and the translucent
+		// masters (M_Transparent, M_PbrTranslucent, M_DatasmithTranslucent) are BLEND_TRANSLUCENT. Clear
+		// coat is a deferred shading model and translucent surfaces are forward shaded, so that pairing
+		// has no defined output -- surfaces stay see-through at full opacity and their apparent
+		// brightness swims with the camera. Same defect as the procedural side, where
+		// MI_RuntimeMeshBuilderTranslucentClearcoat was moved off MSM_CLEAR_COAT.
+		//
+		// Each branch sets the flag explicitly rather than relying on the previous style: it is
+		// per-material state that survives a style change, so a branch that stays silent inherits
+		// whatever the last selection left behind. SetDatasmithMeshToUseClearCoatMaterials remains
+		// BlueprintCallable so the clear-coat look can still be switched on by hand for comparison.
 		switch (Style)
 		{
+		// ORIGINAL COLOURS IS THE ONLY MIXED STYLE — the same rule as the procedural path, see
+		// ResolveSectionParentForStyle for the owner's four-entry specification.
+		//
+		// SetDatasmithToOriginalMatStyle already assigns PER SLOT from FDatasmithMaterials::bIsOpaque:
+		// opaque slots take MeshMaterials[i*2], authored-translucent slots take [i*2+1], which is exactly
+		// what "as imported" means and is what the import itself does (BuildDatasmithMaterialsForMesh).
+		// Its own comment says the point is "so we are able to override opacity with the slider".
+		// SetDatasmithMeshToSolidMaterials MUST NOT follow it here: that loops every slot onto [i*2]
+		// unconditionally, flattening the windows it had just placed correctly, which was the Datasmith
+		// half of the owner's "solid windows" report. It also notes it "never runs in practice" — this
+		// dispatch had made it run, one call too late.
+		//
+		// Nothing is lost by dropping it from THIS case: its only other effect,
+		// ApplyRefractionForCurrentView, is the last thing SetDatasmithToOriginalMatStyle does anyway.
 		case EMobiusBuildingMaterialStyle::OriginalColours:
 			SetDatasmithToOriginalMatStyle();
-			SetDatasmithMeshToSolidMaterials();
 			SetDatasmithMeshToUseClearCoatMaterials(false);
 			break;
 
 		case EMobiusBuildingMaterialStyle::OriginalColoursCutOut:
 			SetDatasmithToOriginalMatStyle();
+			// KEPT here, unlike the case above, and deliberately: the cut-out is a UNIFORM style — every
+			// material takes the same variant — so the per-slot placement SetDatasmithToOriginalMatStyle
+			// just made is exactly what has to be flattened. Datasmith has no masked master, so the solid
+			// variant plus the box dissolve is its equivalent of the procedural MI_RuntimeMeshBuilderMasked.
 			SetDatasmithMeshToSolidMaterials();
+			SetDatasmithMeshToUseClearCoatMaterials(false);
 			// The Datasmith equivalent of "cut out" is the box dissolve, which needs its bounds set by
 			// the caller (SetDatasmithDissolveMeshSizeAndOrigin) -- enabling it here without bounds
 			// would dissolve nothing, so the dissolve toggle is left to the existing control.
@@ -1274,12 +1439,13 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 		case EMobiusBuildingMaterialStyle::TransparentWhite:
 			SetDatasmithMeshToTranslucentMaterials();
 			SetDatasmithToUseModifiedColour(true, FLinearColor::White);
+			SetDatasmithMeshToUseClearCoatMaterials(false);
 			break;
 
 		case EMobiusBuildingMaterialStyle::OriginalColoursTransparent:
 			SetDatasmithMeshToTranslucentMaterials();
 			SetDatasmithToUseModifiedColour(false); // keep the imported colours
-			SetDatasmithMeshToUseClearCoatMaterials(true);
+			SetDatasmithMeshToUseClearCoatMaterials(false);
 			break;
 		}
 		return;
@@ -1291,8 +1457,7 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 		return;
 	}
 
-	UMaterialInterface* StyleParent = ResolveStyleParentMaterial(Style);
-	if (!StyleParent)
+	if (!ResolveStyleParentMaterial(Style))
 	{
 		return; // ResolveStyleParentMaterial already logged
 	}
@@ -1300,22 +1465,10 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 	const bool bForceWhite = (Style == EMobiusBuildingMaterialStyle::TransparentWhite);
 	const int32 NumSections = MobiusProceduralMeshComponent->GetNumSections();
 	int32 Coloured = 0;
+	int32 KeptTranslucent = 0;
 
 	for (int32 SectionIdx = 0; SectionIdx < NumSections; ++SectionIdx)
 	{
-		// Reused per section; StyleParent is an asset instance, so this never nests MIDs.
-		UMaterialInstanceDynamic* SectionMaterial = GetOrCreateSectionMID(SectionIdx, StyleParent);
-		if (!SectionMaterial)
-		{
-			continue;
-		}
-
-		// Reuse is safe against stale parameters here because each of the four styles resolves to a
-		// DIFFERENT MI_RuntimeMeshBuilder* asset, so a style switch changes the parent and rebuilds the
-		// MIDs. Reuse only happens on a repeat call with the same style, where every value written below
-		// is the same value. If a future style ever shares a parent with another, this branch must start
-		// writing every parameter unconditionally.
-
 		// Source colour for this section, when the import gave it one AND this style wants it.
 		// Everything else falls through to Use Modified Colour = 0, which is the master's own plain
 		// white chain -- so "no colours" degrades to plain white / plain white cut out / plain white
@@ -1324,6 +1477,24 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 			                                    ? &SectionSourceMaterials[SectionIdx]
 			                                    : nullptr;
 
+		// PER SECTION, because a window under an opaque style keeps a translucent parent. Always an
+		// asset instance, so this never nests MIDs.
+		UMaterialInterface* SectionParent = ResolveSectionParentForStyle(Style, Source);
+		UMaterialInstanceDynamic* SectionMaterial = GetOrCreateSectionMID(SectionIdx, SectionParent);
+		if (!SectionMaterial)
+		{
+			continue;
+		}
+		if (SectionParent != ResolveStyleParentMaterial(Style))
+		{
+			++KeptTranslucent;
+		}
+
+		// EVERY PARAMETER IS WRITTEN UNCONDITIONALLY. This used to lean on "a style switch changes the
+		// parent, so the MIDs are rebuilt and cannot carry stale values" — that reasoning died with the
+		// per-section parent: two different styles can now hand the same section the same parent (a
+		// window resolves to the translucent instance under Original Colours AND under Original Colours
+		// Transparent), so its MID is reused across a style change and must be fully rewritten.
 		if (bForceWhite)
 		{
 			SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
@@ -1340,21 +1511,18 @@ void ARuntimeMeshBuilder::SetBuildingMaterialStyle(EMobiusBuildingMaterialStyle 
 			SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 0.0f);
 		}
 
-		// Source opacity only where the source actually asked for transparency; the style's own blend
-		// mode governs everything else. Overwriting OpacityAmount on an opaque style would fight the
-		// project's own translucent-view feature for no reason.
-		const float SourceAlpha = (Source && Source->bHasMaterial) ? Source->BaseColour.A : 1.0f;
-		if (SourceAlpha < 1.0f)
-		{
-			SectionMaterial->SetScalarParameterValue(FName("OpacityAmount"), SourceAlpha);
-		}
-
+		// A per-section OpacityAmount write used to live here. It was DEAD CODE: on the procedural path
+		// OpacityAmount is a parameter of MPC_BuildingSettings, a material parameter COLLECTION, and a
+		// UMaterialInstanceDynamic::SetScalarParameterValue against a collection parameter is a silent
+		// no-op (MobiusRenderCaptureCommands.cpp:88-89, :141). Opacity for these sections comes from the
+		// collection, which WBP_SetBuildingMat's slider writes.
 		MobiusProceduralMeshComponent->SetMaterial(SectionIdx, SectionMaterial);
 	}
 
 	UE_LOG(LogTemp, Log,
-		TEXT("[Building %s] building material style -> %d (procedural): %d sections, %d took a source colour"),
-		*GetName(), static_cast<int32>(Style), NumSections, Coloured);
+		TEXT("[Building %s] building material style -> %d (procedural): %d sections, %d took a source colour, ")
+		TEXT("%d kept a translucent parent from their source"),
+		*GetName(), static_cast<int32>(Style), NumSections, Coloured, KeptTranslucent);
 }
 
 UMaterialInterface* ARuntimeMeshBuilder::ResolveNonDynamicParent(UMaterialInterface* InMaterial)
@@ -1381,18 +1549,22 @@ UMaterialInstanceDynamic* ARuntimeMeshBuilder::GetOrCreateSectionMID(int32 Secti
 		return nullptr;
 	}
 
-	// A different parent means a different look; the cached MIDs are no longer the right objects.
-	if (SectionColourMIDParent != Parent)
-	{
-		SectionColourMIDParent = Parent;
-		SectionColourMIDs.Reset();
-	}
-
+	// PER SECTION, not one parent for the building. Sections no longer agree on a parent: a window keeps
+	// a translucent instance while the wall beside it is opaque (ResolveSectionParentForStyle), so the
+	// two interleave down the array.
+	//
+	// This used to compare against a single SectionColourMIDParent and Reset() the WHOLE array on a
+	// mismatch. Under alternation that array would be cleared on nearly every call, throwing away MIDs
+	// the mesh component is still rendering with — each surviving only by the component's own reference,
+	// and every one rebuilt on the next pass. Comparing per index makes reuse work again and makes the
+	// operation independent of the order sections are visited in.
 	if (SectionColourMIDs.Num() <= SectionIdx)
 	{
 		SectionColourMIDs.SetNum(SectionIdx + 1);
 	}
 
+	// The MID's OWN Parent is the record of what it was built from -- no parallel array needed, and one
+	// less thing that can fall out of step with the MIDs it describes.
 	UMaterialInstanceDynamic* Existing = SectionColourMIDs[SectionIdx];
 	if (IsValid(Existing) && Existing->Parent == Parent)
 	{
@@ -1438,10 +1610,32 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		return false;
 	}
 
+	// A building that carries its own colours is built OPAQUE from the first section, not built on
+	// Blueprint's translucent default and restyled once the widget catches up. Without this the whole
+	// mesh appears transparent and then snaps to solid, which is what the owner reported.
+	//
+	// GATED ON bMeshBeingBuilt, i.e. ONLY WHILE THE EMIT PUMP IS RUNNING, and the gate is the whole
+	// correctness of this. SetMaterialOnMesh calls this function again after the load, on behalf of
+	// whatever material the widget just supplied, and its contract (see its comment) is that the source
+	// colour is layered ON TOP of the caller's material rather than overriding it. Forcing opaque there
+	// would make every translucent render mode silently do nothing on a coloured building.
+	//
+	// !bBuildingMaterialStyleChosen was tried as the gate first and is WRONG: on the procedural path the
+	// widget reaches UpdateMeshMaterial and never SetBuildingMaterialStyle, so that flag stays false for
+	// the entire session and the gate never closes.
+	UMaterialInterface* Parent = nullptr;
+	if (bSourceColoursAreMeaningful && bMeshBeingBuilt)
+	{
+		Parent = ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours);
+	}
+
 	// NOT MobiusMaterialInstanceDynamic itself -- that is a MID, and Blueprint derives it from whatever is
 	// currently on the section, so using it as a parent stacks MIDs and eventually nulls the parent.
 	// ResolveNonDynamicParent walks to the asset behind it; see its header comment.
-	UMaterialInterface* Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	if (!Parent)
+	{
+		Parent = ResolveNonDynamicParent(MobiusMaterialInstanceDynamic);
+	}
 	if (!Parent)
 	{
 		// The walk found no asset, which means Blueprint handed us a MID that UE had ALREADY refused to
@@ -1456,17 +1650,55 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		}
 	}
 
-	// One probe per parent, cached: the answer cannot change between sections sharing a parent, and
-	// FMaterialParameterInfo lookups are not free. Keyed on the parent rather than only on the load,
-	// because Blueprint can swap the building material mid-load.
-	if (!bSourceColourParamProbeDone || SourceColourProbedParent != Parent)
+	// A SECTION THE SOURCE AUTHORED TRANSLUCENT KEEPS A TRANSLUCENT PARENT UNDER **ORIGINAL COLOURS**, so
+	// an imported window is a window and not a solid panel — owner-reported 2026-08-14. Applied here,
+	// after the parent has been resolved, so it covers BOTH routes into this function with one rule: the
+	// emit pump above, and the widget's UpdateMeshMaterial -> SetMaterialOnMesh -> here.
+	//
+	// ORIGINAL COLOURS ONLY, and matching ResolveSectionParentForStyle exactly — see its comment for the
+	// owner's four-entry specification. The masked cut-out is NOT included: "box dissolve" means every
+	// material on the masked variant, so a window escaping to a translucent parent there is the bug, not
+	// the feature. These two tests are one rule expressed twice; they must be changed together.
+	//
+	// Keyed on the resolved parent rather than on CurrentBuildingMaterialStyle, because on the procedural
+	// path that member is never written (the widget does not call SetBuildingMaterialStyle) and would
+	// name the wrong style. A parent that is not one of the style assets — Blueprint supplying something
+	// of its own — is deliberately left alone rather than guessed at.
+	if (IsSourceAuthoredTranslucent(&SourceMaterial) &&
+		Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColours))
 	{
-		bSourceColourParamProbeDone = true;
-		SourceColourProbedParent = Parent;
+		if (UMaterialInterface* TranslucentParent =
+			ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::OriginalColoursTransparent))
+		{
+			Parent = TranslucentParent;
+		}
+	}
 
+	// "Plain Colours Transparent" means PLAIN -- white, not the source's colours. SetBuildingMaterialStyle
+	// has always known that (its bForceWhite), but the widget's procedural path never reaches that
+	// function: it goes UpdateMeshMaterial -> SetMaterialOnMesh -> here, which applied the source colour
+	// unconditionally. The result was that "Plain Colours Transparent" and "Original Colours Transparent"
+	// differed only by clear coat and read as the same mode -- owner-reported 2026-08-13.
+	//
+	// A plain pointer comparison against the cached style asset; the four styles each resolve to a
+	// different MI_RuntimeMeshBuilder* instance, so the parent identifies the style unambiguously.
+	const bool bParentIsPlainWhiteStyle =
+		(Parent == ResolveStyleParentMaterial(EMobiusBuildingMaterialStyle::TransparentWhite));
+
+	// One probe per DISTINCT parent, cached in a map rather than a single slot. A load now resolves more
+	// than one parent and they interleave per section (window, wall, window...), so a one-slot cache
+	// would re-probe -- and re-emit the warning below -- on every alternation.
+	bool bSourceColourParamsAvailable = false;
+	if (const bool* CachedAvailable = SourceColourParamsAvailableByParent.Find(Parent))
+	{
+		bSourceColourParamsAvailable = *CachedAvailable;
+	}
+	else
+	{
 		FLinearColor Unused;
 		bSourceColourParamsAvailable =
 			Parent->GetVectorParameterValue(FMaterialParameterInfo(TEXT("NewColour")), Unused);
+		SourceColourParamsAvailableByParent.Add(Parent, bSourceColourParamsAvailable);
 
 		if (!bSourceColourParamsAvailable)
 		{
@@ -1493,19 +1725,20 @@ bool ARuntimeMeshBuilder::ApplySourceMaterialToSection(int32 SectionIdx, const F
 		return false;
 	}
 
-	SectionMaterial->SetVectorParameterValue(FName("NewColour"), SourceMaterial.BaseColour);
+	// White for the plain-transparent style, the source's own colour for every other style. Mirrors
+	// SetBuildingMaterialStyle's bForceWhite so both routes to a style agree on what it looks like.
+	SectionMaterial->SetVectorParameterValue(
+		FName("NewColour"),
+		bParentIsPlainWhiteStyle ? FLinearColor::White : SourceMaterial.BaseColour);
 	SectionMaterial->SetScalarParameterValue(FName("Use Modified Colour"), 1.0f);
-	// Alpha carries the source's opacity. Only pushed when the parameter exists, and only when the
-	// source actually asked for transparency -- overwriting the project's own opacity handling on an
-	// opaque material would fight the translucent-view feature for no reason.
-	if (SourceMaterial.BaseColour.A < 1.0f)
-	{
-		float UnusedScalar = 0.0f;
-		if (Parent->GetScalarParameterValue(FMaterialParameterInfo(TEXT("OpacityAmount")), UnusedScalar))
-		{
-			SectionMaterial->SetScalarParameterValue(FName("OpacityAmount"), SourceMaterial.BaseColour.A);
-		}
-	}
+
+	// A per-section OpacityAmount write used to sit here, guarded by a GetScalarParameterValue probe on
+	// the parent. It was DEAD CODE and the probe is why it was silent: on the procedural path
+	// OpacityAmount belongs to MPC_BuildingSettings, a material parameter COLLECTION, so it is not a
+	// parameter of the material at all -- the probe returned false and the write never ran. Even reached,
+	// a MID write against a collection parameter is a documented no-op (MobiusRenderCaptureCommands.cpp
+	// :88-89, :141). Opacity for a translucent section comes from the collection, which the slider in
+	// WBP_SetBuildingMat writes -- which is what binds these sections to it.
 
 	MobiusProceduralMeshComponent->SetMaterial(SectionIdx, SectionMaterial);
 	++SourceMaterialSectionsApplied;
@@ -1537,18 +1770,79 @@ void ARuntimeMeshBuilder::FinalizeMeshEmit()
 		SetBuildingMaterialStyle(CurrentBuildingMaterialStyle);
 	}
 
+	// DO NOT ADD AN AUTO-DEFAULT STYLE HERE. It was tried on 2026-08-12 and REVERTED because it broke
+	// the Render Mode dropdown, which the owner confirmed had been working shortly beforehand.
+	//
+	// The attempt called SetBuildingMaterialStyle(OriginalColours) when a file carried authored colours
+	// and no style had been chosen. It looked free -- Datasmith already lands on original colours, and
+	// SetBuildingMaterialStyle is the only thing that writes both CurrentBuildingMaterialStyle and
+	// bBuildingMaterialStyleChosen, so it also made GetBuildingMaterialStyle() agree with the screen.
+	//
+	// What it actually did to the widget:
+	//   1. applied a style at load where previously NONE was applied, so the combo inherited a starting
+	//      state it was never written against; and
+	//   2. set bBuildingMaterialStyleChosen = true, so every SUBSEQUENT load took the branch above and
+	//      re-applied a style -- another behaviour the widget had never seen.
+	//
+	// Making the C++ getter self-consistent is NOT the same thing as the dropdown working, and reaching
+	// past the widget to force a style is what broke it. If an auto-default is wanted, drive it through
+	// the same path the widget uses. See the OWNER'S TWO OPEN ITEMS block at the top of
+	// HANDOFF_IFC_2026-08-11.md.
+
+	// NOT DONE HERE, AND THE ATTEMPT IS RECORDED BECAUSE IT LOOKS OBVIOUS AND IS NOT.
+	//
+	// The owner asked for two related things (HANDOFF 16.6): land on Original Colours when the file
+	// carries authored colours, and stop the render-mode combo disagreeing with what is on screen.
+	// Applying the style right here looks like it delivers both at once -- SetBuildingMaterialStyle is
+	// the only thing that writes BOTH CurrentBuildingMaterialStyle and bBuildingMaterialStyleChosen, so
+	// calling it would make the getter and the material agree by construction.
+	//
+	// It was implemented that way on 2026-08-12 and reverted the same day, UNVERIFIED EITHER WAY --
+	// and the honest reason matters, because the first reason written here was wrong:
+	//
+	// The revert was triggered by Mobius.InGame.Ifc.Ifc2x3LoadsIntoProceduralMesh failing with
+	// "MID_MI_RuntimeMeshBuilderOpaque_280 is not a valid parent for MaterialInstanceDynamic
+	// MID_MID_MI_RuntimeMeshBuilderOpaque_336" -- the MID-parented-on-a-MID defect recorded as fixed in
+	// HANDOFF 15.15. Applying a style at load leaves the component wearing a MID this class created,
+	// and the Blueprint side builds its own material with CreateDynamicMaterialInstance, which parents
+	// on the component's CURRENT material. That is a plausible mechanism.
+	//
+	// BUT THE WARNINGS PERSIST AFTER THE REVERT. Re-running with this branch removed still produces
+	// them, so the causal link is NOT established and the defect is at minimum also reachable by
+	// another path. Do not treat "applying a style at load causes MID nesting" as a known fact.
+	//
+	// What IS known: the combo/getter mismatch is real (HANDOFF 16.9a -- the getter reports
+	// OriginalColours on a building rendering translucent), and the owner wants auto-Original-Colours
+	// when the file has authored colours. The safer shape is probably to seed the combo from what was
+	// actually applied rather than from the enum's initial value, and to drive any default through the
+	// same path the widget uses so the Blueprint's parenting assumptions still hold. That needs the
+	// WBP_SetBuildingMat graph in view. Left for the owner rather than guessed at.
+
 	// Source-material outcome, reported HERE rather than in the load summary because sections are
 	// pushed across frames by the emit pump -- at load time the applied count is always 0. Logged
 	// whenever the emit ran, so "the file had no colours", "the material cannot show them" and "they
 	// were applied" are three distinguishable lines rather than one silence.
 	if (EmittedSections > 0)
 	{
+		// The probe is per parent now, and a load can resolve more than one (an authored-translucent
+		// section keeps a translucent parent under an opaque style), so the state is summarised as
+		// "how many parents were probed, and did any of them fail" rather than as one flag.
+		int32 ParentsProbed = 0;
+		int32 ParentsMissingParams = 0;
+		for (const TPair<TObjectPtr<UMaterialInterface>, bool>& Probe : SourceColourParamsAvailableByParent)
+		{
+			++ParentsProbed;
+			ParentsMissingParams += Probe.Value ? 0 : 1;
+		}
+
 		UE_LOG(LogTemp, Log,
 			TEXT("[Building %s] source materials: %d of %d sections got a per-section colour ")
-			TEXT("(colour params on building material: %s)"),
+			TEXT("(colour params: %s)"),
 			*GetName(), SourceMaterialSectionsApplied, EmittedSections,
-			bSourceColourParamProbeDone ? (bSourceColourParamsAvailable ? TEXT("available") : TEXT("MISSING"))
-			                            : TEXT("never probed - no section carried a source material"));
+			ParentsProbed == 0
+				? TEXT("never probed - no section carried a source material")
+				: (ParentsMissingParams == 0 ? TEXT("available on every parent material")
+				                             : TEXT("MISSING on at least one parent material")));
 	}
 
 	if (!IsValid(MobiusProceduralMeshComponent))

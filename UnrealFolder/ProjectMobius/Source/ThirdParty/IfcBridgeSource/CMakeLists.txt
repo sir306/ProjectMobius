@@ -53,10 +53,9 @@ project(MobiusIfcBridge CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT MSVC)
-	message(WARNING "MobiusIfcBridge has only ever been reasoned about for MSVC/Win64 (Project "
-		"Mobius is Win64-only, see MobiusIfcLibrary.Build.cs's own hard-fail on other platforms). "
-		"Proceeding, but nothing here has been checked against any other toolchain.")
+if(NOT MSVC AND NOT APPLE)
+	message(WARNING "MobiusIfcBridge is built and verified on MSVC/Win64 and clang/macOS. This "
+		"toolchain is neither -- proceeding, but nothing here has been checked against it.")
 endif()
 
 # -------------------------------------------------------------------------------------------

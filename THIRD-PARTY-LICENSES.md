@@ -15,6 +15,8 @@ This document covers all third-party libraries, assets, and tools bundled in the
 | ImPlot | 0.17 | MIT | `Source/MobiusWidgets/ThirdParty/ImPlot/` |
 | earcut.hpp | — | ISC | `Source/MobiusCore/ThirdParty/earcut_hpp/` |
 | portable-file-dialogs | — | WTFPL | `Source/MobiusCore/ThirdParty/PortableFileDialogs/` |
+| IFC++ (IfcPlusPlus) | recorded as `7b80900` | MIT | `UnrealFolder/ProjectMobius/Source/ThirdParty/IfcBridgeSource/IfcPlusPlus/` |
+| ↳ Carve, glm, earcut, RapidJSON, nowide, utf8, zippy, miniz, zip | bundled by IFC++ | MIT / ISC / Boost-1.0 / Unlicense | see §2.8 |
 
 ---
 
@@ -76,6 +78,40 @@ license files kept under `Source/Visualization/ThirdParty/OpenCV/`.
 - **Location:** `Source/MobiusCore/ThirdParty/PortableFileDialogs/`
 - **License:** WTFPL
 - **URL:** https://github.com/nickvanheer/portable-file-dialogs
+
+### 2.8 IFC++ (IfcPlusPlus) and its bundled dependencies
+
+Runtime `.ifc` import. Vendored source is compiled into `MobiusIfcBridge.dll` and redistributed in
+binary form, so every bundled dependency below ships with the product and is credited here.
+
+- **Location:** `UnrealFolder/ProjectMobius/Source/ThirdParty/IfcBridgeSource/IfcPlusPlus/`
+- **License:** MIT — Copyright Fabian Gerold
+- **URL:** https://github.com/ifcquery/IfcPlusPlus
+
+IFC++ bundles the following, all permissive. Full licence texts and per-component evidence paths are in
+`Source/ThirdParty/IfcBridgeSource/THIRD_PARTY_NOTICES.md`.
+
+| Bundled component | License | Copyright | Path under `.../IfcPlusPlus/` |
+|---|---|---|---|
+| Carve (CSG kernel) | MIT | Tobias Sargeant, 2006–2015 | `IfcPlusPlus/src/external/Carve/` |
+| glm | MIT / "Happy Bunny" | G-Truc Creation, 2005 | `IfcPlusPlus/src/external/glm/` |
+| earcut.hpp | ISC | Mapbox, 2015 | `IfcPlusPlus/src/external/earcut/` |
+| RapidJSON | MIT | THL A29 Limited (Tencent) / Milo Yip, 2015 | `IfcPlusPlus/src/external/RapidJSON/` |
+| nowide | Boost Software License 1.0 | Artyom Beilis, 2012 | `IfcPlusPlus/src/external/nowide/` |
+| utf8 (utfcpp) | Boost Software License 1.0 | Nemanja Trifunovic, 2006–2016 | `IfcPlusPlus/src/external/utf8/` |
+| zippy | Unlicense (public domain) | RAD Game Tools / Valve / R. Geldreich / Tenacious Software / M. Raiber | `IfcPlusPlus/src/external/zippy/` |
+| miniz | Unlicense (public domain) | Rich Geldreich, 2013; Martin Raiber, 2016 | `IfcPlusPlus/src/external/zip-master/miniz.h` |
+| zip (wrapper) | MIT — see note | see note | `IfcPlusPlus/src/external/zip-master/zip.{c,h}` |
+
+**Carve is MIT, not GPL.** Carve was GPL-2.0 before its 2015 relicense, and old forks (e.g. `VTREEM/Carve`)
+still carry the old text, which is why an outdated "Carve is GPL" claim circulates. The copy vendored here
+carries the MIT header — verified in `IfcPlusPlus/src/external/Carve/src/include/carve/carve.hpp`.
+
+**Note on `zip-master/zip.{c,h}`:** the vendored copy retains only the MIT *warranty disclaimer* paragraph;
+the copyright line and permission grant were trimmed by whoever vendored it upstream. Upstream is MIT. This
+is an attribution gap, not an incompatible licence. The wrapper is also **dead code** — it is compiled via
+`IfcPlusPlus/CMakeLists.txt:74` but nothing in IFC++ calls any `zip_*` function (its `.ifcZIP` support goes
+through zippy), so removing it from the source list would drop the obligation entirely.
 
 ---
 

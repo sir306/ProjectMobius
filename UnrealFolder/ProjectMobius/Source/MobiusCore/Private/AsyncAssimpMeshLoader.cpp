@@ -489,19 +489,27 @@ bool FAssimpMeshLoaderRunnable::LoadWKTFile(const FString& FilePath, FString& Ou
 		OutErrorMessage = FString::Printf(TEXT("File not found: %s"), *FilePath);
 		return false;
 	}
-	// TODO: add error handling to this Code and document
 	if (FilePath.EndsWith(TEXT(".h5"), ESearchCase::IgnoreCase))
 	{
 		FHdf5SimulationReader Reader;
-		if (Reader.OpenFile(FilePath))
+		if (!Reader.OpenFile(FilePath))
 		{
-			if (Reader.ReadWktGeometry(OutWKTData))
-			{
-				Reader.CloseFile();
-				return true;
-			}
+			OutErrorMessage = FString::Printf(TEXT("Failed to open HDF5 file: %s"), *FilePath);
+			return false;
 		}
-		return false;
+
+		// Both failures below used to return false leaving OutErrorMessage empty, so the caller
+		// reported a geometry load that had failed for no stated reason.
+		if (!Reader.ReadWktGeometry(OutWKTData))
+		{
+			OutErrorMessage = FString::Printf(
+				TEXT("HDF5 file carries no embedded wkt_geometry attribute: %s"), *FilePath);
+			return false;
+		}
+
+		// The reader closes itself on destruction; this just keeps the handle short-lived.
+		Reader.CloseFile();
+		return true;
 	}
 
 	// Load the file content

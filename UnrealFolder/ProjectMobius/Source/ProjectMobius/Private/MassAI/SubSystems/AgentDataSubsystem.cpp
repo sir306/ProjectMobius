@@ -682,11 +682,62 @@ void FProcessAgentSimulationDataRunnable::RunSimulationDataGatheringLoop(bool bC
 		}
 	}
 
-	if (MaxAgents > 0 && PeakEntityCount > 0 && PeakEntityCount < MaxAgents)
+	// 2026-08-13, PR #18 (contributor `chraibi`): this used to be
+	//     if (MaxAgents > 0 && PeakEntityCount > 0 && PeakEntityCount < MaxAgents)
+	// and it raised a false "Incomplete entity data" dialog on essentially every real dataset.
+	// PeakEntityCount is the largest number of entities present in ANY SINGLE timestep - a concurrency
+	// figure. MaxAgents is the number of DISTINCT entities in the whole run (ProcessMetadata: either
+	// Metadata.MaxNumEntities or Entities.Num()). Those are only equal if every occupant is present at
+	// the same instant, so any staggered evacuation - people leaving before others arrive, which is
+	// what an evacuation IS - has peak < total and tripped the warning while the data was complete.
+	//
+	// The honest test is COVERAGE, not concurrency: does every declared entity appear in at least one
+	// timestep? Counted with a bit per entity rather than a TSet - ids are dense 0-based indices here
+	// (the gathering loop above indexes AgentDataArray by EntityId), so there is nothing to hash.
+	int32 DistinctEntitiesSeen = 0;
+	int32 OutOfRangeEntityIds = 0;
+	if (MaxAgents > 0)
+	{
+		TBitArray<> SeenEntityIds(false, MaxAgents);
+		for (const FMobiusAgentSampleData& Sample : AgentSimulationData.Samples)
+		{
+			if (Sample.EntityId < 0)
+			{
+				continue;   // negative ids are already reported per-sample by the loop above
+			}
+
+			if (Sample.EntityId >= MaxAgents)
+			{
+				// Not "missing data" - the opposite. Reported separately below so the two cannot be
+				// confused, because the fix for each is different.
+				++OutOfRangeEntityIds;
+				continue;
+			}
+
+			if (!SeenEntityIds[Sample.EntityId])
+			{
+				SeenEntityIds[Sample.EntityId] = true;
+				++DistinctEntitiesSeen;
+			}
+		}
+	}
+
+	// Suppressed on an aborted load: a cancelled import is incomplete BY REQUEST, and saying so in an
+	// error dialog is the same false-alarm class this block just fixed. (The timestep check above is
+	// not guarded this way - pre-existing, left alone deliberately rather than widened into this fix.)
+	if (!bShouldStop && MaxAgents > 0 && DistinctEntitiesSeen < MaxAgents)
 	{
 		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
 		                              TEXT("Incomplete entity data"),
-		                              FString::Printf(TEXT("Agent data: peak entity count %d < MaxAgents %d. Some entities may be missing."), PeakEntityCount, MaxAgents),
+		                              FString::Printf(TEXT("Agent data: only %d of %d entities appear in the simulation samples. Some entities may be missing. (Peak concurrent entities: %d - this is expected to be lower than the total.)"), DistinctEntitiesSeen, MaxAgents, PeakEntityCount),
+		                              TEXT("AgentDataSubsystem - RunSimulationDataGatheringLoop"));
+	}
+
+	if (!bShouldStop && OutOfRangeEntityIds > 0)
+	{
+		ReportAgentDataErrorAnyThread(OwnerSubsystem.Get(),
+		                              TEXT("Unexpected entity IDs"),
+		                              FString::Printf(TEXT("Agent data: %d samples carry an entity ID at or above the declared entity count (%d) and were not counted. The file declares fewer entities than it contains."), OutOfRangeEntityIds, MaxAgents),
 		                              TEXT("AgentDataSubsystem - RunSimulationDataGatheringLoop"));
 	}
 }

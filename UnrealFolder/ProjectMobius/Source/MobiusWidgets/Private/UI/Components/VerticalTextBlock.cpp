@@ -25,9 +25,7 @@ void UVerticalTextBlock::RefreshThemedStyle()
 	// or the label keeps the previous theme until a full rebuild.
 	if (StackedText.IsValid())
 	{
-		const FTextBlockStyle* Style = TextStyle
-			? TextStyle->GetStyle<FTextBlockStyle>()
-			: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
+		const FTextBlockStyle* Style = &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
 		StackedText->SetTextStyle(Style);
 		// FIX (2026-07-22): SetTextStyle re-pushes the style STRUCT but NOT the STextBlock's separately
 		// captured ColorAndOpacity attribute (taken from the style at construct), so after a theme toggle
@@ -158,16 +156,14 @@ TSharedRef<SWidget> UVerticalTextBlock::RebuildWidget()
 	// BW7/D138: rail labels (Floor Stats / Flow Counter) fall back to the dedicated "Mobius.Text.RailButton"
 	// (Inter Regular 10) rather than the shared "Mobius.Text.Label" (12, ribbon tabs + Browse) so the rails
 	// read at the owner's 10 without shrinking the tabs.
-	const FTextBlockStyle* Style = TextStyle
-		? TextStyle->GetStyle<FTextBlockStyle>()
-		: &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
+	const FTextBlockStyle* Style = &FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.RailButton");
 
 	if (Mode == EVerticalTextMode::Rotated)
 	{
 		StackedText.Reset();
 		RotatedText = SNew(SRotatedText)
 			.Text(Text)
-			.TextStyle(TextStyle ? TextStyle->GetStyle<FTextBlockStyle>() : nullptr)
+			.TextStyle(nullptr)
 			.RotationDegrees(RotationDegrees);
 		return RotatedText.ToSharedRef();
 	}

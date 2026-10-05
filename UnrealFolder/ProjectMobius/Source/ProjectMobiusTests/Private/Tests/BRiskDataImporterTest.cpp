@@ -13,6 +13,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "MobiusTestDataRoots.h"
 
 namespace
 {
@@ -1778,25 +1779,16 @@ bool FBRiskOpeningsPlacementTest::RunTest(const FString& Parameters)
 	// actually saw, because both are properties of the whole SET: markers landing off the building
 	// (bounding-box walls), and 26 markers collapsing onto six positions (every .smv offset is 0).
 	// Assert those directly. Skips when the fixture is not on this machine.
-	const TCHAR* InternalRoots[] =
-	{
-		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
-		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
-		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
-		// block in this file was silently SKIPPING (they report green when skipped - the whole
-		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString RealSmv;
 	// Newest export first: v2 added openings[].hostThickness, v1 dropped normal. Any of them
 	// exercises placement; only v2 exercises the real host-wall depth.
 	const TCHAR* InternalFolders[] = { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") };
 	for (const TCHAR* Folder : InternalFolders)
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Candidate = FPaths::Combine(
 				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
@@ -2094,6 +2086,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
  * also reaches .smv-only scenarios and there is one code path instead of two.
  *
  * The join is the part that can silently go wrong, so most of this test is about refusing to guess.
+ *
+ * Also covers the per-vent DISCHARGE COEFFICIENT, because it is carried by the same <Vent> record
+ * and applied by the same join - splitting it into its own test would duplicate the fixture lookup
+ * and add a second skip branch. The numeric consequence (cd is a pure multiplier on flow) is
+ * asserted separately, in ProjectMobius.BRisk.Hazard.VentFlow.
  */
 bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 {
@@ -2144,7 +2141,8 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 		// MakeSmv's single VENTGEOM is fromRoom 1, toRoom 2, sill 0.
 		WriteTextFile(FPaths::Combine(TestDir, TEXT("vents.xml")),
 			TEXT("<Vents><Vent><id>1</id><fromroom>1</fromroom><toroom>2</toroom>")
-			TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime></Vent></Vents>"));
+			TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime>")
+			TEXT("<cd>0.9</cd></Vent></Vents>"));
 
 		FBRiskScenarioData Data;
 		FString Error;
@@ -2156,8 +2154,130 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("Open time from vents.xml"), Data.Vents[0].OpenTimeSeconds, 15.0, 1.0e-9);
 			TestEqual(TEXT("Close time from vents.xml"), Data.Vents[0].CloseTimeSeconds, 45.0, 1.0e-9);
 			TestTrue(TEXT("Shut at the start"), !Data.Vents[0].IsOpenAtTime(0.0));
+
+			// The discharge coefficient rides the same join. A value that is neither B-Risk's
+			// default nor 1.0 is used deliberately, so a test that passes cannot be passing
+			// because the field happened to keep its default.
+			TestEqual(TEXT("Discharge coefficient from vents.xml"),
+				Data.Vents[0].DischargeCoefficient, 0.9, 1.0e-9);
 		}
 		IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+	}
+
+	// --- A missing or nonsense <cd> falls back to B-Risk's default, never to zero ---------------
+	//
+	// The failure this guards is specific and silent: the XML helper's own default is 0.0, and Cd
+	// multiplies every slab of flux, so reading a missing tag straight through would zero all flow
+	// through the opening and still report a successful import.
+	{
+		const auto ImportWithCdTag = [&](const TCHAR* CdTag) -> double
+		{
+			const FString TestDir = MakeBRiskTestDir();
+			const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+			WriteTextFile(SmvPath, MakeSmv());
+			WriteTextFile(FPaths::Combine(TestDir, TEXT("vents.xml")),
+				FString(TEXT("<Vents><Vent><id>1</id><fromroom>1</fromroom><toroom>2</toroom>"))
+				+ TEXT("<sillheight>0</sillheight><opentime>15</opentime><closetime>45</closetime>")
+				+ CdTag + TEXT("</Vent></Vents>"));
+
+			FBRiskScenarioData Data;
+			FString Error;
+			const bool bOk = FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error)
+				&& Data.Vents.Num() == 1;
+			const double Cd = bOk ? Data.Vents[0].DischargeCoefficient : -1.0;
+			IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+			return Cd;
+		};
+
+		TestEqual(TEXT("A vents.xml record with no <cd> gets B-Risk's default, not 0"),
+			ImportWithCdTag(TEXT("")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		// Zero is a VALUE, not an absence, and the distinction is the whole point of this block.
+		// SR282 §4.6.2(d) closes a vent sampled shut by "setting the discharge coefficient to zero",
+		// and the opening options "will not subsequently open" it. Substituting 0.68 there would draw
+		// full flow through an opening B-Risk had shut. A MISSING <cd> is the opposite case and must
+		// still land on the default - the two are asserted next to each other so neither can drift
+		// into the other.
+		TestEqual(TEXT("<cd>0</cd> is a value B-Risk uses to hold a vent shut, and is kept"),
+			ImportWithCdTag(TEXT("<cd>0</cd>")), 0.0, 1.0e-9);
+		TestEqual(TEXT("a negative <cd> is rejected - it would invert the mass flux"),
+			ImportWithCdTag(TEXT("<cd>-0.5</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		TestEqual(TEXT("<cd> above 1 is rejected - it is a fraction of the geometric area"),
+			ImportWithCdTag(TEXT("<cd>1.4</cd>")), BRiskDefaultDischargeCoefficient, 1.0e-9);
+		TestEqual(TEXT("<cd>1</cd> is in range and IS used - this is the leakage-path case"),
+			ImportWithCdTag(TEXT("<cd>1</cd>")), 1.0, 1.0e-9);
+
+		// A cd=0 opening is shut for the ENTIRE run, so its schedule must not be consulted. The
+		// fixture's record carries opentime 15 / closetime 45, which would otherwise report open at
+		// t=30 - that is the assertion that would fail if the closure were applied after the times
+		// rather than before them.
+		FBRiskVentGeometry ShutByCd;
+		ShutByCd.DischargeCoefficient = 0.0;
+		ShutByCd.bHasSchedule = true;
+		ShutByCd.OpenTimeSeconds = 15.0;
+		ShutByCd.CloseTimeSeconds = 45.0;
+		TestTrue(TEXT("cd=0 reports shut by discharge coefficient"),
+			ShutByCd.IsShutByDischargeCoefficient());
+		TestFalse(TEXT("cd=0 is shut inside its own open window, not just outside it"),
+			ShutByCd.IsOpenAtTime(30.0));
+		TestFalse(TEXT("cd=0 is shut at t=0"), ShutByCd.IsOpenAtTime(0.0));
+
+		FBRiskVentGeometry OpenNormally = ShutByCd;
+		OpenNormally.DischargeCoefficient = BRiskDefaultDischargeCoefficient;
+		TestTrue(TEXT("the same schedule at cd=0.68 IS open at t=30 - the control"),
+			OpenNormally.IsOpenAtTime(30.0));
+	}
+
+	// --- Ambient temperatures come from the file, on B-Risk's own 273 offset ------------------
+	//
+	// SYNTHETIC VALUES ON PURPOSE. Every one of the fourteen real exports on this machine carries
+	// the same <temp_exterior>288</temp_exterior> / <temp_interior>297</temp_interior>, so a test
+	// asserting 15/24 against a real export would pass just as happily if someone re-hardcoded
+	// those numbers. Only a fixture with DIFFERENT values can tell reading from assuming.
+	//
+	// The offset is 273, not 273.15, because that is what B-Risk uses: distributions.xml declares
+	// <units>K</units> with whole-kelvin bounds none of which end in .15, the string "273.15"
+	// appears in no export, and every zone CSV starts its rooms at exactly 24 C from a stored 297.
+	{
+		const auto ImportWithAmbient = [&](const TCHAR* AmbientTags) -> FBRiskAmbientConditions
+		{
+			const FString TestDir = MakeBRiskTestDir();
+			const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
+			WriteTextFile(SmvPath, MakeSmv());
+			WriteTextFile(FPaths::Combine(TestDir, TEXT("input1.xml")),
+				FString(TEXT("<input>")) + AmbientTags + TEXT("</input>"));
+
+			FBRiskScenarioData Data;
+			FString Error;
+			FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &Error);
+			IFileManager::Get().DeleteDirectory(*TestDir, false, true);
+			return Data.Ambient;
+		};
+
+		const FBRiskAmbientConditions Both = ImportWithAmbient(
+			TEXT("<temp_exterior>300</temp_exterior><temp_interior>310</temp_interior>"));
+		TestTrue(TEXT("temp_exterior was found"), Both.bHasExteriorTemp);
+		TestTrue(TEXT("temp_interior was found"), Both.bHasInteriorTemp);
+		TestEqual(TEXT("300 K reads as 27 C on B-Risk's own 273 offset, not 26.85"),
+			Both.ExteriorTempC, 27.0, 1.0e-9);
+		TestEqual(TEXT("310 K reads as 37 C, and the interior field is kept separate"),
+			Both.InteriorTempC, 37.0, 1.0e-9);
+
+		const FBRiskAmbientConditions None = ImportWithAmbient(TEXT(""));
+		TestFalse(TEXT("an absent temp_exterior is reported absent, not defaulted silently"),
+			None.bHasExteriorTemp);
+		TestEqual(TEXT("and falls back to the value vent flow used to hardcode"),
+			None.ExteriorTempC, BRiskFallbackAmbientTempC, 1.0e-9);
+		TestEqual(TEXT("the interior fallback is B-Risk's 24 C, NOT the exterior's 20"),
+			None.InteriorTempC, BRiskFallbackInteriorTempC, 1.0e-9);
+
+		// Bounded in KELVIN before converting. Without this a parse that latched onto the wrong tag
+		// could put a negative absolute temperature into rho = 353/T and invert the pressure field.
+		const FBRiskAmbientConditions Absurd = ImportWithAmbient(
+			TEXT("<temp_exterior>29</temp_exterior><temp_interior>1200</temp_interior>"));
+		TestFalse(TEXT("29 K is not a room, it is a parse error - rejected"), Absurd.bHasExteriorTemp);
+		TestFalse(TEXT("1200 K likewise"), Absurd.bHasInteriorTemp);
+		TestEqual(TEXT("a rejected exterior ambient leaves the fallback in place"),
+			Absurd.ExteriorTempC, BRiskFallbackAmbientTempC, 1.0e-9);
 	}
 
 	// --- Ambiguity is refused, not guessed ----------------------------------------------------
@@ -2197,22 +2317,13 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 	}
 
 	// --- The real export: joined exactly, by the ventId the add-in already recorded -----------
-	const TCHAR* InternalRoots[] =
-	{
-		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
-		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
-		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
-		// block in this file was silently SKIPPING (they report green when skipped - the whole
-		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString RealSmv;
 	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Candidate = FPaths::Combine(
 				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
@@ -2309,6 +2420,60 @@ bool FBRiskVentScheduleTest::RunTest(const FString& Parameters)
 		TEXT("%d of %d openings scheduled; %d doors open and shut, %d auto-opening (shown shut), %d never change"),
 		Scheduled, RealData.Vents.Num(), Doors, AutoOpening, NeverChanging));
 
+	// --- Discharge coefficient, on the real export ---------------------------------------------
+	//
+	// The regression this pins is a hardcoded Cd = 0.68 in ComputeWallVentFlow, which ignored the
+	// per-vent <cd> that B-Risk writes and its users edit.
+	//
+	// Do NOT reduce this to "leakage paths carry 1.0" - that reading is wrong and the file says so.
+	// This export has TWO different things called leakage: 15 CLOSED-DOOR leakage paths, which are
+	// the gap around a shut door and carry 0.68 like the door itself, and 3 WALL leakage paths
+	// (ids 32/33/34, "wall leakage #1->#2 / #1->exterior / #2->exterior"), which carry 1.0 because
+	// a wall-leakage width is already a calibrated effective area. Asserting per Kind would pass
+	// for the wrong reason or fail for a correct file; the ids are the honest key here.
+	//
+	// Re-derive any of this from the fixture rather than trusting this comment:
+	//   grep -o '<cd>[^<]*</cd>' vents.xml | sort | uniq -c        -> 31 x 0.68, 3 x 1
+	TArray<int32> NonDefaultCdVentIds;
+	for (const FBRiskVentGeometry& Vent : RealData.Vents)
+	{
+		TestTrue(FString::Printf(TEXT("vent %d has a physical discharge coefficient in (0, 1]"), Vent.VentId),
+			Vent.DischargeCoefficient > 0.0 && Vent.DischargeCoefficient <= 1.0);
+
+		if (!FMath::IsNearlyEqual(
+			Vent.DischargeCoefficient, BRiskDefaultDischargeCoefficient, 1.0e-9))
+		{
+			NonDefaultCdVentIds.Add(Vent.VentId);
+		}
+	}
+	NonDefaultCdVentIds.Sort();
+
+	// The load-bearing assertion. If someone re-hardcodes Cd, every vent lands on the default and
+	// this list empties - which is the only symptom the old defect ever had.
+	TestEqual(TEXT("3 openings carry a discharge coefficient that is NOT B-Risk's default"),
+		NonDefaultCdVentIds.Num(), 3);
+	if (NonDefaultCdVentIds.Num() == 3)
+	{
+		TestEqual(TEXT("...and they are the three wall-leakage paths, ids 32/33/34"),
+			FString::Printf(TEXT("%d,%d,%d"),
+				NonDefaultCdVentIds[0], NonDefaultCdVentIds[1], NonDefaultCdVentIds[2]),
+			FString(TEXT("32,33,34")));
+		for (const int32 VentId : NonDefaultCdVentIds)
+		{
+			const FBRiskVentGeometry* Wall = RealData.Vents.FindByPredicate(
+				[VentId](const FBRiskVentGeometry& V) { return V.VentId == VentId; });
+			if (Wall)
+			{
+				TestEqual(FString::Printf(TEXT("wall-leakage vent %d carries cd 1.0"), VentId),
+					Wall->DischargeCoefficient, 1.0, 1.0e-9);
+			}
+		}
+	}
+	AddInfo(FString::Printf(
+		TEXT("discharge coefficients: %d of %d openings at B-Risk's default %g; %d read from <cd> as non-default"),
+		RealData.Vents.Num() - NonDefaultCdVentIds.Num(), RealData.Vents.Num(),
+		BRiskDefaultDischargeCoefficient, NonDefaultCdVentIds.Num()));
+
 	return true;
 }
 
@@ -2329,18 +2494,14 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 	// So this is the one place our IsOpenAtTime can be checked against ground truth instead of
 	// against our own reading of the manual. It caught the real defect: the window (vent 27) carries
 	// 0/0 times, which we read as "permanently open", while B-Risk had it shut for the entire run.
-	const TCHAR* InternalRoots[] =
-	{
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString SmvPath;
 	FString FlowLogPath;
 	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Dir = FPaths::Combine(FString(Root), FString(Folder), TEXT("basemodel_default"));
 			const FString Smv = FPaths::Combine(Dir, TEXT("basemodel_default.smv"));
@@ -2541,6 +2702,288 @@ bool FBRiskVentStateVsFlowLogTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// --- Vent-flow MAGNITUDE against B-Risk's own flow log ------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBRiskVentFlowMagnitudeVsFlowLogTest,
+	"ProjectMobius.BRisk.Hazard.VentFlowMagnitudeVsBRiskLog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FBRiskVentFlowMagnitudeVsFlowLogTest::RunTest(const FString& Parameters)
+{
+	// The sibling test above proves we agree with B-Risk about which vents are OPEN. This one proves
+	// we agree about HOW MUCH flows, which until now was only ever measured by a Python script
+	// (_CurrentHandoff\tools\briskproof\Compare-VentFlowMagnitude.py) that nothing enforced.
+	//
+	// It gates the SHIPPED physics, not a copy of it: ComputeWallVentFlow is public and static and
+	// takes both sides by value, and FBRiskVentSideState's own header says the caller fills it from
+	// the zone CSV. The ~8 lines of side assembly restated below mirror BuildVentSide in
+	// UpdateHazardVisualsAtTime; that lambda is one caller of a by-value API, not a gate on it.
+	//
+	// WHAT IS MEASURED: gross OUT-stream only, as a median percentage error over the run. Not the
+	// in-stream, not the neutral-plane height, not flow direction. A vent matching here is evidence
+	// about magnitude and nothing else.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
+	FString SmvPath;
+	FString FlowLogPath;
+	for (const TCHAR* Folder : { TEXT("12-room-test-v2"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-vents") })
+	{
+		for (const FString& Root : InternalRoots)
+		{
+			const FString Dir = FPaths::Combine(FString(Root), FString(Folder), TEXT("basemodel_default"));
+			const FString Smv = FPaths::Combine(Dir, TEXT("basemodel_default.smv"));
+			const FString Log = FPaths::Combine(Dir, TEXT("wallventflows.txt"));
+			if (FPaths::FileExists(Smv) && FPaths::FileExists(Log))
+			{
+				SmvPath = Smv;
+				FlowLogPath = Log;
+				break;
+			}
+		}
+		if (!SmvPath.IsEmpty())
+		{
+			break;
+		}
+	}
+	if (SmvPath.IsEmpty())
+	{
+		// wallventflows.txt is written only when the modeller ticks the box - it is present in just
+		// ONE of the fourteen exports on this machine. The derived computation therefore has to keep
+		// existing and be right on its own; this gate can only ever cover the one export that has an
+		// oracle at all.
+		AddInfo(TEXT("flow-magnitude cross-check SKIPPED: no 12-room fixture with a wallventflows.txt on this machine"));
+		return true;
+	}
+
+	FBRiskScenarioData Data;
+	FString ImportError;
+	if (!TestTrue(TEXT("The export should import"),
+		FBRiskDataImporter::ImportScenarioFromSmv(SmvPath, Data, &ImportError)))
+	{
+		AddError(FString::Printf(TEXT("Import error: %s"), *ImportError));
+		return false;
+	}
+
+	TArray<FString> Lines;
+	if (!TestTrue(TEXT("The flow log should read"), FFileHelper::LoadFileToStringArray(Lines, *FlowLogPath)))
+	{
+		return false;
+	}
+
+	// A vent record is MULTI-LINE and the state test above deliberately reads only the header line,
+	// because presence is all it needs. Magnitude is different: the header carries the TOPMOST slab
+	// and the indented continuation lines carry the lower ones, where a negative value is flow the
+	// other way. Summing header lines alone silently drops most of the flow - which is precisely the
+	// mistake that makes a magnitude check look like it passes.
+	//
+	// Header line: Time from to vent# #slabs <zlo> "to" <zhi> ventflow [entrain]  (>=9 tokens, and
+	// the first five are integers). Continuation: <zlo> "to" <zhi> ventflow        (exactly 4).
+	struct FLoggedFlow
+	{
+		double OutKgs = 0.0;
+		double InKgs = 0.0;
+	};
+	TMap<FString, FLoggedFlow> Logged;
+	TSet<int32> LoggedTimes;
+	FString CurrentKey;
+	int32 ContinuationLines = 0;
+	for (const FString& Line : Lines)
+	{
+		TArray<FString> Tok;
+		Line.TrimStartAndEnd().ParseIntoArrayWS(Tok);
+
+		bool bHeader = Tok.Num() >= 9;
+		if (bHeader)
+		{
+			for (int32 k = 0; k < 5; ++k)
+			{
+				if (Tok[k].Contains(TEXT(".")) || !Tok[k].IsNumeric())
+				{
+					bHeader = false;
+					break;
+				}
+			}
+		}
+		if (bHeader)
+		{
+			const int32 T = FCString::Atoi(*Tok[0]);
+			LoggedTimes.Add(T);
+			CurrentKey = FString::Printf(TEXT("%d|%s|%s|%s"), T, *Tok[1], *Tok[2], *Tok[3]);
+			const double Flow = FCString::Atod(*Tok[8]);
+			FLoggedFlow& Entry = Logged.FindOrAdd(CurrentKey);
+			Entry.OutKgs += FMath::Max(Flow, 0.0);
+			Entry.InKgs += FMath::Max(-Flow, 0.0);
+			continue;
+		}
+
+		// Continuation: an indented "<zlo> to <zhi> <flow>" belonging to the record above it.
+		if (Tok.Num() == 4 && Tok[1].Equals(TEXT("to")) && !CurrentKey.IsEmpty())
+		{
+			const double Flow = FCString::Atod(*Tok[3]);
+			FLoggedFlow& Entry = Logged.FindOrAdd(CurrentKey);
+			Entry.OutKgs += FMath::Max(Flow, 0.0);
+			Entry.InKgs += FMath::Max(-Flow, 0.0);
+			++ContinuationLines;
+		}
+	}
+
+	if (!TestTrue(TEXT("The flow log should contain timesteps"), LoggedTimes.Num() > 0))
+	{
+		return false;
+	}
+	// If this ever reads zero the parser has silently degraded to the presence-only form and every
+	// magnitude below would be measured against the top slab alone.
+	TestTrue(TEXT("Continuation slabs were parsed, not just header lines"), ContinuationLines > 100);
+
+	// Same normalisation as the state test: B-Risk prints the pair LOW ROOM FIRST whichever way
+	// vents.xml declares it, and numbers vents per pair from 1 in .smv order.
+	auto NormalisedPair = [](const FBRiskVentGeometry& V)
+	{
+		return FIntPoint(FMath::Min(V.FromRoomId, V.ToRoomId), FMath::Max(V.FromRoomId, V.ToRoomId));
+	};
+	TMap<FIntPoint, int32> PairCounter;
+	TArray<int32> VentNumber;
+	VentNumber.Reserve(Data.Vents.Num());
+	for (const FBRiskVentGeometry& Vent : Data.Vents)
+	{
+		int32& Next = PairCounter.FindOrAdd(NormalisedPair(Vent));
+		VentNumber.Add(++Next);
+	}
+
+	// Sides come from the SHIPPED static assembly, not a restatement of it. That is the whole point
+	// of the extraction: a test that rebuilt the join itself could pass while production's copy was
+	// broken. MakeVentSideState samples by TIME and interpolates, so no row lookup is needed and the
+	// check does not quietly depend on the log's integer time grid coinciding with the CSV's.
+	//
+	// Ambient is read from the scenario the same way production reads it. Before 2026-08-14 this was
+	// a hardcoded 20 C and the exterior vents below sat at -3.3%, -6.2% and -63.7%.
+	const double AmbientC = Data.Ambient.ExteriorTempC;
+	TestTrue(TEXT("The export supplies its own exterior ambient rather than falling back"),
+		Data.Ambient.bHasExteriorTemp);
+
+	// Tolerances are the measured medians with the file's own ambient. They REPLACE a pinned-at-HEAD
+	// set that centred vent 34 on -63.7% with a +/-6 window; if a median moves, either the physics
+	// changed or the fixture did - do not widen a window to make a change pass.
+	struct FVentExpectation
+	{
+		int32 VentId;
+		double ExpectedMedianPct;
+		double TolerancePct;
+		const TCHAR* Description;
+	};
+	static const FVentExpectation Expectations[] = {
+		{ 32, +0.1, 2.0, TEXT("wall leakage 1->2, cd 1.0") },
+		{ 29, +0.3, 2.0, TEXT("closed-door leakage 1->2, cd 0.68") },
+		{ 26, +0.3, 2.0, TEXT("closed-door leakage 1->exterior, cd 0.68 - was -6.2% at 20 C") },
+		{ 33, +0.3, 2.0, TEXT("wall leakage 1->exterior, cd 1.0 - was -3.3% at 20 C") },
+		{ 34, +0.5, 2.0, TEXT("wall leakage 2->exterior, cd 1.0 - was -63.7% at 20 C") },
+	};
+
+	TArray<int32> SortedTimes = LoggedTimes.Array();
+	SortedTimes.Sort();
+
+	int32 TotalSamples = 0;
+	int32 VentsMeasured = 0;
+	bool bMissingRoomSeen = false;
+	bool bMissingChannelSeen = false;
+	bool bExteriorSeen = false;
+	for (const FVentExpectation& Expected : Expectations)
+	{
+		const int32 VentIndex = Data.Vents.IndexOfByPredicate(
+			[&Expected](const FBRiskVentGeometry& V) { return V.VentId == Expected.VentId; });
+		if (!TestTrue(*FString::Printf(TEXT("Vent id %d is present in the export"), Expected.VentId),
+			Data.Vents.IsValidIndex(VentIndex)))
+		{
+			continue;
+		}
+		const FBRiskVentGeometry& Vent = Data.Vents[VentIndex];
+		const FIntPoint Pair = NormalisedPair(Vent);
+
+		TArray<double> Errors;
+		for (const int32 T : SortedTimes)
+		{
+			const FLoggedFlow* Reference = Logged.Find(
+				FString::Printf(TEXT("%d|%d|%d|%d"), T, Pair.X, Pair.Y, VentNumber[VentIndex]));
+			if (!Reference || Reference->OutKgs < 1.0e-5)
+			{
+				continue; // absent == shut, and a zero out-stream has no percentage to take
+			}
+			// Sides are built LOW ROOM FIRST to match the log's own convention, NOT in the order
+			// vents.xml declares them. Vents 28/29 are declared 2->1 while the log calls that pair
+			// 1->2; feeding the declared order here would compare our out-stream against B-Risk's
+			// in-stream and produce a confident, entirely wrong number.
+			EBRiskVentSideResolution FromResolution = EBRiskVentSideResolution::Interior;
+			EBRiskVentSideResolution ToResolution = EBRiskVentSideResolution::Interior;
+			bool bFromChannels = true;
+			bool bToChannels = true;
+			FBRiskVentSideState From = UBRiskDataSubsystem::MakeVentSideState(
+				Data, Pair.X, static_cast<double>(T), FromResolution, bFromChannels);
+			FBRiskVentSideState To = UBRiskDataSubsystem::MakeVentSideState(
+				Data, Pair.Y, static_cast<double>(T), ToResolution, bToChannels);
+
+			// No side of this export should ever resolve as MissingRoom: rooms 1 and 2 are declared
+			// and room 3 is B-Risk's exterior, i.e. above them both. If this ever trips, a room
+			// failed to import and its wall is being treated as open to outdoor air.
+			bMissingRoomSeen |= (FromResolution == EBRiskVentSideResolution::MissingRoom)
+				|| (ToResolution == EBRiskVentSideResolution::MissingRoom);
+			bMissingChannelSeen |= !bFromChannels || !bToChannels;
+			bExteriorSeen |= (ToResolution == EBRiskVentSideResolution::Exterior);
+
+			if (To.bIsExterior)
+			{
+				To.FloorZM = From.FloorZM;
+			}
+			if (From.bIsExterior)
+			{
+				From.FloorZM = To.FloorZM;
+			}
+
+			const FBRiskVentFlow Flow = UBRiskDataSubsystem::ComputeWallVentFlow(From, To, Vent, AmbientC);
+			Errors.Add((Flow.MassFlowOutKgs - Reference->OutKgs) / Reference->OutKgs * 100.0);
+		}
+
+		if (!TestTrue(*FString::Printf(TEXT("Vent id %d has flow-log samples to compare"), Expected.VentId),
+			Errors.Num() > 0))
+		{
+			continue;
+		}
+		Errors.Sort();
+		const double MedianPct = Errors[Errors.Num() / 2];
+		TotalSamples += Errors.Num();
+		++VentsMeasured;
+
+		AddInfo(FString::Printf(
+			TEXT("vent %d (%s): median %+.1f%% over %d samples (expected %+.1f%% +/- %.1f)"),
+			Expected.VentId, Expected.Description, MedianPct, Errors.Num(),
+			Expected.ExpectedMedianPct, Expected.TolerancePct));
+
+		TestEqual(
+			*FString::Printf(TEXT("Vent %d median out-stream error against B-Risk's own flow log"),
+				Expected.VentId),
+			MedianPct, Expected.ExpectedMedianPct, Expected.TolerancePct);
+	}
+
+	// Guard the guard. If the pair keying ever drifted, every lookup would miss, every vent would
+	// report "no samples", and the assertions above would simply not run - a green suite proving
+	// nothing. These two make that failure loud.
+	TestEqual(TEXT("Every expected vent was actually measured"), VentsMeasured, static_cast<int32>(UE_ARRAY_COUNT(Expectations)));
+	TestTrue(TEXT("The magnitude check compared a healthy number of samples"), TotalSamples > 200);
+
+	// Side resolution, checked here rather than in its own test because this is the only place a
+	// real scenario's vents are assembled outside the running app.
+	TestFalse(TEXT("No vent side names a room this export never declared"), bMissingRoomSeen);
+	TestFalse(TEXT("Every interior vent side found all four layer channels"), bMissingChannelSeen);
+	TestTrue(TEXT("The exterior really was reached (room 3 resolves as outside, not as a hole)"), bExteriorSeen);
+
+	AddInfo(FString::Printf(
+		TEXT("Magnitude-checked %d vent/time samples across %d vents and %d timesteps against ")
+		TEXT("wallventflows.txt (%d continuation slabs parsed) at the export's own ambient %.2f C. ")
+		TEXT("With the previously hardcoded 20 C the exterior vents 26/33/34 sat at -6.2%%/-3.3%%/-63.7%%."),
+		TotalSamples, VentsMeasured, SortedTimes.Num(), ContinuationLines, AmbientC));
+
+	return true;
+}
+
 // --- Geometry-only import when the model has not been simulated yet -----------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2551,8 +2994,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters)
 {
 	// A B-Risk model exported but not yet run: the .smv names its results file because the .smv is
-	// written at authoring time, but nothing has produced it. Real instance of this shape:
-	// D:\NickWork\Mobius_InternalData\12-room-test-vents\basemodel_default.
+	// written at authoring time, but nothing has produced it. Seen for real in the private
+	// 12-room-test-vents export (see MobiusTestDataRoots.h for where those live).
 	const FString TestDir = MakeBRiskTestDir();
 	const FString SmvPath = FPaths::Combine(TestDir, TEXT("basemodel_testBox.smv"));
 	if (!TestTrue(TEXT("SMV without results should be written"), WriteTextFile(SmvPath, MakeSmv())))
@@ -2609,18 +3052,9 @@ bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters
 	// ROOMs, LABEL pairs and a THCP the parser does not handle - so it exercises the degrade on a
 	// shape the fixture cannot reproduce. Skips when the fixture is not on this machine, matching
 	// Hdf5ImportMatrixTest / MobiusTimingTests; the drive letter moved between boxes, so try both.
-	const TCHAR* InternalRoots[] =
-	{
-		// The workspace root is D:/NickWork/Mobius, so the data sits one level DEEPER than the
-		// entry below it. That entry is what the 2026-08-06 E:->D: path sweep produced by mapping
-		// E:/00_Work -> D:/NickWork, and it matches nothing on this machine: every real-dataset
-		// block in this file was silently SKIPPING (they report green when skipped - the whole
-		// reason those blocks AddInfo what they did). Keep both; only this one resolves today.
-		TEXT("D:/NickWork/Mobius/Mobius_InternalData"),
-		TEXT("D:/NickWork/Mobius_InternalData"),
-		TEXT("E:/00_Work/Mobius_InternalData"),
-		TEXT("F:/Mobius_InternalData"),
-	};
+	// Roots come from MobiusTestDataRoots.h. Absolute drive paths used to live here; they worked on
+	// one machine and published its layout. Set MOBIUS_INTERNAL_DATA if your copy is elsewhere.
+	const TArray<FString> InternalRoots = MobiusTestData::GetInternalDataRoots();
 	FString RealSmv;
 	// This test needs an export that has NOT been simulated, so select on that property rather than
 	// on a folder name - the exports get re-run, and "12-room-test-v2" has results while its
@@ -2628,7 +3062,7 @@ bool FBRiskGeometryOnlyWhenResultsMissingTest::RunTest(const FString& Parameters
 	const TCHAR* InternalFolders[] = { TEXT("12-room-test-vents"), TEXT("12-room-test-vents_v1"), TEXT("12-room-test-v2") };
 	for (const TCHAR* Folder : InternalFolders)
 	{
-		for (const TCHAR* Root : InternalRoots)
+		for (const FString& Root : InternalRoots)
 		{
 			const FString Candidate = FPaths::Combine(
 				FString(Root), FString(Folder), TEXT("basemodel_default"), TEXT("basemodel_default.smv"));
@@ -2957,6 +3391,62 @@ bool FBRiskVentFlowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("out stream hotter than in stream"), Flow.OutTemperatureC > Flow.InTemperatureC);
 	TestTrue(TEXT("neutral plane lies within the opening"),
 		Flow.NeutralPlaneHeightM > 0.0 && Flow.NeutralPlaneHeightM < 2.0);
+
+	// --- Discharge coefficient is read from the vent, and is a pure multiplier ------------------
+	//
+	// This is the check that the <cd> fix is actually wired through, and it is exact rather than
+	// qualitative. Cd multiplies every slab's flux and appears nowhere in the pressure profile, so
+	// two otherwise identical vents must produce mass flows in exactly the ratio of their Cd, with
+	// an IDENTICAL neutral plane. That second half matters: if Cd ever leaked into the pressure
+	// integral the ratio could still look right while the flow split moved.
+	//
+	// Concretely, this is the 12-room export's wall-leakage case. Those three openings carry
+	// <cd>1</cd> (a leakage width is already a calibrated effective area, so a second contraction
+	// correction would double-count), and the old hardcoded 0.68 ran them at 68 % of B-Risk's own
+	// flow for the whole period after the doors shut at 60 s.
+	TestEqual(TEXT("a vent defaults to B-Risk's own discharge coefficient"),
+		Vent.DischargeCoefficient, BRiskDefaultDischargeCoefficient, 1.0e-12);
+
+	FBRiskVentGeometry Leakage = Vent;
+	Leakage.DischargeCoefficient = 1.0; // what vents.xml carries for ids 32/33/34
+	const FBRiskVentFlow LeakFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Leakage);
+
+	TestTrue(TEXT("a cd=1.0 opening flows MORE than the same opening at 0.68"),
+		LeakFlow.MassFlowOutKgs > Flow.MassFlowOutKgs);
+	TestEqual(TEXT("out-stream scales exactly with cd"),
+		Flow.MassFlowOutKgs / LeakFlow.MassFlowOutKgs,
+		BRiskDefaultDischargeCoefficient, 1.0e-9);
+	TestEqual(TEXT("in-stream scales exactly with cd"),
+		Flow.MassFlowInKgs / LeakFlow.MassFlowInKgs,
+		BRiskDefaultDischargeCoefficient, 1.0e-9);
+	TestEqual(TEXT("cd does not move the neutral plane - it is not part of the pressure profile"),
+		LeakFlow.NeutralPlaneHeightM, Flow.NeutralPlaneHeightM, 1.0e-12);
+	TestEqual(TEXT("cd does not change stream temperature - it cancels in the mass-weighted mean"),
+		LeakFlow.OutTemperatureC, Flow.OutTemperatureC, 1.0e-9);
+
+	// cd = 0 is B-Risk holding the vent shut (SR282 §4.6.2d), NOT a missing value, so zero flux is
+	// the right answer here and must not be "corrected" to the default. The caller skips these vents
+	// via IsOpenAtTime anyway; this asserts the maths agrees with that decision rather than fighting
+	// it, so the two cannot disagree about whether an opening flows.
+	FBRiskVentGeometry ShutByCd = Vent;
+	ShutByCd.DischargeCoefficient = 0.0;
+	const FBRiskVentFlow ShutFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, ShutByCd);
+	TestEqual(TEXT("cd=0 produces zero out-flow - B-Risk has this opening shut"),
+		ShutFlow.MassFlowOutKgs, 0.0, 1.0e-12);
+	TestEqual(TEXT("cd=0 produces zero in-flow too"), ShutFlow.MassFlowInKgs, 0.0, 1.0e-12);
+	TestFalse(TEXT("cd=0 reports no flow at all"), ShutFlow.bHasFlow);
+
+	// An out-of-range cd on a vent built in code (not parsed) must not reach the flow maths. The
+	// importer already range-checks, but this function is public and takes any FBRiskVentGeometry.
+	FBRiskVentGeometry Nonsense = Vent;
+	Nonsense.DischargeCoefficient = -0.5;
+	const FBRiskVentFlow NegativeFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
+	TestEqual(TEXT("a negative cd falls back to the default rather than inverting the flux"),
+		NegativeFlow.MassFlowOutKgs, Flow.MassFlowOutKgs, 1.0e-12);
+	Nonsense.DischargeCoefficient = 7.5;
+	const FBRiskVentFlow AbsurdFlow = UBRiskDataSubsystem::ComputeWallVentFlow(Hot, Cool, Nonsense);
+	TestEqual(TEXT("an absurd cd falls back to the default too"),
+		AbsurdFlow.MassFlowOutKgs, Flow.MassFlowOutKgs, 1.0e-12);
 
 	// Closed opening (zero width) produces no flow.
 	FBRiskVentGeometry Closed = Vent;

@@ -11,6 +11,7 @@
 #include "UI/Theme/UIThemeSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/UserInterfaceSettings.h"   // P17: ApplicationScale, the one UI-scale this window can read
 #include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -186,9 +187,29 @@ void SErrorWindowWidget::OpenErrorWindow()
         TitleTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Title");
         MessageTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Body");
         LocationTextStyle = FMobiusStyle::Get().GetWidgetStyle<FTextBlockStyle>("Mobius.Text.Source");
-        TitleTextStyle.Font.Size = 16.0f;
-        MessageTextStyle.Font.Size = 13.0f;
-        LocationTextStyle.Font.Size = 12.0f;
+        // P17 (owner-reported 2026-08-13: "warning/error popup text is too small to read").
+        //
+        // MEASURED CAUSE, and it is not just "the numbers are low": this window is the only surface in
+        // the app that ignores the user's own UI-scale preference. UUserProjectSettings::UIScaleFactor
+        // (0.5-2.0, an accessibility control) is pushed by ApplyUIScaleFactorToSlate into
+        // UUserInterfaceSettings::ApplicationScale - which scales UMG/viewport widgets. This is a native
+        // SMoveableWindow, so it never saw it, and a user who had already turned the whole app up to 1.5
+        // still got 13pt here. That is why the fix reads the scale rather than only raising literals:
+        // raising literals alone would leave the same class of complaint at every non-default scale.
+        //
+        // Read via GetDefault<UUserInterfaceSettings>() rather than by finding the settings object: this
+        // window can open BEFORE there is a game instance (see ResolveErrorWindowChrome's fallback), and
+        // that path has nothing to ask. ApplicationScale is where the factor has already been pushed, so
+        // it is the single source of truth for "what scale is the rest of the app at" and it is always
+        // readable. Pre-push it is the class default 1.0, i.e. the base sizes below.
+        //
+        // Bases are also raised (16/13/12 -> 18/15/13) so the DEFAULT 1.0 case is legible, which is the
+        // case the owner reported. Body copy auto-wraps (SWindowContentPanel -> FieldAutoWrapText(true))
+        // and the window is UserSized, so a larger face re-wraps rather than clipping.
+        const float UiScale = FMath::Clamp(GetDefault<UUserInterfaceSettings>()->ApplicationScale, 0.5f, 2.0f);
+        TitleTextStyle.Font.Size = FMath::RoundToFloat(18.0f * UiScale);
+        MessageTextStyle.Font.Size = FMath::RoundToFloat(15.0f * UiScale);
+        LocationTextStyle.Font.Size = FMath::RoundToFloat(13.0f * UiScale);
 
         // Themed Close button (member: SButton caches raw pointers into the style's brushes).
         CloseButtonStyle = MobiusWindowButtonStyle::MakeWindowButtonStyle(FindThemeSubsystemForErrorWindow());
@@ -311,7 +332,13 @@ void SErrorWindowWidget::OpenErrorWindow()
                 .SupportsMinimize(false)
                 .IsTopmostWindow(true)
                 .SizingRule(ESizingRule::UserSized)
-                .ClientSize(FVector2D(520.0f, 300.0f))
+                // P17: the box has to grow with the type or the larger face just re-wraps into the same
+                // 520px and eats the vertical slack. Base widened 520 -> 560 (the owner's ~1:1 capture
+                // already wrapped the two body paragraphs to five lines at 520, with ~130px unused BELOW
+                // the rule - so width, not height, was the binding constraint), then scaled by the same
+                // UiScale as the fonts so the two cannot drift apart. Still UserSized: the user can
+                // always resize, this only sets where it opens.
+                .ClientSize(FVector2D(560.0f, 300.0f) * UiScale)
                 .AutoCenter(EAutoCenter::PreferredWorkArea)
                 .HasCloseButton(true)
                 .WindowPanelContent(WindowPanel);

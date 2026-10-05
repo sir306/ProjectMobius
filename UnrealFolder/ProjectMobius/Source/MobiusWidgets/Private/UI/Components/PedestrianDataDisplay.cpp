@@ -57,10 +57,28 @@ void UPedestrianDataDisplay::NativeConstruct()
 	{
 		if (auto StatSub = World->GetSubsystem<UStatisticSubsystem>())
 		{
+			// RemoveAll first: the subsystem outlives the widget, so a construct/destruct cycle
+			// (panel reopen, theme rebuild) otherwise leaves the old binding in the invocation list
+			// and adds another. Entries for a dead widget are skipped by ExecuteIfSafe rather than
+			// crashing, but the list — and the per-broadcast work for the live widget — grows without
+			// bound. Mirrors UAgentInfoDisplay::RebuildWidget / ReleaseSlateResources.
+			StatSub->OnSelectedAgentInfoChanged.RemoveAll(this);
 			StatSub->OnSelectedAgentInfoChanged.AddUObject(this, &UPedestrianDataDisplay::UpdateFieldTextBlocks);
-			// todo: make sure to cleanup delegates
 		}
 	}
+}
+
+void UPedestrianDataDisplay::NativeDestruct()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UStatisticSubsystem* StatSub = World->GetSubsystem<UStatisticSubsystem>())
+		{
+			StatSub->OnSelectedAgentInfoChanged.RemoveAll(this);
+		}
+	}
+
+	Super::NativeDestruct();
 }
 
 void UPedestrianDataDisplay::ApplyMobiusTheme_Implementation()
