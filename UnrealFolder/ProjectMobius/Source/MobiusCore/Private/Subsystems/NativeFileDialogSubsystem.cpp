@@ -551,13 +551,26 @@ FString UNativeFileDialogSubsystem::ResolveInitialDialogDirectory() const
 		}
 	}
 
-#if PLATFORM_MAC
-	// A packaged app's ProjectDir is inside its .app bundle, which is no place to start browsing for data.
+	// No packaged build stages the sample data any more -- Config/Mac/MacGame.ini and
+	// Config/Windows/WindowsGame.ini both drop it, because its redistribution terms are not ours to
+	// grant. ProjectDir is then the wrong fallback on both: on Mac it is inside the .app bundle, on
+	// Windows it is the application folder beside the executable. Start somewhere the user keeps
+	// their own files instead. The editor is unaffected and still falls through to ProjectDir, where
+	// the sample data does exist on disk.
+	//
+	// The two calls differ deliberately. UserHomeDir() is overridden only on Apple and Unix; on
+	// Windows it falls through to FGenericPlatformProcess::UserHomeDir, which returns
+	// FPlatformMisc::RootDir() -- the ENGINE ROOT (GenericPlatformProcess.cpp:105) -- so it would be
+	// no better than ProjectDir here. UserDir() is implemented for Windows and resolves
+	// FOLDERID_Documents (WindowsPlatformProcess.cpp:1224).
 	if (FPlatformProperties::RequiresCookedData())
 	{
+#if PLATFORM_MAC
 		return FPlatformProcess::UserHomeDir();
-	}
+#elif PLATFORM_WINDOWS
+		return FPlatformProcess::UserDir();
 #endif
+	}
 
 	return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 }
