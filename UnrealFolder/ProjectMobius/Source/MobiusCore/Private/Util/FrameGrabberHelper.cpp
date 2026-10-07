@@ -529,6 +529,15 @@ void UFrameGrabberHelper::ResetMacCaptureState()
 	MacCaptureTimeoutHandle.Invalidate();
 	PendingOutputPath.Empty();
 	bIsCapturing = false;
+
+	// OnScreenshotCaptured is engine-wide, and while ANYTHING is bound to it UGameViewportClient hands every
+	// screenshot to the delegate instead of writing it. Staying bound after our capture finished silently
+	// swallowed every later Shot / HighResShot / Mobius.Render.Capture for the rest of the session.
+	if (bMacScreenshotDelegateBound)
+	{
+		UGameViewportClient::OnScreenshotCaptured().RemoveAll(this);
+		bMacScreenshotDelegateBound = false;
+	}
 }
 #endif
 

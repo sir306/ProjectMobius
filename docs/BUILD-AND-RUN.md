@@ -96,7 +96,7 @@ the locations expected by the Unreal project:
 | --- | --- |
 | Assimp | `Plugins/UE4_Assimp/Source/ThirdParty/UE_AssimpLibrary/assimp/{include,lib,bin}` |
 | HDF5 | `Plugins/MobiusDataImporter/Source/ThirdParty/hdf5-2.0.0/install/{include,lib}` |
-| MobiusIfcBridge | `Source/ThirdParty/MobiusIfcLibrary/install/{include,lib,bin}` (Win64 only) |
+| MobiusIfcBridge | `Source/ThirdParty/MobiusIfcLibrary/install/{include,lib,bin}` (Win64 `.dll`, macOS `.dylib`) |
 
 None of those outputs are committed, so **a fresh checkout must run the
 superbuild once before opening the `.uproject`.** What is excluded differs per
@@ -129,7 +129,7 @@ That is the whole thing. It detects your compiler — on Windows your Visual
 Studio and MSVC toolset, on macOS an Xcode the engine accepts — discards a
 `_superbuild/` tree that cannot be reused, builds and installs every dependency,
 then verifies that each file UnrealBuildTool will look for is actually on disk.
-The IFC++ bridge is Win64-only today and is skipped automatically elsewhere.
+The IFC++ bridge builds on Win64 and macOS and is skipped automatically on Linux.
 
 You should never need to clean the build tree by hand. It is discarded and
 regenerated automatically when it was created on a different machine, by a
@@ -391,6 +391,26 @@ RunUAT.bat BuildCookRun ^
   -cook -build -stage -pak -archive ^
   -archivedirectory=./Binaries/Release
 ```
+
+### macOS beta build (unsigned)
+
+Run from `UnrealFolder/ProjectMobius` after the superbuild:
+
+```bash
+./Scripts/Package-MacBeta.sh
+```
+
+It builds, cooks and stages a Development build and wraps it in a `.dmg` and a
+`.zip` under `Saved/Dist/MobiusViewer-macOS-beta-<date>/`, with the tester
+instructions from `Scripts/MacBeta/` beside the app. The app is
+ad-hoc signed only, so testers clear Gatekeeper once per build (System Settings >
+Privacy & Security > Open Anyway, or `xattr -dr com.apple.quarantine`).
+
+Do not ship the output of `-archive` on macOS. UE 5.5 archives
+`Binaries/Mac/ProjectMobius.app`, which Xcode fills during the build step from the
+previous run's staging, so it contains stale paks, or none on a first run. The
+freshly staged bundle is `Saved/StagedBuilds/Mac/ProjectMobius.app`, which is what
+the script packages.
 
 ### macOS packaged build configuration
 

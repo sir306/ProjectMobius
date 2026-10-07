@@ -36,8 +36,13 @@ void UMobiusCustomLoggerSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 	// Editor launches from Engine/Binaries/Win64 (often read-only under Program Files);
 	// route to the project's Saved/Logs directory which is always writable.
 	const FString LogDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Logs"));
+#elif PLATFORM_MAC
+	// LaunchDir is the working directory BEFORE the engine moves it to the bundle: "/" when the .app is
+	// opened from Finder, which is not writable, so the log was silently lost. ProjectLogDir is
+	// ~/Library/Logs/<Project>/, beside the engine's own log.
+	const FString LogDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectLogDir());
 #else
-	// Packaged builds (including Mac .app bundles) expect the log next to the launched executable.
+	// Packaged builds expect the log next to the launched executable.
 	const FString LogDir = FPaths::ConvertRelativePathToFull(FPaths::LaunchDir());
 #endif
 	LogFilePath = FPaths::Combine(LogDir, TEXT("MobiusCustomLog.txt"));

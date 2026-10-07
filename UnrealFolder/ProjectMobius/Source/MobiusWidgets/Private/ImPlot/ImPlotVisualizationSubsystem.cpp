@@ -17,11 +17,14 @@
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include "Windows/HideWindowsPlatformTypes.h"
+#elif PLATFORM_MAC
+#include "Mac/MacSystemIncludes.h" // NSPasteboard / NSBitmapImageRep for "Copy chart image"
 #endif
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "InputCoreTypes.h"
 #include "Layout/Clipping.h"
 #include "Misc/App.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Rendering/DrawElementTypes.h"
 #include "Rendering/RenderingCommon.h"
@@ -96,7 +99,8 @@ namespace
 	 * S6: put a captured chart on the OS clipboard as an image.
 	 *
 	 * UE has no image clipboard — FPlatformApplicationMisc only ever calls SetClipboardData with
-	 * CF_UNICODETEXT (WindowsPlatformApplicationMisc.cpp) — so this is raw Win32.
+	 * CF_UNICODETEXT (WindowsPlatformApplicationMisc.cpp) — so this is raw Win32, and raw NSPasteboard on
+	 * Mac.
 	 *
 	 * Two decisions that consumers actually notice:
 	 *   * CF_DIB is written OPAQUE. Alpha in a 32-bit CF_DIB is interpreted inconsistently — Word,
@@ -175,6 +179,61 @@ namespace
 		{
 			// Ownership only transfers on success; freeing after a successful set would corrupt it.
 			::GlobalFree(GlobalMem);
+		}
+		return bSet;
+#elif PLATFORM_MAC
+		if (Size.X <= 0 || Size.Y <= 0 || Pixels.Num() < Size.X * Size.Y)
+		{
+			return false;
+		}
+
+		SCOPED_AUTORELEASE_POOL;
+
+		// Same two decisions as the CF_DIB path: written opaque onto Backdrop, rows top-down (which is
+		// NSBitmapImageRep's own order). Only the byte order differs - R,G,B,A rather than FColor's B,G,R,A.
+		NSBitmapImageRep* Rep = [[[NSBitmapImageRep alloc]
+			initWithBitmapDataPlanes:nullptr
+			pixelsWide:Size.X
+			pixelsHigh:Size.Y
+			bitsPerSample:8
+			samplesPerPixel:4
+			hasAlpha:YES
+			isPlanar:NO
+			colorSpaceName:NSDeviceRGBColorSpace
+			bytesPerRow:Size.X * 4
+			bitsPerPixel:32] autorelease];
+		uint8* Dest = Rep ? [Rep bitmapData] : nullptr;
+		if (Dest == nullptr)
+		{
+			return false;
+		}
+
+		for (int32 Index = 0; Index < Size.X * Size.Y; ++Index, Dest += 4)
+		{
+			const FColor Src = Pixels[Index];
+			const int32 Alpha = Src.A;
+			const int32 Inv = 255 - Alpha;
+			Dest[0] = static_cast<uint8>((Src.R * Alpha + Backdrop.R * Inv) / 255);
+			Dest[1] = static_cast<uint8>((Src.G * Alpha + Backdrop.G * Inv) / 255);
+			Dest[2] = static_cast<uint8>((Src.B * Alpha + Backdrop.B * Inv) / 255);
+			Dest[3] = 255;
+		}
+
+		// PNG for current consumers; TIFF as well because some (Preview's New from Clipboard, older Office)
+		// still only look for that.
+		NSData* Png = [Rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+		NSData* Tiff = [Rep TIFFRepresentation];
+
+		NSPasteboard* Pasteboard = [NSPasteboard generalPasteboard];
+		[Pasteboard clearContents];
+		bool bSet = false;
+		if (Png != nil)
+		{
+			bSet |= [Pasteboard setData:Png forType:NSPasteboardTypePNG] == YES;
+		}
+		if (Tiff != nil)
+		{
+			bSet |= [Pasteboard setData:Tiff forType:NSPasteboardTypeTIFF] == YES;
 		}
 		return bSet;
 #else
@@ -560,6 +619,26 @@ const UImPlotVisualizationSubsystem::FImPlotOverlayState* UImPlotVisualizationSu
 	return OverlayStates.Find(ChartId);
 }
 
+bool UImPlotVisualizationSubsystem::CopyChartImageNow(const FName& ChartId)
+{
+	FImPlotOverlayState* State = FindOverlayState(ChartId);
+	if (State == nullptr || !State->bOverlayVisible || !State->OverlayWidget.IsValid())
+	{
+		return false;
+	}
+
+	State->bImageCopyRequested = true;
+	ServicePendingImageCopy(ChartId);
+	return true;
+}
+
+TArray<FName> UImPlotVisualizationSubsystem::GetChartIds() const
+{
+	TArray<FName> Ids;
+	OverlayStates.GetKeys(Ids);
+	return Ids;
+}
+
 void UImPlotVisualizationSubsystem::EnsureOverlayWidget(FImPlotOverlayState& State, const FName& ChartId)
 {
 	if (!State.OverlayWidget.IsValid())
@@ -786,7 +865,15 @@ void UImPlotVisualizationSubsystem::ServicePendingImageCopy(const FName& ChartId
         const bool bLight = !UserSettings || UserSettings->GetUseLightUITheme();
         const FColor Backdrop = MobiusThemePalette::Color(EMobiusPaletteRole::WellBg, bLight).ToFColor(/*bSRGB*/true);
 
-        CopyImageToClipboard(Pixels, TargetSize, Backdrop);
+        if (CopyImageToClipboard(Pixels, TargetSize, Backdrop))
+        {
+                UE_LOG(LogTemp, Display, TEXT("Copy chart: %s copied to the clipboard as a %dx%d image."),
+                        *ChartId.ToString(), TargetSize.X, TargetSize.Y);
+        }
+        else
+        {
+                UE_LOG(LogTemp, Warning, TEXT("Copy chart: %s could not be placed on the clipboard."), *ChartId.ToString());
+        }
 }
 
 void UImPlotVisualizationSubsystem::InvalidateOverlay(const FName& ChartId) const
@@ -1449,6 +1536,11 @@ void UImPlotVisualizationSubsystem::EnsureOverlayContext(FImPlotOverlayState& St
         ImPlot::SetCurrentContext(State.ImPlotContext);
 
         ImGuiIO& IO = ImGui::GetIO();
+        // ImGui writes imgui.ini to the working directory, which in a packaged Mac app is inside the signed
+        // bundle (breaking its seal) and read-only when macOS translocates the app. Nothing here needs it:
+        // the overlay window is NoSavedSettings and Slate owns its placement.
+        IO.IniFilename = nullptr;
+        IO.LogFilename = nullptr;
         IO.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
         IO.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
@@ -1500,10 +1592,18 @@ void UImPlotVisualizationSubsystem::EnsureSharedFontAtlas(float InDpiScale)
                 const float FontPixelSize = FMath::RoundToFloat(13.0f * SharedFontAtlasDpiScale);
                 // Prefer the engine-shipped Roboto over ImGui's embedded ProggyClean: Proggy is a
                 // pixel font designed for exactly 13px and rasterizes poorly at other sizes.
+                //
+                // Read through UE's file layer, not AddFontFromFileTTF's fopen: a packaged build keeps the
+                // engine fonts in the pak, where FileExists sees them but fopen does not, so every packaged
+                // chart fell back to ProggyClean behind an "imgui-error: Could not load font file!".
                 const FString RobotoPath = FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf");
-                if (FPaths::FileExists(RobotoPath))
+                TArray<uint8> FontBytes;
+                if (FFileHelper::LoadFileToArray(FontBytes, *RobotoPath, FILEREAD_Silent) && FontBytes.Num() > 0)
                 {
-                        SharedFontAtlas->AddFontFromFileTTF(TCHAR_TO_UTF8(*RobotoPath), FontPixelSize);
+                        // The atlas takes ownership (FontDataOwnedByAtlas) and releases it with IM_FREE.
+                        void* FontData = IM_ALLOC(FontBytes.Num());
+                        FMemory::Memcpy(FontData, FontBytes.GetData(), FontBytes.Num());
+                        SharedFontAtlas->AddFontFromMemoryTTF(FontData, FontBytes.Num(), FontPixelSize);
                 }
                 else
                 {

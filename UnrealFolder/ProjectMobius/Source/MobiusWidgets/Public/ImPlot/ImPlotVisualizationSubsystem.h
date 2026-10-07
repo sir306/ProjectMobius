@@ -191,6 +191,16 @@ public:
          */
         void ServicePendingImageCopy(const FName& ChartId);
 
+        /**
+         * The "Copy chart" button without the click: raise the same request and service it now. For the
+         * Mobius.Chart.* diagnostics, which run on an ordinary game-thread tick and so need no hover timer.
+         * False when the chart is not open (an unpainted overlay has no size to capture).
+         */
+        bool CopyChartImageNow(const FName& ChartId);
+
+        /** Every chart id that has overlay state, open or not. */
+        TArray<FName> GetChartIds() const;
+
 private:
 
         struct FImPlotOverlayState

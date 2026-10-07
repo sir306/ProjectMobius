@@ -1,0 +1,92 @@
+Mobius Viewer - macOS beta ({{BUILD_DATE}})
+==========================================
+
+Thanks for testing. This build is not signed with an Apple Developer ID yet, so
+macOS will stop it the first time you open it. The steps below get past that once;
+after that it opens normally.
+
+
+What you need
+-------------
+- A Mac with Apple Silicon (M1 or newer). Intel Macs are not supported by this build.
+- macOS 13 Ventura or newer.
+- About 5 GB of free disk space.
+
+
+Install
+-------
+Move "Mobius Viewer" into your Applications folder:
+- From the .zip: double-click it to unzip (use macOS's own Archive Utility, not a
+  third-party unzipper, or the app can report itself as damaged), then drag
+  "Mobius Viewer" into Applications.
+- From the .dmg: drag "Mobius Viewer" onto the Applications shortcut, then eject
+  the disk image.
+
+
+First launch (one time only)
+----------------------------
+1. Open Applications and double-click "Mobius Viewer".
+   macOS says it "could not verify" the app. Click Done (not Move to Trash).
+2. Open System Settings > Privacy & Security and scroll down to the Security section.
+   Next to the message that "Mobius Viewer" (it may say "ProjectMobius") was
+   blocked, click Open Anyway, then confirm with your password or Touch ID.
+3. Click Open in the dialog that follows.
+
+If macOS instead says the app "is damaged and can't be opened", or you prefer
+Terminal, run this once and then open the app normally:
+
+    xattr -dr com.apple.quarantine "/Applications/Mobius Viewer.app"
+
+Each new beta build is a new unsigned app, so you will need to repeat these steps
+(and re-allow folder access, below) every time you install an update.
+
+The first launch shows a licence/legal notice. Accept it to continue.
+
+
+Folder access
+-------------
+If your data is in Documents, Desktop or Downloads, macOS asks whether Mobius Viewer
+may access that folder. Allow it, or loading files and saving screenshots there
+will fail. You can change this later in System Settings > Privacy & Security >
+Files & Folders.
+
+
+Where things are saved
+----------------------
+- Screenshots and camera save points: a "MobiusCaptures" folder next to the
+  pedestrian data file you loaded. If no pedestrian file is loaded:
+  ~/Library/Application Support/Epic/ProjectMobius/Saved/MobiusCaptures
+- Heatmap exports:      ~/Library/Application Support/Epic/ProjectMobius/Saved/Heatmap
+- Simulation cache:     ~/Library/Application Support/Epic/ProjectMobius/Saved/MobiusSimCache
+- Settings:             ~/Library/Application Support/Epic/ProjectMobius/Saved/Config/Mac
+
+To open these folders: in Finder choose Go > Go to Folder... and paste the path.
+
+
+Reporting a problem
+-------------------
+Please send these two files along with what you were doing:
+
+    ~/Library/Logs/ProjectMobius/ProjectMobius.log
+    ~/Library/Logs/ProjectMobius/MobiusCustomLog.txt
+
+ProjectMobius.log is replaced each time the app starts, so copy it before reopening
+the app after a problem. Older runs are kept beside it as ProjectMobius-backup-*.log.
+
+
+Known limitations of the macOS build
+------------------------------------
+- This is a beta: expect rough edges, and please report anything odd.
+- Apple Silicon only, and not yet tested on macOS versions older than the
+  development machine's. Reports from macOS 13-15 are especially useful.
+- Heatmap Gaussian blur is not available on macOS yet, so heatmaps look sharper
+  than on Windows.
+- .udatasmith files exported from Twinmotion open without their materials, which
+  show as magenta. Twinmotion's materials cannot be redistributed under its licence.
+  Datasmith files exported from Revit with the Datasmith exporter open with their
+  materials.
+- The app can occasionally crash while quitting. Your saved files are not affected.
+- Rarely, the app has crashed with several floor charts open at once on a large
+  model. If it happens, please send the logs.
+- The app renders at standard resolution on Retina displays, so text can look
+  slightly soft.

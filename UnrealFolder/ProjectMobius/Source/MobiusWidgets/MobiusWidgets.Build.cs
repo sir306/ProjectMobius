@@ -43,6 +43,11 @@ public class MobiusWidgets : ModuleRules
             }
         );
 
+        if (Target.Platform == UnrealTargetPlatform.Mac)
+        {
+            PublicFrameworks.Add("AppKit"); // NSPasteboard, for the chart image copy
+        }
+
         PrivateIncludePaths.AddRange(
             new string[]
             {

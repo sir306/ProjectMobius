@@ -75,6 +75,17 @@ void AMobiusController::BeginPlay()
 	}
 	GetScreenshotRequiredSubsystemsAndData();
 
+#if PLATFORM_MAC
+	// A packaged .app's ProjectDir is inside the signed bundle. Writing a capture or camera save point
+	// there breaks the bundle's seal, and fails outright when macOS runs the app translocated (read-only).
+	// Until a pedestrian file supplies its own folder, fall back to Saved/, which a packaged Mac build
+	// maps to ~/Library/Application Support.
+	if (FPlatformProperties::RequiresCookedData())
+	{
+		ScreenshotFilePath = FPaths::ProjectSavedDir();
+	}
+#endif
+
 	// Initialize FrameGrabberHelper for screenshot capture (lazy initialization - will init when viewport is ready)
 	FrameGrabberHelper = NewObject<UFrameGrabberHelper>(this);
 	FrameGrabberHelper->Configure(false, FIntPoint(1920, 1080)); // Use downscale mode with 1920x1080 target resolution
