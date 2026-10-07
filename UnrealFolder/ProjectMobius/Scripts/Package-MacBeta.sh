@@ -75,6 +75,6 @@ rm -rf "$OUT_DIR/zipstaging"
 echo
 for ARTIFACT in "$DMG_NAME" "$ZIP_NAME"; do
     echo "Done: $OUT_DIR/$ARTIFACT"
-    ls -lh "$OUT_DIR/$ARTIFACT" | awk '{print "  Size:   " $5}'
+    du -h "$OUT_DIR/$ARTIFACT" | awk '{print "  Size:   " $1}'
     shasum -a 256 "$OUT_DIR/$ARTIFACT" | awk '{print "  SHA256: " $1}'
 done

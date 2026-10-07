@@ -551,6 +551,14 @@ FString UNativeFileDialogSubsystem::ResolveInitialDialogDirectory() const
 		}
 	}
 
+#if PLATFORM_MAC
+	// A packaged app's ProjectDir is inside its .app bundle, which is no place to start browsing for data.
+	if (FPlatformProperties::RequiresCookedData())
+	{
+		return FPlatformProcess::UserHomeDir();
+	}
+#endif
+
 	return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 }
 

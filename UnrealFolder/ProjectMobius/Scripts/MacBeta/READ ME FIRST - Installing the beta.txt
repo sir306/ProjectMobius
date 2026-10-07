@@ -42,6 +42,9 @@ Each new beta build is a new unsigned app, so you will need to repeat these step
 
 The first launch shows a licence/legal notice. Accept it to continue.
 
+No sample data is included in this build: open your own geometry, pedestrian
+and B-RISK files with the Browse buttons.
+
 
 Folder access
 -------------
