@@ -77,6 +77,15 @@ ProjectMobius.log is replaced each time the app starts, so copy it before reopen
 the app after a problem. Older runs are kept beside it as ProjectMobius-backup-*.log.
 
 
+Licences
+--------
+Mobius Viewer is MIT-licensed and uses Unreal(R) Engine. Unreal(R) is a trademark
+or registered trademark of Epic Games, Inc. in the United States of America and
+elsewhere. Unreal(R) Engine, Copyright 1998 - 2026, Epic Games, Inc. All rights
+reserved. Third-party licences are inside the app: right-click Mobius Viewer >
+Show Package Contents > Contents/UE/ProjectMobius/BuildDocs/ThirdPartyLicenses.
+
+
 Known limitations of the macOS build
 ------------------------------------
 - This is a beta: expect rough edges, and please report anything odd.

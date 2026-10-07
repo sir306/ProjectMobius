@@ -13,6 +13,7 @@ This document covers all third-party libraries, assets, and tools bundled in the
 | OpenCV | 4.5.5 | BSD-3-Clause | `Source/Visualization/ThirdParty/OpenCV/` (runtime via Epic's built-in `OpenCV` engine plugin) |
 | Dear ImGui | 1.92.5 | MIT | `Source/MobiusWidgets/ThirdParty/ImGui/` |
 | ImPlot | 0.17 | MIT | `Source/MobiusWidgets/ThirdParty/ImPlot/` |
+| simdjson | — | Apache-2.0 | `Plugins/MobiusDataImporter/Source/ThirdParty/simdjson/` |
 | earcut.hpp | — | ISC | `Source/MobiusCore/ThirdParty/earcut_hpp/` |
 | portable-file-dialogs | — | WTFPL | `Source/MobiusCore/ThirdParty/PortableFileDialogs/` |
 | IFC++ (IfcPlusPlus) | recorded as `7b80900` | MIT | `UnrealFolder/ProjectMobius/Source/ThirdParty/IfcBridgeSource/IfcPlusPlus/` |
@@ -31,6 +32,9 @@ You retain ownership of your own source files and assets (e.g., anything in `Sou
 ---
 
 ## 2. Third-Party Libraries
+
+Full licence texts for everything compiled into or shipped with a packaged build, including the libraries Assimp and IFC++ compile in and the fonts, are in `UnrealFolder/ProjectMobius/BuildDocs/ThirdPartyLicenses/`, which is staged into every package.
+
 
 ### 2.1 ASSIMP (Open Asset Import Library)
 
@@ -66,6 +70,12 @@ license files kept under `Source/Visualization/ThirdParty/OpenCV/`.
 - **Location:** `Source/MobiusWidgets/ThirdParty/ImPlot/`
 - **License:** MIT
 - **URL:** https://github.com/epezent/implot/blob/master/LICENSE
+
+### 2.5a simdjson
+
+- **Location:** `Plugins/MobiusDataImporter/Source/ThirdParty/simdjson/`
+- **License:** Apache-2.0
+- **URL:** https://github.com/simdjson/simdjson/blob/master/LICENSE
 
 ### 2.6 earcut.hpp
 
