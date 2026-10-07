@@ -338,7 +338,20 @@ if(SUPERBUILD_BUILD_HDF5)
   if(MSVC)
     list(APPEND _hdf5_cmake_args -DCMAKE_C_FLAGS=/D__STDC_NO_COMPLEX__)
   else()
-    list(APPEND _hdf5_cmake_args -DCMAKE_C_FLAGS=-D__STDC_NO_COMPLEX__)
+    # HDF5 is linked statically into the packaged app, so anything it embeds ships too. Its error
+    # stack records __FILE__ for ~275 source files; the prefix map rewrites this checkout's location
+    # out of those (CMake splits the flags on spaces, so a path containing one is left alone).
+    set(_hdf5_c_flags "-D__STDC_NO_COMPLEX__")
+    if(NOT CMAKE_SOURCE_DIR MATCHES " ")
+      string(APPEND _hdf5_c_flags " -ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
+    endif()
+    list(APPEND _hdf5_cmake_args
+      "-DCMAKE_C_FLAGS=${_hdf5_c_flags}"
+      # The embedded build-info block carries the install prefix and build tree, and the default
+      # filter-plugin search path is the install prefix. Neither means anything on a user's machine.
+      -DHDF5_ENABLE_EMBEDDED_LIBINFO=OFF
+      -DH5_DEFAULT_PLUGINDIR=/usr/local/hdf5/lib/plugin
+    )
   endif()
 
   # Force the architecture like the Assimp step does: an x86_64 (Rosetta) cmake --
@@ -360,6 +373,21 @@ if(SUPERBUILD_BUILD_HDF5)
     INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install --config Release --parallel
     UPDATE_DISCONNECTED 1
     USES_TERMINAL_BUILD 1
+  )
+
+  # H5build_settings.c is generated at configure time with the install prefix, build tree and
+  # compiler flags written in as string literals, and H5check_version references it unconditionally,
+  # so it is always linked into the app. Rewrite this checkout's location to "." before it compiles.
+  # ALWAYS, because a reconfigure inside the build step would regenerate it unscrubbed.
+  ExternalProject_Add_Step(hdf5_ep scrub_build_paths
+    COMMAND ${CMAKE_COMMAND}
+      "-DFILE=${HDF5_BUILD}/src/H5build_settings.c"
+      "-DFROM=${CMAKE_SOURCE_DIR}"
+      "-DTO=."
+      -P "${UE_ROOT}/cmake/ScrubBuildPath.cmake"
+    DEPENDEES configure
+    DEPENDERS build
+    ALWAYS 1
   )
 endif()
 

@@ -45,6 +45,15 @@ BUILD_ROOT="$PROJECT_DIR/Intermediate/IfcBridgeBuild"
 IFCPP_BUILD="$BUILD_ROOT/ifcpp"
 SHIM_BUILD="$BUILD_ROOT/shim"
 
+# Rewrite this checkout's location out of __FILE__ strings and debug info, so the shipped dylib does
+# not carry the build machine's home folder (IFC++ and Carve asserts embed their source paths).
+# CMake splits *_FLAGS on spaces, so a path containing one is left alone rather than mangled.
+PATH_FLAGS=""
+case "$PROJECT_DIR" in
+  *" "*) echo "Note: '$PROJECT_DIR' contains a space; build paths stay embedded in the dylib." ;;
+  *)     PATH_FLAGS="-ffile-prefix-map=$PROJECT_DIR=." ;;
+esac
+
 if [ ! -f "$IFCPP/CMakeLists.txt" ]; then
   echo "Vendored IFC++ source not found at $IFCPP (expected ifcquery/IfcPlusPlus vendored in-tree)." >&2
   exit 1
@@ -83,6 +92,8 @@ cmake -S "$IFCPP" -B "$IFCPP_BUILD" \
   -DCMAKE_BUILD_TYPE="$CONFIG" \
   -DBUILD_VIEWER_APPLICATION=OFF \
   -DBUILD_CONSOLE_APPLICATION=OFF \
+  -DCMAKE_C_FLAGS="$PATH_FLAGS" \
+  -DCMAKE_CXX_FLAGS="$PATH_FLAGS" \
   -DCMAKE_POLICY_VERSION_MINIMUM="$POLICY_MIN"
 cmake --build "$IFCPP_BUILD" --config "$CONFIG" --target IfcPlusPlus --parallel
 
@@ -107,6 +118,8 @@ cmake -S "$BRIDGE" -B "$SHIM_BUILD" \
   -DMOBIUS_IFCPLUSPLUS_LIB_DIR="$IFCPP_LIB_DIR" \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
   -DCMAKE_INSTALL_NAME_DIR="@rpath" \
+  -DCMAKE_C_FLAGS="$PATH_FLAGS" \
+  -DCMAKE_CXX_FLAGS="$PATH_FLAGS" \
   -DCMAKE_POLICY_VERSION_MINIMUM="$POLICY_MIN"
 cmake --build "$SHIM_BUILD" --config "$CONFIG" --target install --parallel
 

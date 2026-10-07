@@ -10,11 +10,16 @@ void FMobiusDataImporterModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 
+#if WITH_EDITOR
+	// Developer self-checks against sample files in the source tree. Editor only: a packaged build has
+	// neither file, so they only ever logged "not found" warnings on every launch.
+
 	// Run original HDF5 example file open/iterate log test
 	FHdf5DataExampleTest::RunExampleFile();
 
 	// Test the simulation reader with generated test file
 	FHdf5DataExampleTest::TestSimulationReader();
+#endif
 }
 
 void FMobiusDataImporterModule::ShutdownModule()

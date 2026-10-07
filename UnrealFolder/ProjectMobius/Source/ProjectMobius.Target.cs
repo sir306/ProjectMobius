@@ -14,7 +14,16 @@ public class ProjectMobiusTarget : TargetRules
 			"HeatmapVisualization",
 		} );
 		RegisterModulesCreatedByRider();
-		
+
+		// check()/ensure() and friends bake __FILE__ into the binary, so a packaged build carries the
+		// build machine's absolute source paths (home folder included). Rewrite the project directory
+		// to "." for the packaged Mac game; the editor keeps real paths so local debugging finds sources.
+		// The installed engine shares UnrealGame's build environment, hence bOverrideBuildEnvironment.
+		if (Target.Platform == UnrealTargetPlatform.Mac && ProjectFile != null && !ProjectFile.Directory.FullName.Contains(' '))
+		{
+			bOverrideBuildEnvironment = true;
+			AdditionalCompilerArguments = $"-ffile-prefix-map={ProjectFile.Directory.FullName}=.";
+		}
 	}
 
 	private void RegisterModulesCreatedByRider()

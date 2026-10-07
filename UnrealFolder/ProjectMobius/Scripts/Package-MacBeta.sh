@@ -50,6 +50,17 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR/staging"
 ditto "$STAGED_APP" "$OUT_DIR/staging/$APP_NAME"
 xattr -cr "$OUT_DIR/staging/$APP_NAME"
+
+# UHT names a generated symbol after each reflected header's absolute path
+# (Z_CompiledInDeferFile_FID_<path>_Statics), so a Development executable's local symbol table
+# spells out the build machine's home folder. Strip local symbols (global ones stay, so crash
+# callstacks still resolve) and re-sign ad-hoc with the entitlements Xcode applied.
+EXE="$OUT_DIR/staging/$APP_NAME/Contents/MacOS/ProjectMobius"
+ENTITLEMENTS="$OUT_DIR/entitlements.plist"
+codesign -d --entitlements - --xml "$OUT_DIR/staging/$APP_NAME" > "$ENTITLEMENTS" 2>/dev/null
+strip -x -S "$EXE" 2>&1 | grep -v "invalidate the code signature" || true
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "$OUT_DIR/staging/$APP_NAME"
+rm -f "$ENTITLEMENTS"
 codesign --verify --deep --strict "$OUT_DIR/staging/$APP_NAME"
 sed "s/{{BUILD_DATE}}/$BUILD_DATE/" "$PROJECT_DIR/Scripts/MacBeta/READ ME FIRST - Installing the beta.txt" \
     > "$OUT_DIR/staging/READ ME FIRST - Installing the beta.txt"
