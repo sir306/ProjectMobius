@@ -52,7 +52,7 @@ simulation playback, UI, analytics, and supporting infrastructure.
 
 | Plugin | Purpose |
 |--------|---------|
-| `Hdf5DataPlugin` | HDF5 trajectory file reading |
+| `MobiusDataImporter` | Pedestrian (JSON/HDF5) and B-RISK data import, including the bundled HDF5 library |
 | `UE4_Assimp` | Geometry and mesh import support |
 | `OpenCV` | Epic's built-in Unreal engine plugin that provides the OpenCV runtime used by visualization-related code |
 

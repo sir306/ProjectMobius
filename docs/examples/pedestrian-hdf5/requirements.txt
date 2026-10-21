@@ -1,0 +1,6 @@
+# Python dependencies for mobius_h5_writer.py and validate_mobius_h5.py
+# Install with: pip install -r requirements.txt
+# (h5py wheels include their own HDF5 library; no compiler or separate HDF5 install is needed.)
+
+h5py>=3.0.0
+numpy>=1.20.0

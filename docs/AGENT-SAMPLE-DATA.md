@@ -2,9 +2,9 @@
 
 ## Scope
 
-This guide documents the sample agent datasets currently shipped under the packaged Windows build tree and the HDF5 plugin test data that Project Mobius can ingest.
+This guide documents the sample agent datasets kept in the repository as HDF5 importer test data that Project Mobius can ingest.
 
-It covers the Juelich trajectory HDF5 datasets in `UnrealFolder/Build/Windows/ProjectMobius/Plugins/Hdf5DataPlugin/Hdf5TestData/JuelichTestCases/trajectories_hdf5/`.
+It covers the Juelich trajectory HDF5 datasets in `UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Hdf5TestData/JuelichTestCases/trajectories_hdf5/`.
 
 The goal is to make it clear what each file contains, what format it uses, and what Project Mobius does with it at load time.
 
@@ -96,8 +96,8 @@ Important conversion details:
 
 The relevant loader code paths are:
 
-- `Plugins/Hdf5DataPlugin/Source/Hdf5DataPlugin/Public/Hdf5SimulationReader.h`
-- `Plugins/Hdf5DataPlugin/Source/Hdf5DataPlugin/Private/Hdf5SimulationReader.cpp`
+- `Plugins/MobiusDataImporter/Source/MobiusDataImporter/Public/Hdf5SimulationReader.h`
+- `Plugins/MobiusDataImporter/Source/MobiusDataImporter/Private/Hdf5SimulationReader.cpp`
 - `Source/ProjectMobius/Private/MassAI/SubSystems/AgentDataSubsystem.cpp`
 
 These files contain the format detection logic, the Juelich-to-Mobius conversion path, and the fallback rotation and speed calculation used when the source data does not provide those fields.

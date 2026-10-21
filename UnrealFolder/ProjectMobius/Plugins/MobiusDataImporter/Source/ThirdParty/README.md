@@ -15,15 +15,17 @@
 
 ## HDF5
 
+> **Writing pedestrian data from another simulator?** You can build this HDF5 source on its own,
+> without Unreal or the superbuild: see `docs/HDF5-EXPORT-GUIDE.md` at the repository root.
+
 ## Layout
 
 - `hdf5-2.0.0/` — full upstream HDF5 2.0.0 source (CMake-only since 2.0; autotools was dropped
-  upstream). Kept in-tree so the prebuilt libraries below can be rebuilt without hunting down the
-  exact upstream snapshot.
-- `hdf5-2.0.0/install/` — the build output the UE module actually consumes:
-  - `include/` — public headers, **including the generated `H5pubconf.h`** (deliberately tracked so
-    a fresh clone compiles without running CMake; it carries harmless machine stamps from whoever
-    generated it last).
+  upstream). This source is what git tracks; the libraries below are built from it.
+- `hdf5-2.0.0/install/` — the build output the UE module actually consumes. **None of it is in
+  git** (see `.gitignore`): a fresh clone gets it by running the superbuild
+  (`python superbuild.py` from `UnrealFolder/ProjectMobius`).
+  - `include/` — public headers, including the generated `H5pubconf.h`.
   - `lib/libhdf5.lib`, `lib/libhdf5_hl.lib`, `lib/zlib-static.lib` — static libs, linked by
     `UeHdf5Library.Build.cs`.
   - `bin/` — MSVC runtime redistributables (`UeHdf5Library.Build.cs` checks the dir exists; nothing
@@ -33,7 +35,7 @@
 
 ## What is intentionally NOT tracked (see repo `.gitignore`)
 
-`install/cmake/`, `install/lib/pkgconfig/`, `install/lib/libhdf5.settings`, `hdf5-2.0.0/build*` —
+The whole `install/` tree and `hdf5-2.0.0/build*` —
 machine-generated at configure/install time and re-stamped with absolute local paths on every
 `cmake --install`. If they show up as modified/untracked after a rebuild, that is expected.
 
@@ -66,8 +68,7 @@ the Windows one for the Mac libs.
 Notes:
 - `ZLIB_USE_LOCALCONTENT=OFF` makes the superbuild download the zlib TGZ at configure time
   (URLs in `config/CacheURLs.cmake`) — network access required.
-- After an install, only `install/include/H5pubconf.h` may show a real tracked diff (path/date
-  stamps). Revert it unless the rebuild was intentional; commit it together with the new libs when
-  it was.
+- `install/` is regenerated as a whole (headers, including the platform-generated `H5pubconf.h`,
+  and libs together), so nothing under it needs reverting or committing after a rebuild.
 - Keep the record layout expectations of the importer in mind: the libs must stay ABI-compatible
-  with `H5pubconf.h` as committed.
+  with the `H5pubconf.h` installed beside them.

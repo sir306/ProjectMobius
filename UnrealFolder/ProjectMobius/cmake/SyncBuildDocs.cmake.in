@@ -7,6 +7,7 @@ set(_doc_files
   "BUILD-AND-RUN.md"
   "CONTROLS.md"
   "DATA-PIPELINE.md"
+  "PEDESTRIAN-DATA-FORMAT.md"
   "RESEARCH.md"
 )
 
