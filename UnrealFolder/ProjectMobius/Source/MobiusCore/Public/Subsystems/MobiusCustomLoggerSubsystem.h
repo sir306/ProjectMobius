@@ -13,7 +13,8 @@
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnMobiusLogLine, const FString&);
 
 /**
- * Engine-level logger that opens a text file next to the launched executable and writes messages via a queue.
+ * Engine-level logger that writes messages via a queue to a per-session text file,
+ * MobiusCustomLog_<start time>.txt, next to the launched executable (Saved/Logs in the editor).
  * Designed to be cheap to call from BeginPlay (including blueprints) to spot startup stalls.
  */
 UCLASS()
@@ -45,6 +46,9 @@ public:
 
 	/** Native delegate fired when a log line is flushed. */
 	FOnMobiusLogLine& OnLogLine();
+
+	/** Full path of this session's log file. Each session (process) writes its own; see Initialize. */
+	const FString& GetLogFilePath() const { return LogFilePath; }
 
 	/** Enable or disable logging (thread-safe). When disabled, EnqueueLogMessage becomes a no-op. */
 	UFUNCTION(BlueprintCallable, Category = "Mobius|Logging")

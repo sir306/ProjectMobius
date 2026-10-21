@@ -33,6 +33,7 @@
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/Engine.h"
+#include "Misc/Paths.h"
 #include "Slate/Components/SMoveableWindow.h"
 #include "Styling/SlateBrush.h"
 #include "UI/MobiusPanelWindowHost.h"
@@ -57,9 +58,6 @@ namespace
 	 */
 	constexpr float GSettingsCardWidth = 700.0f;
 
-	/** The logger's file name, single-sourced from MobiusCustomLoggerSubsystem::Initialize. */
-	const FString GMobiusLogFileName = TEXT("MobiusCustomLog.txt");
-
 	UUserProjectSettings* GetMobiusUserSettings()
 	{
 		return GEngine ? Cast<UUserProjectSettings>(GEngine->GetGameUserSettings()) : nullptr;
@@ -75,13 +73,21 @@ void UMobiusSettingsWindowWidget::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 
-	// The brief's footer line says "MobiusLog.txt"; the logger actually appends to MobiusCustomLog.txt.
-	// Set it here so the UI can never claim a file the logger does not write.
+	// Name the file the logger is actually writing this session, read from the logger itself, so the UI can
+	// never claim a file it does not write. The pattern stands in when there is no logger yet.
 	if (LogFileNoteText)
 	{
+		FString LogFileName = TEXT("MobiusCustomLog_<date-time>.txt");
+		if (const UMobiusCustomLoggerSubsystem* Logger = GetMobiusLogger())
+		{
+			if (!Logger->GetLogFilePath().IsEmpty())
+			{
+				LogFileName = FPaths::GetCleanFilename(Logger->GetLogFilePath());
+			}
+		}
 		LogFileNoteText->SetText(FText::Format(
-			NSLOCTEXT("MobiusSettings", "LogFileNote", "Every session appends to the same file: {0}"),
-			FText::FromString(GMobiusLogFileName)));
+			NSLOCTEXT("MobiusSettings", "LogFileNote", "Each session writes its own log file. This session: {0}"),
+			FText::FromString(LogFileName)));
 	}
 }
 

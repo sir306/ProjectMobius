@@ -71,10 +71,12 @@ Reporting a problem
 Please send these two files along with what you were doing:
 
     ~/Library/Logs/ProjectMobius/ProjectMobius.log
-    ~/Library/Logs/ProjectMobius/MobiusCustomLog.txt
+    ~/Library/Logs/ProjectMobius/MobiusCustomLog_<date-time>.txt  (the newest one)
 
 ProjectMobius.log is replaced each time the app starts, so copy it before reopening
 the app after a problem. Older runs are kept beside it as ProjectMobius-backup-*.log.
+MobiusCustomLog_<date-time>.txt is a new file for each run, named after when that run
+started; the last 20 are kept.
 
 
 Licences
