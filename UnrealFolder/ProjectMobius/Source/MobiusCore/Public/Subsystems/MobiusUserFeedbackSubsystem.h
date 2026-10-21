@@ -92,7 +92,15 @@ private:
 	bool bLogWindowOpen = false;
 
 	TArray<FMobiusErrorMessage> PendingErrors;
+
+	/**
+	 * Ring buffer of the newest MaxCachedLogLines lines, so HandleLogLine is O(1) instead of shifting the
+	 * whole cache down on every line. Plain append order until it fills; from then on CachedLogHead is the
+	 * slot of the OLDEST line, i.e. the next one to be overwritten. GetCachedLogLines unrolls it.
+	 */
 	TArray<FString> CachedLogLines;
+	int32 CachedLogHead = 0;
+
 	TMap<uint32, double> RecentPromptTimes;
 
 	FDelegateHandle LogLineHandle;
