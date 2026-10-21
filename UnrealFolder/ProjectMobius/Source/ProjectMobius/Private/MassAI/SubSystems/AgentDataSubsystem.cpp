@@ -741,11 +741,95 @@ void FProcessAgentSimulationDataRunnable::RunSimulationDataGatheringLoop(bool bC
 		                              TEXT("AgentDataSubsystem - RunSimulationDataGatheringLoop"));
 	}
 }
+namespace
+{
+	/**
+	 * Hands every entity's movement samples to Visit in timestep order, each paired with that entity's
+	 * NEXT sample (the look-ahead both derivations below need), in one pass over SimulationData.
+	 *
+	 * This replaced a per-entity scan that searched every timestep's whole sample array for the entity,
+	 * then searched it again to write the result back: O(entities x total samples), which turned a
+	 * positions-only load of a few thousand agents into minutes. This is O(total samples), and its
+	 * bookkeeping is O(MaxAgents) rather than O(samples) - SimulationData can already run to gigabytes.
+	 *
+	 * Visit(EntityId, Sample, Next) is called once per sample, in timestep order per entity, with Next ==
+	 * nullptr for the entity's final sample. Which samples are visited is exactly what the old scan did,
+	 * so derived values stay bit-identical (ProjectMobius.SimData.DerivedMotionParity holds the old scan
+	 * as its oracle):
+	 *   - timesteps in ascending key order, whatever order the map iterates in;
+	 *   - only ids in [0, MaxAgents) - out-of-range ids stay in the map, untouched;
+	 *   - an entity listed twice in one timestep counts once: the FIRST sample is read and written;
+	 *   - an entity with fewer than 2 samples is never visited (there is no direction to derive).
+	 */
+	template <typename FVisitor>
+	void ForEachEntitySampleWithNext(TMap<int32, TArray<FSimMovementSample>>& SimulationData, const int32 MaxAgents,
+	                                 const FThreadSafeBool& bShouldStop, const TWeakObjectPtr<UAgentDataSubsystem>& OwnerSubsystem,
+	                                 FVisitor&& Visit)
+	{
+		struct FEntityCursor
+		{
+			/** Latest sample seen, held back until its successor (or the end of the data) is known. */
+			FSimMovementSample* Pending = nullptr;
+			/** Ordinal of the timestep Pending came from - detects a second sample in the same timestep. */
+			int32 PendingStepOrdinal = INDEX_NONE;
+			/** True once Pending has a predecessor, i.e. the entity has at least 2 samples. */
+			bool bHasPredecessor = false;
+		};
+
+		TArray<int32> Timesteps;
+		SimulationData.GetKeys(Timesteps);
+		Timesteps.Sort();
+
+		TArray<FEntityCursor> Cursors;
+		Cursors.SetNum(FMath::Max(MaxAgents, 0));
+
+		for (int32 StepOrdinal = 0; StepOrdinal < Timesteps.Num(); ++StepOrdinal)
+		{
+			if (bShouldStop) return;
+
+			for (FSimMovementSample& Sample : SimulationData.FindChecked(Timesteps[StepOrdinal]))
+			{
+				if (Sample.EntityID < 0 || Sample.EntityID >= MaxAgents) continue;
+
+				FEntityCursor& Cursor = Cursors[Sample.EntityID];
+				if (Cursor.PendingStepOrdinal == StepOrdinal) continue;
+
+				if (Cursor.Pending)
+				{
+					Visit(Sample.EntityID, *Cursor.Pending, &Sample);
+					Cursor.bHasPredecessor = true;
+				}
+				Cursor.Pending = &Sample;
+				Cursor.PendingStepOrdinal = StepOrdinal;
+			}
+
+			// Report progress to the subsystem for UI feedback (every 100 timesteps to avoid flooding)
+			if (StepOrdinal % 100 == 0)
+			{
+				float CurrentPercentage = static_cast<float>(StepOrdinal) / static_cast<float>(Timesteps.Num());
+				if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
+				{
+					Subsys->ProgressQueue.Enqueue(CurrentPercentage);
+				}
+			}
+		}
+
+		// Each entity's final sample has no successor: Visit it last, so it carries the previous value
+		for (int32 EntityIdx = 0; EntityIdx < Cursors.Num(); ++EntityIdx)
+		{
+			if (Cursors[EntityIdx].bHasPredecessor)
+			{
+				Visit(EntityIdx, *Cursors[EntityIdx].Pending, nullptr);
+			}
+		}
+	}
+}
+
 /**
  * Calculates rotation from movement direction when the HDF5 source data lacks rotation information.
  *
- * Algorithm:
- * 1. For each entity, collect all position samples ordered by timestep
+ * Algorithm (one pass over all samples, see ForEachEntitySampleWithNext):
+ * 1. Walk each entity's position samples in timestep order
  * 2. For each timestep, calculate direction vector to the NEXT position (look-ahead approach)
  * 3. Convert direction to rotation angle in degrees using FMath::Atan2
  * 4. For the last timestep, carry forward the previous calculated rotation
@@ -764,50 +848,19 @@ void FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement()
 
 	UE_LOG(LogTemp, Log, TEXT("Calculating rotation from movement direction for %d entities"), MaxAgents);
 
-	// Process each entity independently
-	for (int32 EntityIdx = 0; EntityIdx < MaxAgents; ++EntityIdx)
-	{
-		if (bShouldStop) break;
+	// Per entity: the rotation used for stationary steps and carried onto the last frame
+	TArray<FRotator> LastValidRotations;
+	LastValidRotations.Init(FRotator::ZeroRotator, FMath::Max(MaxAgents, 0));
 
-		// Step 1: Collect all position samples for this entity across all timesteps
-		// We store (timestep index, position) pairs for later sorting
-		TArray<TPair<int32, FVector>> EntityPositions;
-
-		for (auto& Pair : *AgentMovementInfoData.SimulationData)
+	ForEachEntitySampleWithNext(*AgentMovementInfoData.SimulationData, MaxAgents, bShouldStop, OwnerSubsystem,
+		[&LastValidRotations](const int32 EntityIdx, FSimMovementSample& Sample, const FSimMovementSample* NextSample)
 		{
-			for (const FSimMovementSample& Sample : Pair.Value)
-			{
-				if (Sample.EntityID == EntityIdx)
-				{
-					EntityPositions.Add(TPair<int32, FVector>(Pair.Key, Sample.Position));
-					break; // Only one sample per entity per timestep, so we can exit early
-				}
-			}
-		}
-
-		// Need at least 2 positions to calculate any rotation (need direction to next position)
-		if (EntityPositions.Num() < 2) continue;
-
-		// Step 2: Sort positions by timestep to ensure chronological order
-		EntityPositions.Sort([](const TPair<int32, FVector>& A, const TPair<int32, FVector>& B)
-		{
-			return A.Key < B.Key;
-		});
-
-		// Step 3: Calculate rotation for each timestep using look-ahead to next position
-		// LastValidRotation is used for stationary entities or the last frame
-		FRotator LastValidRotation = FRotator::ZeroRotator;
-
-		for (int32 i = 0; i < EntityPositions.Num(); ++i)
-		{
-			if (bShouldStop) break;
-
-			FRotator NewRotation = LastValidRotation;  // Default to previous rotation
+			FRotator& LastValidRotation = LastValidRotations[EntityIdx];
 
 			// Calculate direction from current position to NEXT position (look-ahead approach)
-			if (i < EntityPositions.Num() - 1)
+			if (NextSample)
 			{
-				FVector Delta = EntityPositions[i + 1].Value - EntityPositions[i].Value;
+				FVector Delta = NextSample->Position - Sample.Position;
 
 				// Only update rotation if there's meaningful movement (avoid jitter from tiny movements)
 				// Threshold of 0.1 cm filters out noise while allowing detection of real movement
@@ -821,35 +874,14 @@ void FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement()
 					// Apply -90 degree offset for mesh orientation correction
 					// Unreal meshes typically face +X when yaw=0, but our coordinate system
 					// expects facing direction to align with movement vector
-					NewRotation = FRotator(0.0f, YawDeg - 90.0f, 0.0f);
-					LastValidRotation = NewRotation;
+					LastValidRotation = FRotator(0.0f, YawDeg - 90.0f, 0.0f);
 				}
 				// If position hasn't changed significantly, keep LastValidRotation
 			}
 			// For the last frame, we keep LastValidRotation (carry forward previous rotation)
 
-			// Step 4: Update the rotation value in the actual simulation data
-			int32 Timestep = EntityPositions[i].Key;
-			for (FSimMovementSample& Sample : (*AgentMovementInfoData.SimulationData)[Timestep])
-			{
-				if (Sample.EntityID == EntityIdx)
-				{
-					Sample.Rotation = NewRotation;
-					break;
-				}
-			}
-		}
-
-		// Report progress to the subsystem for UI feedback (every 100 entities to avoid flooding)
-		if (EntityIdx % 100 == 0)
-		{
-			float CurrentPercentage = static_cast<float>(EntityIdx) / static_cast<float>(MaxAgents);
-			if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
-			{
-				Subsys->ProgressQueue.Enqueue(CurrentPercentage);
-			}
-		}
-	}
+			Sample.Rotation = LastValidRotation;
+		});
 
 	UE_LOG(LogTemp, Log, TEXT("Finished calculating rotation from movement"));
 }
@@ -857,8 +889,8 @@ void FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement()
 /**
  * Calculates speed from position deltas when the HDF5 source data lacks speed information.
  *
- * Algorithm:
- * 1. For each entity, collect all position samples ordered by timestep
+ * Algorithm (one pass over all samples, see ForEachEntitySampleWithNext):
+ * 1. Walk each entity's position samples in timestep order
  * 2. Calculate speed using the formula: speed = distance / time
  *    - Distance is the Euclidean distance between consecutive positions (in cm after unit conversion)
  *    - Time is TimeBetweenSteps (the sampling interval in seconds)
@@ -869,7 +901,7 @@ void FProcessAgentSimulationDataRunnable::CalculateRotationFromMovement()
  *       this discrepancy occurs - possible causes include:
  *       - TimeBetweenSteps not being set correctly before this function is called
  *       - Position data not being properly converted to cm before storage
- *       - Entities that only appear in a single timestep (skipped due to Num() < 2 check)
+ *       - Entities that only appear in a single timestep (skipped: they have no next position)
  *       - Floating point precision issues with very small movements
  */
 void FProcessAgentSimulationDataRunnable::CalculateSpeedFromMovement()
@@ -882,80 +914,29 @@ void FProcessAgentSimulationDataRunnable::CalculateSpeedFromMovement()
 
 	UE_LOG(LogTemp, Log, TEXT("Calculating speed from position deltas for %d entities"), MaxAgents);
 
-	// Process each entity independently
-	for (int32 EntityIdx = 0; EntityIdx < MaxAgents; ++EntityIdx)
-	{
-		if (bShouldStop) break;
+	// Per entity: the speed carried onto the last frame
+	TArray<float> LastValidSpeeds;
+	LastValidSpeeds.Init(0.0f, FMath::Max(MaxAgents, 0));
 
-		// Step 1: Collect all position samples for this entity across all timesteps
-		// We store (timestep index, position) pairs for later sorting
-		TArray<TPair<int32, FVector>> EntityPositions;
-
-		for (auto& Pair : *AgentMovementInfoData.SimulationData)
+	ForEachEntitySampleWithNext(*AgentMovementInfoData.SimulationData, MaxAgents, bShouldStop, OwnerSubsystem,
+		[this, &LastValidSpeeds](const int32 EntityIdx, FSimMovementSample& Sample, const FSimMovementSample* NextSample)
 		{
-			for (const FSimMovementSample& Sample : Pair.Value)
-			{
-				if (Sample.EntityID == EntityIdx)
-				{
-					EntityPositions.Add(TPair<int32, FVector>(Pair.Key, Sample.Position));
-					break; // Only one sample per entity per timestep, so we can exit early
-				}
-			}
-		}
-
-		// Need at least 2 positions to calculate any speed
-		if (EntityPositions.Num() < 2) continue;
-
-		// Step 2: Sort positions by timestep to ensure chronological order
-		EntityPositions.Sort([](const TPair<int32, FVector>& A, const TPair<int32, FVector>& B)
-		{
-			return A.Key < B.Key;
-		});
-
-		// Step 3: Calculate speed for each timestep using look-ahead to next position
-		float LastValidSpeed = 0.0f;
-
-		for (int32 i = 0; i < EntityPositions.Num(); ++i)
-		{
-			if (bShouldStop) break;
-
-			float Speed = LastValidSpeed;  // Default to previous speed (used for last frame)
+			float& LastValidSpeed = LastValidSpeeds[EntityIdx];
 
 			// Calculate speed from current position to next position
-			if (i < EntityPositions.Num() - 1)
+			if (NextSample)
 			{
-				FVector Delta = EntityPositions[i + 1].Value - EntityPositions[i].Value;
+				FVector Delta = NextSample->Position - Sample.Position;
 				float Distance = Delta.Size();  // Distance in cm (positions are converted to cm during loading)
 
 				// Speed formula: speed (m/s) = distance (cm) / (time (s) * 100)
 				// The * 100 converts cm to m
-				Speed = Distance / (TimeBetweenSteps * 100.0f);
-				LastValidSpeed = Speed;
+				LastValidSpeed = Distance / (TimeBetweenSteps * 100.0f);
 			}
 			// For the last frame, we keep LastValidSpeed (carry forward previous speed)
 
-			// Step 4: Update the speed value in the actual simulation data
-			int32 Timestep = EntityPositions[i].Key;
-			for (FSimMovementSample& Sample : (*AgentMovementInfoData.SimulationData)[Timestep])
-			{
-				if (Sample.EntityID == EntityIdx)
-				{
-					Sample.Speed = Speed;
-					break;
-				}
-			}
-		}
-
-		// Report progress to the subsystem for UI feedback (every 100 entities)
-		if (EntityIdx % 100 == 0)
-		{
-			float CurrentPercentage = static_cast<float>(EntityIdx) / static_cast<float>(MaxAgents);
-			if (UAgentDataSubsystem* Subsys = OwnerSubsystem.Get())
-			{
-				Subsys->ProgressQueue.Enqueue(CurrentPercentage);
-			}
-		}
-	}
+			Sample.Speed = LastValidSpeed;
+		});
 
 	UE_LOG(LogTemp, Log, TEXT("Finished calculating speed from movement"));
 }
@@ -1230,6 +1211,8 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 		return 0;
 	}
 
+	const double DeriveStart = FPlatformTime::Seconds();
+
 	// Calculate rotation from movement if rotation data is missing
 	if (!AgentSimulationData.Metadata.bHasRotationData)
 	{
@@ -1253,6 +1236,11 @@ uint32 FProcessAgentSimulationDataRunnable:: Run()
 			Subsys->LoadingTaskQueue.Enqueue(TEXT("Calculating Speed From Movement..."));
 		}
 		CalculateSpeedFromMovement();
+	}
+
+	if (!AgentSimulationData.Metadata.bHasRotationData || !AgentSimulationData.Metadata.bHasSpeedData)
+	{
+		ImportTimings.DeriveSeconds = FPlatformTime::Seconds() - DeriveStart;
 	}
 
 	if (bShouldStop)
