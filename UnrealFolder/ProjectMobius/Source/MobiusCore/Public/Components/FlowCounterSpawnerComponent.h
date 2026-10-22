@@ -36,7 +36,7 @@ public:
 	// called by owner when all doors discovered
 	void BeginSpawning();
 
-	// bypass frame-budget throttle — call after load spikes to finish remaining spawns immediately
+	// bypass the batch pacing — call after load spikes to finish remaining spawns immediately
 	void FlushRemainingSpawns();
 
 	// cancel in-progress spawning and discard all queued doors — call before a new load replaces the mesh
@@ -47,7 +47,14 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float SpawnInterval = 0.25f;
-	
+
+	/**
+	 * Wall-clock budget for one batch, in milliseconds. A batch stops early once it has used this much,
+	 * but always spawns at least one door, so the queue drains at any frame rate.
+	 */
+	UPROPERTY(EditAnywhere)
+	float BatchTimeBudgetMs = 4.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintAssignable, Category = "MeshGenerator|Delegates")
 	FOnFlowCounterSpawned OnFlowCounterAutoSpawned;
 	

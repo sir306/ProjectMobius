@@ -142,18 +142,11 @@ void UFlowCounterSpawnerComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	
 	if (!bSpawning || PendingDoorMeshes.Num() == 0)
 		return;
-	
-	// Check frame time throttle to avoid spawning when the game is struggling
-	float FrameTime = DeltaTime * 1000.0f; // ms
-	if (FrameTime > 25.0f)
-	{
-		// Skip this batch - system under load
-		LogToCustomLogger(FString::Printf(TEXT("TickComponent skipped spawning due to frame time %.2fms; pending doors: %d"),
-			FrameTime, PendingDoorMeshes.Num()));
-		return;
-	}
 
-	// Check TIME throttle (not frame throttle)
+	// Pace by wall-clock time only, never by frame time. This used to skip every frame slower than 25 ms,
+	// but ARuntimeMeshBuilder::DecideAndExecuteSpawnStrategy picks this batched path precisely when FPS is
+	// at or below 40, so on a slow (or thermally throttled) machine the queue could stop draining for good
+	// and leave the loading card up. A slow frame now only shortens the batch, via BatchTimeBudgetMs.
 	const double Now = FPlatformTime::Seconds();
 	if (Now - LastSpawnTime < SpawnInterval)
 		return;
@@ -161,9 +154,16 @@ void UFlowCounterSpawnerComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	LastSpawnTime = Now;
 
 	int32 SpawnedThisBatch = 0;
+	const double BatchDeadline = Now + BatchTimeBudgetMs / 1000.0;
 
 	while (PendingDoorMeshes.Num() > 0 && SpawnedThisBatch < MaxPerBatch)
 	{
+		// At least one per batch, however long it takes, so progress is guaranteed at any frame rate.
+		if (SpawnedThisBatch > 0 && FPlatformTime::Seconds() > BatchDeadline)
+		{
+			break;
+		}
+
 		const FPendingDoorEntry PendingDoor = PendingDoorMeshes[0];
 		PendingDoorMeshes.RemoveAtSwap(0);
 
