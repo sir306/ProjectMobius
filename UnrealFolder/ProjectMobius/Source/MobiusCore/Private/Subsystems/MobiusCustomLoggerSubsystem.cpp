@@ -21,6 +21,48 @@ namespace
 	{
 		return GEngine ? GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>() : nullptr;
 	}
+
+	/** Per-session files are MobiusCustomLog_<yyyy.mm.dd-hh.mm.ss>[_n].txt; the stamp makes name order chronological. */
+	const TCHAR* const SessionLogPrefix = TEXT("MobiusCustomLog_");
+
+	/** Session files kept, the current one included. The pre-rotation MobiusCustomLog.txt never matches. */
+	constexpr int32 MaxSessionLogFiles = 20;
+
+	FString MakeSessionLogFilePath(const FString& LogDir, const FDateTime& SessionStart)
+	{
+		const FString Stamp = SessionStart.ToString(TEXT("%Y.%m.%d-%H.%M.%S"));
+		FString Path = FPaths::Combine(LogDir, FString::Printf(TEXT("%s%s.txt"), SessionLogPrefix, *Stamp));
+
+		// Two processes started in the same second (an editor and a scripted headless run, say) get a file
+		// each rather than interleaving into one.
+		for (int32 Suffix = 2; IFileManager::Get().FileExists(*Path); ++Suffix)
+		{
+			Path = FPaths::Combine(LogDir, FString::Printf(TEXT("%s%s_%d.txt"), SessionLogPrefix, *Stamp, Suffix));
+		}
+		return Path;
+	}
+
+	/** Delete the oldest session files beyond MaxSessionLogFiles. Returns how many went. */
+	int32 PruneOldSessionLogs(const FString& LogDir, const FString& CurrentLogPath)
+	{
+		TArray<FString> SessionFiles;
+		IFileManager::Get().FindFiles(SessionFiles, *FPaths::Combine(LogDir, FString(SessionLogPrefix) + TEXT("*.txt")),
+			/*Files=*/true, /*Directories=*/false);
+		SessionFiles.Remove(FPaths::GetCleanFilename(CurrentLogPath));
+		SessionFiles.Sort();
+
+		const int32 ToDelete = SessionFiles.Num() - (MaxSessionLogFiles - 1);
+		int32 Deleted = 0;
+		for (int32 Index = 0; Index < ToDelete; ++Index)
+		{
+			if (IFileManager::Get().Delete(*FPaths::Combine(LogDir, SessionFiles[Index]), /*RequireExists=*/false,
+				/*EvenReadOnly=*/false, /*Quiet=*/true))
+			{
+				++Deleted;
+			}
+		}
+		return Deleted;
+	}
 }
 
 UMobiusCustomLoggerSubsystem::UMobiusCustomLoggerSubsystem()
@@ -45,17 +87,36 @@ void UMobiusCustomLoggerSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 	// Packaged builds expect the log next to the launched executable.
 	const FString LogDir = FPaths::ConvertRelativePathToFull(FPaths::LaunchDir());
 #endif
-	LogFilePath = FPaths::Combine(LogDir, TEXT("MobiusCustomLog.txt"));
-
+	// One file per session (process). A single shared MobiusCustomLog.txt grew without bound (115 MB on the
+	// dev machine) and interleaved processes running side by side. The newest MaxSessionLogFiles are kept;
+	// the old shared file is left alone.
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	PlatformFile.CreateDirectoryTree(*FPaths::GetPath(LogFilePath));
+	PlatformFile.CreateDirectoryTree(*LogDir);
+
+	const FDateTime SessionStart = FDateTime::Now();
+	LogFilePath = MakeSessionLogFilePath(LogDir, SessionStart);
+
+	// Claim the name now, so a process starting a moment later sees it taken.
+	TUniquePtr<IFileHandle> Claim(PlatformFile.OpenWrite(*LogFilePath, /*bAppend=*/true));
+	Claim.Reset();
+
+	const int32 PrunedSessionLogs = PruneOldSessionLogs(LogDir, LogFilePath);
 
 	FlushTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateUObject(this, &UMobiusCustomLoggerSubsystem::PumpLogs),
 		0.25f); // flush 4x per second to keep overhead tiny
 
 	UE_LOG(LogTemp, Display, TEXT("MobiusCustomLogger initialised. Writing to %s"), *LogFilePath);
+
+	// First line of every file: when this session started, matching the stamp in the file name.
+	EnqueueLogMessage(FString::Printf(TEXT("=== Mobius session started %s (pid %u) ==="),
+		*SessionStart.ToString(TEXT("%Y-%m-%d %H:%M:%S")), FPlatformProcess::GetCurrentProcessId()));
 	EnqueueLogMessage(FString::Printf(TEXT("Custom logger initialised. Writing to %s"), *LogFilePath));
+	if (PrunedSessionLogs > 0)
+	{
+		EnqueueLogMessage(FString::Printf(TEXT("Removed %d old session log(s); keeping the newest %d"),
+			PrunedSessionLogs, MaxSessionLogFiles));
+	}
 }
 
 void UMobiusCustomLoggerSubsystem::Deinitialize()

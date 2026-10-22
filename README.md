@@ -72,7 +72,7 @@ Project Mobius is an Unreal Engine 5.5 application for loading pedestrian trajec
 ## Why HDF5
 
 For larger trajectory files, convert JSON to HDF5 with the bundled
-[`json_to_hdf5_converter.py`](UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Scripts/json_to_hdf5_converter.py)
+[`json_to_hdf5_converter.py`](UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Scripts/json_to_hdf5_converter.py)
 script. In one 5,000-agent sample, HDF5 cut load time from `21.29 s` to `3.18 s`
 and reduced memory use from `317,555 KB` to `55,283 KB`.
 
@@ -87,6 +87,11 @@ and reduced memory use from `317,555 KB` to `55,283 KB`.
 
 More on supported formats, the conversion command, and the benchmark:
 [docs/DATA-PIPELINE.md](docs/DATA-PIPELINE.md)
+
+To export trajectories from your own evacuation or crowd model, see
+[Pedestrian Data Format](docs/PEDESTRIAN-DATA-FORMAT.md) for the exact file layout and the
+[HDF5 Export Guide](docs/HDF5-EXPORT-GUIDE.md) for writing it from Python or with the bundled
+HDF5 C library ([buildingEXODUS users](docs/EXODUS-EXPORT.md)).
 
 ## Quick Start
 
@@ -169,6 +174,9 @@ Full build, packaging, and automation notes live in
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data Pipeline](docs/DATA-PIPELINE.md)
 - [Agent Sample Data](docs/AGENT-SAMPLE-DATA.md)
+- [Pedestrian Data Format](docs/PEDESTRIAN-DATA-FORMAT.md)
+- [HDF5 Export Guide](docs/HDF5-EXPORT-GUIDE.md)
+- [Exporting from buildingEXODUS](docs/EXODUS-EXPORT.md)
 - [Research and Publications](docs/RESEARCH.md)
 - [UE Automation Guide](UnrealFolder/ProjectMobius/BuildDocs/UE-Automation-Guide.md)
 - [Contributing](CONTRIBUTING.md)

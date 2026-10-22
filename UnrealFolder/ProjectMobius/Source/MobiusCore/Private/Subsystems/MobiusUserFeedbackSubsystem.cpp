@@ -35,6 +35,7 @@ void UMobiusUserFeedbackSubsystem::Deinitialize()
 
 	PendingErrors.Reset();
 	CachedLogLines.Reset();
+	CachedLogHead = 0;
 	RecentPromptTimes.Reset();
 
 	Super::Deinitialize();
@@ -226,7 +227,24 @@ TArray<FMobiusErrorMessage> UMobiusUserFeedbackSubsystem::DrainPendingErrors()
 
 TArray<FString> UMobiusUserFeedbackSubsystem::GetCachedLogLines() const
 {
-	return CachedLogLines;
+	// Oldest first, which is what the log window's SetLines expects. The head only moves once the ring
+	// is full, so a zero head means the buffer is still in plain append order.
+	if (CachedLogHead == 0)
+	{
+		return CachedLogLines;
+	}
+
+	TArray<FString> Ordered;
+	Ordered.Reserve(CachedLogLines.Num());
+	for (int32 Index = CachedLogHead; Index < CachedLogLines.Num(); ++Index)
+	{
+		Ordered.Add(CachedLogLines[Index]);
+	}
+	for (int32 Index = 0; Index < CachedLogHead; ++Index)
+	{
+		Ordered.Add(CachedLogLines[Index]);
+	}
+	return Ordered;
 }
 
 FOnMobiusErrorReported& UMobiusUserFeedbackSubsystem::OnErrorReported()
@@ -310,11 +328,18 @@ void UMobiusUserFeedbackSubsystem::ReportErrorInternal(const FMobiusErrorMessage
 
 void UMobiusUserFeedbackSubsystem::HandleLogLine(const FString& Line)
 {
-	CachedLogLines.Add(Line);
-	if (CachedLogLines.Num() > MaxCachedLogLines)
+	if (MaxCachedLogLines > 0)
 	{
-		const int32 Overflow = CachedLogLines.Num() - MaxCachedLogLines;
-		CachedLogLines.RemoveAt(0, Overflow, EAllowShrinking::No);
+		if (CachedLogLines.Num() < MaxCachedLogLines)
+		{
+			CachedLogLines.Add(Line);
+		}
+		else
+		{
+			// Full: overwrite the oldest slot in place (reuses its allocation) and advance the head.
+			CachedLogLines[CachedLogHead] = Line;
+			CachedLogHead = (CachedLogHead + 1) % MaxCachedLogLines;
+		}
 	}
 
 	LogLineDelegate.Broadcast(Line);

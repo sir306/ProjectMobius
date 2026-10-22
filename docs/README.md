@@ -14,6 +14,12 @@ Packaged builds mirror a selected subset of these pages into UnrealFolder/Projec
 - [Data Pipeline](DATA-PIPELINE.md)
 - [Agent Sample Data](AGENT-SAMPLE-DATA.md)
 
+## Exporting Pedestrian Data From Other Models
+
+- [Pedestrian Data Format](PEDESTRIAN-DATA-FORMAT.md): field-by-field definition of the files Mobius loads
+- [HDF5 Export Guide](HDF5-EXPORT-GUIDE.md): write those files from Python or with the bundled HDF5 C library
+- [Exporting from buildingEXODUS](EXODUS-EXPORT.md)
+
 ## Research
 
 - [Research and Publications](RESEARCH.md)

@@ -250,6 +250,8 @@ struct FMobiusImportTimings
 	double ParseSeconds = 0.0;
 	/** RunSimulationDataGatheringLoop: dense per-timestep map build + unit conversions. */
 	double ConvertSeconds = 0.0;
+	/** CalculateRotationFromMovement + CalculateSpeedFromMovement (positions-only sources; 0 otherwise). */
+	double DeriveSeconds = 0.0;
 	/** CalcSmoothedStepMovementBrackets. */
 	double BracketSeconds = 0.0;
 	/** WriteCacheForImport (A3; includes the reuse-check when it skips). */

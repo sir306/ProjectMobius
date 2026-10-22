@@ -10,6 +10,9 @@ workflow.
 - `.h5` simulation files loaded through `FHdf5SimulationReader`
 - HDF5 support includes both Mobius-format and Juelich-format datasets
 
+The exact layout of each field is defined in [Pedestrian Data Format](PEDESTRIAN-DATA-FORMAT.md).
+To write these files from another simulator, see the [HDF5 Export Guide](HDF5-EXPORT-GUIDE.md).
+
 ## Geometry Inputs
 
 The project also supports loading geometry and environment data from common
@@ -25,12 +28,12 @@ formats such as:
 
 The bundled converter script lives at:
 
-`UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Scripts/json_to_hdf5_converter.py`
+`UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Scripts/json_to_hdf5_converter.py`
 
 Example usage:
 
 ```bash
-cd UnrealFolder/ProjectMobius/Plugins/Hdf5DataPlugin/Scripts
+cd UnrealFolder/ProjectMobius/Plugins/MobiusDataImporter/Scripts
 python json_to_hdf5_converter.py path/to/input.json path/to/output.h5
 ```
 
@@ -69,6 +72,8 @@ That benchmark works out to:
 
 ## Related References
 
+- [Pedestrian Data Format](PEDESTRIAN-DATA-FORMAT.md)
+- [HDF5 Export Guide](HDF5-EXPORT-GUIDE.md)
 - [Build and Run](BUILD-AND-RUN.md)
 - [Architecture](ARCHITECTURE.md)
 - [UE Automation Guide](../UnrealFolder/ProjectMobius/BuildDocs/UE-Automation-Guide.md)

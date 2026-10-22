@@ -48,7 +48,27 @@ private:
 	/** Attempt to initialize the frame grabber from the game engine's scene viewport */
 	bool TryInitialize();
 
+	/**
+	 * Log a TryInitialize failure only when its reason differs from the last one logged; repeats are
+	 * counted instead. Returns true if this call logged, so the caller escalates (ReportError) once per
+	 * reason rather than once per retry.
+	 */
+	bool NoteInitFailure(const FString& Reason);
+
 	TUniquePtr<FFrameGrabber> FrameGrabber;
+
+	/** Reason of the last TryInitialize failure that was logged. Cleared by a successful init, so a
+	 *  failure after a later (resize) re-init logs again. */
+	FString LastInitFailureReason;
+
+	/** Identical failures swallowed since LastInitFailureReason was logged. */
+	int32 SuppressedInitFailures = 0;
+
+	/** Seconds until Tick may retry TryInitialize. Tick-side only: TriggerCapture never waits on it. */
+	float InitRetryCooldown = 0.0f;
+
+	/** Tick's retry period while the viewport is unusable (0x0 for a whole -nullrhi / headless session). */
+	static constexpr float InitRetryIntervalSeconds = 0.5f;
 #endif
 
 #if PLATFORM_MAC

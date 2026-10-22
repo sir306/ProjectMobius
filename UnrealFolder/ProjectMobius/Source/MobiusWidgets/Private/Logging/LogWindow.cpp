@@ -13,9 +13,10 @@
 #include "Engine/GameInstance.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/SListView.h"
+#include "Widgets/Views/STableRow.h"
 
 namespace
 {
@@ -83,26 +84,25 @@ void SLogWindowWidget::AppendLine(const FString& Line)
 		return;
 	}
 
-	LogLines.Add(Line);
-	if (LogLines.Num() > MaxLines)
-	{
-		const int32 Overflow = LogLines.Num() - MaxLines;
-		LogLines.RemoveAt(0, Overflow, EAllowShrinking::No);
-	}
+	// O(1) per line whatever the backlog. The logger's flush calls this once per queued line, so a
+	// heatmap load arrives as thousands of calls in one frame; all of them together cost one list
+	// regeneration (visible rows only) on the next paint.
+	LogItems.Add(MakeShared<FString>(Line));
+	const int32 Removed = LogItems.Num() > MaxLines ? TrimBacklog() : 0;
 
-	RebuildLogText();
+	RefreshLogList(Removed, /*bForceToEnd=*/false);
 }
 
 void SLogWindowWidget::SetLines(const TArray<FString>& Lines)
 {
-	LogLines = Lines;
-	if (LogLines.Num() > MaxLines)
+	const int32 First = FMath::Max(0, Lines.Num() - MaxLines);
+	LogItems.Reset(Lines.Num() - First);
+	for (int32 Index = First; Index < Lines.Num(); ++Index)
 	{
-		const int32 Overflow = LogLines.Num() - MaxLines;
-		LogLines.RemoveAt(0, Overflow, EAllowShrinking::No);
+		LogItems.Add(MakeShared<FString>(Lines[Index]));
 	}
 
-	RebuildLogText();
+	RefreshLogList(/*RemovedFromFront=*/0, /*bForceToEnd=*/true);
 }
 
 void SLogWindowWidget::ShowLogWindow()
@@ -148,13 +148,22 @@ void SLogWindowWidget::ReleaseWindowState()
 	// Unconditional: the binding outlives the window pointer, and OpenLogWindow re-binds on reopen.
 	UnbindThemeChanged();
 
-	// ScrollBox / LogTextBlock / CloseButton live inside the destroyed window's tree and are rebuilt by
-	// OpenLogWindow. LogLines and LogText are NOT cleared: they are the viewer's contents, and
-	// OpenLogWindow seeds the new STextBlock from LogText, so a reopen shows the same backlog.
+	// LogListView holds a raw pointer to LogItems. Detach it before letting go: on the OnWindowClosed
+	// route this widget - and LogItems with it - is destroyed inside the callback while the window's tree
+	// is still alive, so a list left pointing at LogItems would outlive the array it reads.
+	if (LogListView.IsValid())
+	{
+		LogListView->ClearItemsSource();
+	}
+
+	// LogListView / CloseButton live inside the destroyed window's tree and are rebuilt by
+	// OpenLogWindow. LogItems is NOT cleared: it is the viewer's contents, and OpenLogWindow builds the
+	// new list over it, so a reopen shows the same backlog.
 	LogWindowPtr.Reset();
-	ScrollBox.Reset();
-	LogTextBlock.Reset();
+	LogListView.Reset();
 	CloseButton.Reset();
+	LogSettleTimer.Reset();
+	LogSettleFramesLeft = 0;
 }
 
 void SLogWindowWidget::SetEnabled(bool bEnabled)
@@ -195,8 +204,26 @@ void SLogWindowWidget::OpenLogWindow()
 	{
 		LogFont = FSlateFontInfo(Inter, 10, FName("Regular"));
 	}
-	const FTextBlockStyle LogTextStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
+	LogTextStyle = FTextBlockStyle(FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
 		.SetFont(LogFont);
+
+	// Rows and list draw nothing of their own - no hover, selection or alternating-row brushes, no list
+	// background - so the themed RibbonBg border shows through exactly as it did behind the old single
+	// text block.
+	const FSlateNoResource NoBrush;
+	LogRowStyle = FTableRowStyle(FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
+		.SetSelectorFocusedBrush(NoBrush)
+		.SetActiveHoveredBrush(NoBrush)
+		.SetActiveBrush(NoBrush)
+		.SetInactiveHoveredBrush(NoBrush)
+		.SetInactiveBrush(NoBrush)
+		.SetEvenRowBackgroundHoveredBrush(NoBrush)
+		.SetEvenRowBackgroundBrush(NoBrush)
+		.SetOddRowBackgroundHoveredBrush(NoBrush)
+		.SetOddRowBackgroundBrush(NoBrush)
+		.SetActiveHighlightedBrush(NoBrush)
+		.SetInactiveHighlightedBrush(NoBrush);
+	LogListViewStyle = FTableViewStyle().SetBackgroundBrush(NoBrush);
 
 	// Themed Close button (stored as a member: SButton caches raw pointers into the style's brushes).
 	// Background brushes are stamped for the theme current at construct; the label colour follows live.
@@ -216,19 +243,12 @@ void SLogWindowWidget::OpenLogWindow()
 			+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
 			[
-				SAssignNew(ScrollBox, SScrollBox)
-				+ SScrollBox::Slot()
-				[
-					SAssignNew(LogTextBlock, STextBlock)
-					.Text(FText::FromString(LogText))
-					.AutoWrapText(true)
-					.TextStyle(&LogTextStyle)
-					// Mono log text follows the theme (readable on either surface) via a live poll.
-					.ColorAndOpacity_Lambda([]()
-					{
-						return FSlateColor(PollLogWindowColor(EMobiusPaletteRole::InputMonoText, MobiusThemePalette::Color(EMobiusPaletteRole::InputMonoText, /*bLight=*/true)));
-					})
-				]
+				SAssignNew(LogListView, SListView<TSharedPtr<FString>>)
+				.ListItemsSource(&LogItems)
+				.OnGenerateRow(this, &SLogWindowWidget::GenerateLogRow)
+				.OnListViewScrolled(this, &SLogWindowWidget::HandleLogListScrolled)
+				.SelectionMode(ESelectionMode::None)
+				.ListViewStyle(&LogListViewStyle)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()
@@ -252,6 +272,9 @@ void SLogWindowWidget::OpenLogWindow()
 				]
 			]
 		];
+
+	// A fresh list starts at the top; open on the newest line, as the old text block's ScrollToEnd did.
+	RefreshLogList(/*RemovedFromFront=*/0, /*bForceToEnd=*/true);
 
 	// Live re-theme for the Close button, event-driven off OnThemeChangedNative. The bind normally succeeds
 	// right here; if it does not, fall back to a 2 Hz bootstrap timer that stops the moment it binds.
@@ -298,26 +321,108 @@ FReply SLogWindowWidget::HandleCloseClicked()
 	return FReply::Handled();
 }
 
-void SLogWindowWidget::RebuildLogText()
+TSharedRef<ITableRow> SLogWindowWidget::GenerateLogRow(TSharedPtr<FString> Line, const TSharedRef<STableViewBase>& OwnerTable)
 {
-	LogText.Reset();
-	for (int32 Index = 0; Index < LogLines.Num(); ++Index)
+	return SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
+		.Style(&LogRowStyle)
+		.ShowSelection(false)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(Line.IsValid() ? *Line : FString()))
+			.AutoWrapText(true)
+			.TextStyle(&LogTextStyle)
+			// Mono log text follows the theme (readable on either surface) via a live poll.
+			.ColorAndOpacity_Lambda([]()
+			{
+				return FSlateColor(PollLogWindowColor(EMobiusPaletteRole::InputMonoText, MobiusThemePalette::Color(EMobiusPaletteRole::InputMonoText, /*bLight=*/true)));
+			})
+		];
+}
+
+int32 SLogWindowWidget::TrimBacklog()
+{
+	const int32 Keep = FMath::Max(0, MaxLines - LogTrimBatch);
+	const int32 Removed = FMath::Max(0, LogItems.Num() - Keep);
+	if (Removed > 0)
 	{
-		LogText.Append(LogLines[Index]);
-		if (Index + 1 < LogLines.Num())
-		{
-			LogText.Append(TEXT("\n"));
-		}
+		LogItems.RemoveAt(0, Removed, EAllowShrinking::No);
+	}
+	return Removed;
+}
+
+void SLogWindowWidget::RefreshLogList(int32 RemovedFromFront, bool bForceToEnd)
+{
+	// Closed: nothing to refresh. OpenLogWindow builds a fresh list over LogItems.
+	if (!LogListView.IsValid())
+	{
+		return;
 	}
 
-	if (LogTextBlock.IsValid())
+	if (bForceToEnd)
 	{
-		LogTextBlock->SetText(FText::FromString(LogText));
+		bFollowLogEnd = true;
+	}
+	else if (!bFollowLogEnd && !LogListView->IsUserScrolling()
+		&& LogListView->GetScrollDistanceRemaining().Y <= KINDA_SMALL_NUMBER)
+	{
+		// The reader scrolled back down to the end (scrollbar state from the list's last layout): follow again.
+		bFollowLogEnd = true;
 	}
 
-	if (ScrollBox.IsValid())
+	LogListView->RequestListRefresh();
+
+	if (bFollowLogEnd)
 	{
-		ScrollBox->ScrollToEnd();
+		PinLogListToEnd();
+		ArmLogListSettle();
+	}
+	else if (RemovedFromFront > 0)
+	{
+		// The scroll offset is an item index: shift it with the trim so the lines being read stay put.
+		TGuardValue<bool> OwnScroll(bScrollingLogListProgrammatically, true);
+		LogListView->SetScrollOffset(FMath::Max(0.0f, LogListView->GetScrollOffset() - static_cast<float>(RemovedFromFront)));
+	}
+}
+
+void SLogWindowWidget::PinLogListToEnd()
+{
+	if (LogListView.IsValid())
+	{
+		TGuardValue<bool> OwnScroll(bScrollingLogListProgrammatically, true);
+		LogListView->ScrollToBottom();
+	}
+}
+
+void SLogWindowWidget::ArmLogListSettle()
+{
+	// Three frames: the one that generates the new rows (measured unwrapped), the one that re-measures
+	// them wrapped, and one spare. A burst re-arms rather than stacking timers.
+	LogSettleFramesLeft = 3;
+	if (!LogSettleTimer.IsValid() && LogListView.IsValid())
+	{
+		LogSettleTimer = LogListView->RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SLogWindowWidget::SettleLogListEnd));
+	}
+}
+
+EActiveTimerReturnType SLogWindowWidget::SettleLogListEnd(double InCurrentTime, float InDeltaTime)
+{
+	// Runs in the list's Paint before its Tick, so the re-pin is laid out in this same frame.
+	if (!bFollowLogEnd || !LogListView.IsValid() || LogSettleFramesLeft <= 0)
+	{
+		LogSettleFramesLeft = 0;
+		return EActiveTimerReturnType::Stop;
+	}
+
+	--LogSettleFramesLeft;
+	PinLogListToEnd();
+	return LogSettleFramesLeft > 0 ? EActiveTimerReturnType::Continue : EActiveTimerReturnType::Stop;
+}
+
+void SLogWindowWidget::HandleLogListScrolled(double InScrollOffset)
+{
+	if (!bScrollingLogListProgrammatically && FSlateApplication::IsInitialized() && FSlateApplication::Get().IsProcessingInput())
+	{
+		bFollowLogEnd = false;
 	}
 }
 

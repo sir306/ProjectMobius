@@ -172,20 +172,20 @@ bool UFrameGrabberHelper::TryInitialize()
 
 	if (!GEngine)
 	{
-		MobiusLog(TEXT("[FrameGrabber] TryInitialize failed: GEngine is null"));
+		NoteInitFailure(TEXT("GEngine is null"));
 		return false;
 	}
 
 	if (!GEngine->GameViewport)
 	{
-		MobiusLog(TEXT("[FrameGrabber] TryInitialize failed: GameViewport is null"));
+		NoteInitFailure(TEXT("GameViewport is null"));
 		return false;
 	}
 
 	TSharedPtr<SViewport> GameViewportWidget = GEngine->GameViewport->GetGameViewportWidget();
 	if (!GameViewportWidget.IsValid())
 	{
-		MobiusLog(TEXT("[FrameGrabber] TryInitialize failed: GameViewportWidget not constructed yet"));
+		NoteInitFailure(TEXT("GameViewportWidget not constructed yet"));
 		return false;
 	}
 
@@ -193,7 +193,7 @@ bool UFrameGrabberHelper::TryInitialize()
 	TSharedPtr<ISlateViewport> SlateViewportInterface = GameViewportWidget->GetViewportInterface().Pin();
 	if (!SlateViewportInterface.IsValid())
 	{
-		MobiusLog(TEXT("[FrameGrabber] TryInitialize failed: SlateViewportInterface not wired up yet"));
+		NoteInitFailure(TEXT("SlateViewportInterface not wired up yet"));
 		return false;
 	}
 
@@ -201,13 +201,16 @@ bool UFrameGrabberHelper::TryInitialize()
 	TSharedPtr<FSceneViewport> SceneViewport = StaticCastSharedPtr<FSceneViewport>(SlateViewportInterface);
 	if (!SceneViewport.IsValid())
 	{
-		MobiusLog(TEXT("[FrameGrabber] TryInitialize failed: Unexpected viewport type (not FSceneViewport)"));
-		MobiusReportError(
-			FText::FromString(TEXT("Viewport Error")),
-			FText::FromString(TEXT("Could not access scene viewport for screenshot capture.")),
-			FText::FromString(TEXT("FrameGrabberHelper::TryInitialize")),
-			EMobiusErrorSeverity::Warning,
-			false); // Don't show popup for this, it may resolve on retry
+		// Escalate once per reason, not per retry: ReportError UE_LOGs and re-enqueues into the custom log too.
+		if (NoteInitFailure(TEXT("Unexpected viewport type (not FSceneViewport)")))
+		{
+			MobiusReportError(
+				FText::FromString(TEXT("Viewport Error")),
+				FText::FromString(TEXT("Could not access scene viewport for screenshot capture.")),
+				FText::FromString(TEXT("FrameGrabberHelper::TryInitialize")),
+				EMobiusErrorSeverity::Warning,
+				false); // Don't show popup for this, it may resolve on retry
+		}
 		return false;
 	}
 
@@ -217,8 +220,7 @@ bool UFrameGrabberHelper::TryInitialize()
 	// If either dimension is 0, we can't capture yet
 	if (ViewportSize.X <= 0 || ViewportSize.Y <= 0)
 	{
-		MobiusLog(FString::Printf(TEXT("[FrameGrabber] TryInitialize failed: Invalid viewport size %dx%d"),
-			ViewportSize.X, ViewportSize.Y));
+		NoteInitFailure(FString::Printf(TEXT("Invalid viewport size %dx%d"), ViewportSize.X, ViewportSize.Y));
 		return false;
 	}
 
@@ -227,23 +229,51 @@ bool UFrameGrabberHelper::TryInitialize()
 	// Clamp/validate target too (avoid passing nonsense to frame grabber)
 	if (TargetSize.X <= 0 || TargetSize.Y <= 0)
 	{
-		MobiusLog(FString::Printf(TEXT("[FrameGrabber] TryInitialize failed: Invalid target size %dx%d"),
-			TargetSize.X, TargetSize.Y));
-		MobiusReportError(
-			FText::FromString(TEXT("Configuration Error")),
-			FText::FromString(FString::Printf(TEXT("Invalid screenshot target size: %dx%d"), TargetSize.X, TargetSize.Y)),
-			FText::FromString(TEXT("FrameGrabberHelper::TryInitialize")),
-			EMobiusErrorSeverity::Error,
-			true);
+		if (NoteInitFailure(FString::Printf(TEXT("Invalid target size %dx%d"), TargetSize.X, TargetSize.Y)))
+		{
+			MobiusReportError(
+				FText::FromString(TEXT("Configuration Error")),
+				FText::FromString(FString::Printf(TEXT("Invalid screenshot target size: %dx%d"), TargetSize.X, TargetSize.Y)),
+				FText::FromString(TEXT("FrameGrabberHelper::TryInitialize")),
+				EMobiusErrorSeverity::Error,
+				true);
+		}
 		return false;
 	}
 
 	FrameGrabber = MakeUnique<FFrameGrabber>(SceneViewport.ToSharedRef(), ViewportSize);
 	FrameGrabber->StartCapturingFrames();
 
-	MobiusLog(FString::Printf(TEXT("[FrameGrabber] Initialized successfully. ViewportSize: %dx%d, TargetSize: %dx%d"),
-		ViewportSize.X, ViewportSize.Y, TargetSize.X, TargetSize.Y));
+	const FString QuietRetries = SuppressedInitFailures > 0
+		? FString::Printf(TEXT(" (after %d unlogged repeats of: %s)"), SuppressedInitFailures, *LastInitFailureReason)
+		: FString();
+	MobiusLog(FString::Printf(TEXT("[FrameGrabber] Initialized successfully. ViewportSize: %dx%d, TargetSize: %dx%d%s"),
+		ViewportSize.X, ViewportSize.Y, TargetSize.X, TargetSize.Y, *QuietRetries));
+	LastInitFailureReason.Reset();
+	SuppressedInitFailures = 0;
 
+	return true;
+}
+
+bool UFrameGrabberHelper::NoteInitFailure(const FString& Reason)
+{
+	// Tick retries until the viewport is usable, and in editor / -game -nullrhi / headless automation runs
+	// it stays 0x0 for the whole session. Logging every attempt put one identical line per frame into
+	// MobiusCustomLog.txt - up to ~3,000 a second, 1.07 M of its 1.26 M lines - and each one went through
+	// the log window too. A reason is logged once, when it changes; repeats are only counted.
+	if (Reason == LastInitFailureReason)
+	{
+		++SuppressedInitFailures;
+		return false;
+	}
+
+	const FString PreviousRepeats = SuppressedInitFailures > 0
+		? FString::Printf(TEXT(" - previous reason '%s' repeated %d more times"), *LastInitFailureReason, SuppressedInitFailures)
+		: FString();
+	MobiusLog(FString::Printf(TEXT("[FrameGrabber] TryInitialize failed: %s (retrying quietly; logged again only if the reason changes)%s"),
+		*Reason, *PreviousRepeats));
+	LastInitFailureReason = Reason;
+	SuppressedInitFailures = 0;
 	return true;
 }
 #endif // !PLATFORM_MAC
@@ -384,7 +414,9 @@ void UFrameGrabberHelper::TriggerCapture(const FString& InFileName)
 		MobiusLog(TEXT("[FrameGrabber] FrameGrabber not initialized, attempting initialization..."));
 		if (!TryInitialize())
 		{
-			MobiusLog(TEXT("[FrameGrabber] Error: Could not initialize FrameGrabber - viewport not ready."));
+			// TryInitialize may have stayed quiet (the same reason Tick already logged), so name it here.
+			MobiusLog(FString::Printf(TEXT("[FrameGrabber] Error: Could not initialize FrameGrabber - viewport not ready (%s)."),
+				*LastInitFailureReason));
 			MobiusReportError(
 				FText::FromString(TEXT("Initialization Failed")),
 				FText::FromString(TEXT("Could not initialize screenshot capture. The viewport may not be ready yet.")),
@@ -548,10 +580,16 @@ void UFrameGrabberHelper::Tick(float DeltaTime)
 	// The OnScreenshotCaptured callback handles everything
 #else
 	// Windows/other: Poll FFrameGrabber
-	// Try lazy initialization if not yet initialized
+	// Try lazy initialization if not yet initialized. Backed off while it keeps failing: under -nullrhi /
+	// headless the viewport is 0x0 for the whole session, and a retry every frame bought nothing.
+	// TriggerCapture still initializes on demand without waiting for this.
 	if (!FrameGrabber.IsValid())
 	{
-		TryInitialize();
+		InitRetryCooldown -= DeltaTime;
+		if (InitRetryCooldown <= 0.0f && !TryInitialize())
+		{
+			InitRetryCooldown = InitRetryIntervalSeconds;
+		}
 	}
 
 	if (!bIsCapturing || !FrameGrabber.IsValid())
