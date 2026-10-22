@@ -11,8 +11,33 @@
 #include "RHI.h"
 #include "Subsystems/MobiusCustomLoggerSubsystem.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "UserConfig/UserProjectSettings.h"
+#include "Widgets/SWindow.h"
+
+static TAutoConsoleVariable<float> CVarMobiusMinimisedMaxFPS(
+	TEXT("Mobius.Perf.MinimisedMaxFPS"),
+	5.0f,
+	TEXT("Frame-rate cap while the packaged / -game window is minimised; t.MaxFPS is restored when it is restored.\n")
+	TEXT("0 disables the cap. The editor and PIE are never capped."),
+	ECVF_Default);
+
+namespace
+{
+	bool IsGameWindowMinimised()
+	{
+		if (GEngine && GEngine->GameViewport)
+		{
+			if (const TSharedPtr<SWindow> Window = GEngine->GameViewport->GetWindow())
+			{
+				return Window->IsWindowMinimized();
+			}
+		}
+		return false;
+	}
+}
 
 // Heavy render-feature cvar tables per render tier (task C1). Each entry documents what it gates and
 // the per-tier value. Returned as "name=value" strings for ApplyConsoleCommands (-> ECVF_SetByCode).
@@ -135,6 +160,13 @@ void UPerformanceUtilSubsystem::Deinitialize()
 		CurrentRenderTier = ERpt_High;
 	}
 
+	// t.MaxFPS is process-wide, so never leave the minimised cap behind on a world teardown.
+	if (bMinimisedFrameCapActive && GEngine)
+	{
+		GEngine->SetMaxFPS(FPSBeforeMinimise);
+		bMinimisedFrameCapActive = false;
+	}
+
 	// Clean up any resources or delegates here if needed
 	if (ProjectSettings)
 	{
@@ -159,9 +191,46 @@ void UPerformanceUtilSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	UpdateMinimisedFrameCap();
+
 	// Calculate the current FPS based on DeltaTime
 	CalculateCurrentFPS(DeltaTime);
 	CheckCurrentFPS();
+}
+
+void UPerformanceUtilSubsystem::UpdateMinimisedFrameCap()
+{
+	// Packaged and -game only. The editor deliberately keeps full rate when it is not in front
+	// (Config/DefaultEditorSettings.ini), and PIE shares the editor process.
+	if (GIsEditor || !GEngine)
+	{
+		return;
+	}
+
+	const float CapFPS = CVarMobiusMinimisedMaxFPS.GetValueOnGameThread();
+	const bool bWantCap = CapFPS > 0.0f && IsGameWindowMinimised();
+	if (bWantCap == bMinimisedFrameCapActive)
+	{
+		return;
+	}
+
+	if (bWantCap)
+	{
+		FPSBeforeMinimise = GEngine->GetMaxFPS();
+		GEngine->SetMaxFPS(CapFPS);
+	}
+	else
+	{
+		GEngine->SetMaxFPS(FPSBeforeMinimise);
+	}
+	bMinimisedFrameCapActive = bWantCap;
+
+	if (UMobiusCustomLoggerSubsystem* StartupLogger = GEngine->GetEngineSubsystem<UMobiusCustomLoggerSubsystem>())
+	{
+		StartupLogger->EnqueueLogMessage(bWantCap
+			? FString::Printf(TEXT("Window minimised: frame rate capped at %.0f FPS (was %.0f)"), CapFPS, FPSBeforeMinimise)
+			: FString::Printf(TEXT("Window restored: frame-rate limit back to %.0f FPS"), FPSBeforeMinimise));
+	}
 }
 
 static bool ParseCVarString(const FString& InString, FString& OutName, FString& OutValue)
@@ -228,7 +297,13 @@ void UPerformanceUtilSubsystem::CalculateCurrentFPS(float DeltaTime)
 	if (DeltaTime > 0.0f)
 	{
 		CurrentFPS = 1.0f / DeltaTime;
-		SmoothedFPS = FMath::Lerp(SmoothedFPS, CurrentFPS, 0.1f);
+
+		// Minimised frames run under the minimised frame cap and say nothing about real performance; keep
+		// them out of the average so restoring the window does not read as a sudden low-FPS spell.
+		if (!IsGameWindowMinimised())
+		{
+			SmoothedFPS = FMath::Lerp(SmoothedFPS, CurrentFPS, 0.1f);
+		}
 	}
 }
 
@@ -615,6 +690,10 @@ void UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS()
 	// set the avatar model type to low spec
 	CurrentAvatarModelType = EPss_Low;
 
+	// Latch until FPS recovers (see CheckCurrentFPS). The user can still switch the avatar model back
+	// by hand (UAdjustAvatarModel), and this will not immediately undo that.
+	bLowFPSOptimisationApplied = true;
+
 	// Notify listeners that auto scalability has changed
 	OnAutoScalabilityChanged.Broadcast();
 
@@ -628,9 +707,24 @@ void UPerformanceUtilSubsystem::ApplyOptimizationsBasedOnFPS()
 //TODO: Our check for FPS is simplistic and only checks if the FPS is below a threshold. - we may want a range tolerance as well
 void UPerformanceUtilSubsystem::CheckCurrentFPS()
 {
-	if (CurrentFPS <= LowFPSThreshold)
+	// A minimised window renders nothing worth judging, and runs under the minimised frame cap, so it
+	// must neither arm the watchdog nor let an armed one fire.
+	if (IsGameWindowMinimised())
 	{
-		if (!AutoScalabilityTimerHandle.IsValid())
+		if (AutoScalabilityTimerHandle.IsValid())
+		{
+			GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
+			AutoScalabilityTimerHandle.Invalidate();
+		}
+		return;
+	}
+
+	// Smoothed, not instantaneous: one long frame (a load hitch) is not a sustained drop.
+	if (SmoothedFPS <= LowFPSThreshold)
+	{
+		// Once per low-FPS episode. This used to re-arm straight after firing, so a machine that stayed
+		// slow re-applied the optimisation and logged two lines every 10 s indefinitely.
+		if (!bLowFPSOptimisationApplied && !AutoScalabilityTimerHandle.IsValid())
 		{
 			// Start the timer to trigger auto scalability adjustments
 			GetWorld()->GetTimerManager().SetTimer(AutoScalabilityTimerHandle, this,
@@ -642,10 +736,12 @@ void UPerformanceUtilSubsystem::CheckCurrentFPS()
 			}
 		}
 	}
-	else
+	else if (SmoothedFPS > LowFPSThreshold + 5.0f) // 5 FPS of hysteresis
 	{
-		// if we have hit the low FPS threshold and the timer is valid, we clear it, provided the FPS has improved by our tolerance
-		if (AutoScalabilityTimerHandle.IsValid() && CurrentFPS > LowFPSThreshold + 5.0f)// Adding a tolerance of 5 FPS
+		// Recovered: a later sustained drop may fire again.
+		bLowFPSOptimisationApplied = false;
+
+		if (AutoScalabilityTimerHandle.IsValid())
 		{
 			GetWorld()->GetTimerManager().ClearTimer(AutoScalabilityTimerHandle);
 			AutoScalabilityTimerHandle.Invalidate();

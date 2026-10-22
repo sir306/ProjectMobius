@@ -199,6 +199,20 @@ private:
 	void CheckCurrentFPS();
 
 	/**
+	 * Packaged / -game only: cap the frame rate while the window is minimised (Mobius.Perf.MinimisedMaxFPS)
+	 * and restore the previous t.MaxFPS when it is restored. Nothing on screen needs 120 FPS while
+	 * minimised, and an hour of full-rate rendering behind a minimised window heats the machine for nothing.
+	 */
+	void UpdateMinimisedFrameCap();
+
+	/** Set once the low-FPS watchdog has fired; it stays quiet until FPS recovers instead of re-firing every 10 s. */
+	bool bLowFPSOptimisationApplied = false;
+
+	/** True while the minimised frame cap is in force; FPSBeforeMinimise is what t.MaxFPS returns to afterwards. */
+	bool bMinimisedFrameCapActive = false;
+	float FPSBeforeMinimise = 0.0f;
+
+	/**
 	 * Called from the low-FPS watchdog (ApplyOptimizationsBasedOnFPS). Intentionally a no-op for the
 	 * render tier: C1 is startup hardware-detect + the C2 override only, NOT FPS-driven runtime
 	 * degradation (which would break C1's "HIGH identical on capable HW" criterion — see the .cpp).
